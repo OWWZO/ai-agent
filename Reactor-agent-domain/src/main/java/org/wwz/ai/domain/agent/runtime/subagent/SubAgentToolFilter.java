@@ -6,7 +6,6 @@ import org.wwz.ai.domain.agent.runtime.tool.ContextScopedTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.memory.ltm.LtmMemoryGuard;
 import org.wwz.ai.domain.agent.runtime.tool.common.AgentDispatchTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.MemoryTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.SessionSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskToolNames;
 
@@ -28,9 +27,7 @@ public final class SubAgentToolFilter {
     private static final Set<String> PLAN_MODE_MUTATING = Set.of(
             "workspace_write",
             "workspace_edit",
-            "file_tool",
             "code_interpreter",
-            "report_tool",
             "image_generation",
             "data_analysis",
             "multimodalagent_tool"
@@ -68,10 +65,9 @@ public final class SubAgentToolFilter {
         disallowed.add(TaskToolNames.ENTER_PLAN_MODE);
         disallowed.add(TaskToolNames.EXIT_PLAN_MODE);
         disallowed.add(org.wwz.ai.domain.agent.runtime.tool.common.planmode.AskUserQuestionTool.NAME);
-        // skip_memory：子代理禁止写长期记忆工具（及深度 Provider 写工具）
-        disallowed.add(MemoryTool.TOOL_NAME);
+        // 子 Agent 完全不参与长期记忆：剥离 builtin 与深度 Provider 写工具。
         disallowed.addAll(LtmMemoryGuard.MEMORY_WRITE_TOOLS);
-        // session_search 只读可保留；若希望子代理完全无 LTM 面，一并剥离
+        // 子 Agent 默认不需要跨会话情景记忆检索。
         disallowed.add(SessionSearchTool.TOOL_NAME);
         if (definition.getDisallowedTools() != null) {
             disallowed.addAll(definition.getDisallowedTools());

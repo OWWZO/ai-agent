@@ -59,11 +59,6 @@ public class AiAgentSkillProperties {
     private boolean sandboxBashEnabled = true;
 
     /**
-     * 是否挂载遗留 skill_author（默认关）
-     */
-    private boolean authoringEnabled = false;
-
-    /**
      * 手册 ${PYTHON} 与默认解释器
      */
     private String runtimePython = "python";

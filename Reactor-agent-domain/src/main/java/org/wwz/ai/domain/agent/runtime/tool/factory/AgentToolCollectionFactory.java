@@ -29,10 +29,8 @@ import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TodoWriteTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.DataAnalysisTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.CodeExecutionTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.DeepSearchTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.FileTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.ImageGenerationTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.MultiModalAgent;
-import org.wwz.ai.domain.agent.runtime.tool.common.ReportTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.docgen.ChartGeneratorTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.docgen.ChecklistGenerateTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.docgen.DocumentGenerateTool;
@@ -74,12 +72,9 @@ import org.wwz.ai.domain.agent.runtime.tool.common.mcp.ListMcpResourcesTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.mcp.ReadMcpResourceTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.mcp.ToolSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.shell.BashTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.skill.SkillAuthorTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.skill.SkillTool;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.DeferredMcpCatalog;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
-import org.wwz.ai.domain.agent.runtime.tool.skill.SkillMaterializer;
-import org.wwz.ai.domain.agent.runtime.tool.skill.SkillPackageService;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRegistry;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeLayout;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeOptions;
@@ -116,9 +111,7 @@ public class AgentToolCollectionFactory {
     private final SkillRegistry skillRegistry;
     private final SkillRuntimeOptions skillRuntimeOptions;
     private final SkillRuntimeLayout skillRuntimeLayout;
-    private final SkillMaterializer skillMaterializer;
     private final SkillVirtualPaths skillVirtualPaths;
-    private final SkillPackageService skillPackageService;
     private final WorkspaceService workspaceService;
     private final WorkspaceRuntimeOptions workspaceRuntimeOptions;
     private final SubAgentRunner subAgentRunner;
@@ -195,27 +188,19 @@ public class AgentToolCollectionFactory {
             DataAnalysisTool dataAnalysisTool = new DataAnalysisTool();
             addTool(toolCollection, dataAnalysisTool, agentContext, DataAnalysisTool::setAgentContext);
         } else {
-            // workspace 启用时：agent 用 cwd 系工具感知文件；file_tool 仅作内部适配，不再暴露给 LLM
+            // agent 通过 workspace_* 操作会话文件；内部产物上传不作为工具暴露给 LLM。
             if (workspaceService.isEnabled()) {
                 registerWorkspaceTools(toolCollection, agentContext);
-            } else {
-                FileTool fileTool = new FileTool();
-                addTool(toolCollection, fileTool, agentContext, FileTool::setAgentContext);
             }
 
             List<String> agentToolList = parseToolNames(reactorConfig.getMultiAgentToolListMap()
-                            .getOrDefault("default", "search,web_fetch,web_search,code,code_execution,report,docgen,docread,dataprep,canvas,multimodalagent,image_generation,data_analysis")
+                            .getOrDefault("default", "search,web_fetch,web_search,code,code_execution,docgen,docread,dataprep,canvas,multimodalagent,image_generation,data_analysis")
                     );
 
             if (agentToolList.contains("code")) {
                 CodeInterpreterTool codeInterpreterTool = new CodeInterpreterTool();
                 addTool(toolCollection, codeInterpreterTool, agentContext, CodeInterpreterTool::setAgentContext);
             }
-            if (agentToolList.contains("report")) {
-                ReportTool reportTool = new ReportTool();
-                addTool(toolCollection, reportTool, agentContext, ReportTool::setAgentContext);
-            }
-
             if (agentToolList.contains("docgen")
                     || agentToolList.contains("document_generate")
                     || agentToolList.contains("slides_generate")
@@ -603,12 +588,6 @@ public class AgentToolCollectionFactory {
         // skill 读写：workspace_* 虚拟路径 skills/ → runtime 库；执行：bash 沙箱物化 + skills/** sync-back
         SkillTool skillTool = new SkillTool(skillRegistry, skillRuntimeLayout);
         addTool(toolCollection, skillTool, agentContext, SkillTool::setAgentContext);
-
-        // 可选遗留 skill_author（默认关闭；创作走 Skill Creator + workspace_*）
-        if (skillRuntimeOptions.isAuthoringEnabled() && skillPackageService != null) {
-            SkillAuthorTool authorTool = new SkillAuthorTool(skillPackageService, skillMaterializer);
-            addTool(toolCollection, authorTool, agentContext, SkillAuthorTool::setAgentContext);
-        }
 
         if (skillRuntimeOptions.isSandboxBashEnabled() && workspaceService.isEnabled()) {
             // 只发 HTTP 到 reactor-tool /v1/tool/bash；本机不执行

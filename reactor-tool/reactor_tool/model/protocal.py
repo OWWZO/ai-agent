@@ -34,7 +34,7 @@ class StreamMode(BaseModel):
 
 
 class CIRequest(BaseModel):
-    """代码解释器 / 通用任务请求（report 等也继承此结构）。"""
+    """代码解释器通用任务请求。"""
 
     request_id: str = Field(alias="requestId", description="Request ID")
     task: Optional[str] = Field(default=None, description="Task")
@@ -85,17 +85,6 @@ class CodeExecutionRequest(BaseModel):
     files: List[Dict[str, Any]] = Field(default_factory=list)
 
 
-class ReportRequest(CIRequest):
-    """报告生成请求：在 CIRequest 上增加输出格式与模板类型。"""
-
-    file_type: Literal["html", "markdown", "ppt"] = Field(
-        "html", alias="fileType", description="生成报告的文件类型"
-    )
-    template_type: str = Field(
-        default="html", alias="templateType", description="生成报告的模板样式类型"
-    )
-
-
 class FileRequest(BaseModel):
     """单文件定位：requestId + fileName → file_id。"""
 
@@ -109,8 +98,8 @@ class FileRequest(BaseModel):
 
 
 def get_file_id(request_id: str, file_name: str) -> str:
-    """新规则：仅用 basename 参与哈希，避免路径污染。"""
-    normalized_file_name = os.path.basename((file_name or "").strip())
+    """用调用方已归一化的相对路径或文件名参与哈希。"""
+    normalized_file_name = (file_name or "").strip().replace("\\", "/")
     return hashlib.md5((request_id + normalized_file_name).encode("utf-8")).hexdigest()
 
 

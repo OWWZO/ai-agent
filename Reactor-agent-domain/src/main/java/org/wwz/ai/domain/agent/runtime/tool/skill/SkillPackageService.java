@@ -268,7 +268,7 @@ public class SkillPackageService {
             if (!Files.isDirectory(skillDir)) {
                 Files.createDirectories(skillDir);
                 writeSkillMd(skillDir, name, "agent-authored skill",
-                        "（由 agent 自动创建骨架；请用 skill_author upsert 补全手册）\n");
+                        "（由 agent 自动创建骨架；请用 workspace_write/edit 补全手册）\n");
                 skillRegistry.refresh();
             }
         } catch (IOException e) {

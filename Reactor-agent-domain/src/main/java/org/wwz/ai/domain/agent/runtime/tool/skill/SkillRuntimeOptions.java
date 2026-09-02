@@ -47,12 +47,6 @@ public class SkillRuntimeOptions {
     @Builder.Default
     private boolean sandboxBashEnabled = true;
 
-    /**
-     * 是否挂载遗留 skill_author（默认关；创作走 workspace 虚拟 skills/ + bash）。
-     */
-    @Builder.Default
-    private boolean authoringEnabled = false;
-
     /** 手册占位符 ${PYTHON} 与默认解释器命令。 */
     @Builder.Default
     private String runtimePython = "python";

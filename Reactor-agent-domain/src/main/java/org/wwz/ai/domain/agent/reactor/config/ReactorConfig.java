@@ -24,18 +24,6 @@ import java.util.Map;
 @Configuration
 public class ReactorConfig {
 
-    private Map<String, String> reactSystemPromptMap = new HashMap<>();
-    @Value("${autobots.autoagent.react.system_prompt:{}}")
-    public void setReactSystemPromptMap(String list) {
-        this.reactSystemPromptMap = parseStringMap(list);
-    }
-
-    private Map<String, String> reactNextStepPromptMap = new HashMap<>();
-    @Value("${autobots.autoagent.react.next_step_prompt:{}}")
-    public void setReactNextStepPromptMap(String list) {
-        this.reactNextStepPromptMap = parseStringMap(list);
-    }
-
     @Value("${autobots.autoagent.planner.model_name:}")
     private String plannerModelName;
 
@@ -44,93 +32,6 @@ public class ReactorConfig {
 
     @Value("${autobots.autoagent.react.model_name:}")
     private String reactModelName;
-
-    @Value("${autobots.autoagent.tool.code_agent.desc:}")
-    private String codeAgentDesc;
-
-    @Value("${autobots.autoagent.tool.report_tool.desc:}")
-    private String reportToolDesc;
-
-    @Value("${autobots.autoagent.tool.deep_search_tool.desc:}")
-    private String deepSearchToolDesc;
-
-    @Value("${autobots.autoagent.tool.web_fetch_tool.desc:}")
-    private String webFetchToolDesc;
-
-    @Value("${autobots.autoagent.tool.multimodalagent_tool.desc:}")
-    private String multiModalAgentDesc;
-
-    @Value("${autobots.autoagent.tool.image_generation_tool.desc:}")
-    private String imageGenerationToolDesc;
-
-    @Value("${autobots.autoagent.tool.data_analysis_tool.desc:}")
-    private String dataAnalysisToolDesc;
-
-    /**
-     * codeAgent 配置
-     */
-    private Map<String, Object> codeAgentParams = new HashMap<>();
-    @Value("${autobots.autoagent.tool.code_agent.params:{}}")
-    public void setCodeAgentParams(String jsonStr) {
-        this.codeAgentParams = parseObjectMap(jsonStr);
-    }
-
-    /**
-     * reportTool 配置
-     */
-    private Map<String, Object> reportToolParams = new HashMap<>();
-    @Value("${autobots.autoagent.tool.report_tool.params:{}}")
-    public void setReportToolParams(String jsonStr) {
-        this.reportToolParams = parseObjectMap(jsonStr);
-    }
-
-    /**
-     * DeepSearchTool 配置
-     */
-    private Map<String, Object> deepSearchToolParams = new HashMap<>();
-    @Value("${autobots.autoagent.tool.deep_search.params:{}}")
-    public void setDeepSearchToolParams(String jsonStr) {
-        this.deepSearchToolParams = parseObjectMap(jsonStr);
-    }
-
-    /**
-     * WebFetchTool 配置
-     */
-    private Map<String, Object> webFetchToolParams = new HashMap<>();
-    @Value("${autobots.autoagent.tool.web_fetch.params:{}}")
-    public void setWebFetchToolParams(String jsonStr) {
-        this.webFetchToolParams = parseObjectMap(jsonStr);
-    }
-
-    /**
-     * MultiModalAgentTool 配置
-     */
-    private Map<String, Object> multiModalAgentParams = new HashMap<>();
-    @Value("${autobots.autoagent.tool.multimodalagent_tool.params:{}}")
-    public void setMultiModalAgentParams(String jsonStr) {
-        this.multiModalAgentParams = parseObjectMap(jsonStr);
-    }
-
-    /**
-     * ImageGenerationTool 配置
-     */
-    private Map<String, Object> imageGenerationToolParams = new HashMap<>();
-    @Value("${autobots.autoagent.tool.image_generation_tool.params:{}}")
-    public void setImageGenerationToolParams(String jsonStr) {
-        this.imageGenerationToolParams = parseObjectMap(jsonStr);
-    }
-
-    /**
-     * DataAnalysisTool 配置
-     */
-    private Map<String, Object> dataAnalysisToolParams = new HashMap<>();
-    @Value("${autobots.autoagent.tool.data_analysis_tool.params:{}}")
-    public void setDataAnalysisToolParams(String jsonStr) {
-        this.dataAnalysisToolParams = parseObjectMap(jsonStr);
-    }
-
-    @Value("${autobots.autoagent.tool.file_tool.truncate_len:5000}")
-    private Integer fileToolContentTruncateLen;
 
     @Value("${autobots.autoagent.tool.deep_search.file_desc.truncate_len:500}")
     private Integer deepSearchToolFileDescTruncateLen;
@@ -353,39 +254,20 @@ public class ReactorConfig {
         this.messageInterval = parseStringMap(jsonStr);
     }
 
-    private String structParseToolSystemPrompt = "";
-    @Value("${autobots.autoagent.struct_parse_tool_system_prompt:}")
-    public void setStructParseToolSystemPrompt(String str) {
-        this.structParseToolSystemPrompt = str;
-    }
-
 	@Value("${autobots.multiagent.sseClient.readTimeout:18000}")
 	private Integer sseClientReadTimeout;
 
-	@Value("${autobots.multiagent.sseClient.connectTimeout:18000}")
+    @Value("${autobots.multiagent.sseClient.connectTimeout:18000}")
 	private Integer sseClientConnectTimeout;
-
-	@Value("${autobots.autoagent.reactor_sop_prompt:}")
-	private String reactorSopPrompt;
 
     @Value("${autobots.autoagent.reactor_base_prompt:}")
     private String reactorBasePrompt;
-
-    @Value("${autobots.autoagent.tool.task_complete_desc:当前task完成，请将当前task标记为 completed}")
-    private String taskCompleteDesc;
 
     private static Map<String, String> parseStringMap(String json) {
         if (!StringUtils.hasText(json) || "{}".equals(json.trim())) {
             return new HashMap<>();
         }
         return JSON.parseObject(json, new TypeReference<Map<String, String>>() {});
-    }
-
-    private static Map<String, Object> parseObjectMap(String json) {
-        if (!StringUtils.hasText(json) || "{}".equals(json.trim())) {
-            return new HashMap<>();
-        }
-        return JSON.parseObject(json, new TypeReference<Map<String, Object>>() {});
     }
 
     /**

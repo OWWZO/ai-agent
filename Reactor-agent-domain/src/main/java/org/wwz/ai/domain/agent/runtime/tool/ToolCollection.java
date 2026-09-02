@@ -39,7 +39,7 @@ import java.util.Map;
 public class ToolCollection {
     /**
      * 基础工具映射表（核心工具容器）
-     * Key：工具名称（唯一标识，如"planningTool"、"fileParseTool"）；
+     * Key：工具名称（唯一标识）；
      * Value：BaseTool子类实例（本地实现的具体工具）；
      * 用途：存储所有本地可执行的基础工具，支持快速查询和调用。
      */
@@ -82,7 +82,7 @@ public class ToolCollection {
 
     /**
      * 数字员工配置JSON对象
-     * 结构示例：{"file_tool": "市场洞察专员", "search_tool": "数据分析师"}
+     * 结构示例：{"document_generate": "文档专家", "search_tool": "数据分析师"}
      * 用途：存储工具名称与数字员工的映射关系，实现「工具-数字员工」的动态绑定。
      */
     private JSONObject digitalEmployees;
@@ -98,7 +98,7 @@ public class ToolCollection {
 
     /**
      * 添加基础工具到集合
-     * @param tool 基础工具实例（BaseTool子类，如PlanningTool、FileParseTool）
+     * @param tool 基础工具实例（BaseTool 子类）
      * 说明：工具名称作为Key，重复添加会覆盖原有同名称工具。
      */
     public void addTool(BaseTool tool) {
@@ -151,6 +151,19 @@ public class ToolCollection {
      *         - 工具不存在：返回null。
      */
     public Object execute(String name, Object toolInput) {
+        if (agentContext != null
+                && agentContext.getToolDispatchWhitelist() != null
+                && !agentContext.getToolDispatchWhitelist().isEmpty()) {
+            String toolName = name == null ? "" : name.trim();
+            if (!agentContext.getToolDispatchWhitelist().contains(toolName)) {
+                String deny = "LTM fork denied non-whitelisted tool: " + toolName
+                        + ". Only curator-allowed tools (memory / skill workspace / bash) may run.";
+                log.warn("requestId:{} {}",
+                        agentContext.getRequestId() == null ? "unknown" : agentContext.getRequestId(),
+                        deny);
+                return deny;
+            }
+        }
         // 分支1：执行本地基础工具
         if (toolMap.containsKey(name)) {
             // 本地工具优先，避免同名 MCP 工具抢占已经注册的领域实现。
@@ -186,7 +199,7 @@ public class ToolCollection {
 
     /**
      * 更新数字员工配置
-     * @param digitalEmployee 数字员工配置JSON对象（如{"file_tool": "市场洞察专员"}）
+     * @param digitalEmployee 数字员工配置 JSON 对象
      * 说明：若传入null，记录错误日志但不抛出异常（容错设计，避免阻断流程）。
      */
     public void updateDigitalEmployee(JSONObject digitalEmployee) {
@@ -198,7 +211,7 @@ public class ToolCollection {
 
     /**
      * 根据工具名称获取绑定的数字员工名称
-     * @param toolName 工具名称（唯一标识，如"file_tool"）
+     * @param toolName 工具名称（唯一标识）
      * @return String 数字员工名称：
      *         - 工具名称为空/数字员工配置为空：返回null；
      *         - 存在映射关系：返回数字员工名称（如"市场洞察专员"）；

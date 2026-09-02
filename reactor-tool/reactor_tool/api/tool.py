@@ -2,7 +2,7 @@
 """Tool API routes for Java HTTP/SSE calls.
 
 Endpoints:
-  /code_interpreter  /report  /deepsearch  /web_fetch
+  /code_interpreter  /deepsearch  /web_fetch
   /embedding/text    /table_rag  /cal_engine  /auto_analysis  /nl2sql
   /sopRecall         /script_runner  /mragQuery
   /document_generate /slides_generate /excel_generator /checklist_generate /template_filler
@@ -35,7 +35,6 @@ from reactor_tool.model.protocal import (
     AutoAnalysisRequest,
     CIRequest,
     CalEngineRequest,
-    ReportRequest,
     DeepSearchRequest,
     NL2SQLRequest,
     SopChooseRequest,
@@ -55,7 +54,6 @@ from reactor_tool.tool.mrag.storage.store_factory import (
 from reactor_tool.tool.web_fetcher import WebFetcher
 from reactor_tool.tool.code_interpreter_policy import CodeExecutionPermissionError
 from reactor_tool.util.file_util import upload_file
-from reactor_tool.util.report_file_util import sanitize_report_html_content
 from reactor_tool.util.prompt_util import get_prompt
 from reactor_tool.util.middleware_util import RequestHandlerRoute
 
@@ -263,137 +261,6 @@ async def post_code_interpreter(
                 file_name=out_file_name,
                 request_id=body.request_id,
                 file_type=out_file_type,
-            )
-        ]
-        return {
-            "code": 200,
-            "data": content,
-            "fileInfo": file_info,
-            "requestId": body.request_id,
-        }
-
-
-@router.post("/report")
-async def post_report(
-    body: ReportRequest,
-):
-    """报告生成：流式输出正文，结束后落盘 html/md/ppt 产物。"""
-    from reactor_tool.tool.report import report
-
-    # 相对文件名补全为文件服务预览 URL
-    if body.file_names:
-        for idx, f_name in enumerate(body.file_names):
-            if not f_name.startswith("/") and not f_name.startswith("http"):
-                body.file_names[idx] = (
-                    f"{os.getenv('FILE_SERVER_URL')}/preview/{body.request_id}/{f_name}"
-                )
-
-    async def _stream():
-        content = ""
-        acc_content = ""
-        acc_token = 0
-        acc_time = time.time()
-        async for chunk in report(
-            task=body.task,
-            file_names=body.file_names,
-            file_type=body.file_type,
-            template_type=body.template_type,
-        ):
-            content += chunk
-            acc_content += chunk
-            acc_token += 1
-            if body.stream_mode.mode == "general":
-                yield ServerSentEvent(
-                    data=json.dumps(
-                        {"requestId": body.request_id, "data": chunk, "isFinal": False},
-                        ensure_ascii=False,
-                    )
-                )
-            elif body.stream_mode.mode == "token":
-                if acc_token >= body.stream_mode.token:
-                    yield ServerSentEvent(
-                        data=json.dumps(
-                            {
-                                "requestId": body.request_id,
-                                "data": acc_content,
-                                "isFinal": False,
-                            },
-                            ensure_ascii=False,
-                        )
-                    )
-                    acc_token = 0
-                    acc_content = ""
-            elif body.stream_mode.mode == "time":
-                if time.time() - acc_time > body.stream_mode.time:
-                    yield ServerSentEvent(
-                        data=json.dumps(
-                            {
-                                "requestId": body.request_id,
-                                "data": acc_content,
-                                "isFinal": False,
-                            },
-                            ensure_ascii=False,
-                        )
-                    )
-                    acc_time = time.time()
-                    acc_content = ""
-        if body.stream_mode.mode in ["time", "token"] and acc_content:
-            yield ServerSentEvent(
-                data=json.dumps(
-                    {
-                        "requestId": body.request_id,
-                        "data": acc_content,
-                        "isFinal": False,
-                    },
-                    ensure_ascii=False,
-                )
-            )
-        if body.file_type in ["ppt", "html"]:
-            content = sanitize_report_html_content(content)
-        file_info = [
-            await upload_file(
-                content=content,
-                file_name=body.file_name,
-                request_id=body.request_id,
-                file_type="html" if body.file_type == "ppt" else body.file_type,
-            )
-        ]
-        yield ServerSentEvent(
-            data=json.dumps(
-                {
-                    "requestId": body.request_id,
-                    "data": content,
-                    "fileInfo": file_info,
-                    "isFinal": True,
-                },
-                ensure_ascii=False,
-            )
-        )
-        yield ServerSentEvent(data="[DONE]")
-
-    if body.stream:
-        return EventSourceResponse(
-            _stream(),
-            ping_message_factory=lambda: ServerSentEvent(data="heartbeat"),
-            ping=15,
-        )
-    else:
-        content = ""
-        async for chunk in report(
-            task=body.task,
-            file_names=body.file_names,
-            file_type=body.file_type,
-            template_type=body.template_type,
-        ):
-            content += chunk
-        if body.file_type in ["ppt", "html"]:
-            content = sanitize_report_html_content(content)
-        file_info = [
-            await upload_file(
-                content=content,
-                file_name=body.file_name,
-                request_id=body.request_id,
-                file_type="html" if body.file_type == "ppt" else body.file_type,
             )
         ]
         return {
