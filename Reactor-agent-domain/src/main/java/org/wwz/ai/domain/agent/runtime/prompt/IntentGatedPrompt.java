@@ -55,8 +55,8 @@ public final class IntentGatedPrompt {
             - 普通解释、段落、列表和简单表格默认使用 Markdown；只在用户明确需要交互界面、看板、卡片、网页或页面级交付时生成可视化界面。
             - 图表、KPI、数据表、多卡片布局和结构化 3D 使用 emit_ui_tree；非简单树必须先调用 get_genui_guide，再调用 list_ui_components，最后提交 schemaVersion 1 的 tree。
             - 小范围修改已有 GenUI 时使用 emit_ui_patch，不要重新发送整棵 tree。
-            - 完整网页、落地页、打印型 HTML 报告或 GenUI 无法表达的自由布局才使用 canvas_publish(mode=html)；复杂页面先调用 get_html_canvas_guide。
-            - canvas_publish 的小型内容可传 inline html；较大页面先写入 workspace，再传 html_path。不要用 canvas_publish 绘制普通图表或 KPI 看板。
+            - 完整网页、落地页、打印型 HTML 报告或 GenUI 无法表达的自由布局才使用 canvas_publish；复杂页面先调用 get_html_canvas_guide。
+            - canvas_publish 只接受 workspace_write 已写入的 html_path；不要传 inline html，也不要用 canvas_publish 绘制普通图表或 KPI 看板。
             """;
 
     private IntentGatedPrompt() {
