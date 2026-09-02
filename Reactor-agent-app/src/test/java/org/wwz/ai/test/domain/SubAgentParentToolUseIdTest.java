@@ -57,7 +57,7 @@ public class SubAgentParentToolUseIdTest {
     }
 
     @Test
-    public void factoryShouldNotWrapPrinterWhenParentIdMissing() {
+    public void factoryShouldStillWrapPrinterWhenParentIdMissing() {
         RecordingPrinter parentPrinter = new RecordingPrinter();
         AgentContext parent = parentContext(parentPrinter);
 
@@ -66,7 +66,12 @@ public class SubAgentParentToolUseIdTest {
                 "agent-1", SubAgentRegistry.TYPE_GENERAL_PURPOSE, null);
 
         Assert.assertNull(child.getParentToolUseId());
-        Assert.assertSame(parentPrinter, child.getPrinter());
+        Assert.assertTrue(child.getPrinter() instanceof SubAgentPrinter);
+
+        child.getPrinter().send("result", "子智能体终答");
+        Assert.assertEquals("result", parentPrinter.lastType);
+        Assert.assertEquals("agent-1", parentPrinter.lastExtra.get(SubAgentPrinter.KEY_SUB_AGENT_ID));
+        Assert.assertNull(parentPrinter.lastExtra.get(SubAgentPrinter.KEY_PARENT_TOOL_USE_ID));
     }
 
     @Test

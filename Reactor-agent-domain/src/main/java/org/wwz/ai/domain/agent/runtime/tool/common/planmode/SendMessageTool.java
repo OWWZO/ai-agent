@@ -33,10 +33,9 @@ public class SendMessageTool implements BaseTool {
 
     @Override
     public String getDescription() {
-        return "向正在运行的后台子 Agent 发送中途指导（下一 step 可见）。"
+        return "向正在运行的后台子 Agent 发送中途指导。"
                 + " to 填 agentId 或 task_id（后台 Agent 返回值）。"
-                + " 仅 run_in_background 的子 Agent 可收信；已结束请用 Agent(resume_agent_id=…)。"
-                + " 同步阻塞 Agent 调用期间主 Agent 无法发信。";
+                + " 仅 run_in_background 的子 Agent 可收信；已结束请用 Agent(resume_agent_id=…)。";
     }
 
     @Override

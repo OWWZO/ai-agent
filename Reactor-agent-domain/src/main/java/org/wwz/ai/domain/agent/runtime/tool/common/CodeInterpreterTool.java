@@ -1,6 +1,7 @@
 package org.wwz.ai.domain.agent.runtime.tool.common;
 
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.adapter.port.RemoteStreamListener;
@@ -36,6 +37,20 @@ import java.util.stream.Collectors;
 @Data
 public class CodeInterpreterTool implements BaseTool {
 
+    private static final String DESCRIPTION = """
+            这是一个Code interpreter工具，可以写Python代码
+
+            - 严禁用此工具进行处理从非表格文件中提取表格、抽取数据、抽取指标等任务。
+
+            - 严禁处理纯文本文件，例如 .txt, .md , .html 等文件的直接处理。如果需要对这些文件分析，则应该先通过读取这些文件内容，保存成 .csv 文件格式的数据表后再进行处理。
+
+            - 如果上下文中有.xlsx 、.csv 等Excel表格文件需要处理分析，可以直接使用此工具读取 .xlsx 、.csv 等Excel表格文件进行分析处理
+            """;
+
+    private static final String PARAMS = """
+            {"type":"object","properties":{"task":{"description":"任务的描述，不仅包括提供任务目标、任务的相关要求，还包括详细的完成任务需要的细节信息。详细是指不仅包含上下文中提及的所有与任务的相关内容，同时，包括：用户提供的业务名词、业务背景、数据等相关内容，确保这是一个易于理解、步骤明确、且能完成完整任务的描述。完整任务的定义是所有依赖项都在这里写清楚，明确无歧义，信息无丢失，基于上下文已有的数据进行。禁止编造数据，写出来的程序是基于上下文已有的数据进行。","type":"string"}},"required":["task"]}
+            """;
+
     private AgentContext agentContext;
 
     @Override
@@ -45,30 +60,12 @@ public class CodeInterpreterTool implements BaseTool {
 
     @Override
     public String getDescription() {
-        String desc = "这是一个代码工具，可以通过编写代码完成数据处理、数据分析、图表生成等任务";
-        ReactorConfig reactorConfig = requireReactorConfig();
-        return reactorConfig.getCodeAgentDesc().isEmpty() ? desc : reactorConfig.getCodeAgentDesc();
+        return DESCRIPTION;
     }
 
     @Override
     public Map<String, Object> toParams() {
-
-        ReactorConfig reactorConfig = requireReactorConfig();
-        if (!reactorConfig.getCodeAgentParams().isEmpty()) {
-            return reactorConfig.getCodeAgentParams();
-        }
-
-        Map<String, Object> taskParam = new HashMap<>();
-        taskParam.put("type", "string");
-        taskParam.put("description", "需要完成的任务以及完成任务需要的数据，需要尽可能详细");
-        Map<String, Object> parameters = new HashMap<>();
-        parameters.put("type", "object");
-        Map<String, Object> properties = new HashMap<>();
-        properties.put("task", taskParam);
-        parameters.put("properties", properties);
-        parameters.put("required", Collections.singletonList("task"));
-
-        return parameters;
+        return JSON.parseObject(PARAMS);
     }
 
     @Override

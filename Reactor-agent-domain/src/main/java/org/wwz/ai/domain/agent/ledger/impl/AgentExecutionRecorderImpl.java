@@ -159,6 +159,11 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
         if (record == null || record.getRunId() == null) {
             return null;
         }
+        if (StringUtils.isBlank(record.getAgentName())) {
+            markFailure("createLlmInvocation", record.getRequestId(), record.getRunId(), null,
+                    new IllegalArgumentException("agentName must not be blank"));
+            return null;
+        }
         LlmInvocation entity = LlmInvocation.builder()
                 .runId(record.getRunId())
                 .invocationSeq(record.getInvocationSeq())

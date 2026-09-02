@@ -31,8 +31,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 米醋 / OpenAI 兼容图片生成客户端（从 micu-image-mcp 移植核心路由）。
- * <p>
  * 覆盖文生图、单图编辑、多图参考；支持 gpt-image-2 与 grok 通道，
  * 以及 2K/4K 自动切 pro、重试与 chat fallback。
  */

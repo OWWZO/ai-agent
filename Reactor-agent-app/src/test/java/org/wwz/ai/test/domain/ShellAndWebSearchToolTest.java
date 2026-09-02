@@ -3,21 +3,102 @@ package org.wwz.ai.test.domain;
 import org.junit.Assert;
 import org.junit.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.mockito.ArgumentCaptor;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
+import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
+import org.wwz.ai.domain.agent.runtime.tool.common.shell.BashTool;
+import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeOptions;
+import org.wwz.ai.domain.agent.runtime.tool.skill.SkillVirtualPaths;
 import org.wwz.ai.domain.agent.runtime.tool.common.WebSearchTool;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
 
 import com.alibaba.fastjson.JSON;
 
+import java.util.ArrayList;
 import java.util.Map;
+
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.verify;
 
 /**
  * WebSearch 回归。
  */
 public class ShellAndWebSearchToolTest {
+
+    @Test
+    public void bashShouldKeepProducedFilesWithoutUrlsOrSkillBookkeeping() {
+        RemoteHttpPort httpPort = request -> """
+                {
+                  "exitCode": 0,
+                  "stdout": "ok",
+                  "stderr": "",
+                  "truncated": false,
+                  "timedOut": false,
+                  "durationMs": 12,
+                  "skillsMaterialized": ["demo"],
+                  "skillsSyncedBack": ["demo"],
+                  "fileInfo": [
+                    {
+                      "fileName": "plot.png",
+                      "domainUrl": "https://file.example.com/plot.png",
+                      "fileSize": 42
+                    }
+                  ]
+                }
+                """;
+        ReactorConfig config = new ReactorConfig();
+        ReflectionTestUtils.setField(config, "codeInterpreterUrl", "http://reactor-tool");
+        Printer printer = org.mockito.Mockito.mock(Printer.class);
+        AgentContext context = AgentContext.builder()
+                .requestId("req-bash-output")
+                .sessionId("session-bash-output")
+                .productFiles(new ArrayList<>())
+                .printer(printer)
+                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .build();
+
+        SkillRuntimeOptions skillOptions = SkillRuntimeOptions.builder().enabled(false).build();
+        BashTool tool = new BashTool(skillOptions, new SkillVirtualPaths(skillOptions));
+        tool.setAgentContext(context);
+
+        ToolArtifactSource artifactSource = ToolArtifactSource.builder()
+                .sessionId(context.getSessionId())
+                .requestId(context.getRequestId())
+                .toolCallId("call-bash-output")
+                .toolName("bash")
+                .build();
+        ToolResultPayload payload;
+        context.bindCurrentToolArtifactSource(artifactSource);
+        try {
+            payload = (ToolResultPayload) tool.execute(Map.of("command", "echo ok"));
+        } finally {
+            context.clearCurrentToolArtifactSource();
+        }
+        String data = JSON.toJSONString(payload.getLlmData());
+
+        Assert.assertFalse(Boolean.TRUE.equals(payload.getFailed()));
+        Assert.assertTrue(data.contains("produced_files"));
+        Assert.assertTrue(data.contains("plot.png"));
+        Assert.assertTrue(data.contains("file_size"));
+        Assert.assertFalse(data.contains("file.example.com"));
+        Assert.assertFalse(data.contains("skills_materialized"));
+        Assert.assertFalse(data.contains("skills_synced_back"));
+        Assert.assertEquals("plot.png", context.getVisibleArtifactFiles().get(0).getFileName());
+        Assert.assertEquals("https://file.example.com/plot.png",
+                context.getVisibleArtifactFiles().get(0).getDomainUrl());
+
+        ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(printer).send(eq("file"), eventCaptor.capture(), isNull(String.class));
+        Map<?, ?> event = (Map<?, ?>) eventCaptor.getValue();
+        Assert.assertEquals("session-bash-output", event.get("sessionId"));
+        Assert.assertEquals("https://file.example.com/plot.png",
+                ((Map<?, ?>) ((java.util.List<?>) event.get("fileInfo")).get(0)).get("domainUrl"));
+    }
 
     @Test
     public void webSearchShouldFailWhenNoApiKey() {

@@ -11,6 +11,7 @@ import org.wwz.ai.domain.agent.adapter.port.RemoteStreamPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteStreamRequest;
 import org.wwz.ai.domain.agent.adapter.port.RemoteStreamSession;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.artifact.FileArtifactUploader;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.DeepSearchRequest;
 import org.wwz.ai.domain.agent.runtime.dto.DeepSearchrResponse;
@@ -42,6 +43,8 @@ import java.util.concurrent.atomic.AtomicReference;
 @Slf4j
 @Data
 public class DeepSearchTool implements ContextIsolatableTool {
+
+    private static final String DESCRIPTION = "这是一个搜索工具，可以搜索各种互联网知识";
 
     /**
      * deep_search 保底超时时间，避免外部流式接口异常时导致 future.get() 长时间阻塞。
@@ -75,22 +78,14 @@ public class DeepSearchTool implements ContextIsolatableTool {
 
     @Override
     public String getDescription() {
-        String desc = "这是一个搜索工具，可以通过搜索内外网知识";
-        ReactorConfig reactorConfig = requireReactorConfig();
-        return reactorConfig.getDeepSearchToolDesc().isEmpty() ? desc : reactorConfig.getDeepSearchToolDesc();
+        return DESCRIPTION;
     }
 
     @Override
     public Map<String, Object> toParams() {
-
-        ReactorConfig reactorConfig = requireReactorConfig();
-        if (!reactorConfig.getDeepSearchToolParams().isEmpty()) {
-            return reactorConfig.getDeepSearchToolParams();
-        }
-
         Map<String, Object> taskParam = new HashMap<>();
         taskParam.put("type", "string");
-        taskParam.put("description", "需要搜索的query");
+        taskParam.put("description", "需要搜索的全部内容及描述");
         Map<String, Object> reportFileNameParam = new HashMap<>();
         reportFileNameParam.put("type", "string");
         reportFileNameParam.put("maxLength", DeepSearchFileNamePolicy.MAX_REPORT_FILE_NAME_LENGTH);
@@ -102,7 +97,6 @@ public class DeepSearchTool implements ContextIsolatableTool {
         properties.put("reportFileName", reportFileNameParam);
         parameters.put("properties", properties);
         parameters.put("required", List.of("query", "reportFileName"));
-
         return parameters;
     }
 
@@ -115,13 +109,11 @@ public class DeepSearchTool implements ContextIsolatableTool {
         try {
             Map<String, Object> params = (Map<String, Object>) input;
             String query = (String) params.get("query");
-            String reportFileName = params.get("reportFileName") == null
+            String requestedReportFileName = params.get("reportFileName") == null
                     ? null
                     : String.valueOf(params.get("reportFileName"));
-            String validationError = DeepSearchFileNamePolicy.validateReportFileName(reportFileName);
-            if (validationError != null) {
-                return buildFailurePayload("deep_search参数校验失败：" + validationError);
-            }
+            // Schema 用于约束模型；入口仍做最终归一化，避免模型偶尔漏传或生成过长名称导致整次搜索失败。
+            String reportFileName = DeepSearchFileNamePolicy.resolveReportFileName(requestedReportFileName);
             ReactorConfig reactorConfig = requireReactorConfig(ctx);
             Map<String, Object> srcConfig = new HashMap<>();
 
@@ -168,12 +160,12 @@ public class DeepSearchTool implements ContextIsolatableTool {
                                                                        ToolArtifactSource artifactSource,
                                                                        AtomicReference<RemoteStreamSession> streamSession) {
         CompletableFuture<ToolResultPayload> future = new CompletableFuture<>();
-        String validationError = DeepSearchFileNamePolicy.validateReportFileName(
-                searchRequest == null ? null : searchRequest.getReport_file_name());
-        if (validationError != null) {
-            future.complete(buildFailurePayload("deep_search参数校验失败：" + validationError));
+        if (searchRequest == null) {
+            future.complete(buildFailurePayload("deep_search执行失败：请求不能为空"));
             return future;
         }
+        searchRequest.setReport_file_name(
+                DeepSearchFileNamePolicy.resolveReportFileName(searchRequest.getReport_file_name()));
         try {
             ReactorConfig reactorConfig = requireReactorConfig(ctx);
             String url = reactorConfig.getDeepSearchUrl() + "/v1/tool/deepsearch";
@@ -198,8 +190,7 @@ public class DeepSearchTool implements ContextIsolatableTool {
             StringBuilder stringBuilderAll = new StringBuilder();
             AtomicBoolean finalAnswerUploaded = new AtomicBoolean(false);
             DeepSearchStructuredResultBuilder resultBuilder = new DeepSearchStructuredResultBuilder(searchRequest.getQuery());
-            FileTool fileTool = new FileTool();
-            fileTool.setAgentContext(ctx);
+             FileArtifactUploader fileArtifactUploader = new FileArtifactUploader(ctx);
             String digitalEmployee = ctx.getToolCollection().getDigitalEmployee(getName());
             RemoteStreamSession session = requireRemoteStreamPort(ctx).openStream(RemoteStreamRequest.builder()
                     .method("POST")
@@ -252,8 +243,8 @@ public class DeepSearchTool implements ContextIsolatableTool {
                                 return;
                             }
                             resultBuilder.recordFinalAnswer(searchResponse.getQuery(), searchResponse.getAnswer());
-                            uploadFinalAnswerWithRetry(ctx, artifactSource, finalReportFileName,
-                                    searchResponse.getAnswer(), reactorConfig, fileTool, finalAnswerUploaded);
+                             uploadFinalAnswerWithRetry(ctx, artifactSource, finalReportFileName,
+                                     searchResponse.getAnswer(), reactorConfig, fileArtifactUploader, finalAnswerUploaded);
                             // 总结文章全量回传，供 observation / fallback 使用，不再截断
                             resultRef.set(searchResponse.getAnswer());
 
@@ -289,7 +280,7 @@ public class DeepSearchTool implements ContextIsolatableTool {
                                     .description("DeepSearch检索结果")
                                     .content(JSON.toJSONString(contentMap))
                                     .build();
-                            fileTool.uploadFile(fileRequest, false, true, artifactSource);
+                             fileArtifactUploader.upload(fileRequest, true, artifactSource);
                         } else if ("chapter_summary".equals(searchResponse.getMessageType())) {
                             if (messageIdRef.get().isEmpty()) {
                                 messageIdRef.set(StringUtil.getUUID());
@@ -330,7 +321,7 @@ public class DeepSearchTool implements ContextIsolatableTool {
                         resultRef.set(stringBuilderAll.toString());
                     }
                     uploadFinalAnswerWithRetry(ctx, artifactSource, finalReportFileName,
-                            stringBuilderAll.toString(), reactorConfig, fileTool, finalAnswerUploaded);
+                            stringBuilderAll.toString(), reactorConfig, fileArtifactUploader, finalAnswerUploaded);
                     if (!future.isDone()) {
                         future.complete(resultBuilder.buildPayload(resultRef.get()));
                     }
@@ -340,7 +331,7 @@ public class DeepSearchTool implements ContextIsolatableTool {
                 public void onFailure(Throwable throwable, Integer statusCode, String responseBody) {
                     streamSession.set(null);
                     uploadFinalAnswerWithRetry(ctx, artifactSource, finalReportFileName,
-                            stringBuilderAll.toString(), reactorConfig, fileTool, finalAnswerUploaded);
+                            stringBuilderAll.toString(), reactorConfig, fileArtifactUploader, finalAnswerUploaded);
                     if (throwable == null && statusCode == null) {
                         if (!future.isDone()) {
                             future.complete(resultBuilder.buildPayload(resultRef.get()));
@@ -370,7 +361,7 @@ public class DeepSearchTool implements ContextIsolatableTool {
                                             String fileName,
                                             String answer,
                                             ReactorConfig reactorConfig,
-                                            FileTool fileTool,
+                                             FileArtifactUploader fileArtifactUploader,
                                             AtomicBoolean uploaded) {
         if (uploaded.get() || StringUtils.isBlank(answer)) {
             return;
@@ -384,7 +375,7 @@ public class DeepSearchTool implements ContextIsolatableTool {
                 .build();
         for (int attempt = 1; attempt <= 3 && !uploaded.get(); attempt++) {
             try {
-                ToolResultPayload payload = fileTool.uploadFilePayload(fileRequest, false, false, artifactSource);
+                 ToolResultPayload payload = fileArtifactUploader.upload(fileRequest, false, artifactSource);
                 if (payload != null && !Boolean.TRUE.equals(payload.getFailed())) {
                     uploaded.set(true);
                     log.info("{} deep_search final answer uploaded, attempt={}", ctx.getRequestId(), attempt);

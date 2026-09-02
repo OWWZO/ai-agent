@@ -108,7 +108,10 @@ public class CodeExecutionTool implements BaseTool {
             if (!fileInfo.isEmpty() && agentContext.getPrinter() != null) {
                 Map<String, Object> event = new LinkedHashMap<>();
                 event.put("command", "Python 代码执行产物"); event.put("toolCallId", artifactSource.getToolCallId());
-                event.put("toolName", artifactSource.getToolName()); event.put("fileInfo", fileInfo);
+                event.put("toolName", artifactSource.getToolName());
+                event.put("requestId", agentContext.getSessionId());
+                event.put("sessionId", agentContext.getSessionId());
+                event.put("fileInfo", fileInfo);
                 agentContext.getPrinter().send("file", event, null);
             }
             Map<String, Object> data = new LinkedHashMap<>();

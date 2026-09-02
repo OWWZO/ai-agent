@@ -81,6 +81,11 @@ public class MultiModalAgentToolTest {
             Assert.assertNotNull(structuredOutput);
             Assert.assertFalse(payload.getFailed());
             Assert.assertNotNull(payload.getLlmData());
+            Assert.assertTrue(payload.getLlmData() instanceof Map<?, ?>);
+            Map<?, ?> llmData = (Map<?, ?>) payload.getLlmData();
+            Assert.assertTrue(llmData.containsKey("markdownContent"));
+            Assert.assertFalse(llmData.containsKey("summary"));
+            Assert.assertFalse(llmData.containsKey("fileRefs"));
             Assert.assertTrue(structuredOutput.getMarkdownContent().contains("多模态检索会先召回图文片段。"));
             Assert.assertTrue(structuredOutput.getMarkdownContent().contains("![图片](https://img.example.com/mrag.png)"));
             Assert.assertFalse(structuredOutput.getFileRefs().isEmpty());
@@ -128,7 +133,6 @@ public class MultiModalAgentToolTest {
         reactorConfig.setMessageInterval("{\"knowledge\":\"1,1\"}");
         ReflectionTestUtils.setField(reactorConfig, "multiModalAgentUrl", baseUrl);
         ReflectionTestUtils.setField(reactorConfig, "codeInterpreterUrl", baseUrl);
-        ReflectionTestUtils.setField(reactorConfig, "multiModalAgentDesc", "多模态知识检索工具");
         return reactorConfig;
     }
 

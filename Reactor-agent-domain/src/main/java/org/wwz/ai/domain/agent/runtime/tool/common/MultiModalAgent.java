@@ -1,5 +1,6 @@
 package org.wwz.ai.domain.agent.runtime.tool.common;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +10,7 @@ import org.wwz.ai.domain.agent.adapter.port.RemoteStreamPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteStreamRequest;
 import org.wwz.ai.domain.agent.adapter.port.RemoteStreamSession;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.artifact.FileArtifactUploader;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactBinding;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.File;
@@ -47,6 +49,11 @@ import java.util.concurrent.atomic.AtomicReference;
 @Data
 public class MultiModalAgent implements ContextIsolatableTool {
 
+    private static final String DESCRIPTION = "本工具用于查询与用户相关的知识，作为在线知识的补充。支持文本和图像等多模态数据检索，能够高效访问和获取用户专属的知识信息。";
+    private static final String PARAMS = """
+            {"type":"object","properties":{"question":{"type":"string","description":"查询所需要的question，需要在知识库中进行检索的检索短语或句子。"}},"required":["question"]}
+            """;
+
     /**
      * 多模态检索整体超时，避免上游流式接口异常时挂住整个 Agent 执行链。
      */
@@ -81,31 +88,12 @@ public class MultiModalAgent implements ContextIsolatableTool {
 
     @Override
     public String getDescription() {
-        String defaultDesc = "本工具用于查询与用户相关的知识，作为在线知识的补充。支持文本和图像等多模态数据检索，能够高效访问和获取用户专属的知识信息。";
-        ReactorConfig reactorConfig = requireReactorConfig();
-        return StringUtils.hasText(reactorConfig.getMultiModalAgentDesc())
-                ? reactorConfig.getMultiModalAgentDesc()
-                : defaultDesc;
+        return DESCRIPTION;
     }
 
     @Override
     public Map<String, Object> toParams() {
-        ReactorConfig reactorConfig = requireReactorConfig();
-        if (!reactorConfig.getMultiModalAgentParams().isEmpty()) {
-            return reactorConfig.getMultiModalAgentParams();
-        }
-
-        Map<String, Object> questionParam = new HashMap<>();
-        questionParam.put("type", "string");
-        questionParam.put("description", "查询所需要的question，需要在知识库中进行检索的检索短语或句子。");
-
-        Map<String, Object> parameters = new HashMap<>();
-        parameters.put("type", "object");
-        Map<String, Object> properties = new HashMap<>();
-        properties.put("question", questionParam);
-        parameters.put("properties", properties);
-        parameters.put("required", Collections.singletonList("question"));
-        return parameters;
+        return JSON.parseObject(PARAMS);
     }
 
     @Override
@@ -493,9 +481,6 @@ public class MultiModalAgent implements ContextIsolatableTool {
     }
 
     private void uploadMarkdownArtifact(String markdownContent, ToolArtifactSource artifactSource) {
-        FileTool fileTool = new FileTool();
-        fileTool.setAgentContext(agentContext);
-
         String baseName = StringUtils.hasText(agentContext.getQuery())
                 ? StringUtil.abbreviate(agentContext.getQuery(), 20, true)
                 : "多模态检索结果";
@@ -514,7 +499,7 @@ public class MultiModalAgent implements ContextIsolatableTool {
                 .description(fileDesc)
                 .content(markdownContent)
                 .build();
-        fileTool.uploadFile(fileRequest, false, false, artifactSource);
+        new FileArtifactUploader(agentContext).upload(fileRequest, false, artifactSource);
     }
 
     /**
@@ -528,9 +513,7 @@ public class MultiModalAgent implements ContextIsolatableTool {
                 .fileRefs(ToolFileRefMapper.fromGenericFileInfo(fileInfo))
                 .build();
         Map<String, Object> fields = new LinkedHashMap<>();
-        fields.put("summary", structuredOutput.getSummary());
         fields.put("markdownContent", markdownContent);
-        fields.put("fileRefs", structuredOutput.getFileRefs());
         return ToolResultPayload.okData(getName(), fields, structuredOutput);
     }
 

@@ -35,7 +35,7 @@ public class DocumentGenerateTool extends AbstractDocGenTool {
                 + "{\"type\":\"chart\",\"chart_type\":\"bar|line|pie|scatter|area|barh\","
                 + "\"title\":\"...\",\"categories\":[\"...\"],\"series\":[{\"name\":\"...\",\"values\":[1,2]}]}. "
                 + "Do not use ECharts option JSON such as xAxis/yAxis/series.data/title.text; it is rendered as code, not a chart. "
-                + "Chinese/CJK text is font-safe. Prefer this over report_tool when the user needs a real .pdf/.docx file.";
+                 + "Chinese/CJK text is font-safe.";
     }
 
     @Override

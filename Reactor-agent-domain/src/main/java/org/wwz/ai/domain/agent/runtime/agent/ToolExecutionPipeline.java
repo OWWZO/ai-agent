@@ -316,7 +316,11 @@ final class ToolExecutionPipeline {
                 context.clearCurrentToolArtifactSource();
             }
 
-            log.info("{} execute tool: {} {} result {}", context.getRequestId(), toolName, args, resultObject);
+            if ("deep_search".equals(toolName)) {
+                log.debug("{} execute tool: {} {} result {}", context.getRequestId(), toolName, args, resultObject);
+            } else {
+                log.info("{} execute tool: {} {} result {}", context.getRequestId(), toolName, args, resultObject);
+            }
 
             if (resultObject == null) {
                 return ToolExecutionOutcome.failure(
@@ -532,6 +536,7 @@ final class ToolExecutionPipeline {
         payload.put("status", status);
         payload.put("toolName", toolName);
         payload.put("toolCallId", toolCallId);
+        payload.put("streamToolKey", toolCallId);
         payload.put("toolProvider", resolveToolProvider(toolName));
         if (dispatchIndex != null) {
             payload.put("dispatchIndex", dispatchIndex);
@@ -797,6 +802,9 @@ final class ToolExecutionPipeline {
         }
         if (StringUtils.isNotBlank(file.getOriginFileName())) {
             metadata.put("originFileName", file.getOriginFileName());
+        }
+        if (StringUtils.isNotBlank(file.getRelativePath())) {
+            metadata.put("relativePath", file.getRelativePath());
         }
         if (StringUtils.isNotBlank(file.getOriginDomainUrl())) {
             metadata.put("originDomainUrl", file.getOriginDomainUrl());

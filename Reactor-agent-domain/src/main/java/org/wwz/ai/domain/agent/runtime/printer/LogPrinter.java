@@ -33,6 +33,8 @@ public class LogPrinter implements Printer {
                      Boolean isFinal) {
         if ("deep_search".equals(messageType)) {
             message = JSON.toJSONString(message);
+            log.debug("{} {} {} {} {} {} {}", request.getRequestId(), messageId, messageType, message, extraResultMap, digitalEmployee, isFinal);
+            return;
         }
         log.info("{} {} {} {} {} {} {}", request.getRequestId(), messageId, messageType, message, extraResultMap, digitalEmployee, isFinal);
     }

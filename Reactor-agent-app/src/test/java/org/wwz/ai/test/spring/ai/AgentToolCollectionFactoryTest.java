@@ -70,10 +70,11 @@ public class AgentToolCollectionFactoryTest {
         ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentRequest("html"));
 
         // 顺序随 tool_list 配置；本测显式只挂 search/web_fetch/code/multimodalagent（默认不含 report）
-        Assert.assertTrue(toolCollection.getToolMap().containsKey("file_tool"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("file_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("code_interpreter"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("code_execution"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("report_tool"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("planning"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("deep_search"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("WebFetch"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("multimodalagent_tool"));
@@ -196,7 +197,7 @@ public class AgentToolCollectionFactoryTest {
 
         Assert.assertFalse(toolCollection.getToolMap().containsKey("skill_tool"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("script_runner_tool"));
-        Assert.assertTrue(toolCollection.getToolMap().containsKey("file_tool"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("file_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("multimodalagent_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("Agent"));
     }
@@ -225,6 +226,7 @@ public class AgentToolCollectionFactoryTest {
         ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentRequest("html"));
 
         Assert.assertFalse(toolCollection.getToolMap().containsKey("multimodalagent_tool"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("report_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("Agent"));
     }
 
@@ -324,7 +326,7 @@ public class AgentToolCollectionFactoryTest {
         parentContext.getProductFiles().add(File.builder().fileName("parent-session.md").ossUrl("https://parent/session").domainUrl("https://parent/session").isInternalFile(false).build());
 
         JSONObject parentEmployees = new JSONObject();
-        parentEmployees.put("file_tool", "父数字员工");
+        parentEmployees.put("document_generate", "父数字员工");
         parentToolCollection.updateDigitalEmployee(parentEmployees);
         parentToolCollection.setCurrentTask("父任务");
 
@@ -341,17 +343,17 @@ public class AgentToolCollectionFactoryTest {
         Assert.assertEquals("父任务", parentContext.getTask());
         Assert.assertEquals("父任务", childToolCollection.getCurrentTask());
         Assert.assertEquals("父任务", parentToolCollection.getCurrentTask());
-        Assert.assertEquals("父数字员工", childToolCollection.getDigitalEmployee("file_tool"));
+        Assert.assertEquals("父数字员工", childToolCollection.getDigitalEmployee("document_generate"));
 
         childToolCollection.setCurrentTask("子任务");
         JSONObject childEmployees = new JSONObject();
-        childEmployees.put("file_tool", "子数字员工");
+        childEmployees.put("document_generate", "子数字员工");
         childToolCollection.updateDigitalEmployee(childEmployees);
         childContext.getProductFiles().add(File.builder().fileName("child-session.md").ossUrl("https://child/session").domainUrl("https://child/session").isInternalFile(false).build());
         childContext.getCurrentToolArtifactSourceHolder().set(null);
 
         Assert.assertEquals("父任务", parentToolCollection.getCurrentTask());
-        Assert.assertEquals("父数字员工", parentToolCollection.getDigitalEmployee("file_tool"));
+        Assert.assertEquals("父数字员工", parentToolCollection.getDigitalEmployee("document_generate"));
         Assert.assertEquals(1, parentContext.getProductFiles().size());
         Assert.assertEquals(2, childContext.getProductFiles().size());
     }
@@ -437,21 +439,14 @@ public class AgentToolCollectionFactoryTest {
                 new org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeLayout(skillRuntimeOptions);
         org.wwz.ai.domain.agent.runtime.tool.skill.SkillVirtualPaths virtualPaths =
                 new org.wwz.ai.domain.agent.runtime.tool.skill.SkillVirtualPaths(skillRuntimeOptions);
-        org.wwz.ai.domain.agent.runtime.tool.skill.SkillMaterializer materializer =
-                new org.wwz.ai.domain.agent.runtime.tool.skill.SkillMaterializer(
-                        virtualPaths, layout, skillRuntimeOptions);
-        org.wwz.ai.domain.agent.runtime.tool.skill.SkillPackageService packageService =
-                new org.wwz.ai.domain.agent.runtime.tool.skill.SkillPackageService(skillRuntimeOptions, skillRegistry);
-        return new AgentToolCollectionFactory(
+         return new AgentToolCollectionFactory(
                 reactorConfig,
                 mcpToolExecutor,
                 skillRegistry,
-                skillRuntimeOptions,
-                layout,
-                materializer,
-                virtualPaths,
-                packageService,
-                workspaceService,
+                 skillRuntimeOptions,
+                 layout,
+                 virtualPaths,
+                 workspaceService,
                 workspaceRuntimeOptions,
                 subAgentRunner,
                 subAgentRegistry,

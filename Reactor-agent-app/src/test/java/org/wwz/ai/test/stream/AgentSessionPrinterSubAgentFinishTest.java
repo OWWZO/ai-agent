@@ -11,10 +11,16 @@ import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentPrinter;
 
-import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -128,8 +134,69 @@ public class AgentSessionPrinterSubAgentFinishTest {
         Assert.assertTrue(downstream.completed.get());
     }
 
+    @Test
+    public void concurrentSendSerializesEventResultOrders() throws Exception {
+        CapturingStream downstream = new CapturingStream();
+        AgentRequest request = new AgentRequest();
+        request.setRequestId("req-concurrent-proj");
+        request.setAgentType(5);
+
+        AgentResponseProjectionStream projection = new AgentResponseProjectionStream(
+                downstream,
+                request,
+                Map.of(AgentType.REACT, (req, agentResponse, agentRespList, eventResult) -> {
+                    int order = eventResult.getAndIncrOrder("tool_call");
+                    GptProcessResult result = new GptProcessResult();
+                    result.setFinished(false);
+                    result.setStatus("running");
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("order", order);
+                    result.setResultMap(map);
+                    return result;
+                })
+        );
+
+        int n = 40;
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(n);
+        for (int i = 0; i < n; i++) {
+            final int idx = i;
+            pool.submit(() -> {
+                try {
+                    start.await();
+                    AgentResponse resp = AgentResponse.builder()
+                            .requestId(request.getRequestId())
+                            .messageId("m-" + idx)
+                            .messageType("tool_call")
+                            .finish(false)
+                            .resultMap(new HashMap<>())
+                            .build();
+                    projection.send(resp);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+        start.countDown();
+        Assert.assertTrue(done.await(10, TimeUnit.SECONDS));
+        pool.shutdownNow();
+
+        Assert.assertEquals(n, downstream.payloads.size());
+        Set<Integer> orders = new HashSet<>();
+        for (Object payload : downstream.payloads) {
+            GptProcessResult result = (GptProcessResult) payload;
+            orders.add((Integer) result.getResultMap().get("order"));
+        }
+        Assert.assertEquals(n, orders.size());
+        Assert.assertTrue(orders.contains(1));
+        Assert.assertTrue(orders.contains(n));
+    }
+
     private static final class CapturingStream implements AgentSessionStream {
-        private final List<Object> payloads = new ArrayList<>();
+        private final List<Object> payloads = new CopyOnWriteArrayList<>();
         private final AtomicBoolean completed = new AtomicBoolean(false);
 
         @Override

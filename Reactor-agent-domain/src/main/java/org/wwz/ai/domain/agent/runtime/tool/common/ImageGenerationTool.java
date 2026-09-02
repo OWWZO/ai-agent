@@ -1,5 +1,6 @@
 package org.wwz.ai.domain.agent.runtime.tool.common;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -11,7 +12,6 @@ import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationExecuteCommand;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationExecutionResult;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageFile;
@@ -29,6 +29,11 @@ import java.util.stream.Collectors;
 @Data
 public class ImageGenerationTool implements BaseTool {
 
+    private static final String DESCRIPTION = "本工具用于文生图和图生图。用户要求基于当前轮上传图片修改、换风格、扩图时应优先调用它；未显式传 fileNames 时系统可自动复用当前轮上传图片，输出图片会自动保存为当前会话产物。";
+    private static final String PARAMS = """
+            {"type":"object","properties":{"prompt":{"type":"string","description":"图片生成或编辑指令，需要明确主体、风格、构图、质感及修改要求。"},"mode":{"type":"string","enum":["images","edits"],"description":"生成模式，images 表示文生图，edits 表示图生图。用户明确要求忽略上传图片时传 images。"},"fileNames":{"type":"array","items":{"type":"string"},"description":"图生图参考图片列表，可来自当前会话已有图片；未显式传入时系统可自动复用当前轮上传图片。"},"maskFileNames":{"type":"array","items":{"type":"string"},"description":"可选的涂抹参考图列表，与 fileNames 一一对应。"},"size":{"type":"string","description":"输出尺寸，例如 1024x1024、1536x1024。"},"n":{"type":"integer","description":"期望生成的图片数量。"},"model":{"type":"string","description":"可选的图片模型名称，例如 gpt-image-2。"}},"required":["prompt"]}
+            """;
+
     private static final String MODE_IMAGES = "images";
     private static final String MODE_EDITS = "edits";
     private static final int DEFAULT_TIMEOUT_SECONDS = 900;
@@ -42,37 +47,12 @@ public class ImageGenerationTool implements BaseTool {
 
     @Override
     public String getDescription() {
-        String defaultDesc = "这是一个图片生成工具，支持文生图和图生图。用户要求基于当前轮上传图片修改、换风格、扩图时应优先调用它；未显式传 fileNames 时可自动复用当前轮图片。";
-        ReactorConfig reactorConfig = requireReactorConfig();
-        return StringUtils.isNotBlank(reactorConfig.getImageGenerationToolDesc())
-                ? reactorConfig.getImageGenerationToolDesc()
-                : defaultDesc;
+        return DESCRIPTION;
     }
 
     @Override
     public Map<String, Object> toParams() {
-        ReactorConfig reactorConfig = requireReactorConfig();
-        if (!reactorConfig.getImageGenerationToolParams().isEmpty()) {
-            return reactorConfig.getImageGenerationToolParams();
-        }
-
-        Map<String, Object> parameters = new HashMap<>();
-        parameters.put("type", "object");
-
-        Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("prompt", buildStringParam("图片生成或图片编辑指令，需要写清楚画面主体、风格、构图、质感以及修改要求。"));
-        properties.put("mode", buildEnumParam("生成模式，images 表示文生图，edits 表示图生图。用户明确要求忽略上传图片时传 images。", Arrays.asList(MODE_IMAGES, MODE_EDITS)));
-        properties.put("fileNames", buildStringArrayParam("图生图时要使用的参考图片文件名列表，文件必须来自当前会话可用图片；未显式传入时可自动复用当前轮上传图片。"));
-        properties.put("maskFileNames", buildStringArrayParam("可选遮罩图文件名列表，与 fileNames 按顺序对应，建议使用已标红或涂抹编辑区域的图片。"));
-        properties.put("fileName", buildStringParam("输出图片文件名称，可不带后缀；未传时默认使用“图片生成结果”。"));
-        properties.put("fileDescription", buildStringParam("输出图片文件描述，用一句中文概括图片内容或用途。"));
-        properties.put("size", buildStringParam("输出尺寸，例如 1024x1024、1536x1024。"));
-        properties.put("n", buildIntegerParam("期望生成的图片数量，默认 1。"));
-        properties.put("model", buildStringParam("可选的图片模型名称，例如 gpt-image-2。"));
-
-        parameters.put("properties", properties);
-        parameters.put("required", Collections.singletonList("prompt"));
-        return parameters;
+        return JSON.parseObject(PARAMS);
     }
 
     @Override
@@ -477,10 +457,4 @@ public class ImageGenerationTool implements BaseTool {
         return param;
     }
 
-    private ReactorConfig requireReactorConfig() {
-        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("ImageGenerationTool 缺少 ReactorRuntimeDependencies");
-        }
-        return agentContext.getRuntimeDependencies().requireReactorConfig();
-    }
 }

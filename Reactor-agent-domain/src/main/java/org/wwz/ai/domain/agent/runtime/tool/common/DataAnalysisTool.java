@@ -55,19 +55,11 @@ public class DataAnalysisTool implements ContextIsolatableTool {
 
     @Override
     public String getDescription() {
-        String desc = "这是一个数据分析工具，可以查询并分析数据";
-        ReactorConfig reactorConfig = requireReactorConfig();
-        StringBuilder description = new StringBuilder(reactorConfig.getDataAnalysisToolDesc().isEmpty() ? desc : reactorConfig.getDataAnalysisToolDesc());
-        return description.toString();
+        return "这是一个数据分析工具，可以查询并分析数据";
     }
 
     @Override
     public Map<String, Object> toParams() {
-        ReactorConfig reactorConfig = requireReactorConfig();
-        if (!reactorConfig.getDataAnalysisToolParams().isEmpty()) {
-            return reactorConfig.getDataAnalysisToolParams();
-        }
-
         Map<String, Object> taskParam = new HashMap<>();
         taskParam.put("type", "string");
         taskParam.put("description", "task");
@@ -241,7 +233,6 @@ public class DataAnalysisTool implements ContextIsolatableTool {
         llmData.put("tool", "data_analysis");
         llmData.put("ok", Boolean.TRUE);
         llmData.put("task", request.getTask());
-        llmData.put("summary", abbreviate(normalizedData, 160));
         llmData.put("content", normalizedData);
         if (fileInfo != null && !fileInfo.isEmpty()) {
             List<Map<String, Object>> produced = new ArrayList<>();

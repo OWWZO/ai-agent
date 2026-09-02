@@ -101,7 +101,11 @@ public class AgentSessionPrinter implements Printer {
                             request.getRequestId(), messageId, message == null ? null : message.getClass().getName());
                 }
             }
-            log.info("{} stream send {} {} {}", request.getRequestId(), messageType, message, digitalEmployee);
+            if ("deep_search".equals(messageType)) {
+                log.debug("{} stream send {} {} {}", request.getRequestId(), messageType, message, digitalEmployee);
+            } else {
+                log.info("{} stream send {} {} {}", request.getRequestId(), messageType, message, digitalEmployee);
+            }
 
             // 子 Agent 终答也走 messageType=result，但带 parentToolUseId/subAgentId；
             // 不得把主会话投影流标成 finished，否则主 Agent 仍在跑时 SSE 会被提前关闭。

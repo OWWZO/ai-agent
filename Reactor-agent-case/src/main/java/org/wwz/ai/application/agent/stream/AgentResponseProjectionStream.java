@@ -44,6 +44,11 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
     private final long startTime = System.currentTimeMillis();
     private final Deque<GptProcessResult> replayBuffer = new ArrayDeque<>();
     private final Object bufferLock = new Object();
+    /**
+     * 主/子 Agent 并行工具会同时 printer.send。EventResult / agentRespList 不是线程安全的，
+     * 投影必须单写，否则 taskId、orderMapping、resultMap 会错配到前端。
+     */
+    private final Object projectionLock = new Object();
 
     public AgentResponseProjectionStream(AgentSessionStream downstream,
                                          AgentRequest request,
@@ -68,13 +73,15 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         if (next == null) {
             return;
         }
-        downstreamRef.set(next);
-        wireDownstreamAbort(next);
-        log.info("{} rebind projection downstream", request == null ? "-" : request.getRequestId());
-        boolean wasClosed = closed.get();
-        replayBufferedFrames(next, lastEventSeq, wasClosed);
-        if (wasClosed && !next.isAborted()) {
-            next.complete();
+        synchronized (projectionLock) {
+            downstreamRef.set(next);
+            wireDownstreamAbort(next);
+            log.info("{} rebind projection downstream", request == null ? "-" : request.getRequestId());
+            boolean wasClosed = closed.get();
+            replayBufferedFrames(next, lastEventSeq, wasClosed);
+            if (wasClosed && !next.isAborted()) {
+                next.complete();
+            }
         }
     }
 
@@ -88,29 +95,34 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
             return;
         }
 
-        AgentType agentType = AgentType.fromCode(request.getAgentType());
-        AgentResponseHandler handler = handlerMap.get(agentType);
-        if (handler == null) {
-            log.error("{} no AgentResponseHandler found for agentType: {}",
-                    request.getRequestId(), agentType);
-            GptProcessResult failed = buildDefaultResult(request, "unsupported agentType: " + agentType);
-            offerReplayBuffer(failed);
-            forwardIfLive(failed);
-            return;
-        }
+        synchronized (projectionLock) {
+            if (closed.get()) {
+                return;
+            }
+            AgentType agentType = AgentType.fromCode(request.getAgentType());
+            AgentResponseHandler handler = handlerMap.get(agentType);
+            if (handler == null) {
+                log.error("{} no AgentResponseHandler found for agentType: {}",
+                        request.getRequestId(), agentType);
+                GptProcessResult failed = buildDefaultResult(request, "unsupported agentType: " + agentType);
+                offerReplayBuffer(failed);
+                forwardIfLive(failed);
+                return;
+            }
 
-        // 断流期间仍推进投影状态，避免 rebind 后状态机落后。
-        GptProcessResult result = handler.handle(request, agentResponse, agentRespList, eventResult);
-        result.setEventSeq(eventSequence.incrementAndGet());
-        offerReplayBuffer(result);
-        forwardIfLive(result);
-        // 根 result 的 finished 只表示业务终态（前端收口 loading），不在此关传输层。
-        // 关流留给：1) GptQuery / HITL resume 在 finishRun、markAnswered 之后的显式 complete；
-        // 2) 后台空闲时的 stream_settle。避免 SSE 在 ledger/approval 落库前被掐断。
-        if (result.isFinished() && isStreamSettle(agentResponse)) {
-            log.info("{} task total cost time:{}ms",
-                    request.getRequestId(), System.currentTimeMillis() - startTime);
-            complete();
+            // 断流期间仍推进投影状态，避免 rebind 后状态机落后。
+            GptProcessResult result = handler.handle(request, agentResponse, agentRespList, eventResult);
+            result.setEventSeq(eventSequence.incrementAndGet());
+            offerReplayBuffer(result);
+            forwardIfLive(result);
+            // 根 result 的 finished 只表示业务终态（前端收口 loading），不在此关传输层。
+            // 关流留给：1) GptQuery / HITL resume 在 finishRun、markAnswered 之后的显式 complete；
+            // 2) 后台空闲时的 stream_settle。避免 SSE 在 ledger/approval 落库前被掐断。
+            if (result.isFinished() && isStreamSettle(agentResponse)) {
+                log.info("{} task total cost time:{}ms",
+                        request.getRequestId(), System.currentTimeMillis() - startTime);
+                complete();
+            }
         }
     }
 

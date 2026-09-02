@@ -24,7 +24,7 @@ public class ToolArtifactBindingRuntimeTest {
     @Test
     public void shouldMaintainArtifactRegistryAndHideInternalFiles() {
         AgentContext context = newAgentContext();
-        ToolArtifactSource source = newSource("call-file-001", "file_tool");
+        ToolArtifactSource source = newSource("call-file-001", "document_generate");
 
         context.registerGeneratedArtifact(source, createFile("scratch.txt",
                 "https://file.example.com/internal/scratch.txt", "内部草稿", true));
@@ -53,7 +53,7 @@ public class ToolArtifactBindingRuntimeTest {
         ));
 
         Assert.assertTrue(result.startsWith("同步工具执行完成"));
-        Assert.assertTrue(result.contains("artifactKey:call-sync-001::deliverable.md"));
+        Assert.assertFalse(result.contains("artifactKey:call-sync-001::deliverable.md"));
         List<ToolArtifactBinding> bindings = context.getArtifactBindingsByToolCallId("call-sync-001");
         Assert.assertEquals(1, bindings.size());
         ToolArtifactBinding binding = bindings.get(0);
@@ -89,9 +89,9 @@ public class ToolArtifactBindingRuntimeTest {
         ));
 
         Assert.assertTrue(results.get("call-async-001").startsWith("异步工具执行完成:call-async-001"));
-        Assert.assertTrue(results.get("call-async-001").contains("artifactKey:call-async-001::summary.md"));
+        Assert.assertFalse(results.get("call-async-001").contains("artifactKey:call-async-001::summary.md"));
         Assert.assertTrue(results.get("call-async-002").startsWith("异步工具执行完成:call-async-002"));
-        Assert.assertTrue(results.get("call-async-002").contains("artifactKey:call-async-002::summary.md"));
+        Assert.assertFalse(results.get("call-async-002").contains("artifactKey:call-async-002::summary.md"));
         Assert.assertEquals(1, context.getArtifactBindingsByToolCallId("call-async-001").size());
         Assert.assertEquals(1, context.getArtifactBindingsByToolCallId("call-async-002").size());
         Assert.assertEquals("https://file.example.com/a/summary.md",
@@ -106,7 +106,7 @@ public class ToolArtifactBindingRuntimeTest {
         AgentContext context = newAgentContext();
         context.registerGeneratedArtifact(newSource("call-attach-001", "deep_search"),
                 createFile("summary.md", "https://file.example.com/deep/summary.md", "搜索摘要", false));
-        context.registerGeneratedArtifact(newSource("call-attach-002", "report_tool"),
+        context.registerGeneratedArtifact(newSource("call-attach-002", "document_generate"),
                 createFile("summary.md", "https://file.example.com/report/summary.md", "报告成品", false));
 
         TestAgent agent = new TestAgent();
@@ -114,9 +114,45 @@ public class ToolArtifactBindingRuntimeTest {
 
         String enriched = agent.exposeAttachToolArtifactSummary("工具执行完成", "call-attach-002");
 
-        Assert.assertTrue(enriched.contains("artifactKey:call-attach-002::summary.md"));
-        Assert.assertFalse(enriched.contains("artifactKey:call-attach-001::summary.md"));
+        Assert.assertTrue(enriched.contains("filePath:summary.md"));
+        Assert.assertTrue(enriched.contains("报告成品"));
+        Assert.assertFalse(enriched.contains("搜索摘要"));
         Assert.assertEquals("纯文本结果", agent.exposeAttachToolArtifactSummary("纯文本结果", "missing-call"));
+    }
+
+    @Test
+    public void shouldHideWorkspaceArtifactSummaryFromLlmObservation() {
+        AgentContext context = newAgentContext();
+        context.registerGeneratedArtifact(newSource("call-workspace-write", "workspace_write"),
+                createFile("index.html", "https://file.example.com/workspace/index.html", "工作区文件", false));
+        context.registerGeneratedArtifact(newSource("call-workspace-edit", "workspace_edit"),
+                createFile("index.html", "https://file.example.com/workspace-edited/index.html", "工作区文件", false));
+
+        TestAgent agent = new TestAgent();
+        agent.setContext(context);
+
+        Assert.assertEquals("工作区写入完成",
+                agent.exposeAttachToolArtifactSummary("工作区写入完成", "call-workspace-write"));
+        Assert.assertEquals("工作区编辑完成",
+                agent.exposeAttachToolArtifactSummary("工作区编辑完成", "call-workspace-edit"));
+        Assert.assertEquals(2, context.getVisibleArtifactFiles().size());
+    }
+
+    @Test
+    public void shouldExposeOnlyVisibleDeepSearchArtifactsToLlmObservation() {
+        AgentContext context = newAgentContext();
+        context.registerGeneratedArtifact(newSource("call-deep-search", "deep_search"),
+                createFile("search_result.txt", "https://file.example.com/internal/search_result.txt", "中间结果", true));
+        context.registerGeneratedArtifact(newSource("call-deep-search", "deep_search"),
+                createFile("final-report.md", "https://file.example.com/final/final-report.md", "最终报告", false));
+
+        TestAgent agent = new TestAgent();
+        agent.setContext(context);
+
+        String observation = agent.exposeAttachToolArtifactSummary("深度搜索完成", "call-deep-search");
+
+        Assert.assertTrue(observation.contains("final-report.md"));
+        Assert.assertFalse(observation.contains("search_result.txt"));
     }
 
     private AgentContext newAgentContext() {

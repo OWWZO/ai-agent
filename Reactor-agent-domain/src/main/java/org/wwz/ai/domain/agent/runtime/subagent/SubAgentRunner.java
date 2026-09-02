@@ -8,8 +8,12 @@ import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
 import org.wwz.ai.domain.agent.memory.WorkingMemoryScopes;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReactImplAgent;
+import org.wwz.ai.domain.agent.runtime.artifact.TaskSummaryArtifactProtocol;
+import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactBinding;
 import org.wwz.ai.domain.agent.runtime.cancel.RunCancellation;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
+import org.wwz.ai.domain.agent.runtime.dto.TaskSummaryResult;
+import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.enums.AgentState;
 import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.tasklist.RuntimeBackgroundTask;
@@ -19,7 +23,9 @@ import org.wwz.ai.domain.agent.runtime.tool.ContextScopedTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -238,10 +244,8 @@ public class SubAgentRunner {
             agent = new ReactImplAgent(childContext);
             agent.setName("subagent:" + definition.getAgentType());
             agent.setDescription(StringUtils.defaultIfBlank(description, definition.getAgentType()));
-            if (StringUtils.isNotBlank(definition.getSystemPrompt())) {
-                String base = agent.getSystemPrompt() == null ? "" : agent.getSystemPrompt();
-                agent.setSystemPrompt(base + "\n\n# Subagent directive\n" + definition.getSystemPrompt());
-            }
+            // 整段替换为子 Agent 底座（面向协调者），不复用 ReAct 用户向 system / USER_FACING
+            agent.applySubAgentSystemPrompt(definition.getSystemPrompt());
             if (definition.getMaxSteps() != null && definition.getMaxSteps() > 0) {
                 agent.setMaxSteps(definition.getMaxSteps());
             }
@@ -269,7 +273,7 @@ public class SubAgentRunner {
                             agent.getThinkFailureReason(), extractThinkFailedReason(runResult));
                     content = buildResumeHintContent(
                             "Terminated: LLM think failed: " + reason, agentId, memoryPersisted);
-                    emitSubAgentFinalReply(childContext, content);
+                    content = emitSubAgentFinalReply(childContext, agent, content);
                     return SubAgentResult.builder()
                             .status(SubAgentResult.STATUS_FAILED)
                             .agentId(agentId)
@@ -286,8 +290,7 @@ public class SubAgentRunner {
                             .build();
                 }
                 content = finalizeContent(agent, runResult);
-                emitSubAgentFinalReply(childContext, content);
-
+                content = emitSubAgentFinalReply(childContext, agent, content);
                 return SubAgentResult.builder()
                         .status(SubAgentResult.STATUS_COMPLETED)
                         .agentId(agentId)
@@ -310,6 +313,7 @@ public class SubAgentRunner {
             String err = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
             String content = buildResumeHintContent(
                     "Terminated: subagent failed: " + err, agentId, memoryPersisted);
+            content = emitSubAgentFinalReply(childContext, agent, content);
             return failed(agentId, definition, description, prompt, start, err, content, memoryPersisted);
         } finally {
             SessionAgentMailboxHub.markActive(sessionKey, agentId, false);
@@ -435,18 +439,72 @@ public class SubAgentRunner {
         return sb.toString();
     }
 
-    private static void emitSubAgentFinalReply(AgentContext childContext, String content) {
+    /**
+     * 子 Agent 与主 Agent 共用终答收口协议，但不结束父 run。
+     * 子上下文共享 artifact registry，因此只挑出当前子 Agent 实际调用过的工具产物。
+     */
+    private static String emitSubAgentFinalReply(
+            AgentContext childContext,
+            ReactImplAgent agent,
+            String content
+    ) {
+        String fallback = StringUtils.defaultString(content);
         if (childContext == null
                 || childContext.getPrinter() == null
-                || StringUtils.isBlank(content)
                 || StringUtils.isBlank(childContext.getParentToolUseId())) {
-            return;
+            return fallback;
         }
         try {
-            childContext.getPrinter().send("result", content);
+            List<ToolArtifactBinding> visibleArtifacts = collectSubAgentVisibleArtifacts(childContext, agent);
+            TaskSummaryResult result = TaskSummaryArtifactProtocol.resolveForDelivery(
+                    fallback,
+                    visibleArtifacts
+            );
+            String summary = StringUtils.defaultString(result.getTaskSummary());
+            childContext.getPrinter().send(
+                    "result",
+                    TaskSummaryArtifactProtocol.toEventPayload(result, visibleArtifacts)
+            );
+            return summary;
         } catch (Exception e) {
             log.debug("subagent final reply skipped id={}: {}", childContext.getSubAgentId(), e.getMessage());
+            return fallback;
         }
+    }
+
+    private static List<ToolArtifactBinding> collectSubAgentVisibleArtifacts(
+            AgentContext childContext,
+            ReactImplAgent agent
+    ) {
+        if (childContext == null || agent == null || agent.getMemory() == null
+                || agent.getMemory().getMessages() == null) {
+            return List.of();
+        }
+
+        Set<String> toolCallIds = new LinkedHashSet<>();
+        for (Message message : agent.getMemory().getMessages()) {
+            if (message == null || message.getToolCalls() == null) {
+                continue;
+            }
+            for (ToolCall toolCall : message.getToolCalls()) {
+                if (toolCall != null && StringUtils.isNotBlank(toolCall.getId())) {
+                    toolCallIds.add(toolCall.getId());
+                }
+            }
+        }
+        if (toolCallIds.isEmpty()) {
+            return List.of();
+        }
+
+        Set<ToolArtifactBinding> bindings = new LinkedHashSet<>();
+        for (String toolCallId : toolCallIds) {
+            for (ToolArtifactBinding binding : childContext.getArtifactBindingsByToolCallId(toolCallId)) {
+                if (binding != null && !binding.isInternalFile() && binding.getFile() != null) {
+                    bindings.add(binding);
+                }
+            }
+        }
+        return new ArrayList<>(bindings);
     }
 
     private static void emitSubAgentProgress(AgentContext childContext,

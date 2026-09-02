@@ -8,6 +8,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpRequest;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
+import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeOptions;
@@ -161,36 +163,78 @@ public class BashTool implements BaseTool {
                     firstNonNull(response.getBoolean("timedOut"), response.getBoolean("timed_out"))));
             data.put("duration_ms", firstNonNull(response.get("durationMs"), response.get("duration_ms"), 0));
             data.put("cwd", ".");
-            data.put("skills_materialized", firstNonNull(
-                    response.get("skillsMaterialized"), response.get("skills_materialized"), List.of()));
-            data.put("skills_synced_back", firstNonNull(
-                    response.get("skillsSyncedBack"), response.get("skills_synced_back"), List.of()));
             Object fileInfo = firstNonNull(response.get("fileInfo"), response.get("file_info"));
             if (fileInfo instanceof List<?> files && !files.isEmpty()) {
                 List<Map<String, Object>> produced = new ArrayList<>();
+                List<Map<String, Object>> eventFileInfo = new ArrayList<>();
+                ToolArtifactSource artifactSource = agentContext.getCurrentToolArtifactSource();
                 for (Object item : files) {
                     if (!(item instanceof Map<?, ?> rawFile)) {
                         continue;
                     }
                     Map<String, Object> file = new LinkedHashMap<>();
                     Object fileName = firstNonNull(rawFile.get("fileName"), rawFile.get("file_name"));
-                    Object url = firstNonNull(rawFile.get("domainUrl"), rawFile.get("domain_url"),
-                            rawFile.get("ossUrl"), rawFile.get("oss_url"),
-                            rawFile.get("downloadUrl"), rawFile.get("download_url"));
                     Object fileSize = firstNonNull(rawFile.get("fileSize"), rawFile.get("file_size"));
-                    if (fileName != null) {
+                    if (fileName != null && StringUtils.isNotBlank(String.valueOf(fileName))) {
                         file.put("file_name", fileName);
-                    }
-                    if (url != null) {
-                        file.put("url", url);
                     }
                     if (fileSize != null) {
                         file.put("file_size", fileSize);
                     }
+                    if (file.isEmpty()) {
+                        continue;
+                    }
                     produced.add(file);
+
+                    if (fileName != null && StringUtils.isNotBlank(String.valueOf(fileName))) {
+                        String previewUrl = stringValue(firstNonNull(
+                                rawFile.get("previewUrl"), rawFile.get("preview_url"),
+                                rawFile.get("domainUrl"), rawFile.get("domain_url")));
+                        String downloadUrl = stringValue(firstNonNull(
+                                rawFile.get("downloadUrl"), rawFile.get("download_url"),
+                                rawFile.get("ossUrl"), rawFile.get("oss_url")));
+                        Integer size = integerValue(fileSize);
+                        if (artifactSource != null) {
+                            agentContext.registerGeneratedArtifact(artifactSource, File.builder()
+                                    .fileName(String.valueOf(fileName))
+                                    .ossUrl(downloadUrl)
+                                    .domainUrl(previewUrl)
+                                    .fileSize(size)
+                                    .description(String.valueOf(fileName))
+                                    .isInternalFile(false)
+                                    .build());
+                        }
+
+                        Map<String, Object> eventFile = new LinkedHashMap<>();
+                        eventFile.put("fileName", fileName);
+                        if (StringUtils.isNotBlank(downloadUrl)) {
+                            eventFile.put("ossUrl", downloadUrl);
+                            eventFile.put("downloadUrl", downloadUrl);
+                        }
+                        if (StringUtils.isNotBlank(previewUrl)) {
+                            eventFile.put("domainUrl", previewUrl);
+                            eventFile.put("previewUrl", previewUrl);
+                        }
+                        if (size != null) {
+                            eventFile.put("fileSize", size);
+                        }
+                        eventFileInfo.add(eventFile);
+                    }
                 }
                 if (!produced.isEmpty()) {
                     data.put("produced_files", produced);
+                }
+                if (!eventFileInfo.isEmpty() && agentContext.getPrinter() != null) {
+                    Map<String, Object> event = new LinkedHashMap<>();
+                    event.put("command", "bash 执行产物");
+                    event.put("requestId", sessionId);
+                    event.put("sessionId", sessionId);
+                    if (artifactSource != null) {
+                        event.put("toolCallId", artifactSource.getToolCallId());
+                        event.put("toolName", artifactSource.getToolName());
+                    }
+                    event.put("fileInfo", eventFileInfo);
+                    agentContext.getPrinter().send("file", event, null);
                 }
             }
             return ToolResultPayload.fromData(data);
@@ -226,6 +270,24 @@ public class BashTool implements BaseTool {
             return Math.min(requested, maxSec);
         } catch (NumberFormatException e) {
             return defaultSec;
+        }
+    }
+
+    private static String stringValue(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private static Integer integerValue(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return null;
         }
     }
 

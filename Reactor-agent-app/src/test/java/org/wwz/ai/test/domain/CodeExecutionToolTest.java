@@ -1,5 +1,6 @@
 package org.wwz.ai.test.domain;
 
+import com.alibaba.fastjson.JSON;
 import org.junit.Assert;
 import org.junit.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -48,7 +49,8 @@ public class CodeExecutionToolTest {
         }
 
         Assert.assertFalse(payload.getFailed());
-        Assert.assertTrue(payload.getLlmObservation().contains("https://file.example.com/preview/chart.png"));
+        Assert.assertTrue(JSON.toJSONString(payload.getLlmData())
+                .contains("https://file.example.com/preview/chart.png"));
         Assert.assertEquals("chart.png", context.getVisibleArtifactFiles().get(0).getFileName());
     }
 }
