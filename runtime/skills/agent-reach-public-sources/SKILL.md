@@ -2,7 +2,7 @@
 name: agent-reach-public-sources
 description: >
   使用本机或沙箱中的公开互联网工具读取 RSS、YouTube（包括公开视频评论）、Bilibili、雪球、V2EX、
-  GitHub、LinkedIn，以及 Hacker News、Stack Exchange、Mastodon 和 Reddit RSS。用户提到这些平台、URL、搜索、
+  GitHub、LinkedIn、Telegram 公开频道，以及 Hacker News、Stack Exchange、Mastodon 和 Reddit RSS。用户提到这些平台、URL、搜索、
   视频详情、字幕、帖子、仓库、个人主页或公司主页时使用本 skill；
   需要登录、Cookie、发帖、评论点赞等写操作、修改仓库或抓取 LinkedIn 非公开内容时不要绕过平台限制。
 ---
@@ -36,6 +36,7 @@ python skills/agent-reach-public-sources/scripts/fetch_public.py github search-r
 python skills/agent-reach-public-sources/scripts/fetch_public.py linkedin read --url "https://www.linkedin.com/company/COMPANY"
 python skills/agent-reach-public-sources/scripts/fetch_public.py hackernews top --limit 3
 python skills/agent-reach-public-sources/scripts/fetch_public.py hackernews item --id 1
+python skills/agent-reach-public-sources/scripts/fetch_public.py telegram channel --name "telegram" --limit 10
 python skills/agent-reach-public-sources/scripts/fetch_public.py stackexchange questions --site stackoverflow --query "QUERY" --tag python --limit 10
 python skills/agent-reach-public-sources/scripts/fetch_public.py stackexchange question --site stackoverflow --id 1
 python skills/agent-reach-public-sources/scripts/fetch_public.py mastodon tag --instance mastodon.social --tag python --limit 10
@@ -280,13 +281,31 @@ curl -L -sS "https://r.jina.ai/https://www.linkedin.com/company/COMPANY"
 - 不要要求 Cookie，不要启动浏览器登录，不要绕过 LinkedIn 的访问限制。
 - 人才搜索、职位搜索、完整 Profile 字段和登录后内容不属于本 Skill 的公开能力；需要这些内容时明确说明需要用户授权的专用 API/MCP。
 
+## Telegram 公开频道
+
+Telegram 没有在本 skill 中使用登录态或 Bot API；公开频道优先读取网页预览页 `https://t.me/s/{channel}`。统一入口：
+
+```bash
+python skills/agent-reach-public-sources/scripts/fetch_public.py telegram channel --name "telegram" --limit 10
+```
+
+实现使用 Python 标准库 `html.parser.HTMLParser` 解析 Telegram HTML（无需安装 BeautifulSoup）；提取频道名、标题和公开帖子中的文本、时间、浏览量、消息链接等字段。`--name` 支持带或不带 `@` 的公开频道用户名。
+
+边界与解析规则：
+
+- 只读取公开频道预览页，不登录、不读取 Cookie、不访问私有频道或群组。
+- 仅允许 `t.me`/`telegram.me` 公开主机；频道用户名只接受字母、数字和下划线。
+- 只返回页面当前呈现的帖子；媒体可能只显示浏览器不支持提示，不能据此声称已抓取媒体文件。
+- Telegram HTML 结构可能变化；HTTP 错误、空页面或无法解析时应保留结构化 `errors`/`warnings`，不要补猜帖子内容或链接。
+- 该接口没有全文搜索；需要寻找频道时，先使用网页搜索得到具体公开频道，再调用 `telegram channel`。
+
 ## 统一结果格式
 
 完成一次调用后，按下面结构整理给上层 Agent，再进行摘要或比较：
 
 ```json
 {
-  "source": "rss|youtube|bilibili|xueqiu|v2ex|github|linkedin|hackernews|stackexchange|mastodon|reddit",
+  "source": "rss|youtube|bilibili|xueqiu|v2ex|github|linkedin|telegram|hackernews|stackexchange|mastodon|reddit",
   "operation": "search|read|detail|transcript",
   "query": "用户原始查询或 URL",
   "retrieved_at": "ISO-8601 time",

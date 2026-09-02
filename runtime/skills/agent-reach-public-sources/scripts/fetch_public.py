@@ -14,6 +14,7 @@ import datetime as dt
 import html
 import ipaddress
 import json
+from html.parser import HTMLParser
 import os
 import re
 import shutil
@@ -1358,6 +1359,106 @@ def mastodon(op: str, instance: str, limit: int = 10, acct: str = "", tag: str =
     return make_result("mastodon", op, query, items)
 
 
+class _TelegramPreviewParser(HTMLParser):
+    """Extract visible metadata from Telegram's public channel preview HTML."""
+
+    def __init__(self, channel: str, limit: int):
+        super().__init__(convert_charrefs=True)
+        self.channel = channel
+        self.limit = limit
+        self.title = ""
+        self.channel_name = ""
+        self._tag = ""
+        self._classes: set[str] = set()
+        self._attrs: dict[str, str] = {}
+        self._buffer: list[str] = []
+        self._post: dict[str, Any] | None = None
+        self._text_depth = 0
+        self._text_buffer: list[str] = []
+        self.items: list[dict[str, Any]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self._tag = tag
+        self._attrs = {key: value or "" for key, value in attrs}
+        self._classes = set(self._attrs.get("class", "").split())
+        if "tgme_channel_info" in self._classes:
+            self._post = None
+        if "tgme_widget_message" in self._classes and len(self.items) < self.limit:
+            if self._post is not None and self._post not in self.items:
+                self.items.append(self._post)
+            self._post = {"title": "", "author": self.channel, "content": "", "published_at": "", "url": "", "summary": "", "views": ""}
+            data_post = self._attrs.get("data-post", "")
+            if data_post:
+                self._post["url"] = "https://t.me/" + data_post
+        if self._post is not None and "tgme_widget_message_text" in self._classes:
+            self._text_depth = 1
+            self._text_buffer = []
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._text_depth:
+            self._text_depth -= 1
+            if self._text_depth == 0 and self._post is not None:
+                text = clean_text(" ".join(self._text_buffer), 6000)
+                self._post["content"] = text
+                self._post["summary"] = text
+                self._text_buffer = []
+        self._tag, self._classes, self._attrs = "", set(), {}
+
+    def handle_data(self, data: str) -> None:
+        text = data.strip()
+        if not text:
+            return
+        if self._tag == "title" and not self.title:
+            self.title = clean_text(text)
+        if self._text_depth and self._post is not None:
+            self._text_buffer.append(text)
+        elif self._post is not None:
+            if "tgme_widget_message_date" in self._classes:
+                self._post["published_at"] = self._attrs.get("datetime", text)
+            elif "tgme_widget_message_views" in self._classes:
+                self._post["views"] = text
+            elif "tgme_channel_info" in self._classes:
+                self.channel_name = text
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.handle_starttag(tag, attrs)
+        self.handle_endtag(tag)
+
+    def close(self) -> None:
+        super().close()
+        if self._post is not None and self._post not in self.items:
+            self.items.append(self._post)
+
+
+def telegram_channel(channel: str, limit: int = 10) -> dict[str, Any]:
+    value = str(channel or "").strip().lstrip("@").rstrip("/")
+    if not re.fullmatch(r"[A-Za-z0-9_]{1,64}", value):
+        raise PublicSourceError("Telegram channel username is invalid")
+    target = f"https://t.me/s/{value}"
+    body = fetch_text(target, headers={"Accept": "text/html"}, allowed_hosts={"t.me", "telegram.me"})
+    parser = _TelegramPreviewParser(value, limit)
+    parser.feed(body)
+    parser.close()
+    items = parser.items[:limit]
+    # Telegram nests links/spans inside message text; use a bounded HTML fallback
+    # so a small markup change does not silently discard visible post text.
+    if items and not any(item.get("content") for item in items):
+        blocks = re.findall(
+            r'<div[^>]+class="[^"]*tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>',
+            body, flags=re.I | re.S,
+        )
+        for item, block in zip(items, blocks[:limit]):
+            item["content"] = clean_text(re.sub(r"<br\\s*/?>", " ", block, flags=re.I), 6000)
+            item["summary"] = item["content"]
+    result = make_result("telegram", "channel", target, items)
+    result["channel"] = parser.channel_name or value
+    result["title"] = parser.title
+    result["warnings"].append("Telegram data is from the public t.me/s preview; private or login-only content is not accessed")
+    if not items:
+        result["warnings"].append("no public posts were parsed; the channel may be unavailable, empty, or have changed HTML")
+    return result
+
+
 def _reddit_url(value: str) -> str:
     target = validate_public_url(value, {"reddit.com", "www.reddit.com", "old.reddit.com"})
     parsed = urlsplit(target)
@@ -1491,6 +1592,12 @@ def build_parser() -> argparse.ArgumentParser:
         p = mast_ops.add_parser(op); p.add_argument("--instance", required=True); p.add_argument("--limit", type=require_limit, default=10)
         if op == "tag": p.add_argument("--tag", required=True)
 
+    telegram = sources.add_parser("telegram")
+    telegram_ops = telegram.add_subparsers(dest="operation", required=True)
+    p = telegram_ops.add_parser("channel")
+    p.add_argument("--name", required=True, help="public channel username, with or without @")
+    p.add_argument("--limit", type=require_limit, default=10)
+
     red = sources.add_parser("reddit")
     red_ops = red.add_subparsers(dest="operation", required=True)
     p = red_ops.add_parser("subreddit"); p.add_argument("--name", required=True); p.add_argument("--limit", type=require_limit, default=10)
@@ -1562,6 +1669,8 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
         return mastodon(args.operation, getattr(args, "instance", "") or urlsplit(args.url).hostname, getattr(args, "limit", 1), getattr(args, "acct", ""), getattr(args, "tag", ""), getattr(args, "url", ""))
     if args.source == "reddit":
         return reddit(args.operation, getattr(args, "name", ""), getattr(args, "query", ""), getattr(args, "limit", 10), getattr(args, "url", ""))
+    if args.source == "telegram":
+        return telegram_channel(args.name, args.limit)
     if args.source == "github":
         if args.operation == "repo":
             return github_repo(args.repo)
