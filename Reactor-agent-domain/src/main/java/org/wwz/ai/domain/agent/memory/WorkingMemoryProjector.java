@@ -40,6 +40,8 @@ public class WorkingMemoryProjector {
                     .sessionId(sessionId)
                     .memoryScope(scope)
                     .requestId(requestId)
+                    .originMessageKey(StringUtils.defaultIfBlank(message.getOriginMessageKey(),
+                            StringUtils.defaultString(requestId) + ":" + seq))
                     .runId(runId)
                     .seqNo(seq++)
                     .role(message.getRole().name())

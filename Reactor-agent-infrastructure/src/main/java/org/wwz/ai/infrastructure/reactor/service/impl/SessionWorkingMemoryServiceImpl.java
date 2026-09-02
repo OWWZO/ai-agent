@@ -9,7 +9,6 @@ import org.wwz.ai.domain.agent.memory.WorkingMemoryProjector;
 import org.wwz.ai.domain.agent.memory.WorkingMemoryScopes;
 import org.wwz.ai.domain.agent.memory.WorkingMemoryTurn;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
-import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.llm.TokenCounter;
 import org.wwz.ai.infrastructure.dao.reactor.IWorkingMemoryMessageDao;
 import org.wwz.ai.infrastructure.dao.reactor.IWorkingMemoryTurnDao;
@@ -199,32 +198,6 @@ public class SessionWorkingMemoryServiceImpl implements SessionWorkingMemoryServ
         if (messages == null || messages.isEmpty()) {
             return 0;
         }
-        StringBuilder sb = new StringBuilder();
-        for (Message message : messages) {
-            if (message == null) {
-                continue;
-            }
-            if (message.getRole() != null) {
-                sb.append(message.getRole().name()).append('\n');
-            }
-            if (message.getContent() != null) {
-                sb.append(message.getContent()).append('\n');
-            }
-            if (message.getToolCallId() != null) {
-                sb.append(message.getToolCallId()).append('\n');
-            }
-            if (message.getToolCalls() != null) {
-                for (ToolCall toolCall : message.getToolCalls()) {
-                    if (toolCall == null || toolCall.getFunction() == null) {
-                        continue;
-                    }
-                    sb.append(StringUtils.defaultString(toolCall.getId())).append(' ')
-                            .append(StringUtils.defaultString(toolCall.getFunction().getName())).append(' ')
-                            .append(StringUtils.defaultString(toolCall.getFunction().getArguments()))
-                            .append('\n');
-                }
-            }
-        }
-        return tokenCounter.countText(sb.toString());
+        return tokenCounter.estimateMessages(messages);
     }
 }

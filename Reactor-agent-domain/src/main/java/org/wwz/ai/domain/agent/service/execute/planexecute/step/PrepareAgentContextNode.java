@@ -8,7 +8,6 @@ import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
-import org.wwz.ai.domain.agent.runtime.dto.SopRecallResponse;
 import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
@@ -25,7 +24,6 @@ import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.ledger.AgentExecutionRecorder;
 import org.wwz.ai.domain.agent.memory.ltm.LtmRuntimeBootstrap;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
-import org.wwz.ai.domain.agent.rag.SopRecallService;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.service.execute.planexecute.step.factory.DefaultPlanSolveAgentExecuteStrategyFactory;
 
@@ -51,9 +49,6 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
 
     @Resource
     private WorkspaceReadStateStore workspaceReadStateStore;
-
-    @Resource
-    private SopRecallService sopRecallService;
 
     @Resource
     private org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry activeAgentRunRegistry;
@@ -124,7 +119,6 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
         if (activeAgentRunRegistry != null) {
             activeAgentRunRegistry.bindContext(agentContext.getRequestId(), agentContext);
         }
-        handleSopRecall(agentContext, request);
         // 这条状态约束在工具层执行，节点只负责建立初始状态和把计划文件提示发给前端。
         boolean continuation = StringUtils.isNotBlank(request.getResumeQuestionId())
                 || StringUtils.isNotBlank(request.getResumeApprovalId());
@@ -171,29 +165,6 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
         }
         log.info("{} PlanSolve auto-entered plan mode, planFile={}",
                 agentContext.getRequestId(), planPathHint);
-    }
-
-    private void handleSopRecall(AgentContext agentContext, AgentRequest request) {
-        try {
-            log.info("{} 开始执行SOP召回", request.getRequestId());
-            // SOP 召回是提示词增强，不是执行前置条件。召回服务不可用或返回无效结果时，
-            // 保留原始 sopPrompt，继续让 PlanSolve 使用基础规划能力。
-            SopRecallResponse sopResponse = sopRecallService.sopRecall(request.getRequestId(), request.getQuery());
-            if (sopRecallService.isValidSopResult(sopResponse)) {
-                String sopContent = sopResponse.getData().getChoosed_sop_string();
-                String sopMode = sopResponse.getData().getSop_mode();
-                log.info("{} SOP召回成功，模式：{}，内容长度：{}", request.getRequestId(), sopMode, sopContent.length());
-                if (agentContext.getSopPrompt() != null) {
-                    String sopPrompt = agentContext.getSopPrompt().replace("{{sop}}", sopContent);
-                    agentContext.setSopPrompt(sopPrompt);
-                }
-            } else {
-                log.warn("{} SOP召回失败或结果无效", request.getRequestId());
-            }
-        } catch (Exception e) {
-            // SOP 属于 best-effort 外部能力；异常只记录诊断信息，不能让计划入口整体失败。
-            log.error("{} SOP召回处理异常", request.getRequestId(), e);
-        }
     }
 
 

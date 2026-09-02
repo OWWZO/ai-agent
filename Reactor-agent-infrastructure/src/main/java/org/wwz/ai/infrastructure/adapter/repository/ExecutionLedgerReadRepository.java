@@ -72,16 +72,6 @@ public class ExecutionLedgerReadRepository implements IExecutionLedgerReadReposi
     }
 
     @Override
-    public List<DialogueRunView> searchRunsFullTextByVisitor(String visitorId, String query, int limit) {
-        return dialogueRunLedgerDao.searchFullTextByVisitor(visitorId, query, limit);
-    }
-
-    @Override
-    public List<DialogueRunView> searchRunsFullTextBySession(String sessionId, String query, int limit) {
-        return dialogueRunLedgerDao.searchFullTextBySession(sessionId, query, limit);
-    }
-
-    @Override
     public DialogueSession querySessionEntity(String sessionId) {
         return dialogueSessionLedgerDao.queryBySessionId(sessionId);
     }

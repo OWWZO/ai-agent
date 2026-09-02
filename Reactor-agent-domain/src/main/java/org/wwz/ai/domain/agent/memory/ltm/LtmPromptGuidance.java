@@ -94,30 +94,54 @@ public final class LtmPromptGuidance {
     // 后台复盘和压缩前抢救 fork 指令
     // -------------------------------------------------------------------------
 
-    /**
-     * Memory review prompt with Reactor targets and shared SKIP/STYLE rules.
-     */
+    /** Flush fork：仅 memory。 */
+    public static final String FORK_RUNTIME_TOOL_NOTE_MEMORY =
+            "You can only call the memory tool. Other tools remain listed for request parity "
+                    + "but will be denied at runtime — do not attempt them.";
+
+    /** Review fork：memory + skill 策展工具（workspace_*、skill_tool、bash）。 */
+    public static final String FORK_RUNTIME_TOOL_NOTE_CURATOR =
+            "You may only call curator tools that succeed at runtime: memory, workspace_*, "
+                    + "skill_tool, and bash (Skill Creator / skill scripts). "
+                    + "Other tools remain listed for request parity but will be denied — do not attempt them.";
+
+    /** @deprecated 使用 {@link #FORK_RUNTIME_TOOL_NOTE_MEMORY} / {@link #FORK_RUNTIME_TOOL_NOTE_CURATOR} */
+    @Deprecated
+    public static final String FORK_RUNTIME_TOOL_NOTE = FORK_RUNTIME_TOOL_NOTE_CURATOR;
+
+    public static final String REVIEW_SKILL_GUIDANCE =
+            "Also update the skill library when warranted. Be ACTIVE — reusable workflows belong in "
+                    + "skills, not memory.\n"
+                    + "How (Reactor):\n"
+                    + "  • Inspect with skill_tool / workspace_list|glob|grep|read under skills/\n"
+                    + "  • Create or patch via workspace_write|edit on skills/<name>/SKILL.md "
+                    + "(and scripts/, references/, templates/ as needed)\n"
+                    + "  • Or run Skill Creator via bash when that is the established workflow\n"
+                    + "Prefer: (1) patch a skill already used this session, (2) extend an existing "
+                    + "class-level skill, (3) add support files, (4) create a new class-level skill.\n"
+                    + "Skill names must be class-level — not one-off PR/error/session artifacts.\n"
+                    + "Do NOT put task progress or ephemeral TODOs into skills; those stay out of memory too.";
+
     public static final String REVIEW_DIRECTIVE =
-            "Review the conversation above and consider saving to memory if appropriate.\n\n"
-                    + "Focus on:\n"
-                    + "1. Has the user revealed things about themselves — their persona, desires, "
-                    + "preferences, or personal details worth remembering? → memory tool target=user\n"
-                    + "2. Has the user expressed expectations about how you should behave, their work "
-                    + "style, or ways they want you to operate? → memory tool target=user\n"
-                    + "3. Did you learn a stable environment/project convention or tool quirk that will "
-                    + "still matter next session? → memory tool target=curated\n\n"
+            "Review the conversation above and improve durable memory and/or skills if appropriate.\n\n"
+                    + "Memory focus:\n"
+                    + "1. User persona, desires, preferences, personal details → memory target=user\n"
+                    + "2. Behavioral / work-style expectations → memory target=user\n"
+                    + "3. Stable environment/project conventions or tool quirks → memory target=curated\n\n"
                     + PRIORITY + "\n"
                     + STYLE + "\n"
                     + SKIP + "\n\n"
-                    + "If something stands out, save it using the memory tool only. "
+                    + REVIEW_SKILL_GUIDANCE + "\n\n"
+                    + FORK_RUNTIME_TOOL_NOTE_CURATOR + "\n"
+                    + "If something stands out, save it (memory and/or skills). "
                     + "If nothing new is worth saving, say 'Nothing to save.' and stop without tool calls.";
 
     /**
-     * Pre-compress salvage: same write criteria, urgent timing.
+     * Pre-compress salvage: memory only, urgent timing.
      */
     public static final String FLUSH_DIRECTIVE =
             "The conversation window above is about to be compacted. "
-                    + "Save durable memories NOW via the memory tool only before they are lost.\n\n"
+                    + "Save durable memories NOW via the memory tool before they are lost.\n\n"
                     + "Focus on the same criteria as a memory review:\n"
                     + "1. User persona / preferences / personal details → target=user\n"
                     + "2. Behavioral or work-style expectations → target=user\n"
@@ -125,9 +149,13 @@ public final class LtmPromptGuidance {
                     + PRIORITY + "\n"
                     + STYLE + "\n"
                     + SKIP + "\n\n"
+                    + FORK_RUNTIME_TOOL_NOTE_MEMORY + "\n"
                     + "If nothing durable is missing from memory, call nothing and finish.";
 
-    /** Appended to parent system (or used alone) for memory-only forks. */
+    /**
+     * @deprecated Hermes 对齐后禁止改写父 system；保留常量以免旧测试/引用断裂。
+     */
+    @Deprecated
     public static final String FORK_SYSTEM_DIRECTIVE =
             "# LTM fork directive\n"
                     + "You may ONLY use the memory tool. Do not call any other tools.\n"
@@ -170,17 +198,14 @@ public final class LtmPromptGuidance {
     }
 
     /**
-     * System prompt for a memory-only fork: parent prefix (cache-friendly) + write standards.
+     * Hermes 对齐：fork 必须原样复用父 system，禁止追加 directive（directive 只进尾部 user）。
+     *
+     * @return 父 system 原样；空则 null（调用方走默认底座，视为冷缓存）
      */
     public static String forkSystemPrompt(String parentSystemPrompt) {
         if (parentSystemPrompt == null || parentSystemPrompt.isBlank()) {
-            return FORK_SYSTEM_DIRECTIVE;
+            return null;
         }
-        // 追加前检查幂等标记，避免 fork 被重复包装导致提示词不断增长。
-        String parent = parentSystemPrompt.trim();
-        if (parent.contains(FORK_SYSTEM_DIRECTIVE) || parent.contains("# LTM fork directive")) {
-            return parent;
-        }
-        return parent + "\n\n" + FORK_SYSTEM_DIRECTIVE;
+        return parentSystemPrompt;
     }
 }

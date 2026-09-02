@@ -162,6 +162,7 @@ public class MemoryTool implements BaseTool {
         }
         if (result.isSuccess() && !result.isStaged() && agentContext != null
                 && !LtmMemoryGuard.isSkipMemory(agentContext)
+                && !LtmMemoryGuard.isSideEffectsDisabled(agentContext)
                 && agentContext.getRuntimeDependencies() != null) {
             LtmManager manager = agentContext.getRuntimeDependencies().getOptionalLtmManager();
             if (manager != null) {

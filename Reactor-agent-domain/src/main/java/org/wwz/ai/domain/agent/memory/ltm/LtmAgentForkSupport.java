@@ -8,8 +8,11 @@ import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReactImplAgent;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
+import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.printer.LogPrinter;
+import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
+import org.wwz.ai.domain.agent.runtime.tool.ToolIsolation;
 import org.wwz.ai.domain.agent.runtime.tool.common.MemoryTool;
 
 import java.util.ArrayList;
@@ -27,8 +30,12 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * LTM fork：同 runtime、全量消息前缀、仅 memory 工具。
- * 用于压前 flush 与 background review，对齐 prefix-cache 友好重放。
+ * LTM fork：对齐 Hermes background_review 前缀缓存策略。
+ * <ul>
+ *   <li>system 原样复用父 frozen prompt（不追加 fork directive）</li>
+ *   <li>tools[] schema 与父全量一致（runtime whitelist 只放行 memory）</li>
+ *   <li>历史 messages 前缀重放；review/flush 指令仅作为尾部 user</li>
+ * </ul>
  */
 public final class LtmAgentForkSupport {
 
@@ -46,6 +53,10 @@ public final class LtmAgentForkSupport {
     private LtmAgentForkSupport() {
     }
 
+    /**
+     * @deprecated 使用 {@link #runParityFork}；保留签名以免外部编译断裂。
+     */
+    @Deprecated
     public static LtmForkRunResult runMemoryOnlyFork(ReactorRuntimeDependencies deps,
                                                     CuratedMemoryStore store,
                                                     LtmOwner owner,
@@ -57,18 +68,40 @@ public final class LtmAgentForkSupport {
                                                     int maxSteps,
                                                     long timeoutSeconds,
                                                     String forkLabel) {
+        return runParityFork(
+                deps,
+                store,
+                owner,
+                sessionId,
+                parentRequestId,
+                LtmForkParity.of(parentSystemPrompt, null, conversationSnapshot),
+                userDirective,
+                maxSteps,
+                timeoutSeconds,
+                forkLabel);
+    }
+
+    public static LtmForkRunResult runParityFork(ReactorRuntimeDependencies deps,
+                                                CuratedMemoryStore store,
+                                                LtmOwner owner,
+                                                String sessionId,
+                                                String parentRequestId,
+                                                LtmForkParity parity,
+                                                String userDirective,
+                                                int maxSteps,
+                                                long timeoutSeconds,
+                                                String forkLabel) {
         if (deps == null || store == null || owner == null) {
             return LtmForkRunResult.skipped("deps-or-store-or-owner-null");
         }
-        final List<Message> snapshot = conversationSnapshot == null
-                ? List.of()
-                : new ArrayList<>(conversationSnapshot);
+        if (parity == null) {
+            return LtmForkRunResult.skipped("parity-null");
+        }
         if (StringUtils.isBlank(userDirective)) {
             return LtmForkRunResult.skipped("blank-directive");
         }
 
         final String directive = userDirective;
-        final String systemPrompt = parentSystemPrompt;
         final int steps = Math.max(1, maxSteps);
         final String label = StringUtils.defaultIfBlank(forkLabel, "fork");
         final String sid = sessionId;
@@ -76,6 +109,7 @@ public final class LtmAgentForkSupport {
         final LtmOwner forkOwner = owner;
         final CuratedMemoryStore forkStore = store;
         final ReactorRuntimeDependencies forkDeps = deps;
+        final LtmForkParity forkParity = parity;
         final String forkRequestId = StringUtils.defaultIfBlank(reqId, "ltm") + "-" + label;
 
         Map<String, CuratedMemoryEntry> beforeMap = snapshotActiveEntries(forkStore, forkOwner);
@@ -86,35 +120,33 @@ public final class LtmAgentForkSupport {
             fake.setRequestId(forkRequestId);
             fake.setSessionId(sid);
 
-            ToolCollection tools = new ToolCollection();
-            MemoryTool memoryTool = new MemoryTool();
-            tools.addTool(memoryTool);
-
             AgentContext child = AgentContext.builder()
                     .requestId(fake.getRequestId())
                     .sessionId(sid)
                     .query(directive)
                     .isStream(false)
-                    // 允许 memory tool 写入；禁止再 sync/再调度 review
                     .skipMemory(false)
                     .ltmSideEffectsDisabled(true)
                     .ltmOwner(forkOwner)
                     .ltmMemoryContext(null)
-                    .workingMemoryMessages(new ArrayList<>(snapshot))
+                    .toolDispatchWhitelist(forkParity.getDispatchWhitelist())
+                    .workingMemoryMessages(new ArrayList<>(forkParity.getConversationSnapshot()))
                     .runtimeDependencies(forkDeps)
-                    .toolCollection(tools)
                     .printer(new LogPrinter(fake))
                     .executionRecorder(null)
                     .agentRunState(null)
                     .build();
-            tools.setAgentContext(child);
-            memoryTool.setAgentContext(child);
+
+            ToolCollection tools = copyParentToolsForFork(forkParity.getParentTools(), child);
+            child.setToolCollection(tools);
 
             ReactImplAgent agent = new ReactImplAgent(child);
             agent.setName("ltm-" + label);
             agent.setMaxSteps(steps);
-            // 父 system（cache 友好）+ 与主路径一致的写入标准；无父 system 时仍注入完整 guidance
-            agent.setSystemPrompt(LtmPromptGuidance.forkSystemPrompt(systemPrompt));
+            // Hermes：原样钉死父 system；无父 system 时才退回默认 React 底座（冷缓存）
+            if (forkParity.hasSystemPrompt()) {
+                agent.setSystemPrompt(forkParity.getFrozenSystemPrompt());
+            }
             agent.run(directive);
             Map<String, CuratedMemoryEntry> afterMap = snapshotActiveEntries(forkStore, forkOwner);
             String writtenJson = buildWrittenEntriesJson(beforeMap, afterMap);
@@ -153,11 +185,41 @@ public final class LtmAgentForkSupport {
         }
     }
 
-    private static int countEntries(CuratedMemoryStore store, LtmOwner owner) {
-        return snapshotActiveEntries(store, owner).size();
+    /**
+     * 复制父 tools 映射（schema 对齐），再 bind 到 fork context；保证 memory 可执行。
+     */
+    public static ToolCollection copyParentToolsForFork(ToolCollection parent, AgentContext child) {
+        ToolCollection copy = new ToolCollection();
+        if (parent != null) {
+            copy.setMcpToolExecutor(parent.getMcpToolExecutor());
+            copy.restoreTaskScopedState(parent.snapshotTaskScopedState());
+            if (parent.getToolMap() != null) {
+                for (Map.Entry<String, BaseTool> entry : parent.getToolMap().entrySet()) {
+                    if (entry.getValue() != null) {
+                        copy.addTool(entry.getValue());
+                    }
+                }
+            }
+            if (parent.getMcpToolMap() != null) {
+                for (Map.Entry<String, McpToolInfo> entry : parent.getMcpToolMap().entrySet()) {
+                    if (entry.getValue() != null) {
+                        copy.addMcpTool(entry.getValue());
+                    }
+                }
+            }
+        }
+        if (copy.getTool(MemoryTool.TOOL_NAME) == null) {
+            MemoryTool memoryTool = new MemoryTool();
+            copy.addTool(memoryTool);
+        }
+        ToolIsolation.bindAll(copy, child);
+        MemoryTool memory = (MemoryTool) copy.getTool(MemoryTool.TOOL_NAME);
+        if (memory != null) {
+            memory.setAgentContext(child);
+        }
+        return copy;
     }
 
-    /** key = scope + \\u0001 + content */
     private static Map<String, CuratedMemoryEntry> snapshotActiveEntries(CuratedMemoryStore store, LtmOwner owner) {
         Map<String, CuratedMemoryEntry> out = new LinkedHashMap<>();
         if (store == null || owner == null) {

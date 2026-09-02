@@ -47,19 +47,23 @@ public class LtmPromptGuidanceTest {
         Assert.assertTrue(LtmPromptGuidance.REVIEW_DIRECTIVE.contains("persona"));
         Assert.assertTrue(LtmPromptGuidance.REVIEW_DIRECTIVE.contains("Nothing to save"));
         Assert.assertTrue(LtmPromptGuidance.REVIEW_DIRECTIVE.contains(LtmPromptGuidance.SKIP));
+        Assert.assertTrue(LtmPromptGuidance.REVIEW_DIRECTIVE.contains(LtmPromptGuidance.REVIEW_SKILL_GUIDANCE));
+        Assert.assertTrue(LtmPromptGuidance.REVIEW_DIRECTIVE.contains("skills/"));
+        Assert.assertTrue(LtmPromptGuidance.REVIEW_DIRECTIVE.contains("Skill Creator")
+                || LtmPromptGuidance.REVIEW_DIRECTIVE.contains("bash"));
+        Assert.assertTrue(LtmPromptGuidance.REVIEW_DIRECTIVE.contains(LtmPromptGuidance.FORK_RUNTIME_TOOL_NOTE_CURATOR));
         Assert.assertTrue(LtmPromptGuidance.FLUSH_DIRECTIVE.contains("about to be compacted"));
         Assert.assertTrue(LtmPromptGuidance.FLUSH_DIRECTIVE.contains(LtmPromptGuidance.PRIORITY));
+        Assert.assertTrue(LtmPromptGuidance.FLUSH_DIRECTIVE.contains(LtmPromptGuidance.FORK_RUNTIME_TOOL_NOTE_MEMORY));
+        Assert.assertFalse(LtmPromptGuidance.FLUSH_DIRECTIVE.contains(LtmPromptGuidance.REVIEW_SKILL_GUIDANCE));
     }
 
     @Test
-    public void forkSystemPromptAlwaysIncludesWriteStandards() {
-        String alone = LtmPromptGuidance.forkSystemPrompt(null);
-        Assert.assertTrue(alone.contains("ONLY use the memory tool"));
-        Assert.assertTrue(alone.contains("persistent memory"));
-
-        String withParent = LtmPromptGuidance.forkSystemPrompt("You are helpful.\n");
-        Assert.assertTrue(withParent.startsWith("You are helpful."));
-        Assert.assertTrue(withParent.contains("# LTM fork directive"));
-        Assert.assertTrue(withParent.contains(LtmPromptGuidance.MEMORY_GUIDANCE));
+    public void forkSystemPromptKeepsParentBytesUnchanged() {
+        Assert.assertNull(LtmPromptGuidance.forkSystemPrompt(null));
+        Assert.assertNull(LtmPromptGuidance.forkSystemPrompt("  "));
+        String parent = "You are helpful.\n";
+        Assert.assertEquals(parent, LtmPromptGuidance.forkSystemPrompt(parent));
+        Assert.assertFalse(LtmPromptGuidance.forkSystemPrompt(parent).contains("# LTM fork directive"));
     }
 }

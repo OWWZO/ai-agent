@@ -10,6 +10,7 @@ import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.common.SessionSearchTool;
 
 import java.util.Map;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class SessionSearchToolTest {
@@ -78,5 +79,70 @@ public class SessionSearchToolTest {
         tool.setAgentContext(ctx);
         tool.execute(Map.of("query", "x", "scope", "session"));
         Assert.assertEquals("session", capturedScope.get());
+    }
+
+    @Test
+    public void queryIsOptionalForBrowseAndScrollParametersAreExposed() {
+        Map<String, Object> params = new SessionSearchTool().toParams();
+        Assert.assertEquals(List.of(), params.get("required"));
+        Map<?, ?> properties = (Map<?, ?>) params.get("properties");
+        Assert.assertTrue(properties.containsKey("session_id"));
+        Assert.assertTrue(properties.containsKey("around_message_id"));
+        Assert.assertTrue(properties.containsKey("window"));
+        Assert.assertTrue(properties.containsKey("role_filter"));
+    }
+
+    @Test
+    public void forwardsRoleFilterOnDiscoverRequest() {
+        AtomicReference<String> capturedRoleFilter = new AtomicReference<>();
+        SessionSearchService stub = new SessionSearchService() {
+            @Override
+            public String search(org.wwz.ai.domain.agent.memory.ltm.SessionSearchRequest request) {
+                capturedRoleFilter.set(request.getRoleFilter());
+                return "{\"success\":true,\"mode\":\"discover\",\"results\":[],\"count\":0}";
+            }
+
+            @Override
+            public String search(String sessionId, String visitorId, String query, int limit, String scope) {
+                return search(org.wwz.ai.domain.agent.memory.ltm.SessionSearchRequest.builder()
+                        .currentSessionId(sessionId)
+                        .visitorId(visitorId)
+                        .query(query)
+                        .limit(limit)
+                        .scope(scope)
+                        .build());
+            }
+        };
+        AgentContext ctx = AgentContext.builder()
+                .sessionId("sess-1")
+                .ltmOwner(LtmOwner.visitor("v1"))
+                .runtimeDependencies(ReactorRuntimeDependencies.builder()
+                        .sessionSearchService(stub)
+                        .build())
+                .build();
+        SessionSearchTool tool = new SessionSearchTool();
+        tool.setAgentContext(ctx);
+        tool.execute(Map.of("query", "GenUI", "role_filter", "user,assistant,tool"));
+        Assert.assertEquals("user,assistant,tool", capturedRoleFilter.get());
+    }
+
+    @Test
+    public void exposesStructuredServiceResultAtToolTopLevel() {
+        SessionSearchService stub = (sessionId, visitorId, query, limit, scope) ->
+                "{\"success\":true,\"mode\":\"browse\",\"results\":[],\"count\":0}";
+        AgentContext ctx = AgentContext.builder()
+                .sessionId("sess-1")
+                .runtimeDependencies(ReactorRuntimeDependencies.builder()
+                        .sessionSearchService(stub)
+                        .build())
+                .build();
+        SessionSearchTool tool = new SessionSearchTool();
+        tool.setAgentContext(ctx);
+
+        ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of());
+        Map<?, ?> data = (Map<?, ?>) payload.getLlmData();
+        Assert.assertEquals("browse", data.get("mode"));
+        Assert.assertEquals(0, data.get("count"));
+        Assert.assertFalse(data.containsKey("result"));
     }
 }

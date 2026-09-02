@@ -80,7 +80,7 @@ public final class SubAgentContextFactory {
                 .workingMemoryMessages(null)
                 // 共享父取消令牌，否则 /stop 杀不到嵌套子 Agent
                 .runCancellation(parent.getRunCancellation())
-                // 子代理不继承主会话 LTM 写入权。
+                // 子代理不参与长期记忆；仅保留独立 working_memory 投影用于 resume。
                 .skipMemory(Boolean.TRUE)
                 .ltmOwner(null)
                 .ltmMemoryContext(null)
@@ -93,6 +93,8 @@ public final class SubAgentContextFactory {
                 .subAgentType(agentType)
                 .subAgentDescription(description)
                 .build();
+        // 显式再钉一次，避免 builder 默认值路径漏传 skipMemory
+        child.setSkipMemory(Boolean.TRUE);
         if (childTools != null) {
             childTools.setAgentContext(child);
         }
@@ -115,9 +117,7 @@ public final class SubAgentContextFactory {
         if (parentPrinter == null) {
             return null;
         }
-        if (StringUtils.isBlank(parentToolUseId)) {
-            return parentPrinter;
-        }
+        // 即使 parentToolUseId 缺失也必须包装：至少打上 subAgentId，禁止子事件伪装成根结果。
         return new SubAgentPrinter(parentPrinter, parentToolUseId, agentId, agentType, description);
     }
 

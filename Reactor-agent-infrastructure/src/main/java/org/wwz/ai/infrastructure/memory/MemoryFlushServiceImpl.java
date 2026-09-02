@@ -10,6 +10,7 @@ import org.wwz.ai.domain.agent.ledger.entity.DialogueSession;
 import org.wwz.ai.domain.agent.memory.ltm.CuratedMemoryStore;
 import org.wwz.ai.domain.agent.memory.ltm.LtmAgentForkSupport;
 import org.wwz.ai.domain.agent.memory.ltm.LtmForkExecutionEvent;
+import org.wwz.ai.domain.agent.memory.ltm.LtmForkParity;
 import org.wwz.ai.domain.agent.memory.ltm.LtmForkRunResult;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwnerResolver;
@@ -17,6 +18,7 @@ import org.wwz.ai.domain.agent.memory.ltm.MemoryFlushPolicy;
 import org.wwz.ai.domain.agent.memory.ltm.MemoryFlushService;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
+import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.infrastructure.dao.reactor.ILtmForkExecutionDao;
 
 import java.util.ArrayList;
@@ -25,7 +27,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 压缩前独立 fork，全量（截断后的）窗口消息 + 仅 memory 工具。
+ * 压缩前 flush：父 system/tools 对齐 + 全量窗口重放（不改写早期 content）。
  */
 @Slf4j
 @Service
@@ -41,8 +43,7 @@ public class MemoryFlushServiceImpl implements MemoryFlushService {
 
     private volatile boolean enabled = true;
     private volatile int flushMinTurns = 6;
-    private volatile int materialMaxMessages = 40;
-    private volatile int materialMaxCharsPerMsg = 1200;
+    private volatile int materialMaxMessages = 80;
     private volatile long timeoutSeconds = 45L;
     private volatile int maxSteps = 5;
 
@@ -51,7 +52,6 @@ public class MemoryFlushServiceImpl implements MemoryFlushService {
         this.enabled = enabled;
         this.flushMinTurns = flushMinTurns;
         this.materialMaxMessages = materialMaxMessages;
-        this.materialMaxCharsPerMsg = materialMaxCharsPerMsg;
         this.timeoutSeconds = timeoutSeconds > 0 ? timeoutSeconds : 45L;
     }
 
@@ -63,13 +63,14 @@ public class MemoryFlushServiceImpl implements MemoryFlushService {
     public int flushBeforeCompact(String sessionId,
                                   String requestId,
                                   LtmOwner owner,
-                                  List<Message> messagesAboutToCompact) {
+                                  List<Message> messagesAboutToCompact,
+                                  String parentSystemPrompt,
+                                  ToolCollection parentTools) {
         if (!enabled || messagesAboutToCompact == null || messagesAboutToCompact.isEmpty()) {
             recordSkip(sessionId, requestId, owner, messagesAboutToCompact,
                     !enabled ? "disabled" : "empty-messages", 0);
             return 0;
         }
-        // 防止 flush fork 自身 mid-run compact 再触发 flush（历史上会变成 -flush-flush-... 风暴）
         if (StringUtils.isNotBlank(requestId)
                 && (requestId.contains("-flush") || requestId.contains("-bg-review"))) {
             recordSkip(sessionId, requestId, owner, messagesAboutToCompact, "nested-fork", 0);
@@ -80,7 +81,6 @@ public class MemoryFlushServiceImpl implements MemoryFlushService {
             recordSkip(sessionId, requestId, null, messagesAboutToCompact, "null-owner", 0);
             return 0;
         }
-        // request 级去重 + session 级 in-flight，避免并发 compact 同时拉起多个 flush
         String sessionKey = "s:" + StringUtils.defaultIfBlank(sessionId, "unknown");
         String reqKey = StringUtils.defaultIfBlank(requestId, sessionId);
         if (StringUtils.isNotBlank(reqKey) && !flushedRequests.add(reqKey)) {
@@ -105,18 +105,18 @@ public class MemoryFlushServiceImpl implements MemoryFlushService {
                 return 0;
             }
 
-            // 全量窗口重放（截断单条过长 content，保留前缀结构以利 cache）
-            List<Message> snapshot = truncateSnapshot(messagesAboutToCompact, materialMaxMessages, materialMaxCharsPerMsg);
-            log.info("memory-flush fork start sessionId={} userTurns={} snapshotMsgs={}",
-                    sessionId, userTurns, snapshot.size());
-            LtmForkRunResult result = LtmAgentForkSupport.runMemoryOnlyFork(
+            // 同模型路径：保留完整窗口前缀；仅在极端超长时裁掉最早消息（不改写 content）
+            List<Message> snapshot = trimOldestIfNeeded(messagesAboutToCompact, materialMaxMessages);
+            LtmForkParity parity = LtmForkParity.forFlush(parentSystemPrompt, parentTools, snapshot);
+            log.info("memory-flush fork start sessionId={} userTurns={} snapshotMsgs={} paritySystem={} parityTools={}",
+                    sessionId, userTurns, snapshot.size(), parity.hasSystemPrompt(), parity.hasParentTools());
+            LtmForkRunResult result = LtmAgentForkSupport.runParityFork(
                     deps,
                     store,
                     resolvedOwner,
                     sessionId,
                     requestId,
-                    null, // 使用 React 默认 system + fork directive；无父 system 时仍可跑
-                    snapshot,
+                    parity,
                     LtmAgentForkSupport.FLUSH_DIRECTIVE,
                     maxSteps,
                     timeoutSeconds,
@@ -198,34 +198,17 @@ public class MemoryFlushServiceImpl implements MemoryFlushService {
         }
     }
 
-    private static List<Message> truncateSnapshot(List<Message> messages, int maxMessages, int maxCharsPerMsg) {
+    /** 只裁最早消息，不改写剩余 content，避免破坏 prompt-cache 前缀。 */
+    private static List<Message> trimOldestIfNeeded(List<Message> messages, int maxMessages) {
         if (messages == null || messages.isEmpty()) {
             return List.of();
         }
         int maxMsg = Math.max(1, maxMessages);
-        int maxChars = Math.max(200, maxCharsPerMsg);
-        int from = Math.max(0, messages.size() - maxMsg);
-        List<Message> out = new ArrayList<>(messages.size() - from);
-        for (int i = from; i < messages.size(); i++) {
-            Message m = messages.get(i);
-            if (m == null) {
-                continue;
-            }
-            String c = m.getContent();
-            if (c != null && c.length() > maxChars) {
-                c = c.substring(0, maxChars) + "...";
-                out.add(Message.builder()
-                        .role(m.getRole())
-                        .content(c)
-                        .toolCallId(m.getToolCallId())
-                        .toolCalls(m.getToolCalls())
-                        .base64Image(m.getBase64Image())
-                        .build());
-            } else {
-                out.add(m);
-            }
+        if (messages.size() <= maxMsg) {
+            return new ArrayList<>(messages);
         }
-        return out;
+        int from = messages.size() - maxMsg;
+        return new ArrayList<>(messages.subList(from, messages.size()));
     }
 
     private LtmOwner resolveOwner(String sessionId) {

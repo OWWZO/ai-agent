@@ -6,6 +6,7 @@ import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.BaseAgent;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.enums.RoleType;
+import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -13,7 +14,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 成功 turn 结束后：外部 Provider sync/预热 + 可选 Background Review 调度。
+ * 成功 turn 结束后的长期记忆同步与后台整理。
+ * <p>子 Agent（skipMemory=true）完全跳过 LTM 生命周期；其工作记忆仍由
+ * {@code SubAgentRunner} 单独投影到 {@code sub:<agentId>}。
  */
 public final class LtmTurnSyncSupport {
 
@@ -21,6 +24,7 @@ public final class LtmTurnSyncSupport {
     }
 
     public static void syncSuccessfulTurn(AgentContext agentContext, BaseAgent executor) {
+        // 子 Agent 是临时执行上下文，不能向共享用户 LTM sync 或调度 review。
         if (agentContext == null
                 || LtmMemoryGuard.isSkipMemory(agentContext)
                 || LtmMemoryGuard.isSideEffectsDisabled(agentContext)) {
@@ -30,7 +34,6 @@ public final class LtmTurnSyncSupport {
         if (deps == null) {
             return;
         }
-        LtmManager ltmManager = deps.getOptionalLtmManager();
         String user = agentContext.getQuery();
         if (StringUtils.isBlank(user)) {
             return;
@@ -47,11 +50,13 @@ public final class LtmTurnSyncSupport {
                 messages = toMaps(all);
             }
         }
+
+        LtmManager ltmManager = deps.getOptionalLtmManager();
         if (ltmManager != null) {
             ltmManager.syncAll(user, assistant, agentContext.getSessionId(), messages);
             ltmManager.queuePrefetchAll(user, agentContext.getSessionId());
         }
-        // Background review：优先 LtmServices 运行时绑定，避免 deps 快照为 null
+
         BackgroundReviewService review = LtmServices.backgroundReview();
         if (review == null) {
             review = deps.getOptionalBackgroundReviewService();
@@ -68,10 +73,17 @@ public final class LtmTurnSyncSupport {
             snapshot = new ArrayList<>(executor.getMemory().getMessages());
         }
         String parentSystem = null;
+        ToolCollection parentTools = null;
         try {
-            parentSystem = executor != null ? executor.getSystemPrompt() : null;
+            if (executor != null) {
+                parentSystem = executor.getSystemPrompt();
+                parentTools = executor.getAvailableTools();
+            }
         } catch (Exception ignored) {
             // ignore
+        }
+        if (parentTools == null) {
+            parentTools = agentContext.getToolCollection();
         }
         review.maybeScheduleAfterSuccessTurn(
                 agentContext.getSessionId(),
@@ -80,7 +92,8 @@ public final class LtmTurnSyncSupport {
                 user,
                 assistant,
                 snapshot,
-                parentSystem);
+                parentSystem,
+                parentTools);
     }
 
     private static List<Map<String, Object>> toMaps(List<Message> messages) {

@@ -209,8 +209,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_dialogue_run (
     UNIQUE KEY uk_dialogue_request_id (request_id),
     KEY idx_dialogue_session_create (session_id, deleted, create_time DESC),
     KEY idx_dialogue_run_visitor_create (visitor_id, deleted, create_time DESC),
-    KEY idx_dialogue_entry_status (entry_agent, status, deleted, create_time DESC),
-    FULLTEXT KEY ft_dialogue_run_query_summary (query_text, final_summary_text) WITH PARSER ngram
+    KEY idx_dialogue_entry_status (entry_agent, status, deleted, create_time DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='对话执行总账表';
 
 CREATE TABLE IF NOT EXISTS ai_agent_dialogue_session (
@@ -707,6 +706,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_working_memory_message (
     memory_scope         VARCHAR(64)   NOT NULL DEFAULT 'main' COMMENT 'main 或 sub:{agentId}',
     turn_id              BIGINT        NOT NULL COMMENT 'FK -> working_memory_turn.id',
     request_id           VARCHAR(128)  NOT NULL COMMENT '请求ID（含 sub:* / wm-compact-*）',
+    origin_message_key   VARCHAR(192)  NOT NULL COMMENT '原始消息业务锚点 request_id:seq_no',
     run_id               BIGINT        NULL COMMENT '关联 dialogue_run.id',
     seq_no               INT           NOT NULL COMMENT 'turn 内从 0 递增',
     role                 VARCHAR(16)   NOT NULL COMMENT 'USER/ASSISTANT/TOOL/SYSTEM',
@@ -726,7 +726,9 @@ CREATE TABLE IF NOT EXISTS ai_agent_working_memory_message (
     KEY idx_wm_msg_session_seq (session_id, deleted, turn_id, seq_no),
     KEY idx_wm_msg_session_scope (session_id, memory_scope, deleted, turn_id, seq_no),
     KEY idx_wm_msg_request (request_id, deleted, seq_no),
-    KEY idx_wm_msg_visibility (session_id, visibility, deleted)
+    KEY idx_wm_msg_origin (session_id, origin_message_key, deleted),
+    KEY idx_wm_msg_visibility (session_id, visibility, deleted),
+    FULLTEXT KEY ft_wm_msg_content (content) WITH PARSER ngram
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工作记忆消息行（自包含 hydrate）';
 
 -- ��������ѹ���¼�����ƣ����ԡ�ǰ�� token��ժҪ���ġ�ѹ����ͶӰ���գ�

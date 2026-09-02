@@ -5,6 +5,7 @@ import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.llm.TokenCounter;
+import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -17,6 +18,12 @@ import java.util.Set;
  * 切片永不拆开 tool_use/tool_result。
  */
 public final class WorkingMemoryCompactor {
+
+    public record CompactionWindow(int headEnd, int tailStart, String previousSummary) {
+        public int middleStart() { return headEnd; }
+    }
+
+    private static final int MAX_TAIL_MESSAGE_FLOOR = 8;
 
     private final TokenCounter tokenCounter;
 
@@ -32,12 +39,36 @@ public final class WorkingMemoryCompactor {
         return tokenCounter.estimateMessages(messages);
     }
 
+    /**
+     * 整包粗估：system + tools + messages，与 Hermes / ContextRing 同一口径。
+     */
+    public int estimateRequestTokens(String systemPrompt, List<Message> messages, ToolCollection tools) {
+        Message system = StringUtils.isBlank(systemPrompt) ? null : Message.systemMessage(systemPrompt, null);
+        return tokenCounter.estimatePrompt(system, messages, tools).getEstimatedTotalTokens();
+    }
+
+    public int estimateFixedPromptTokens(String systemPrompt, ToolCollection tools) {
+        Message system = StringUtils.isBlank(systemPrompt) ? null : Message.systemMessage(systemPrompt, null);
+        int systemTokens = system == null ? 0 : tokenCounter.estimateTokens(system.getContent());
+        return systemTokens + tokenCounter.estimateTools(tools);
+    }
+
     public boolean shouldCompact(List<Message> messages, CompactionBudget budget) {
+        return shouldCompact(messages, budget, null, null);
+    }
+
+    public boolean shouldCompact(List<Message> messages,
+                                 CompactionBudget budget,
+                                 String systemPrompt,
+                                 ToolCollection tools) {
         if (budget == null || !budget.isEnabled() || messages == null || messages.isEmpty()) {
             return false;
         }
-        // 阈值按估算 token 判断，而不是按消息条数判断；一条很长的工具结果也必须触发压缩。
-        return estimateTokens(messages) >= budget.threshold();
+        return estimateRequestTokens(systemPrompt, messages, tools) >= budget.threshold();
+    }
+
+    public boolean shouldCompact(int currentTokens, CompactionBudget budget) {
+        return budget != null && budget.isEnabled() && currentTokens >= budget.threshold();
     }
 
     /**
@@ -82,6 +113,7 @@ public final class WorkingMemoryCompactor {
                     changed = true;
                     result.add(Message.builder()
                             .role(RoleType.TOOL)
+                            .originMessageKey(m.getOriginMessageKey())
                             .content(CompactionBudget.CLEARED_TOOL_RESULT)
                             .toolCallId(m.getToolCallId())
                             .base64Image(null)
@@ -95,6 +127,7 @@ public final class WorkingMemoryCompactor {
                 changed = true;
                 result.add(Message.builder()
                         .role(RoleType.TOOL)
+                        .originMessageKey(m.getOriginMessageKey())
                         .content(content.substring(0, maxChars) + "\n...[truncated tool result]")
                         .toolCallId(m.getToolCallId())
                         .base64Image(null)
@@ -118,30 +151,28 @@ public final class WorkingMemoryCompactor {
         }
         String notes = StringUtils.trimToEmpty(sessionNotes);
         List<Message> body = messages;
-        if (StringUtils.isBlank(notes) && isCompactSummaryMessage(messages.get(0))) {
-            notes = messages.get(0).getContent();
-            body = messages.size() > 1 ? messages.subList(1, messages.size()) : List.of();
+        int handoff = findFirstHandoff(messages);
+        if (StringUtils.isBlank(notes) && handoff >= 0) {
+            notes = messages.get(handoff).getContent();
+            body = new ArrayList<>(messages);
+            body.remove(handoff);
         }
         if (StringUtils.isBlank(notes)) {
             return null;
         }
 
         List<Message> keep = keepRecentTail(body, budget);
-        // 若 body 本身就是 full list 且 notes 来自外部，keep 从 body 切
-        // 已包装的 notes 也必须再清洗一次，防止历史轮次残留 <analysis>/<summary> 污染主 Agent。
+        // 已包装的 notes 再清洗一次，防止历史轮次残留 <analysis>/<summary> 污染主 Agent。
         String reinject;
-        if (!notes.contains("This session is being continued from a previous conversation")) {
+        if (notes.contains(CompactionPrompt.CONTEXT_COMPACTION_PREFIX)) {
+            reinject = CompactionPrompt.wrapSummaryForReinject(
+                    CompactionPrompt.unwrapHandoffBody(notes), !keep.isEmpty());
+        } else if (notes.contains(CompactionPrompt.LEGACY_CONTINUATION)) {
+            reinject = CompactionPrompt.wrapSummaryForReinject(
+                    CompactionPrompt.unwrapHandoffBody(notes), !keep.isEmpty());
+        } else {
             reinject = CompactionPrompt.wrapSummaryForReinject(
                     CompactionPrompt.formatCompactSummary(notes), !keep.isEmpty());
-        } else {
-            reinject = CompactionPrompt.sanitizeForReinject(notes);
-            if (!keep.isEmpty() && !reinject.contains("Recent messages are preserved verbatim")) {
-                reinject = reinject + "\n\nRecent messages are preserved verbatim after this summary.";
-            }
-            if (!reinject.contains("NOT a context-compaction")) {
-                reinject = CompactionPrompt.wrapSummaryForReinject(
-                        stripLegacyContinuationPrefix(reinject), !keep.isEmpty());
-            }
         }
         // 摘要放在前缀、最近消息原样保留在后缀，既缩短上下文又维持最近工具调用的可解释性。
         List<Message> post = buildPostCompactMessages(reinject, keep);
@@ -152,54 +183,60 @@ public final class WorkingMemoryCompactor {
     }
 
     public boolean isCompactSummaryMessage(Message message) {
-        if (message == null || message.getRole() != RoleType.USER) {
+        if (message == null || (message.getRole() != RoleType.USER && message.getRole() != RoleType.ASSISTANT)) {
             return false;
         }
         String content = message.getContent();
-        return content != null && content.contains("This session is being continued from a previous conversation");
-    }
-
-    /** 去掉旧版 continuation 前缀，便于重新 wrap 时补上角色边界说明。 */
-    private static String stripLegacyContinuationPrefix(String notes) {
-        if (StringUtils.isBlank(notes)) {
-            return "";
-        }
-        String body = notes;
-        String marker = "This session is being continued from a previous conversation that ran out of context.";
-        int idx = body.indexOf(marker);
-        if (idx >= 0) {
-            body = body.substring(idx + marker.length()).trim();
-        }
-        String cover = "The summary below covers the earlier portion of the conversation.";
-        if (body.startsWith(cover)) {
-            body = body.substring(cover.length()).trim();
-        }
-        body = body.replace("Recent messages are preserved verbatim after this summary.", "")
-                .replace("Recent messages are preserved verbatim.", "")
-                .trim();
-        return body;
+        return content != null && (content.contains(CompactionPrompt.CONTEXT_COMPACTION_PREFIX)
+                || content.contains(CompactionPrompt.END_MARKER)
+                || content.contains(CompactionPrompt.MERGE_DELIMITER)
+                || content.contains(CompactionPrompt.LEGACY_CONTINUATION));
     }
 
     /**
      * 从已压缩前缀抽出可复用的 session notes 正文。
      */
     public String extractSessionNotes(List<Message> messages) {
-        if (messages == null || messages.isEmpty() || !isCompactSummaryMessage(messages.get(0))) {
+        if (messages == null || messages.isEmpty()) {
             return null;
         }
-        return messages.get(0).getContent();
+        int index = findFirstHandoff(messages);
+        return index < 0 ? null : messages.get(index).getContent();
+    }
+
+    private int findFirstHandoff(List<Message> messages) {
+        int limit = Math.min(messages.size(), 12);
+        for (int i = 0; i < limit; i++) if (isCompactSummaryMessage(messages.get(i))) return i;
+        return -1;
     }
 
     /**
      * P0：从最旧侧整段丢弃，直到低于阈值；永不拆开 tool_use/tool_result。
      */
     public List<Message> dropOldestToFit(List<Message> messages, CompactionBudget budget) {
+        return dropOldestToFit(messages, budget, false);
+    }
+
+    public List<Message> dropOldestToFit(List<Message> messages, CompactionBudget budget, boolean protectHandoff) {
+        return dropOldestToFit(messages, budget, protectHandoff, 0);
+    }
+
+    public List<Message> dropOldestToFit(List<Message> messages,
+                                         CompactionBudget budget,
+                                         boolean protectHandoff,
+                                         int extraFixedTokens) {
         if (messages == null || messages.isEmpty() || budget == null) {
             return messages == null ? List.of() : messages;
         }
-        int threshold = budget.threshold();
+        int threshold = Math.max(budget.threshold() - Math.max(extraFixedTokens, 0), 1);
         if (estimateTokens(messages) <= threshold) {
             return List.copyOf(messages);
+        }
+        if (protectHandoff) {
+            int handoff = findFirstHandoff(messages);
+            if (handoff >= 0) {
+                return dropOldestPreservingHandoff(messages, threshold, handoff);
+            }
         }
 
         List<Message> current = new ArrayList<>(messages);
@@ -230,7 +267,39 @@ public final class WorkingMemoryCompactor {
             }
             current = new ArrayList<>(current.subList(cut, current.size()));
         }
-        return List.copyOf(current);
+        return sanitizeToolProtocol(current);
+    }
+
+    private List<Message> dropOldestPreservingHandoff(List<Message> messages, int threshold, int handoffIdx) {
+        List<Message> current = new ArrayList<>(messages);
+        int handoff = Math.max(0, Math.min(handoffIdx, current.size() - 1));
+        while (estimateTokens(current) > threshold && handoff > 0) {
+            int cut = nextSafeDropCount(current.subList(0, handoff));
+            if (cut <= 0) {
+                break;
+            }
+            cut = Math.min(cut, handoff);
+            current = new ArrayList<>(current.subList(cut, current.size()));
+            handoff -= cut;
+        }
+        while (estimateTokens(current) > threshold && current.size() > handoff + 1) {
+            int from = handoff + 1;
+            List<Message> suffix = current.subList(from, current.size());
+            int cut = nextSafeDropCount(suffix);
+            if (cut <= 0 || cut >= suffix.size()) {
+                cut = Math.max(1, expandForwardToCloseToolPairs(suffix, 1));
+                cut = Math.min(cut, suffix.size());
+            }
+            if (cut <= 0) {
+                break;
+            }
+            List<Message> next = new ArrayList<>(current.subList(0, from));
+            if (cut < suffix.size()) {
+                next.addAll(suffix.subList(cut, suffix.size()));
+            }
+            current = next;
+        }
+        return sanitizeToolProtocol(current);
     }
 
     /**
@@ -296,6 +365,414 @@ public final class WorkingMemoryCompactor {
         return List.copyOf(messages.subList(start, messages.size()));
     }
 
+    public int effectiveProtectFirstN(List<Message> messages, CompactionBudget budget) {
+        if (findFirstHandoff(messages == null ? List.of() : messages) >= 0) return 0;
+        return Math.max(0, budget == null ? 0 : budget.getProtectFirstN());
+    }
+
+    public int protectHeadSize(List<Message> messages, CompactionBudget budget) {
+        int wanted = effectiveProtectFirstN(messages, budget);
+        if (wanted <= 0 || messages == null || messages.isEmpty()) {
+            return 0;
+        }
+        int seen = 0;
+        for (int i = 0; i < messages.size() && seen < wanted; i++) {
+            Message message = messages.get(i);
+            if (message != null && message.getRole() != RoleType.SYSTEM) seen++;
+            if (seen == wanted) return i + 1;
+        }
+        return messages.size();
+    }
+
+    public int findTailCutByTokens(List<Message> messages, CompactionBudget budget) {
+        return findTailCutByTokens(messages, budget, 0);
+    }
+
+    /**
+     * 从尾部按 token 预算回切。protectLastN 是「至少留最后 N 条」（封顶 8），不是从 0 起的下标帽。
+     * 始终保证 tailStart 大于 headEnd，给 middle 至少留 1 条。
+     */
+    public int findTailCutByTokens(List<Message> messages, CompactionBudget budget, int headEnd) {
+        if (messages == null || messages.isEmpty()) {
+            return 0;
+        }
+        int n = messages.size();
+        int head = Math.max(0, Math.min(headEnd, n));
+        if (n <= head + 1) {
+            return n;
+        }
+        int target = (int) Math.ceil(Math.max(0.0d, budget.getSummaryTargetRatio()) * budget.threshold());
+        int ceiling = Math.max(target, (int) Math.ceil(target * 1.5d));
+        int availableTail = Math.max(0, n - head - 1);
+        int minTailFloor = Math.min(Math.max(0, budget.getProtectLastN()), MAX_TAIL_MESSAGE_FLOOR);
+        int minTail = Math.min(minTailFloor, availableTail);
+
+        int cut = n;
+        int tokens = 0;
+        for (int i = n - 1; i >= head; i--) {
+            int add = tokenCounter.estimateOneMessage(messages.get(i));
+            if (tokens + add > ceiling && (n - i) >= Math.max(minTail, 1)) {
+                break;
+            }
+            tokens += add;
+            cut = i;
+        }
+        if (cut <= head && tokens <= ceiling && tokens > 0) {
+            int raw = 0;
+            cut = n;
+            for (int i = n - 1; i >= head; i--) {
+                int add = tokenCounter.estimateOneMessage(messages.get(i));
+                if (raw + add > target && (n - i) >= Math.max(minTail, 1)) {
+                    break;
+                }
+                raw += add;
+                cut = i;
+            }
+        }
+        int fallbackCut = n - minTail;
+        cut = Math.min(cut, fallbackCut);
+        if (cut <= head) {
+            cut = Math.max(fallbackCut, head + 1);
+        }
+        return Math.min(n, Math.max(cut, head + 1));
+    }
+
+    public CompactionWindow splitForFullCompact(List<Message> messages, CompactionBudget budget) {
+        if (messages == null || messages.isEmpty()) {
+            return new CompactionWindow(0, 0, null);
+        }
+        int handoff = findFirstHandoff(messages);
+        String previous = handoff < 0 ? null : CompactionPrompt.unwrapHandoffBody(messages.get(handoff).getContent());
+        List<Message> body = new ArrayList<>(messages);
+        if (handoff >= 0) {
+            body.remove(handoff);
+        }
+        int headWanted = handoff >= 0 ? 0 : protectHeadSize(body, budget);
+        int headEnd = Math.min(headWanted, Math.max(0, body.size() - 1));
+        headEnd = adjustHeadEndToPreserveToolPairs(body, headEnd, body.size());
+        int tailStart = findTailCutByTokens(body, budget, headEnd);
+        tailStart = ensureLastUserMessageInTail(body, tailStart, headEnd);
+        tailStart = ensureLastAssistantMessageInTail(body, tailStart, headEnd);
+        tailStart = alignBoundaryForward(body, Math.max(tailStart, headEnd + 1));
+        if (tailStart < headEnd) {
+            tailStart = alignBoundaryForward(body, Math.min(body.size(), headEnd + 1));
+        }
+        return new CompactionWindow(headEnd, tailStart, previous);
+    }
+
+    /**
+     * 切点落在连续 tool_result 上时向前推到组外，避免 assistant 在 middle、result 在 tail。
+     * 后缀全是 TOOL 时返回 n，整组进 middle。
+     */
+    public int alignBoundaryForward(List<Message> messages, int idx) {
+        if (messages == null || messages.isEmpty()) {
+            return 0;
+        }
+        int n = messages.size();
+        int i = Math.max(0, Math.min(idx, n));
+        while (i < n && isToolAt(messages, i)) {
+            i++;
+        }
+        return i;
+    }
+
+    private boolean isToolAt(List<Message> messages, int idx) {
+        if (messages == null || idx < 0 || idx >= messages.size()) {
+            return false;
+        }
+        Message m = messages.get(idx);
+        return m != null && m.getRole() == RoleType.TOOL;
+    }
+
+    /**
+     * 保证 headEnd 不会把 assistant(tool_calls) 留在 head、对应 tool_result 留在 middle。
+     * 优先向前扩到闭合（不超过 maxEnd）；仍无法闭合则回退到开对之前。
+     */
+    public int adjustHeadEndToPreserveToolPairs(List<Message> messages, int headEnd, int maxEnd) {
+        if (messages == null || messages.isEmpty()) {
+            return 0;
+        }
+        int limit = Math.max(0, Math.min(maxEnd, messages.size()));
+        int end = Math.max(0, Math.min(headEnd, limit));
+        Set<String> open = openToolCallsInPrefix(messages, end);
+        while (end < limit && !open.isEmpty()) {
+            Message m = messages.get(end);
+            end++;
+            applyToolPairDelta(open, m);
+        }
+        while (end > 0 && !openToolCallsInPrefix(messages, end).isEmpty()) {
+            end--;
+        }
+        return end;
+    }
+
+    private Set<String> openToolCallsInPrefix(List<Message> messages, int endExclusive) {
+        Set<String> open = new HashSet<>();
+        int end = Math.max(0, Math.min(endExclusive, messages.size()));
+        for (int i = 0; i < end; i++) {
+            applyToolPairDelta(open, messages.get(i));
+        }
+        return open;
+    }
+
+    private void applyToolPairDelta(Set<String> open, Message m) {
+        if (m == null || open == null) {
+            return;
+        }
+        if (m.getRole() == RoleType.ASSISTANT && m.getToolCalls() != null) {
+            for (ToolCall tc : m.getToolCalls()) {
+                if (tc != null && StringUtils.isNotBlank(tc.getId())) {
+                    open.add(tc.getId());
+                }
+            }
+        }
+        if (m.getRole() == RoleType.TOOL && StringUtils.isNotBlank(m.getToolCallId())) {
+            open.remove(m.getToolCallId());
+        }
+    }
+
+    public int ensureLastUserMessageInTail(List<Message> messages, int tailStart, CompactionBudget budget) {
+        return ensureLastUserMessageInTail(messages, tailStart, 0);
+    }
+
+    public int ensureLastUserMessageInTail(List<Message> messages, int tailStart, int headEnd) {
+        if (messages == null || messages.isEmpty()) {
+            return 0;
+        }
+        int n = messages.size();
+        int cut = Math.max(0, Math.min(tailStart, n));
+        int head = Math.max(0, Math.min(headEnd, n));
+        int lastUser = -1;
+        for (int i = n - 1; i >= head; i--) {
+            Message m = messages.get(i);
+            if (m != null && m.getRole() == RoleType.USER && StringUtils.isNotBlank(m.getContent()) && !isCompactSummaryMessage(m)) {
+                lastUser = i;
+                break;
+            }
+        }
+        if (lastUser < 0 || lastUser >= cut) {
+            return cut;
+        }
+        int adjusted = Math.max(lastUser, head + 1);
+        if (adjusted > lastUser) {
+            return Math.max(findTurnPairEnd(messages, lastUser), head + 1);
+        }
+        return adjusted;
+    }
+
+    public int ensureLastAssistantMessageInTail(List<Message> messages, int tailStart, CompactionBudget budget) {
+        return ensureLastAssistantMessageInTail(messages, tailStart, 0);
+    }
+
+    public int ensureLastAssistantMessageInTail(List<Message> messages, int tailStart, int headEnd) {
+        if (messages == null || messages.isEmpty()) {
+            return 0;
+        }
+        int n = messages.size();
+        int cut = Math.max(0, Math.min(tailStart, n));
+        int head = Math.max(0, Math.min(headEnd, n));
+        int lastAsst = -1;
+        for (int i = n - 1; i >= head; i--) {
+            if (isVisibleAssistant(messages.get(i))) {
+                lastAsst = i;
+                break;
+            }
+        }
+        if (lastAsst < 0 || lastAsst >= cut) {
+            return cut;
+        }
+        int aligned = adjustIndexToPreserveToolPairs(messages, lastAsst);
+        return Math.max(aligned, head + 1);
+    }
+
+    int findTurnPairEnd(List<Message> messages, int userIdx) {
+        int n = messages.size();
+        int idx = userIdx + 1;
+        if (idx >= n) {
+            return idx;
+        }
+        Message next = messages.get(idx);
+        if (next == null || next.getRole() != RoleType.ASSISTANT) {
+            return idx;
+        }
+        idx++;
+        while (idx < n && isToolAt(messages, idx)) {
+            idx++;
+        }
+        return idx;
+    }
+
+    private boolean isVisibleAssistant(Message m) {
+        return m != null
+                && m.getRole() == RoleType.ASSISTANT
+                && StringUtils.isNotBlank(m.getContent())
+                && !isCompactSummaryMessage(m)
+                && (m.getToolCalls() == null || m.getToolCalls().isEmpty());
+    }
+
+    public String serializeMiddleForSummarizer(List<Message> middle, CompactionBudget budget) {
+        if (middle == null || middle.isEmpty()) return "";
+        StringBuilder all = new StringBuilder();
+        int max = Math.max(1, budget.getContentMaxChars());
+        for (Message m : middle) {
+            if (m == null || m.getRole() == RoleType.SYSTEM) continue;
+            String label = m.getRole() == RoleType.TOOL ? "[TOOL RESULT " + StringUtils.defaultString(m.getToolCallId()) + "]: " : "[" + m.getRole().name() + "]: ";
+            String text = StringUtils.defaultString(m.getContent());
+            if (StringUtils.isNotBlank(m.getBase64Image())) text += " [image]";
+            if (m.getRole() == RoleType.ASSISTANT && m.getToolCalls() != null) {
+                for (ToolCall call : m.getToolCalls()) {
+                    if (call == null) continue;
+                    String args = call.getFunction() == null ? "" : StringUtils.defaultString(call.getFunction().getArguments());
+                    int argLimit = Math.max(64, max / 2);
+                    text += " [tool " + StringUtils.defaultString(call.getFunction() == null ? null : call.getFunction().getName())
+                            + " args=" + (args.length() > argLimit ? args.substring(0, argLimit) + "...[truncated]" : args) + "]";
+                }
+            }
+            if (text.length() > max) {
+                int head = Math.min(Math.max(0, budget.getContentHeadChars()), text.length());
+                int tail = Math.min(Math.max(0, budget.getContentTailChars()), Math.max(0, text.length() - head));
+                text = text.substring(0, head) + "\n...[truncated]...\n" + text.substring(text.length() - tail);
+                if (text.length() > max) {
+                    text = text.substring(0, max);
+                }
+            }
+            all.append(label).append(text).append('\n');
+        }
+        int limit = Math.max(1, budget.getSummaryInputMaxChars());
+        if (all.length() <= limit) return all.toString().trim();
+        int tail = Math.min(limit / 3, all.length());
+        return all.substring(0, limit - tail) + "\n...[middle input omitted]...\n" + all.substring(all.length() - tail);
+    }
+
+    public String buildStaticFallbackSummary(List<Message> middle, String previousSummary, String latestUser) {
+        StringBuilder out = new StringBuilder();
+        out.append("## Historical Task Snapshot\n").append(StringUtils.defaultString(latestUser, "Earlier conversation context")).append('\n');
+        out.append("## Goal\n").append(StringUtils.defaultString(previousSummary, "Continue the active task.")).append('\n');
+        out.append("## Constraints & Preferences\nPreserve user requirements and existing behavior.\n## Completed Actions\n");
+        out.append(serializeMiddleForSummarizer(middle, CompactionBudget.defaults())).append("\n## Active State\nContinue from the latest preserved messages.\n");
+        out.append("## Blocked\nNone recorded.\n## Key Decisions\nUse the available conversation facts.\n## Resolved Questions\nNone recorded.\n## Relevant Files\nSee checkpoint content.\n## Critical Context\nEarlier turns were compacted.\n");
+        return out.toString().trim();
+    }
+
+    public RoleType chooseHandoffRole(List<Message> head, List<Message> tail) {
+        RoleType lastHead = visibleRole(head, true);
+        RoleType firstTail = visibleRole(tail, false);
+        boolean survivingUser = hasSurvivingUser(head) || hasSurvivingUser(tail);
+
+        // 无存活 user → 强制 USER；若与 firstTail 冲突则走 merge
+        if (!survivingUser) {
+            return firstTail == RoleType.USER ? null : RoleType.USER;
+        }
+        // head 无可见角色 → 强制 leading USER
+        if (lastHead == null) {
+            return firstTail == RoleType.USER ? null : RoleType.USER;
+        }
+        // 优先与 head 交替
+        RoleType preferred = lastHead == RoleType.USER ? RoleType.ASSISTANT : RoleType.USER;
+        if (firstTail != null && preferred == firstTail) {
+            return null;
+        }
+        return preferred;
+    }
+
+    public List<Message> mergeHandoffIntoTail(List<Message> tail, String wrappedSummary) {
+        List<Message> result = new ArrayList<>(tail == null ? List.of() : tail);
+        String summaryBlock = normalizeSummaryBlock(wrappedSummary);
+        for (int i = 0; i < result.size(); i++) {
+            Message m = result.get(i);
+            if (m != null && m.getRole() != RoleType.TOOL) {
+                String original = StringUtils.defaultString(m.getContent());
+                String merged = CompactionPrompt.MERGE_PRIOR + "\n"
+                        + original + "\n\n"
+                        + CompactionPrompt.MERGE_DELIMITER + "\n"
+                        + summaryBlock;
+                result.set(i, Message.builder()
+                        .role(m.getRole())
+                        .originMessageKey(m.getOriginMessageKey())
+                        .content(merged)
+                        .toolCallId(m.getToolCallId())
+                        .toolCalls(m.getToolCalls())
+                        .build());
+                return List.copyOf(result);
+            }
+        }
+        // 空 tail / 纯 TOOL：强制插入 USER handoff，避免 checkpoint 丢失
+        List<Message> forced = new ArrayList<>();
+        forced.add(Message.userMessage(summaryBlock, null));
+        forced.addAll(result);
+        return List.copyOf(forced);
+    }
+
+    public List<Message> buildPostCompactMessages(List<Message> head, String handoffContent, RoleType handoffRole, List<Message> tail) {
+        RoleType role = handoffRole == null ? chooseHandoffRole(head, tail) : handoffRole;
+        List<Message> result = new ArrayList<>(head == null ? List.of() : head);
+        if (role == null) {
+            result.addAll(mergeHandoffIntoTail(tail, handoffContent));
+            return sanitizeToolProtocol(result);
+        }
+        result.add(Message.builder().role(role).content(handoffContent).build());
+        if (tail != null) {
+            result.addAll(tail);
+        }
+        return sanitizeToolProtocol(result);
+    }
+
+    private String normalizeSummaryBlock(String wrappedSummary) {
+        String summaryBlock = StringUtils.defaultString(wrappedSummary).trim();
+        if (!summaryBlock.contains(CompactionPrompt.CONTEXT_COMPACTION_PREFIX)) {
+            summaryBlock = CompactionPrompt.wrapSummaryForReinject(
+                    CompactionPrompt.unwrapHandoffBody(summaryBlock), false);
+        }
+        return summaryBlock;
+    }
+
+    private RoleType visibleRole(List<Message> messages, boolean fromEnd) {
+        if (messages == null || messages.isEmpty()) {
+            return null;
+        }
+        for (int n = 0; n < messages.size(); n++) {
+            Message m = messages.get(fromEnd ? messages.size() - n - 1 : n);
+            if (m == null || m.getRole() == null || m.getRole() == RoleType.TOOL || m.getRole() == RoleType.SYSTEM) {
+                continue;
+            }
+            if (isCompactSummaryMessage(m)) {
+                continue;
+            }
+            if (m.getRole() == RoleType.USER) {
+                if (StringUtils.isNotBlank(m.getContent())) {
+                    return RoleType.USER;
+                }
+                continue;
+            }
+            if (m.getRole() == RoleType.ASSISTANT) {
+                boolean hasTools = m.getToolCalls() != null && !m.getToolCalls().isEmpty();
+                boolean hasText = StringUtils.isNotBlank(m.getContent());
+                if (hasTools && !hasText) {
+                    continue;
+                }
+                if (hasText || hasTools) {
+                    return RoleType.ASSISTANT;
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean hasSurvivingUser(List<Message> messages) {
+        if (messages == null) {
+            return false;
+        }
+        for (Message m : messages) {
+            if (m != null
+                    && m.getRole() == RoleType.USER
+                    && StringUtils.isNotBlank(m.getContent())
+                    && !isCompactSummaryMessage(m)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * 组装 post-compact 消息：summary + recent tail。
      */
@@ -307,7 +784,7 @@ public final class WorkingMemoryCompactor {
         if (messagesToKeep != null && !messagesToKeep.isEmpty()) {
             result.addAll(messagesToKeep);
         }
-        return List.copyOf(result);
+        return sanitizeToolProtocol(result);
     }
 
     /**
@@ -353,12 +830,83 @@ public final class WorkingMemoryCompactor {
             }
             prepared.add(Message.builder()
                     .role(message.getRole())
+                    .originMessageKey(message.getOriginMessageKey())
                     .content(content)
                     .toolCallId(message.getToolCallId())
                     .toolCalls(message.getToolCalls())
                     .build());
         }
         return prepared;
+    }
+
+    /**
+     * 压缩后协议清洗（对齐 Hermes _sanitize_tool_pairs）：
+     * 孤立 tool_result 直接丢弃；没有 result 的 assistant tool_call 从列表里剥掉。
+     */
+    public List<Message> sanitizeToolProtocol(List<Message> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return messages == null ? List.of() : List.copyOf(messages);
+        }
+        Set<String> survivingCallIds = new HashSet<>();
+        Set<String> resultCallIds = new HashSet<>();
+        for (Message m : messages) {
+            if (m == null) {
+                continue;
+            }
+            if (m.getRole() == RoleType.ASSISTANT && m.getToolCalls() != null) {
+                for (ToolCall tc : m.getToolCalls()) {
+                    if (tc != null && StringUtils.isNotBlank(tc.getId())) {
+                        survivingCallIds.add(tc.getId());
+                    }
+                }
+            }
+            if (m.getRole() == RoleType.TOOL && StringUtils.isNotBlank(m.getToolCallId())) {
+                resultCallIds.add(m.getToolCallId());
+            }
+        }
+        Set<String> orphanedResults = new HashSet<>(resultCallIds);
+        orphanedResults.removeAll(survivingCallIds);
+        Set<String> missingResults = new HashSet<>(survivingCallIds);
+        missingResults.removeAll(resultCallIds);
+        if (orphanedResults.isEmpty() && missingResults.isEmpty()) {
+            return List.copyOf(messages);
+        }
+        List<Message> result = new ArrayList<>(messages.size());
+        for (Message m : messages) {
+            if (m == null) {
+                continue;
+            }
+            if (m.getRole() == RoleType.TOOL && orphanedResults.contains(m.getToolCallId())) {
+                continue;
+            }
+            if (m.getRole() == RoleType.ASSISTANT && m.getToolCalls() != null && !missingResults.isEmpty()) {
+                List<ToolCall> kept = new ArrayList<>();
+                for (ToolCall tc : m.getToolCalls()) {
+                    if (tc == null || StringUtils.isBlank(tc.getId()) || !missingResults.contains(tc.getId())) {
+                        if (tc != null) {
+                            kept.add(tc);
+                        }
+                    }
+                }
+                if (kept.size() != m.getToolCalls().size()) {
+                    Message.MessageBuilder builder = Message.builder()
+                            .role(RoleType.ASSISTANT)
+                            .originMessageKey(m.getOriginMessageKey())
+                            .content(m.getContent())
+                            .reasoningContent(m.getReasoningContent())
+                            .base64Image(m.getBase64Image());
+                    if (!kept.isEmpty()) {
+                        builder.toolCalls(kept);
+                    } else if (StringUtils.isBlank(m.getContent())) {
+                        builder.content("(tool call removed)");
+                    }
+                    result.add(builder.build());
+                    continue;
+                }
+            }
+            result.add(m);
+        }
+        return List.copyOf(result);
     }
 
     /**

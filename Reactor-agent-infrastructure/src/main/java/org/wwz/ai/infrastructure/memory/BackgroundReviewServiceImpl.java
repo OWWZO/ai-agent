@@ -8,10 +8,12 @@ import org.wwz.ai.domain.agent.memory.ltm.BackgroundReviewService;
 import org.wwz.ai.domain.agent.memory.ltm.CuratedMemoryStore;
 import org.wwz.ai.domain.agent.memory.ltm.LtmAgentForkSupport;
 import org.wwz.ai.domain.agent.memory.ltm.LtmForkExecutionEvent;
+import org.wwz.ai.domain.agent.memory.ltm.LtmForkParity;
 import org.wwz.ai.domain.agent.memory.ltm.LtmForkRunResult;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
+import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.infrastructure.dao.reactor.ILtmForkExecutionDao;
 
 import java.util.ArrayList;
@@ -21,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 同 runtime 全量 messages 重放 + 仅 memory 工具的后台 fork。
+ * Hermes 对齐后台 review：父 system/tools 原样 + 全量 messages + runtime memory 白名单。
  */
 @Slf4j
 @Service
@@ -68,7 +70,8 @@ public class BackgroundReviewServiceImpl implements BackgroundReviewService {
                                               String userQuery,
                                               String assistantSummary,
                                               List<Message> conversationSnapshot,
-                                              String parentSystemPrompt) {
+                                              String parentSystemPrompt,
+                                              ToolCollection parentTools) {
         if (!enabled) {
             log.info("background-review skip reason=disabled sessionId={}", sessionId);
             return;
@@ -82,10 +85,17 @@ public class BackgroundReviewServiceImpl implements BackgroundReviewService {
             log.info("background-review skip reason=blank-sessionId");
             return;
         }
+        // 嵌套 fork 自身不再调度
+        if (StringUtils.isNotBlank(requestId)
+                && (requestId.contains("-flush") || requestId.contains("-bg-review"))) {
+            return;
+        }
         int count = turnCounters.computeIfAbsent(sessionId, k -> new AtomicInteger(0)).incrementAndGet();
-        log.info("background-review tick sessionId={} count={}/{} requestId={} snapshotMsgs={}",
+        log.info("background-review tick sessionId={} count={}/{} requestId={} snapshotMsgs={} hasSystem={} hasTools={}",
                 sessionId, count, nudgeInterval, requestId,
-                conversationSnapshot == null ? 0 : conversationSnapshot.size());
+                conversationSnapshot == null ? 0 : conversationSnapshot.size(),
+                StringUtils.isNotBlank(parentSystemPrompt),
+                parentTools != null);
         if (count % nudgeInterval != 0) {
             log.info("background-review skip reason=interval sessionId={} count={} needMultipleOf={}",
                     sessionId, count, nudgeInterval);
@@ -101,10 +111,11 @@ public class BackgroundReviewServiceImpl implements BackgroundReviewService {
                 ? List.of()
                 : new ArrayList<>(conversationSnapshot);
         String system = parentSystemPrompt;
+        ToolCollection tools = parentTools;
 
         Thread t = new Thread(() -> {
             try {
-                runReviewFork(sessionId, requestId, owner, snapshot, system);
+                runReviewFork(sessionId, requestId, owner, snapshot, system, tools);
             } catch (Exception e) {
                 log.warn("background-review fork error sessionId={}: {}", sessionId, e.toString(), e);
                 recordSkip(sessionId, requestId, owner, snapshot, "thread-error");
@@ -121,7 +132,8 @@ public class BackgroundReviewServiceImpl implements BackgroundReviewService {
                                String requestId,
                                LtmOwner owner,
                                List<Message> snapshot,
-                               String parentSystemPrompt) {
+                               String parentSystemPrompt,
+                               ToolCollection parentTools) {
         CuratedMemoryStore store = curatedMemoryStoreProvider.getIfAvailable();
         ReactorRuntimeDependencies deps = runtimeDependenciesProvider.getIfAvailable();
         if (store == null || deps == null) {
@@ -131,16 +143,19 @@ public class BackgroundReviewServiceImpl implements BackgroundReviewService {
                     store == null ? "store-null" : "deps-null");
             return;
         }
-        log.info("background-review fork start sessionId={} snapshotMsgs={}", sessionId,
-                snapshot == null ? 0 : snapshot.size());
-        LtmForkRunResult result = LtmAgentForkSupport.runMemoryOnlyFork(
+        LtmForkParity parity = LtmForkParity.forReview(parentSystemPrompt, parentTools, snapshot);
+        log.info("background-review fork start sessionId={} snapshotMsgs={} paritySystem={} parityTools={}",
+                sessionId,
+                snapshot == null ? 0 : snapshot.size(),
+                parity.hasSystemPrompt(),
+                parity.hasParentTools());
+        LtmForkRunResult result = LtmAgentForkSupport.runParityFork(
                 deps,
                 store,
                 owner,
                 sessionId,
                 requestId,
-                parentSystemPrompt,
-                snapshot,
+                parity,
                 LtmAgentForkSupport.REVIEW_DIRECTIVE,
                 maxSteps,
                 timeoutSeconds,
