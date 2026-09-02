@@ -109,10 +109,7 @@ autobots:
       system_prompt: "..."
       max_steps: 40
     tool:
-      plan_tool: {...}
       code_agent: {...}
-      report_tool: {...}
-      file_tool: {...}
       deep_search_tool: {...}
 ```
 

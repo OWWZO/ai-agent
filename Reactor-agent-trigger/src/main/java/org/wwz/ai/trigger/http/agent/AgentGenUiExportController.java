@@ -19,7 +19,7 @@ import java.util.Map;
  *
  * <p>导出器消费的是通用树结构和模式参数，Controller 只负责提取请求字段、设置
  * 下载文件名与媒体类型，并将参数错误和服务端异常转换为 HTTP 响应。该入口不取代
- * Agent 的 {@code report_tool}，两者分别服务于显式导出请求和 Agent 工具调用。</p>
+ * Agent 的文档生成工具，两者分别服务于显式导出请求和 Agent 工具调用。</p>
  */
 @Slf4j
 @RestController

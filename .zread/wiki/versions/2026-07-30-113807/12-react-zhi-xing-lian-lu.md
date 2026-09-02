@@ -194,7 +194,7 @@ Sources: [ReActAgent.java](Reactor-agent-domain/src/main/java/org/wwz/ai/domain/
 
 - `name = "react"`。
 - 从 `ReactorRuntimeDependencies` 取 `ReactorConfig`：系统/下一步提示 map、`reactMaxSteps`、`reactModelName`、数字员工提示。
-- `initializePromptsWithHistoryOnlyInSystem(...)`，默认模板来自 `ToolCallPrompt.SYSTEM_PROMPT` / 空的 `NEXT_STEP_PROMPT`。
+- `initializePromptsWithHistoryOnlyInSystem(...)`，默认模板来自 `AgentPrompt.SYSTEM_PROMPT` / 空的 `NEXT_STEP_PROMPT`。
 - `availableTools = context.getToolCollection()`。
 
 Sources: [ReactImplAgent.java](Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/agent/ReactImplAgent.java#L61-L100)
@@ -238,7 +238,7 @@ flowchart TD
 
 ## 5. 提示词契约与终答模型
 
-`ToolCallPrompt` 把 **USER_FACING_REPLY_CONTRACT_V3** 固化进 system：
+`AgentPrompt` 把 **USER_FACING_REPLY_CONTRACT_V3** 固化进 system：
 
 - 本轮**不调用工具**时，assistant 文本即最终用户回复。
 - 禁止把思考过程、工具计划当终答；不要使用 `Finish[...]`。
@@ -247,7 +247,7 @@ flowchart TD
 
 `ensureUserFacingReplyContract` 保证配置覆盖默认模板时仍合并该契约，并剥离历史 V1/V2 块。
 
-Sources: [ToolCallPrompt.java](Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/prompt/ToolCallPrompt.java#L1-L126)
+Sources: [AgentPrompt.java](Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/prompt/AgentPrompt.java#L1-L126)
 
 这与 `RunReactNode.resolveFinalAnswer`、`SummaryResultNode` 的 `$$$` 解析形成**提示词 → 内核结束条件 → 结果协议**的闭环，避免把中间 thought 或工具聚合串误当成用户可见回复。
 
@@ -255,7 +255,7 @@ Sources: [ToolCallPrompt.java](Reactor-agent-domain/src/main/java/org/wwz/ai/dom
 
 | 配置键 / 字段 | 作用 |
 |---------------|------|
-| `autobots.autoagent.react.system_prompt` | ReAct system 提示 map（可覆盖默认 `ToolCallPrompt`） |
+| `autobots.autoagent.react.system_prompt` | ReAct system 提示 map（可覆盖默认 `AgentPrompt`） |
 | `autobots.autoagent.react.next_step_prompt` | 下一步提示 map（实现中 nextStep 已弱化/可空） |
 | `autobots.autoagent.react.model_name` | ReAct 专用模型名（默认 `qwen-vl-max`） |
 | `reactMaxSteps`（`ReactorConfig`） | 最大 think/act 步数，防止无限循环 |
@@ -289,7 +289,7 @@ Sources: [ReactImplAgent.java](Reactor-agent-domain/src/main/java/org/wwz/ai/dom
 2. `DefaultReactAgentExecuteStrategyFactory` → `RootNode` → `RunReactNode` → `SummaryResultNode`
 3. `ReactImplAgent` 构造 / `think` / `act`
 4. `BaseAgent.run` 主循环与记忆预装
-5. `ToolCallPrompt` 终答契约 + `RunReactNode.resolveFinalAnswer`
+5. `AgentPrompt` 终答契约 + `RunReactNode.resolveFinalAnswer`
 
 需要对比「先规划再执行」时，进入 [Plan-Execute 执行链路](13-plan-execute-zhi-xing-lian-lu)；需要看 ReAct 与 Plan 如何在同一会话切换时，进入 [混合模式与动态 Replan](14-hun-he-mo-shi-yu-dong-tai-replan)。工具注册细节见 [工具集合与产物登记](16-gong-ju-ji-he-yu-chan-wu-deng-ji)。
 
