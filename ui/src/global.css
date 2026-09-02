@@ -1380,7 +1380,9 @@ ol {
 }
 
 .agent-step-timeline [data-slot="collapsible-content"][data-state="closed"] {
-  animation: timelineCollapseClose 0.16s var(--ease-out);
+  height: 0;
+  opacity: 0;
+  animation: timelineCollapseClose 0.16s var(--ease-out) forwards;
 }
 
 @keyframes timelineCollapseOpen {
@@ -1473,16 +1475,42 @@ ol {
 .kimi-tool-row-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   min-height: 30px;
   width: 100%;
   padding: 0 11px;
   border: none;
   background: transparent;
-  cursor: pointer;
   font: var(--text-sm) / 1.4 var(--font-mono);
   color: var(--color-text);
   text-align: left;
+}
+
+.kimi-tool-row-head-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.kimi-tool-row-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--color-text-faint);
 }
 
 .kimi-tool-row.is-open .kimi-tool-row-head,
@@ -1752,6 +1780,26 @@ ol {
 .kimi-tool-output-empty {
   color: var(--color-text-muted);
   font-style: italic;
+}
+
+.kimi-tool-json {
+  max-height: min(420px, 42vh);
+  overflow: auto;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-line-strong) 60%, var(--color-line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-surface) 78%, var(--color-surface-sunken));
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+}
+
+.kimi-tool-output .kimi-tool-json {
+  max-height: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .kimi-tool-output.is-error {
@@ -2151,48 +2199,69 @@ ol {
   }
 }
 
-/* Kimi thinking block / panel */
+/* Kimi thinking block / panel — 标题点击折叠，不用 0fr grid（易被内容 min-size 顶开） */
 .kimi-think {
   margin: 0;
 }
 
-.kimi-think-wrap {
-  display: grid;
-  grid-template-rows: 1fr 0fr;
+.kimi-think-trigger {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.kimi-think[data-open="false"] .kimi-think-live,
+.kimi-think[data-open="false"] .kimi-think-teaser {
+  display: none;
+}
+
+.kimi-think-label {
+  font: var(--text-base) / var(--leading-relaxed) var(--font-ui);
+  font-weight: 500;
+  color: var(--chat-text-muted);
+}
+
+.kimi-think-duration {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--chat-text-faint);
+}
+
+.kimi-think-extra {
+  display: inline-flex;
+  align-items: center;
+}
+
+.kimi-think-chevron {
+  flex: none;
+}
+
+.kimi-think-teaser {
+  display: block;
   width: 100%;
   padding: 0;
   border: none;
   background: transparent;
   text-align: left;
   cursor: pointer;
-  transition: grid-template-rows var(--duration-slow) var(--ease-out);
-}
-
-.kimi-think-wrap.is-collapsed {
-  grid-template-rows: 0fr 1fr;
-}
-
-.kimi-think-anim,
-.kimi-think-prev-anim {
-  overflow: hidden;
-  min-height: 0;
-}
-
-.kimi-think-wrap.is-collapsed:hover .kimi-think-teaser {
-  color: var(--color-text);
-}
-
-.kimi-think-wrap:not(.is-collapsed):hover .kimi-think-live {
-  color: var(--color-text-muted);
-}
-
-.kimi-think-teaser {
   color: var(--color-text-faint);
   font: var(--text-base) / var(--leading-relaxed) var(--font-ui);
   font-weight: 425;
   white-space: pre-wrap;
   word-break: break-word;
-  display: block;
+  max-height: calc(var(--leading-relaxed) * 1em * 2);
+  overflow: hidden;
+}
+
+.kimi-think-teaser:hover {
+  color: var(--color-text);
 }
 
 .kimi-think-live {
@@ -2204,6 +2273,7 @@ ol {
   margin: 0;
   max-height: calc(var(--leading-relaxed) * 1em * 5);
   overflow-y: auto;
+  cursor: pointer;
 }
 
 .kimi-thinking-panel {
