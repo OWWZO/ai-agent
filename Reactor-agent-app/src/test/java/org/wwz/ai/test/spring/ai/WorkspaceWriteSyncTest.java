@@ -11,9 +11,11 @@ import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
+import org.wwz.ai.domain.agent.runtime.dto.CodeInterpreterResponse;
 import org.wwz.ai.domain.agent.runtime.dto.FileRequest;
 import org.wwz.ai.domain.agent.runtime.dto.FileResponse;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
+import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspacePathGuard;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceRuntimeOptions;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
@@ -84,23 +86,37 @@ public class WorkspaceWriteSyncTest {
 
     @Test
     public void shouldWriteLocallyAndRegisterWithoutUpload() throws Exception {
-        String result = String.valueOf(writeTool.execute(Map.of(
+        ToolResultPayload result = (ToolResultPayload) writeTool.execute(Map.of(
                 "path", "out/report.md",
                 "content", "hello sync"
-        )));
+        ));
 
-        Assert.assertTrue(result.contains("已写入文件"));
-        Assert.assertTrue(result.contains("已登记预览"));
+        Assert.assertTrue(result.getLlmData() instanceof Map<?, ?>);
+        Map<?, ?> resultData = (Map<?, ?>) result.getLlmData();
+        Assert.assertEquals("out/report.md", resultData.get("path"));
+        Assert.assertEquals(10, resultData.get("chars"));
+        Assert.assertFalse(resultData.containsKey("registerNote"));
         Assert.assertTrue(Files.isRegularFile(workspaceRoot.resolve("out/report.md")));
         Assert.assertEquals("hello sync", Files.readString(workspaceRoot.resolve("out/report.md"), StandardCharsets.UTF_8));
 
         ArgumentCaptor<FileRequest> captor = ArgumentCaptor.forClass(FileRequest.class);
         Mockito.verify(fileArtifactPort).register(Mockito.eq("http://127.0.0.1:1601"), captor.capture());
         Mockito.verify(fileArtifactPort, Mockito.never()).upload(Mockito.anyString(), Mockito.any());
-        Assert.assertEquals("report.md", captor.getValue().getFileName());
+        Assert.assertEquals("out/report.md", captor.getValue().getFileName());
         Assert.assertNull(captor.getValue().getContent());
         Assert.assertTrue(captor.getValue().getLocalPath().replace('\\', '/').endsWith("out/report.md"));
-        Mockito.verify(printer).send(Mockito.eq("file"), Mockito.any(), Mockito.isNull());
+        ArgumentCaptor<Map> eventCaptor = ArgumentCaptor.forClass(Map.class);
+        Mockito.verify(printer).send(Mockito.eq("file"), eventCaptor.capture(), Mockito.isNull());
+        Map<?, ?> fileEvent = eventCaptor.getValue();
+        Assert.assertEquals(Boolean.TRUE, fileEvent.get("fileListOnly"));
+        Assert.assertEquals("out/report.md", fileEvent.get("relativePath"));
+        Assert.assertEquals("session-write-001", fileEvent.get("sessionId"));
+        Assert.assertEquals(1, ((java.util.List<?>) fileEvent.get("fileInfo")).size());
+        CodeInterpreterResponse.FileInfo info =
+                (CodeInterpreterResponse.FileInfo) ((java.util.List<?>) fileEvent.get("fileInfo")).get(0);
+        Assert.assertEquals("out/report.md", info.getRelativePath());
+        Assert.assertEquals("http://127.0.0.1:1601/v1/file_tool/preview/session-write-001/report.md",
+                info.getDomainUrl());
         Assert.assertFalse(agentContext.getVisibleArtifactFiles().isEmpty());
     }
 }

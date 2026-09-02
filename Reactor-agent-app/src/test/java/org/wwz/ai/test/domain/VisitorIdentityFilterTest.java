@@ -146,6 +146,26 @@ public class VisitorIdentityFilterTest {
         Assert.assertEquals("visitor-plan-approval", visitorSeenInChain.get());
     }
 
+    @Test
+    public void shouldBindVisitorForWorkspaceArchiveEndpoint() throws Exception {
+        AnonymousVisitorApplicationService service = Mockito.mock(AnonymousVisitorApplicationService.class);
+        Mockito.when(service.resolveOrCreate(Mockito.isNull(), Mockito.any(), Mockito.any()))
+                .thenReturn(AnonymousVisitorIdentity.builder()
+                        .visitorId("visitor-workspace")
+                        .rawToken("token-workspace")
+                        .newlyCreated(false)
+                        .build());
+        VisitorIdentityFilter filter = new VisitorIdentityFilter(service, buildCookieProperties(false, "Lax"));
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "GET", "/api/agent/workspace/session-1/archive");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicReference<String> visitorSeenInChain = new AtomicReference<>();
+
+        filter.doFilter(request, response, captureVisitorChain(visitorSeenInChain));
+
+        Assert.assertEquals("visitor-workspace", visitorSeenInChain.get());
+    }
+
     private FilterChain captureVisitorChain(AtomicReference<String> visitorSeenInChain) {
         return (request, response) -> visitorSeenInChain.set(VisitorRequestContext.currentVisitorId());
     }

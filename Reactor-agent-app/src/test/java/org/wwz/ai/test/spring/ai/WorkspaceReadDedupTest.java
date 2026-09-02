@@ -7,7 +7,9 @@ import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentContextFactory;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRegistry;
 import org.wwz.ai.domain.agent.runtime.tool.ContextScopedTool;
+import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
+import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceEditTool;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspacePathGuard;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadTool;
@@ -120,10 +122,14 @@ public class WorkspaceReadDedupTest {
 
     @Test
     public void shouldReturnTextMetadataAndImageContentBlock() throws Exception {
-        String text = String.valueOf(readTool.execute(Map.of("file_path", "demo.txt", "offset", 2, "limit", 1)));
-        Assert.assertTrue(text.contains("\"type\":\"text\""));
-        Assert.assertTrue(text.contains("\"startLine\":2"));
-        Assert.assertTrue(text.contains("beta"));
+        ToolResultPayload textPayload = (ToolResultPayload) readTool.execute(
+                Map.of("file_path", "demo.txt", "offset", 2, "limit", 1));
+        Assert.assertTrue(textPayload.getLlmData() instanceof Map<?, ?>);
+        Map<?, ?> textData = (Map<?, ?>) textPayload.getLlmData();
+        Assert.assertEquals("text", textData.get("type"));
+        Assert.assertEquals(2, textData.get("startLine"));
+        Assert.assertTrue(String.valueOf(textData.get("content")).contains("beta"));
+        Assert.assertFalse(textData.containsKey("file"));
 
         Path image = workspaceRoot.resolve("pixel.png");
         Files.write(image, Base64.getDecoder().decode("iVBORw0KGgo="));
@@ -136,7 +142,27 @@ public class WorkspaceReadDedupTest {
         Assert.assertEquals("image/png", payload.getImageMimeType());
         String llmData = String.valueOf(payload.getLlmData());
         Assert.assertTrue(llmData.contains("type=image") || llmData.contains("\"type\":\"image\""));
+        Assert.assertTrue(payload.getLlmData() instanceof Map<?, ?>);
+        Assert.assertFalse(((Map<?, ?>) payload.getLlmData()).containsKey("file"));
         Assert.assertFalse("observation must not embed full image base64",
                 llmData.contains("base64=") || llmData.contains("\"base64\""));
+    }
+
+    @Test
+    public void shouldExposeTextContentOnlyOnceInLlmObservation() {
+        Object raw = readTool.execute(Map.of("path", "demo.txt", "start_line", 1, "line_count", 20));
+        Assert.assertTrue(raw instanceof ToolResultPayload);
+
+        ToolResultPayload payload = (ToolResultPayload) raw;
+        Assert.assertTrue(payload.getLlmData() instanceof Map<?, ?>);
+        Map<?, ?> data = (Map<?, ?>) payload.getLlmData();
+        Assert.assertTrue(String.valueOf(data.get("content")).contains("1 | alpha"));
+
+        Assert.assertFalse(data.containsKey("file"));
+        Assert.assertEquals(2, data.get("totalLines"));
+        Assert.assertEquals(2, data.get("numLines"));
+
+        String observation = ToolObservationSerializer.serializePayload(payload);
+        Assert.assertEquals(observation.indexOf("1 | alpha"), observation.lastIndexOf("1 | alpha"));
     }
 }
