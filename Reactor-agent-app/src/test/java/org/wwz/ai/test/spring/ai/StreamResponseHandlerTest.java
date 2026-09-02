@@ -17,10 +17,17 @@ import org.wwz.ai.domain.agent.runtime.llm.StreamResponseHandler;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.FluxSink;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * StreamResponseHandler 测试
@@ -189,6 +196,120 @@ public class StreamResponseHandlerTest {
 
         Assert.assertNotNull(response.getStreamMessageId());
         Assert.assertTrue(printer.messages.isEmpty());
+    }
+
+    @Test
+    public void test_handleToolCallStreamTimeoutDisposesAndIgnoresLateChunks() throws Exception {
+        StreamResponseHandler handler = new StreamResponseHandler();
+        ReactorConfig reactorConfig = new ReactorConfig();
+        reactorConfig.setMessageInterval("{\"llm\":\"1,1\"}");
+        ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
+        ReflectionTestUtils.setField(handler, "chatResponseMapper", new LlmChatResponseMapper());
+
+        RecordingPrinter printer = new RecordingPrinter();
+        AgentContext context = AgentContext.builder()
+                .requestId("req-timeout")
+                .isStream(true)
+                .streamMessageType("tool_thought")
+                .printer(printer)
+                .build();
+
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+        AtomicReference<FluxSink<ChatResponse>> sinkRef = new AtomicReference<>();
+        Flux<ChatResponse> flux = Flux.create(emitter -> {
+            sinkRef.set(emitter);
+            emitter.onDispose(() -> cancelled.set(true));
+        }, FluxSink.OverflowStrategy.BUFFER);
+        CompletableFuture<LLM.ToolCallResponse> future = handler.handleToolCallStream(
+                context,
+                flux,
+                System.currentTimeMillis(),
+                true,
+                1
+        );
+
+        try {
+            future.get(3, TimeUnit.SECONDS);
+            Assert.fail("expected timeout");
+        } catch (ExecutionException e) {
+            Assert.assertTrue(e.getCause() instanceof TimeoutException);
+        }
+        awaitCancelled(cancelled);
+        Assert.assertTrue(future.isCompletedExceptionally());
+
+        FluxSink<ChatResponse> sink = sinkRef.get();
+        if (sink != null) {
+            try {
+                sink.next(textChunk("late-chunk"));
+                sink.complete();
+            } catch (Exception ignored) {
+            }
+        }
+        Thread.sleep(200);
+        Assert.assertTrue(printer.messages.stream().noneMatch(
+                message -> String.valueOf(message.message).contains("late-chunk")));
+        Assert.assertTrue(future.isCompletedExceptionally());
+    }
+
+    @Test
+    public void test_handleStringStreamTimeoutDisposesAndIgnoresLateChunks() throws Exception {
+        StreamResponseHandler handler = new StreamResponseHandler();
+        ReactorConfig reactorConfig = new ReactorConfig();
+        reactorConfig.setMessageInterval("{\"llm\":\"1,1\"}");
+        ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
+        ReflectionTestUtils.setField(handler, "chatResponseMapper", new LlmChatResponseMapper());
+
+        RecordingPrinter printer = new RecordingPrinter();
+        AgentContext context = AgentContext.builder()
+                .requestId("req-string-timeout")
+                .isStream(true)
+                .streamMessageType("tool_thought")
+                .printer(printer)
+                .build();
+
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+        AtomicReference<FluxSink<ChatResponse>> sinkRef = new AtomicReference<>();
+        Flux<ChatResponse> flux = Flux.create(emitter -> {
+            sinkRef.set(emitter);
+            emitter.onDispose(() -> cancelled.set(true));
+        }, FluxSink.OverflowStrategy.BUFFER);
+        CompletableFuture<StreamResponseHandler.StringStreamResult> future = handler.handleStringStreamWithUsage(
+                context,
+                flux,
+                null,
+                false,
+                true,
+                1
+        );
+
+        try {
+            future.get(3, TimeUnit.SECONDS);
+            Assert.fail("expected timeout");
+        } catch (ExecutionException e) {
+            Assert.assertTrue(e.getCause() instanceof TimeoutException);
+        }
+        awaitCancelled(cancelled);
+
+        FluxSink<ChatResponse> sink = sinkRef.get();
+        if (sink != null) {
+            try {
+                sink.next(textChunk("late-string"));
+                sink.complete();
+            } catch (Exception ignored) {
+            }
+        }
+        Thread.sleep(200);
+        Assert.assertTrue(printer.messages.stream().noneMatch(
+                message -> String.valueOf(message.message).contains("late-string")));
+        Assert.assertTrue(future.isCompletedExceptionally());
+    }
+
+    private static void awaitCancelled(AtomicBoolean cancelled) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 1000L;
+        while (!cancelled.get() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+        Assert.assertTrue(cancelled.get());
     }
 
     private ChatResponse textChunk(String content) {

@@ -95,6 +95,20 @@ public class DomainMessageConverterTest {
         Assert.assertTrue(imageMessage.getText().contains("call-img"));
     }
 
+    @Test
+    public void test_orphanToolResultIsDroppedInsteadOfThrowing() {
+        DomainMessageConverter converter = newConverter();
+
+        List<org.springframework.ai.chat.messages.Message> converted = converter.convert(List.of(
+                Message.userMessage("continue after compact", null),
+                Message.toolMessage("search done", "call_i5AJ4CBehK9w8ThWiNnoaD3V", null)
+        ));
+
+        Assert.assertEquals(1, converted.size());
+        Assert.assertTrue(converted.get(0) instanceof UserMessage);
+        Assert.assertEquals("continue after compact", converted.get(0).getText());
+    }
+
     private DomainMessageConverter newConverter() {
         DomainMessageConverter converter = new DomainMessageConverter();
         ReactorConfig reactorConfig = new ReactorConfig();
