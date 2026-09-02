@@ -39,7 +39,6 @@ public class AgentQueryServiceVisitorPropagationTest {
     private ReactorConfig buildReactorConfig() {
         ReactorConfig reactorConfig = new ReactorConfig();
         ReflectionTestUtils.setField(reactorConfig, "reactorBasePrompt", "react-base-prompt");
-        ReflectionTestUtils.setField(reactorConfig, "reactorSopPrompt", "plan-sop-prompt");
         ReflectionTestUtils.setField(reactorConfig, "sseClientReadTimeout", 300);
         ReflectionTestUtils.setField(reactorConfig, "sseClientConnectTimeout", 60);
         return reactorConfig;

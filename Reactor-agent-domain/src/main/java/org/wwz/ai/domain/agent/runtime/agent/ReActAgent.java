@@ -160,7 +160,7 @@ public abstract class ReActAgent extends BaseAgent {
      * 格式2：纯JSON字符串（无代码块包裹）
      * @param response LLM返回的原始响应字符串
      * @return JSONObject 解析后的数字员工配置：
-     *         - 成功：返回包含数字员工配置的JSON对象（如{"file_tool": "市场洞察专员"}）
+     *         - 成功：返回包含数字员工配置的 JSON 对象
      *         - 失败：空响应/解析异常时返回null
      */
     private JSONObject parseDigitalEmployee(String response) {
