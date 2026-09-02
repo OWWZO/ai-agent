@@ -21,6 +21,23 @@ public class DataAgentConfig {
     private EsConfig esConfig = new EsConfig();
 
     /**
+     * 为仍由 YAML 描述的数据模型补齐 Java 端固定业务提示。
+     */
+    public List<DataAgentModelConfig> getModelList() {
+        if (modelList != null) {
+            for (DataAgentModelConfig model : modelList) {
+                if (model != null && (model.getBusinessPrompt() == null || model.getBusinessPrompt().isBlank())) {
+                    String prompt = DataAgentPromptTemplates.businessPromptFor(model.getId());
+                    if (prompt != null) {
+                        model.setBusinessPrompt(prompt);
+                    }
+                }
+            }
+        }
+        return modelList;
+    }
+
+    /**
      * 兼容未配置 qdrant 段或外部显式置空的场景，避免启动链路空指针。
      */
     public QdrantConfig getQdrantConfig() {
