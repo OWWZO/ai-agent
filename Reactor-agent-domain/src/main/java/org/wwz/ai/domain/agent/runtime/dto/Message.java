@@ -46,6 +46,9 @@ public class Message {
      */
     private RoleType role;
 
+    /** 工作记忆历史的来源锚点，不参与模型语义。 */
+    private String originMessageKey;
+
     /**
      * 消息文本内容
      * 用途：

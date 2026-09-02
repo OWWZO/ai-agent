@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * file_tool 终态结构化输出。
+ * file_tool 旧账本行的结构化输出模型。
  */
 @Data
 @Builder

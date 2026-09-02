@@ -399,9 +399,12 @@ public class ReplayProjector {
         resultMap.put("finish", run.getStatus() != null && run.getStatus() != ExecutionLedgerConstants.STATUS_RUNNING);
         resultMap.put("result", resolvedSummary.getSummaryText());
         resultMap.put("taskSummary", resolvedSummary.getSummaryText());
-        if (!resolvedSummary.getFileList().isEmpty()) {
-            resultMap.put("fileList", resolvedSummary.getFileList());
-        }
+            if (!resolvedSummary.getFileList().isEmpty()) {
+                resultMap.put("fileList", resolvedSummary.getFileList());
+            }
+            if (!resolvedSummary.getArtifactKeys().isEmpty()) {
+                resultMap.put("artifactKeys", resolvedSummary.getArtifactKeys());
+            }
 
         String taskId = state.getTaskId();
         events.add(ProjectedReplayEvent.builder()
@@ -520,6 +523,9 @@ public class ReplayProjector {
             response.put("taskSummary", resolvedSummary.getSummaryText());
             if (!resolvedSummary.getFileList().isEmpty()) {
                 response.put("fileList", resolvedSummary.getFileList());
+            }
+            if (!resolvedSummary.getArtifactKeys().isEmpty()) {
+                response.put("artifactKeys", resolvedSummary.getArtifactKeys());
             }
         } else {
             response.put("result", invocation.getResponseText());

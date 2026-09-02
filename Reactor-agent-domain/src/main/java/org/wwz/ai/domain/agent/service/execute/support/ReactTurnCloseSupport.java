@@ -1,7 +1,6 @@
 package org.wwz.ai.domain.agent.service.execute.support;
 
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
@@ -11,13 +10,10 @@ import org.wwz.ai.domain.agent.memory.ltm.LtmTurnSyncSupport;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReActAgent;
 import org.wwz.ai.domain.agent.runtime.artifact.TaskSummaryArtifactProtocol;
-import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.dto.TaskSummaryResult;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadStateStore;
 
 import jakarta.annotation.Resource;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -42,23 +38,16 @@ public class ReactTurnCloseSupport {
         }
         persistWorkspaceReadState(agentContext);
 
-        TaskSummaryResult result = TaskSummaryArtifactProtocol.parse(
+        TaskSummaryResult result = TaskSummaryArtifactProtocol.resolveForDelivery(
                 StringUtils.defaultString(rawFinalAnswer),
                 agentContext.getVisibleArtifactBindings()
         );
 
         String taskSummary = StringUtils.defaultString(result.getTaskSummary());
-        Map<String, Object> taskResult = new HashMap<>();
-        taskResult.put("taskSummary", taskSummary);
-
-        if (CollectionUtils.isEmpty(result.getFiles())) {
-            List<File> fileResponses = agentContext.getReversedVisibleArtifactFiles();
-            if (!CollectionUtils.isEmpty(fileResponses)) {
-                taskResult.put("fileList", fileResponses);
-            }
-        } else {
-            taskResult.put("fileList", result.getFiles());
-        }
+        Map<String, Object> taskResult = TaskSummaryArtifactProtocol.toEventPayload(
+                result,
+                agentContext.getVisibleArtifactBindings()
+        );
 
         agentContext.getPrinter().send("result", taskResult);
         ExecutionLedgerRunSupport.finishRun(

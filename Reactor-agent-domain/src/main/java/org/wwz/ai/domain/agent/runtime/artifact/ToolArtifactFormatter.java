@@ -102,6 +102,34 @@ public final class ToolArtifactFormatter {
         return StringUtils.defaultString(source.getToolCallId()) + ARTIFACT_KEY_SEPARATOR + StringUtils.defaultString(file.getFileName());
     }
 
+    public static String normalizeWorkspacePath(String raw) {
+        if (StringUtils.isBlank(raw)) {
+            return "";
+        }
+        String path = raw.replace('\\', '/').trim();
+        while (path.startsWith("./")) {
+            path = path.substring(2);
+        }
+        while (path.startsWith("/")) {
+            path = path.substring(1);
+        }
+        return path;
+    }
+
+    public static String resolveWorkspacePath(File file) {
+        if (file == null) {
+            return "";
+        }
+        return normalizeWorkspacePath(StringUtils.defaultIfBlank(file.getRelativePath(),
+                StringUtils.defaultIfBlank(file.getOriginFileName(), file.getFileName())));
+    }
+
+    public static String workspaceBasename(String path) {
+        String normalized = normalizeWorkspacePath(path);
+        int slash = normalized.lastIndexOf('/');
+        return slash >= 0 ? normalized.substring(slash + 1) : normalized;
+    }
+
     /**
      * 解析文件对外可用的访问地址，按原始 OSS 地址、原始域名地址、OSS 地址、域名地址依次回退。
      *
@@ -135,8 +163,8 @@ public final class ToolArtifactFormatter {
             return "";
         }
         File file = binding.getFile();
-        return String.format("- artifactKey:%s fileName:%s fileDesc:%s",
-                buildArtifactKey(binding),
+        return String.format("- filePath:%s fileName:%s fileDesc:%s",
+                resolveWorkspacePath(file),
                 StringUtils.defaultString(file.getFileName()),
                 StringUtils.defaultString(StringUtils.abbreviate(file.getDescription(), 80)));
     }
@@ -153,9 +181,8 @@ public final class ToolArtifactFormatter {
         }
         File file = binding.getFile();
         ToolArtifactSource source = binding.getSource();
-        return String.format("artifactKey:%s toolCallId:%s toolName:%s fileName:%s fileDesc:%s fileUrl:%s",
-                buildArtifactKey(binding),
-                StringUtils.defaultString(source.getToolCallId()),
+        return String.format("filePath:%s toolName:%s fileName:%s fileDesc:%s fileUrl:%s",
+                resolveWorkspacePath(file),
                 StringUtils.defaultString(source.getToolName()),
                 StringUtils.defaultString(file.getFileName()),
                 StringUtils.defaultString(StringUtils.abbreviate(file.getDescription(), 120)),

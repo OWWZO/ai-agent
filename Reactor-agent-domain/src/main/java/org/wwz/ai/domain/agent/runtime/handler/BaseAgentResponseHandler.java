@@ -272,6 +272,12 @@ public class BaseAgentResponseHandler {
                     if (agentResponse.getResultMap().containsKey("fileList")) {
                         payload.put("fileList", agentResponse.getResultMap().get("fileList"));
                     }
+                    if (agentResponse.getResultMap().containsKey("artifactRefs")) {
+                        payload.put("artifactRefs", agentResponse.getResultMap().get("artifactRefs"));
+                    }
+                    if (agentResponse.getResultMap().containsKey("artifactKeys")) {
+                        payload.put("artifactKeys", agentResponse.getResultMap().get("artifactKeys"));
+                    }
                 }
                 appendSubAgentNestingTags(payload, agentResponse.getResultMap());
                 break;

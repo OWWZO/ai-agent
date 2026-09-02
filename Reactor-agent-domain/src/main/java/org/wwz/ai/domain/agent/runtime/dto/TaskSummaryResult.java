@@ -15,8 +15,10 @@ import java.util.List;
 @AllArgsConstructor
 @NoArgsConstructor
 public class TaskSummaryResult {
-    //llm最终输出
+    // 终答原文，保留 $$$ 点名段；展示剥离由前端做
     private String taskSummary;
-    //附带当前对话请求的最终产生的交付给用户的文件 非中间文件
+    // 不再由后端填充；交付文件由前端按 artifactKeys 映射会话文件
     private List<File> files;
+    // $$$ 点名的工作区相对路径/文件名；无分隔符时为空
+    private List<String> artifactKeys;
 }

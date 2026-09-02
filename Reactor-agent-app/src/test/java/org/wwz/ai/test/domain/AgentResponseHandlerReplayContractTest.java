@@ -98,6 +98,10 @@ public class AgentResponseHandlerReplayContractTest {
                 "fileName", "summary.md",
                 "downloadUrl", "https://file.example.com/summary.md"
         ));
+        List<Map<String, Object>> artifactRefs = List.of(Map.of(
+                "resourceKey", "summary-call::summary.md",
+                "displayName", "summary.md"
+        ));
         GptProcessResult result = handler.build(
                 AgentRequest.builder().requestId("req-handler-003-file").build(),
                 new EventResult(),
@@ -112,12 +116,16 @@ public class AgentResponseHandlerReplayContractTest {
                         .resultMap(Map.of(
                                 "agentType", 5,
                                 "taskSummary", "最终结论",
-                                "fileList", fileList
+                                "fileList", fileList,
+                                "artifactRefs", artifactRefs,
+                                "artifactKeys", List.of("summary.md")
                         ))
                         .build()
         );
 
         Assert.assertEquals(fileList, frameResultMap(result).get("fileList"));
+        Assert.assertEquals(artifactRefs, frameResultMap(result).get("artifactRefs"));
+        Assert.assertEquals(List.of("summary.md"), frameResultMap(result).get("artifactKeys"));
     }
 
     @Test

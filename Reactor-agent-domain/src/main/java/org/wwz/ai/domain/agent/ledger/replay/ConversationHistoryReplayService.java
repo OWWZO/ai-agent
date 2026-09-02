@@ -120,6 +120,7 @@ public class ConversationHistoryReplayService {
                     .files(0)
                     .max(resolveContextWindow(invocation.getModelName()))
                     .used(used)
+                    .estimatedTotal(estimated > 0 ? estimated : sys + tools + history)
                     .promptTokens(promptTokens != null && promptTokens > 0 ? promptTokens : null)
                     .completionTokens(completionTokens != null && completionTokens > 0 ? completionTokens : null)
                     .source(promptTokens != null && promptTokens > 0 ? "measured" : "estimate")

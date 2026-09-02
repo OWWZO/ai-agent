@@ -9,8 +9,10 @@ import java.util.Set;
 public final class ToolOutputNames {
 
     public static final String DEEP_SEARCH = "deep_search";
+    /** Legacy output names kept only so old ledger rows remain readable. */
     public static final String FILE_TOOL = "file_tool";
     public static final String CODE_INTERPRETER = "code_interpreter";
+    /** Legacy output name kept only so old ledger rows remain readable. */
     public static final String REPORT_TOOL = "report_tool";
     /** Structured tool name; not yet a dedicated output table (artifact + projector). */
     public static final String CANVAS_PUBLISH = "canvas_publish";
@@ -20,6 +22,7 @@ public final class ToolOutputNames {
     public static final String MULTIMODAL_AGENT = "multimodalagent_tool";
     public static final String IMAGE_GENERATION = "image_generation_tool";
     public static final String SCRIPT_RUNNER = "script_runner_tool";
+    /** Legacy output name kept only so old ledger rows remain readable. */
     public static final String PLANNING = "planning";
 
     /** 当前仍落到专用数据库输出表的 rich tool。 */

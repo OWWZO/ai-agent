@@ -8,7 +8,9 @@ import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
 import org.wwz.ai.domain.agent.ledger.model.replay.ProjectedReplayEvent;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRef;
+import org.wwz.ai.domain.agent.ledger.replay.ArtifactRelativePath;
 import org.wwz.ai.domain.agent.ledger.replay.projector.ToolInvocationProjector;
+import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactFormatter;
 
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -55,6 +57,7 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
             ref.put("previewUrl", artifact.getPreviewUrl());
             ref.put("downloadUrl", artifact.getDownloadUrl());
             ref.put("fileName", artifact.getFileName());
+            ArtifactRelativePath.putOn(ref, artifact);
             ref.put("mimeType", artifact.getMimeType());
             ref.put("size", artifact.getFileSize());
             ref.put("missing", Boolean.FALSE);
@@ -117,6 +120,7 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
             info.putIfAbsent("ossUrl", matched.getDownloadUrl());
             info.putIfAbsent("domainUrl", matched.getPreviewUrl());
             info.putIfAbsent("missing", Boolean.FALSE);
+            ArtifactRelativePath.putOn(info, matched);
             if (matched.getFileSize() != null) {
                 info.putIfAbsent("fileSize", matched.getFileSize());
             }
@@ -270,6 +274,7 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
         info.put("ossUrl", artifact.getDownloadUrl());
         info.put("domainUrl", artifact.getPreviewUrl());
         info.put("missing", Boolean.FALSE);
+        ArtifactRelativePath.putOn(info, artifact);
         if (artifact.getFileSize() != null) {
             info.put("fileSize", artifact.getFileSize());
         }
@@ -279,6 +284,11 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
     private Map<String, Object> toToolFileInfo(ToolFileRef fileRef) {
         Map<String, Object> info = new LinkedHashMap<>();
         info.put("fileName", StringUtils.defaultString(fileRef.getFileName()));
+        String relativePath = ToolArtifactFormatter.normalizeWorkspacePath(fileRef.getRelativePath());
+        if (StringUtils.isNotBlank(relativePath)) {
+            info.put("relativePath", relativePath);
+            info.put("originFileName", relativePath);
+        }
         if (StringUtils.isNotBlank(fileRef.getDownloadUrl())) {
             info.put("downloadUrl", fileRef.getDownloadUrl());
         }

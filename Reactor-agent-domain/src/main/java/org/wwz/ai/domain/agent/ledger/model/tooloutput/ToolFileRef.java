@@ -16,6 +16,8 @@ public class ToolFileRef {
 
     private String fileName;
 
+    private String relativePath;
+
     private String downloadUrl;
 
     private String previewUrl;

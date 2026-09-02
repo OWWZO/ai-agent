@@ -27,6 +27,7 @@ public final class ToolFileRefMapper {
             }
             result.add(ToolFileRef.builder()
                     .fileName(item.getFileName())
+                    .relativePath(firstPath(item.getRelativePath(), item.getFileName()))
                     .ossUrl(item.getOssUrl())
                     .domainUrl(item.getDomainUrl())
                     .downloadUrl(item.getOssUrl())
@@ -48,6 +49,10 @@ public final class ToolFileRefMapper {
             }
             result.add(ToolFileRef.builder()
                     .fileName(valueAsString(item.get("fileName")))
+                    .relativePath(firstPath(
+                            valueAsString(item.get("relativePath")),
+                            valueAsString(item.get("originFileName")),
+                            valueAsString(item.get("fileName"))))
                     .ossUrl(valueAsString(item.get("ossUrl")))
                     .domainUrl(valueAsString(item.get("domainUrl")))
                     .downloadUrl(valueAsString(item.get("downloadUrl")))
@@ -57,6 +62,26 @@ public final class ToolFileRefMapper {
                     .build());
         }
         return result;
+    }
+
+    private static String firstPath(String... values) {
+        if (values == null) {
+            return null;
+        }
+        String fallback = null;
+        for (String value : values) {
+            if (value == null || value.isBlank()) {
+                continue;
+            }
+            String normalized = value.replace('\\', '/');
+            if (fallback == null) {
+                fallback = normalized;
+            }
+            if (normalized.contains("/")) {
+                return normalized;
+            }
+        }
+        return fallback;
     }
 
     private static String valueAsString(Object value) {

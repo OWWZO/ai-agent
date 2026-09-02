@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 import org.wwz.ai.domain.agent.runtime.dto.Plan;
 
 /**
- * planning 工具结构化输出。
+ * planning 旧账本行的结构化输出模型。
  */
 @Data
 @Builder

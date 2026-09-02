@@ -527,7 +527,7 @@ public class ReplayProjectorTest {
     }
 
     @Test
-    public void shouldParseSummaryLlmResponseAndAttachArtifacts() {
+    public void shouldKeepSummaryDelimiterForFrontendFileMatching() {
         LocalDateTime now = LocalDateTime.of(2026, 5, 2, 18, 0, 0);
         DialogueRunView run = DialogueRunView.builder()
                 .requestId("req-summary-001")
@@ -540,7 +540,7 @@ public class ReplayProjectorTest {
                 .responseText("""
                         最终结论已整理完成
                         $$$
-                        call-report-001::report.html、call-check-001::checklist.md
+                        report.html、checklist.md
                         """)
                 .finishedAt(now)
                 .build();
@@ -573,11 +573,11 @@ public class ReplayProjectorTest {
 
         Assert.assertEquals(1, frames.size());
         Assert.assertEquals("result", frameResultMap(frames.get(0)).get("messageType"));
-        Assert.assertEquals("最终结论已整理完成", frameResultMap(frames.get(0)).get("result"));
-        Assert.assertEquals(2, frameFileList(frames.get(0)).size());
-        Assert.assertEquals(2, frameArtifactRefs(frames.get(0)).size());
-        Assert.assertEquals("report.html", frameFileList(frames.get(0)).get(0).get("fileName"));
-        Assert.assertEquals("artifact-checklist-md", frameArtifactRefs(frames.get(0)).get(1).get("resourceKey"));
+        Assert.assertTrue(String.valueOf(frameResultMap(frames.get(0)).get("result")).contains("$$$"));
+        Assert.assertTrue(String.valueOf(frameResultMap(frames.get(0)).get("result")).contains("report.html"));
+        Assert.assertEquals(List.of("report.html", "checklist.md"), frameResultMap(frames.get(0)).get("artifactKeys"));
+        Assert.assertTrue(frameFileList(frames.get(0)).isEmpty());
+        Assert.assertTrue(frameArtifactRefs(frames.get(0)).isEmpty());
     }
 
     @Test
@@ -627,7 +627,7 @@ public class ReplayProjectorTest {
     }
 
     @Test
-    public void shouldParseRunSummaryFallbackAndAttachArtifacts() {
+    public void shouldKeepRunSummaryFallbackDelimiterForFrontendFileMatching() {
         LocalDateTime now = LocalDateTime.of(2026, 5, 2, 19, 0, 0);
         DialogueRunView run = DialogueRunView.builder()
                 .requestId("req-summary-fallback-001")
@@ -635,7 +635,7 @@ public class ReplayProjectorTest {
                 .finalSummaryText("""
                         请优先查看生成结果
                         $$$
-                        call-report-002::result.md
+                        result.md
                         """)
                 .startedAt(now.minusMinutes(2))
                 .finishedAt(now)
@@ -658,10 +658,11 @@ public class ReplayProjectorTest {
 
         Assert.assertEquals(1, frames.size());
         Assert.assertEquals("result", frameResultMap(frames.get(0)).get("messageType"));
-        Assert.assertEquals("请优先查看生成结果", frameResultMap(frames.get(0)).get("result"));
-        Assert.assertEquals(1, frameFileList(frames.get(0)).size());
-        Assert.assertEquals(1, frameArtifactRefs(frames.get(0)).size());
-        Assert.assertEquals("artifact-result-md", frameArtifactRefs(frames.get(0)).get(0).get("resourceKey"));
+        Assert.assertTrue(String.valueOf(frameResultMap(frames.get(0)).get("result")).contains("$$$"));
+        Assert.assertTrue(String.valueOf(frameResultMap(frames.get(0)).get("result")).contains("result.md"));
+        Assert.assertEquals(List.of("result.md"), frameResultMap(frames.get(0)).get("artifactKeys"));
+        Assert.assertTrue(frameFileList(frames.get(0)).isEmpty());
+        Assert.assertTrue(frameArtifactRefs(frames.get(0)).isEmpty());
     }
 
     @SuppressWarnings("unchecked")
