@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -74,6 +76,18 @@ public class StreamResponseHandler {
                                                                              String hiddenStartMarker,
                                                                              boolean emitFinalSnapshot,
                                                                              boolean pushToClient) {
+        return handleStringStreamWithUsage(context, flux, hiddenStartMarker, emitFinalSnapshot, pushToClient, 0);
+    }
+
+    /**
+     * 处理纯文本流式响应；timeoutSeconds>0 时到期取消上游订阅。
+     */
+    public CompletableFuture<StringStreamResult> handleStringStreamWithUsage(AgentContext context,
+                                                                             Flux<ChatResponse> flux,
+                                                                             String hiddenStartMarker,
+                                                                             boolean emitFinalSnapshot,
+                                                                             boolean pushToClient,
+                                                                             int timeoutSeconds) {
         // 文本流按“累积完整响应 -> 过滤隐藏标记 -> 计算新增片段 -> 按间隔推送”处理；
         // future 只在 complete/error 收口，避免每个 chunk 都改变上游调用契约。
         CompletableFuture<StringStreamResult> future = new CompletableFuture<>();
@@ -88,7 +102,7 @@ public class StreamResponseHandler {
 
         Disposable disposable = flux.subscribe(response -> {
             try {
-                if (abortIfCancelled(context, future, subscription.get())) {
+                if (abortIfInactive(context, future, subscription.get())) {
                     return;
                 }
                 usageHolder[0] = usageHolder[0].mergeLatest(
@@ -114,9 +128,9 @@ public class StreamResponseHandler {
             } catch (Exception e) {
                 future.completeExceptionally(e);
             }
-        }, future::completeExceptionally, () -> {
+        }, error -> completeExceptionallyIfActive(future, error), () -> {
             try {
-                if (abortIfCancelled(context, future, subscription.get())) {
+                if (abortIfInactive(context, future, subscription.get())) {
                     return;
                 }
                 // onComplete 负责冲刷最后不足一个 interval 的增量，并发送可选的最终快照。
@@ -140,7 +154,7 @@ public class StreamResponseHandler {
             }
         });
         subscription.set(disposable);
-        wireCancelDispose(context, future, disposable);
+        wireStreamLifecycle(future, subscription, timeoutSeconds);
 
         return future;
     }
@@ -161,6 +175,17 @@ public class StreamResponseHandler {
                                                                         Flux<ChatResponse> flux,
                                                                         long startTimeMs,
                                                                         boolean pushToClient) {
+        return handleToolCallStream(context, flux, startTimeMs, pushToClient, 0);
+    }
+
+    /**
+     * 处理工具调用流式响应；timeoutSeconds>0 时到期取消上游订阅。
+     */
+    public CompletableFuture<LLM.ToolCallResponse> handleToolCallStream(AgentContext context,
+                                                                        Flux<ChatResponse> flux,
+                                                                        long startTimeMs,
+                                                                        boolean pushToClient,
+                                                                        int timeoutSeconds) {
         // tool-call 流同时维护 content、reasoning 和 tool-call delta 三条累积线；
         // 中间帧只聚合，只有 onComplete 才能确认参数完整并交给执行层。
         // 异步结果容器
@@ -191,7 +216,7 @@ public class StreamResponseHandler {
         Disposable disposable = flux.subscribe(
             response -> {
                 try {
-                    if (abortIfCancelled(context, future, subscription.get())) {
+                    if (abortIfInactive(context, future, subscription.get())) {
                         return;
                     }
                     // 一个 ChatResponse 可能同时携带正文、reasoning 和多个 tool-call
@@ -264,11 +289,11 @@ public class StreamResponseHandler {
                 }
             },
 
-            future::completeExceptionally,
+            error -> completeExceptionallyIfActive(future, error),
 
             () -> {
                 try {
-                    if (abortIfCancelled(context, future, subscription.get())) {
+                    if (abortIfInactive(context, future, subscription.get())) {
                         return;
                     }
                     // 完成时再次拆分隐藏思考并冲刷尾部增量，再构造完整 toolCalls；
@@ -345,42 +370,59 @@ public class StreamResponseHandler {
             }
         );
         subscription.set(disposable);
-        wireCancelDispose(context, future, disposable);
+        wireStreamLifecycle(future, subscription, timeoutSeconds);
 
         return future;
     }
 
     /**
-     * 用户停止 / 流断开时尽快 dispose 上游 LLM 流，避免继续烧 token 与假死等待。
+     * 超时、失败、取消或正常完成时都 dispose 上游订阅，避免迟到 chunk 继续推送。
      */
-    private static void wireCancelDispose(AgentContext context,
-                                          CompletableFuture<?> future,
-                                          Disposable disposable) {
-        if (context == null || context.getRunCancellation() == null || disposable == null) {
+    private static void wireStreamLifecycle(CompletableFuture<?> future,
+                                            AtomicReference<Disposable> subscription,
+                                            int timeoutSeconds) {
+        if (future == null) {
             return;
         }
-        // 协作式取消没有统一 listener 总线：future 完成时若已取消则 dispose；
-        // 主循环每 chunk 也会检查 isRunCancelled 并主动 abort。
-        future.whenComplete((ignored, error) -> {
-            if (context.isRunCancelled() && !disposable.isDisposed()) {
-                disposable.dispose();
-            }
-        });
+        if (timeoutSeconds > 0) {
+            CompletableFuture.delayedExecutor(timeoutSeconds, TimeUnit.SECONDS).execute(() -> {
+                if (future.completeExceptionally(new TimeoutException(
+                        "LLM stream timeout after " + timeoutSeconds + "s"))) {
+                    disposeQuietly(subscription.get());
+                }
+            });
+        }
+        future.whenComplete((ignored, error) -> disposeQuietly(subscription.get()));
     }
 
-    private static boolean abortIfCancelled(AgentContext context,
-                                            CompletableFuture<?> future,
-                                            Disposable disposable) {
-        if (context == null || !context.isRunCancelled() || future.isDone()) {
-            return false;
+    private static boolean abortIfInactive(AgentContext context,
+                                           CompletableFuture<?> future,
+                                           Disposable disposable) {
+        if (future.isDone()) {
+            disposeQuietly(disposable);
+            return true;
         }
+        if (context != null && context.isRunCancelled()) {
+            disposeQuietly(disposable);
+            future.completeExceptionally(new CancellationException(
+                    "LLM stream aborted: " + StringUtils.defaultIfBlank(
+                            context.getRunCancelReason(), "user_stop")));
+            return true;
+        }
+        return false;
+    }
+
+    private static void completeExceptionallyIfActive(CompletableFuture<?> future, Throwable error) {
+        if (future == null || future.isDone()) {
+            return;
+        }
+        future.completeExceptionally(error);
+    }
+
+    private static void disposeQuietly(Disposable disposable) {
         if (disposable != null && !disposable.isDisposed()) {
             disposable.dispose();
         }
-        future.completeExceptionally(new CancellationException(
-                "LLM stream aborted: " + StringUtils.defaultIfBlank(
-                        context.getRunCancelReason(), "user_stop")));
-        return true;
     }
 
     private boolean canAllocateStreamMessageId(AgentContext context) {

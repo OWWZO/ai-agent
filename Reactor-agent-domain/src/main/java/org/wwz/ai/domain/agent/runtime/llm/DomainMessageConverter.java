@@ -51,36 +51,32 @@ public class DomainMessageConverter {
             if (message == null || message.getRole() == null) {
                 continue;
             }
-            if (message.getRole() == RoleType.TOOL
-                    && StringUtils.isNotBlank(message.getBase64Image())) {
-                // ToolResponse 无 Media：短文本 observation + 紧跟 UserMessage 挂图。
+            if (message.getRole() == RoleType.TOOL) {
+                String toolCallId = StringUtils.trimToEmpty(message.getToolCallId());
+                if (StringUtils.isBlank(toolCallNameIndex.get(toolCallId))) {
+                    continue;
+                }
                 convertedMessages.add(toToolResponseMessage(message, toolCallNameIndex));
-                convertedMessages.add(toToolImageUserMessage(message, toolCallNameIndex));
+                if (StringUtils.isNotBlank(message.getBase64Image())) {
+                    convertedMessages.add(toToolImageUserMessage(message, toolCallNameIndex));
+                }
             } else {
-                org.springframework.ai.chat.messages.Message converted = convertMessage(message, toolCallNameIndex);
+                org.springframework.ai.chat.messages.Message converted = convertMessage(message);
                 if (converted != null) {
                     convertedMessages.add(converted);
                 }
             }
-            if (message.getToolCalls() != null && !message.getToolCalls().isEmpty()) {
-                for (ToolCall toolCall : message.getToolCalls()) {
-                    if (toolCall != null && toolCall.getFunction() != null
-                            && StringUtils.isNotBlank(toolCall.getId())
-                            && StringUtils.isNotBlank(toolCall.getFunction().getName())) {
-                        toolCallNameIndex.put(toolCall.getId(), toolCall.getFunction().getName());
-                    }
-                }
-            }
+            indexAssistantToolCalls(message, toolCallNameIndex);
         }
         return convertedMessages;
     }
 
-    private org.springframework.ai.chat.messages.Message convertMessage(Message message, Map<String, String> toolCallNameIndex) {
+    private org.springframework.ai.chat.messages.Message convertMessage(Message message) {
         return switch (message.getRole()) {
             case SYSTEM -> new SystemMessage(StringUtils.defaultString(message.getContent()));
             case USER -> toUserMessage(message);
             case ASSISTANT -> toAssistantMessage(message);
-            case TOOL -> toToolResponseMessage(message, toolCallNameIndex);
+            case TOOL -> null;
             default -> throw new IllegalArgumentException("Unsupported message role: " + message.getRole());
         };
     }
@@ -165,12 +161,22 @@ public class DomainMessageConverter {
                 .build();
     }
 
+    private void indexAssistantToolCalls(Message message, Map<String, String> toolCallNameIndex) {
+        if (message.getToolCalls() == null || message.getToolCalls().isEmpty()) {
+            return;
+        }
+        for (ToolCall toolCall : message.getToolCalls()) {
+            if (toolCall == null || StringUtils.isBlank(toolCall.getId())) {
+                continue;
+            }
+            String name = toolCall.getFunction() == null ? null : toolCall.getFunction().getName();
+            toolCallNameIndex.put(toolCall.getId(), StringUtils.defaultIfBlank(name, "tool"));
+        }
+    }
+
     private String resolveToolName(String toolCallId, Map<String, String> toolCallNameIndex) {
         String toolName = toolCallNameIndex.get(toolCallId);
-        if (StringUtils.isBlank(toolName)) {
-            throw new IllegalStateException("Cannot resolve tool name for toolCallId: " + toolCallId);
-        }
-        return toolName;
+        return StringUtils.defaultIfBlank(toolName, "tool");
     }
 
     private Media buildMedia(String rawBase64Image) {

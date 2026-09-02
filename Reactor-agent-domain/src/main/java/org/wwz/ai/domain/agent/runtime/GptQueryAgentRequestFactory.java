@@ -60,7 +60,7 @@ public class GptQueryAgentRequestFactory {
 
         if (req.getDeepThink() != null && req.getDeepThink() != 0) {
             request.setAgentType(AgentType.PLAN_SOLVE.getValue());
-            request.setSopPrompt(reactorConfig.getReactorSopPrompt());
+            request.setSopPrompt("");
             request.setBasePrompt("");
         } else {
             request.setAgentType(AgentType.REACT.getValue());

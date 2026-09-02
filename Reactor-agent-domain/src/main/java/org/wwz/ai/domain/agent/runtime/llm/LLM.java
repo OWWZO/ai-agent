@@ -17,16 +17,12 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.util.CollectionUtils;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
-import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolChoice;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanModeToolPolicy;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
-import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
-import org.wwz.ai.domain.agent.runtime.util.ToolSchemaNormalizer;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationFinishRecord;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationStartRecord;
@@ -36,7 +32,6 @@ import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -216,9 +211,9 @@ public class LLM {
                     context,
                     model,
                     callKind,
-                    LlmPromptRequestSnapshotSupport.collapseSystemMessages(systemMsgs),
-                    messages,
-                    null
+                    LlmPromptShapeFactory.forText(
+                            LlmPromptRequestSnapshotSupport.collapseSystemMessages(systemMsgs),
+                            messages)
             );
             LlmInvocationHandle invocationHandle = startLlmInvocation(
                     context,
@@ -371,17 +366,12 @@ public class LLM {
                 throw new IllegalArgumentException("Invalid tool_choice: " + toolChoice);
             }
 
-            LlmAskToolProtocol protocol = isStructParseMode()
-                    ? LlmAskToolProtocol.STRUCT_PARSE
-                    : LlmAskToolProtocol.FUNCTION_CALL;
-            Message effectiveSystem = systemMsgs;
-            if (protocol == LlmAskToolProtocol.STRUCT_PARSE) {
-                // struct_parse 没有原生 tools[]，先把工具 schema 编入 system，再沿用文本响应解析。
-                effectiveSystem = buildStructParseSystemMessage(systemMsgs, tools);
-            }
+            LlmAskToolProtocol protocol = resolveAskToolProtocol();
+            PromptShape promptShape = LlmPromptShapeFactory.forAskTool(
+                    context, systemMsgs, messages, tools, protocol);
             // 与正式发送一致的 system+messages+tools 快照（先观测再落账本 start）
             LlmPromptObservability.logRequest(
-                    context, model, ExecutionLedgerConstants.CALL_KIND_ASK_TOOL, effectiveSystem, messages, tools);
+                    context, model, ExecutionLedgerConstants.CALL_KIND_ASK_TOOL, promptShape);
             LlmInvocationHandle invocationHandle = startLlmInvocation(
                     context,
                     ExecutionLedgerConstants.CALL_KIND_ASK_TOOL,
@@ -399,8 +389,8 @@ public class LLM {
             );
             OpenAiChatModel chatModel = resolveChatModel();
 
-            log.info("{} call llm askTool via Spring AI, model={}, stream={}, mode=function_call",
-                    context.getRequestId(), model, stream);
+            log.info("{} call llm askTool via Spring AI, model={}, stream={}, mode=function_call, invocationId={}, thread={}",
+                    context.getRequestId(), model, stream, invocationHandle.invocationId(), Thread.currentThread().getName());
 
             String retryLabel = "llm-askTool:" + model;
             if (!stream) {
@@ -433,8 +423,9 @@ public class LLM {
                     context,
                     LlmRequestRetry.stream(retryLabel, () -> chatModel.stream(prompt), retryNotifier(context)),
                     startTime,
-                    pushToClient
-            ).orTimeout(timeout, TimeUnit.SECONDS);
+                    pushToClient,
+                    timeout
+            );
 
             // 空流通常是兼容网关的瞬态响应：只对“明确为空流”的情况重试一次，避免普通错误被掩盖。
             return streamFuture.handle((response, throwable) -> {
@@ -503,8 +494,8 @@ public class LLM {
         );
         OpenAiChatModel chatModel = resolveChatModel();
 
-        log.info("{} call llm askTool via Spring AI, model={}, stream={}, mode=struct_parse",
-                context.getRequestId(), model, stream);
+        log.info("{} call llm askTool via Spring AI, model={}, stream={}, mode=struct_parse, invocationId={}, thread={}",
+                context.getRequestId(), model, stream, invocationHandle.invocationId(), Thread.currentThread().getName());
 
         String retryLabel = "llm-askTool-struct:" + model;
         if (!stream) {
@@ -543,7 +534,8 @@ public class LLM {
                         LlmRequestRetry.stream(retryLabel, () -> chatModel.stream(prompt), retryNotifier(context)),
                         STRUCT_PARSE_JSON_MARKER,
                         true,
-                        true
+                        true,
+                        timeout
                 )
                 .thenApply(result -> {
                     ToolCallResponse toolCallResponse = buildStructParseToolCallResponse(
@@ -562,8 +554,7 @@ public class LLM {
                         return;
                     }
                     finishLlmInvocation(context, invocationHandle, null, unwrapCompletionThrowable(throwable));
-                })
-                .orTimeout(timeout, TimeUnit.SECONDS);
+                });
     }
 
     /**
@@ -607,47 +598,20 @@ public class LLM {
         return stopPos >= 0 ? fullContent.substring(0, stopPos) : fullContent;
     }
 
-    private Message buildStructParseSystemMessage(Message systemMsg, ToolCollection tools) {
-        String toolPrompt = buildStructParseToolPrompt(tools);
-        String originalSystemPrompt = systemMsg != null ? StringUtils.defaultString(systemMsg.getContent()) : "";
-        String mergedContent = StringUtils.isBlank(originalSystemPrompt)
-                ? toolPrompt
-                : originalSystemPrompt + "\n" + toolPrompt;
-        return Message.systemMessage(mergedContent, null);
+    public LlmAskToolProtocol resolveAskToolProtocol() {
+        return isStructParseMode() ? LlmAskToolProtocol.STRUCT_PARSE : LlmAskToolProtocol.FUNCTION_CALL;
     }
 
-    /**
-     * struct_parse 模式仍复用原来的工具描述文本，但不再关心 GPT/Claude 的手工分支。
-     */
-    private String buildStructParseToolPrompt(ToolCollection tools) {
-        ReactorConfig reactorConfig = runtimeDependencies.requireReactorConfig();
-        StringBuilder prompt = new StringBuilder(StringUtils.defaultString(reactorConfig.getStructParseToolSystemPrompt()));
-        if (prompt.length() > 0) {
-            prompt.append('\n');
-        }
+    public PromptShape buildAskToolPromptShape(AgentContext context,
+                                               Message systemMessage,
+                                               List<Message> messages,
+                                               ToolCollection tools) {
+        return LlmPromptShapeFactory.forAskTool(
+                context, systemMessage, messages, tools, resolveAskToolProtocol());
+    }
 
-        if (tools == null) {
-            return prompt.toString();
-        }
-
-        for (BaseTool tool : tools.getToolMap().values()) {
-            Map<String, Object> functionMap = new LinkedHashMap<>();
-            functionMap.put("name", tool.getName());
-            functionMap.put("description", tool.getDescription());
-            functionMap.put("parameters",
-                    addFunctionNameParam(normalizeToolParameters(tool.toParams(), tool.getName()), tool.getName()));
-            prompt.append(String.format("- `%s`%n```json %s ```%n", tool.getName(), JSON.toJSONString(functionMap)));
-        }
-
-        for (McpToolInfo tool : tools.getMcpToolMap().values()) {
-            Map<String, Object> functionMap = new LinkedHashMap<>();
-            functionMap.put("name", tool.getName());
-            functionMap.put("description", tool.getDesc());
-            functionMap.put("parameters",
-                    addFunctionNameParam(parseAndNormalizeToolParameters(tool.getParameters(), tool.getName()), tool.getName()));
-            prompt.append(String.format("- `%s`%n```json %s ```%n", tool.getName(), JSON.toJSONString(functionMap)));
-        }
-        return prompt.toString();
+    private Message buildStructParseSystemMessage(Message systemMsg, ToolCollection tools) {
+        return LlmPromptShapeFactory.buildStructParseSystemMessage(systemMsg, tools);
     }
 
     private Prompt buildPrompt(List<Message> domainMessages, OpenAiChatOptions options) {
@@ -707,31 +671,28 @@ public class LLM {
         if (!allowModelFallback || primary == null) {
             return primary;
         }
-        return primary.handle((result, error) -> {
-            if (error == null) {
-                return CompletableFuture.completedFuture(result);
-            }
-            Throwable root = unwrapCompletionThrowable(error);
-            if (!LlmModelFallback.isEligible(root)) {
-                return CompletableFuture.<T>failedFuture(root);
-            }
-            List<String> fallbackNames = resolveFallbackModelNames();
-            if (fallbackNames.isEmpty()) {
-                return CompletableFuture.<T>failedFuture(root);
-            }
-            return LlmModelFallback.executeFallbackChain(
-                    model,
-                    root,
-                    fallbackNames,
-                    fallbackCall,
-                    (fromModel, toModel, cause) -> {
-                        String requestId = context == null ? "-" : context.getRequestId();
-                        log.warn("{} {} model={} failed after retries ({}), switching to fallback model={}",
-                                requestId, op, fromModel, cause.getMessage(), toModel);
-                        notifyFallback(context, fromModel, toModel, cause);
-                    }
-            );
-        }).thenCompose(f -> f);
+        LlmExecutionPosition position = LlmExecutionPosition.capture(context);
+        return LlmModelFallback.afterPrimary(
+                position,
+                context == null ? null : context.getAgentRunState(),
+                model,
+                primary,
+                resolveFallbackModelNames(),
+                fallbackCall,
+                (fromModel, toModel, cause) -> {
+                    String requestId = context == null ? "-" : context.getRequestId();
+                    log.warn("{} {} model={} failed after retries ({}) thread={} agentName={} stepNo={}, switching to fallback model={}",
+                            requestId,
+                            op,
+                            fromModel,
+                            cause.getMessage(),
+                            Thread.currentThread().getName(),
+                            position.agentName(),
+                            position.stepNo(),
+                            toModel);
+                    notifyFallback(context, fromModel, toModel, cause);
+                }
+        );
     }
 
     private void notifyFallback(AgentContext context, String fromModel, String fallbackName, Throwable cause) {
@@ -766,14 +727,24 @@ public class LLM {
         // 若当前请求没有有效 run，则保持 fail-open，不让可选的持久化能力阻断模型调用。
         LocalDateTime startedAt = LocalDateTime.now();
         int invocationSeq = context.getAgentRunState().nextInvocationSeq();
+        String agentName = context.getAgentRunState().getCurrentAgentName();
+        Integer stepNo = context.getAgentRunState().getCurrentStepNo();
+        if (StringUtils.isBlank(agentName)) {
+            log.error("{} skip llm invocation ledger insert: blank agentName, seq={}, stepNo={}, model={}, callKind={}, thread={}",
+                    context.getRequestId(), invocationSeq, stepNo, model, callKind, Thread.currentThread().getName());
+            return LlmInvocationHandle.disabled();
+        }
+        log.info("{} start llm invocation seq={} agentName={} stepNo={} model={} callKind={} stream={} thread={}",
+                context.getRequestId(), invocationSeq, agentName, stepNo, model, callKind, stream,
+                Thread.currentThread().getName());
         LlmPromptObservability.ObservationBundle obs = LlmPromptObservability.current();
         TokenCounter.PromptEstimate est = obs == null ? null : obs.getEstimate();
         Long invocationId = context.getExecutionRecorder().createLlmInvocation(LlmInvocationStartRecord.builder()
                 .runId(context.getAgentRunState().getRunId())
                 .requestId(context.getRequestId())
                 .invocationSeq(invocationSeq)
-                .agentName(context.getAgentRunState().getCurrentAgentName())
-                .stepNo(context.getAgentRunState().getCurrentStepNo())
+                .agentName(agentName)
+                .stepNo(stepNo)
                 .callKind(callKind)
                 .streaming(stream)
                 .modelName(model)
@@ -922,35 +893,6 @@ public class LLM {
         CompletableFuture<T> future = new CompletableFuture<>();
         future.completeExceptionally(e);
         return future;
-    }
-
-    private Map<String, Object> addFunctionNameParam(Map<String, Object> parameters, String toolName) {
-        Map<String, Object> newParameters = new LinkedHashMap<>(parameters == null ? Map.of() : parameters);
-        ArrayList<String> newRequired = new ArrayList<>();
-        newRequired.add("function_name");
-        if (parameters != null && parameters.containsKey("required") && parameters.get("required") != null) {
-            newRequired.addAll((List<String>) parameters.get("required"));
-        }
-        newParameters.put("required", newRequired);
-
-        Map<String, Object> newProperties = new LinkedHashMap<>();
-        Map<String, Object> functionNameMap = new HashMap<>();
-        functionNameMap.put("description", "默认值为工具名: " + toolName);
-        functionNameMap.put("type", "string");
-        newProperties.put("function_name", functionNameMap);
-        if (parameters != null && parameters.containsKey("properties") && parameters.get("properties") != null) {
-            newProperties.putAll((Map<String, Object>) parameters.get("properties"));
-        }
-        newParameters.put("properties", newProperties);
-        return newParameters;
-    }
-
-    private Map<String, Object> normalizeToolParameters(Map<String, Object> rawParameters, String toolName) {
-        return ToolSchemaNormalizer.normalizeSchema(rawParameters, toolName);
-    }
-
-    private Map<String, Object> parseAndNormalizeToolParameters(String rawParameters, String toolName) {
-        return ToolSchemaNormalizer.normalizeSchemaAsMap(rawParameters, toolName);
     }
 
     /**

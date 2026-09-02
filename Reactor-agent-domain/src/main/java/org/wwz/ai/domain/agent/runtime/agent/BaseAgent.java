@@ -15,19 +15,25 @@ import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.enums.AgentState;
 import org.wwz.ai.domain.agent.runtime.enums.RoleType;
+import org.wwz.ai.domain.agent.runtime.llm.ContextTokenTracker;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
+import org.wwz.ai.domain.agent.runtime.llm.LlmAskToolProtocol;
+import org.wwz.ai.domain.agent.runtime.llm.LlmPromptShapeFactory;
 import org.wwz.ai.domain.agent.runtime.llm.LlmToolCallbackProvider;
+import org.wwz.ai.domain.agent.runtime.llm.PromptShape;
+import org.wwz.ai.domain.agent.runtime.llm.TokenCounter;
 import org.wwz.ai.domain.agent.runtime.llm.SessionPromptFreeze;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanModePromptInjector;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.prompt.IntentGatedPrompt;
-import org.wwz.ai.domain.agent.runtime.prompt.ToolCallPrompt;
+import org.wwz.ai.domain.agent.runtime.prompt.AgentPrompt;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
 import org.wwz.ai.domain.agent.runtime.tool.common.MemoryTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.SessionSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.DeferredMcpCatalog;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadStateStore;
 import org.wwz.ai.domain.agent.runtime.util.FileUtil;
 
 import java.util.ArrayList;
@@ -52,13 +58,23 @@ public abstract class BaseAgent {
 
     /** 不单独向前端发送工具结果的工具；它们通过产物或结构化事件展示结果。 */
     private static final Set<String> TOOLS_WITHOUT_RESULT_EVENT = Set.of(
-            "code_interpreter", "report_tool", "document_generate", "slides_generate",
+            "code_interpreter", "document_generate", "slides_generate",
             "excel_generator", "checklist_generate", "template_filler", "document_template",
-            "theme_designer", "chart_generator", "file_tool", "deep_search",
+            "theme_designer", "chart_generator", "deep_search",
             "multimodalagent_tool", "data_analysis", "canvas_publish", "get_html_canvas_guide",
-            "get_genui_guide", "list_ui_components", "emit_ui_tree", "emit_ui_patch",
-            // workspace 产物走 file 事件，避免再叠一层 tool_result 卡片
-            "workspace_write", "workspace_edit");
+            "get_genui_guide", "list_ui_components", "emit_ui_tree", "emit_ui_patch");
+
+    /** 只有最终文件交付工具需要把 artifactKey 暴露给模型完成精确文件选择。 */
+    private static final Set<String> TOOLS_REQUIRING_LLM_ARTIFACT_SUMMARY = Set.of(
+            "deep_search",
+            "document_generate",
+            "slides_generate",
+            "excel_generator",
+            "checklist_generate",
+            "template_filler",
+            "document_template",
+            "theme_designer",
+            "chart_generator");
 
     /** Agent 名称 */
     private String name;
@@ -135,6 +151,31 @@ public abstract class BaseAgent {
                 ? Message.fromToolCalls(response.getContent(), response.getReasoningContent(), response.getToolCalls())
                 : Message.assistantMessage(response.getContent(), response.getReasoningContent(), null);
         getMemory().addMessage(assistantMessage);
+        recordMainAskToolUsage(response);
+    }
+
+    /**
+     * 仅主 Agent 正式 askTool 响应更新 tracker。摘要 / flush / LTM / 内部 LLM 不走这里。
+     */
+    private void recordMainAskToolUsage(LLM.ToolCallResponse response) {
+        if (context == null || response == null || getMemory() == null) {
+            return;
+        }
+        PromptShape shape = currentAskToolPromptShape(getMemory().getMessages());
+        context.contextTokenTracker().recordProviderUsage(
+                response.toUsageSnapshot(),
+                getMemory().getMessages().size(),
+                shape == null ? null : new TokenCounter().fingerprint(shape));
+    }
+
+    private PromptShape currentAskToolPromptShape(List<Message> messages) {
+        LlmAskToolProtocol protocol = llm == null
+                ? LlmAskToolProtocol.FUNCTION_CALL
+                : LlmPromptShapeFactory.protocolOf(llm.getFunctionCallType());
+        Message system = StringUtils.isBlank(getSystemPrompt())
+                ? null
+                : Message.systemMessage(getSystemPrompt(), null);
+        return LlmPromptShapeFactory.forAskTool(context, system, messages, availableTools, protocol);
     }
 
     protected Map<String, Object> parseToolParam(ToolCall command) {
@@ -149,12 +190,12 @@ public abstract class BaseAgent {
         if (TOOLS_WITHOUT_RESULT_EVENT.contains(toolName)) {
             return;
         }
-        printer.send("tool_result", AgentResponse.ToolResult.builder()
+        printer.send(command.getId(), "tool_result", AgentResponse.ToolResult.builder()
                 .toolName(toolName)
                 .toolParam(parseToolParam(command))
                 .toolResult(toolResult)
                 .toolCallId(command.getId())
-                .build(), null);
+                .build(), null, true);
     }
 
     /**
@@ -537,7 +578,7 @@ public abstract class BaseAgent {
                                                             String extraPlaceholder,
                                                             String extraValue) {
         Map<String, String> map = systemPromptMap == null ? Map.of() : systemPromptMap;
-        String template = ToolCallPrompt.ensureUserFacingReplyContract(
+        String template = AgentPrompt.ensureUserFacingReplyContract(
                 map.getOrDefault("default", defaultSystemPrompt));
         setSystemPrompt(buildStableSystemPrompt(template, toolPrompt, extraPlaceholder, extraValue));
         setNextStepPrompt(null);
@@ -556,15 +597,38 @@ public abstract class BaseAgent {
     }
 
     /**
+     * 子 Agent：REACT 底座 + 面向协调者终答 + 类型指令，整段替换（去掉 USER_FACING）。
+     */
+    public void applySubAgentSystemPrompt(String typeDirective) {
+        String template = AgentPrompt.composeSubAgentSystemPrompt(typeDirective);
+        String toolPrompt = buildToolPrompt(context == null ? null : context.getToolCollection());
+        setSystemPrompt(buildStableSystemPrompt(template, toolPrompt, null, null));
+    }
+
+    /**
+     * PlanSolve 主：ORCHESTRATION 底座 + USER_FACING，整段替换（不用 REACT 底座）。
+     */
+    public void applyPlanSolveSystemPrompt() {
+        String template = AgentPrompt.composePlanSolveSystemPrompt();
+        String toolPrompt = buildToolPrompt(context == null ? null : context.getToolCollection());
+        setSystemPrompt(buildStableSystemPrompt(template, toolPrompt, null, null));
+    }
+
+    /**
      * 为单次工具结果追加当前 toolCall 的文件摘要。
      */
     protected String attachToolArtifactSummary(String result, String toolCallId) {
         if (context == null || StringUtils.isBlank(toolCallId)) {
             return result;
         }
+        var bindings = context.getArtifactBindingsByToolCallId(toolCallId).stream()
+                .filter(binding -> binding != null && !binding.isInternalFile())
+                .filter(binding -> binding.getSource() != null
+                        && TOOLS_REQUIRING_LLM_ARTIFACT_SUMMARY.contains(binding.getSource().getToolName()))
+                .toList();
         return ToolArtifactFormatter.appendToolArtifactSummary(
                 result,
-                context.getArtifactBindingsByToolCallId(toolCallId)
+                bindings
         );
     }
 
@@ -681,22 +745,47 @@ public abstract class BaseAgent {
             return;
         }
         try {
+            var flushParity = org.wwz.ai.domain.agent.memory.SessionContextCompactionService.LtmFlushParity.of(
+                    getSystemPrompt(),
+                    availableTools,
+                    context.getLtmOwner());
+            PromptShape promptShape = currentAskToolPromptShape(current);
+            ContextTokenTracker.Snapshot tokenSnapshot = context.contextTokenTracker().snapshot();
             List<Message> compacted = compaction.applyIfNeededMidRun(
                     context.getSessionId(),
                     context.resolveMemoryScope(),
                     context.getRequestId(),
-                    current);
+                    current,
+                    flushParity,
+                    promptShape,
+                    tokenSnapshot);
             if (compacted == null || compacted == current || compacted.equals(current)) {
                 return;
             }
             // 压缩后的列表同时替换 Agent Memory 和上下文快照，否则后续导出 delta 会从旧前缀计算。
             memory.replaceMessages(new ArrayList<>(compacted));
             context.setWorkingMemoryMessages(new ArrayList<>(compacted));
+            context.contextTokenTracker().reset();
+            // cc-haha 对齐：压缩后清 read-state，避免正文已不在上下文仍返回 unchanged stub。
+            clearWorkspaceReadStateAfterCompaction();
             log.info("{} {} mid-run compact phase={} beforeMsgs={} afterMsgs={}",
                     context.getRequestId(), getName(), phase, current.size(), compacted.size());
         } catch (Exception e) {
             log.warn("{} {} mid-run compact failed phase={}: {}",
                     context.getRequestId(), getName(), phase, e.getMessage());
+        }
+    }
+
+    private void clearWorkspaceReadStateAfterCompaction() {
+        if (context == null) {
+            return;
+        }
+        try {
+            new WorkspaceReadStateStore().clear(context);
+        } catch (Exception e) {
+            context.clearWorkspaceReadState();
+            log.warn("{} clear workspace read-state after compact failed: {}",
+                    context.getRequestId(), e.getMessage());
         }
     }
 

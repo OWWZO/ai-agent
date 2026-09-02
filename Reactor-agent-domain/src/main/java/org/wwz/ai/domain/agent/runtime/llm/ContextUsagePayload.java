@@ -16,8 +16,10 @@ public class ContextUsagePayload {
     private int history;
     private int files;
     private int max;
-    /** 估算总和或上游 prompt_tokens */
+    /** 当前请求实际占用；无实测值时回退为 estimatedTotal */
     private int used;
+    /** 分段字段的估算合计，可能与 used 不同 */
+    private int estimatedTotal;
     private Integer promptTokens;
     private Integer completionTokens;
     /** estimate | measured */
@@ -35,6 +37,7 @@ public class ContextUsagePayload {
                 .files(0)
                 .max(Math.max(max, 1))
                 .used(used)
+                .estimatedTotal(used)
                 .source("estimate")
                 .build();
     }

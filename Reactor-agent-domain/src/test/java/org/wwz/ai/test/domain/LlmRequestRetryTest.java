@@ -113,6 +113,36 @@ public class LlmRequestRetryTest {
     }
 
     @Test
+    public void shouldRetryStreamOn524BeforeFirstChunk() {
+        AtomicInteger attempts = new AtomicInteger();
+        List<ChatResponse> responses = LlmRequestRetry.stream("test-stream-524", () -> {
+            if (attempts.incrementAndGet() < 2) {
+                return Flux.error(new RuntimeException("Unknown status code [524]"));
+            }
+            return Flux.just(new ChatResponse(List.of()));
+        }).collectList().block();
+
+        Assert.assertNotNull(responses);
+        Assert.assertEquals(1, responses.size());
+        Assert.assertEquals(2, attempts.get());
+    }
+
+    @Test
+    public void shouldRetryStreamOnConnectionResetBeforeFirstChunk() {
+        AtomicInteger attempts = new AtomicInteger();
+        List<ChatResponse> responses = LlmRequestRetry.stream("test-stream-reset", () -> {
+            if (attempts.incrementAndGet() < 2) {
+                return Flux.error(new IOException("Connection reset"));
+            }
+            return Flux.just(new ChatResponse(List.of()));
+        }).collectList().block();
+
+        Assert.assertNotNull(responses);
+        Assert.assertEquals(1, responses.size());
+        Assert.assertEquals(2, attempts.get());
+    }
+
+    @Test
     public void shouldNotRetryStreamAfterFirstChunk() {
         AtomicInteger attempts = new AtomicInteger();
         try {

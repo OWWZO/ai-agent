@@ -1,15 +1,16 @@
 package org.wwz.ai.domain.agent.runtime.llm;
 
+import com.alibaba.fastjson.JSON;
 import lombok.Builder;
 import lombok.Data;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
+import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
-import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
+import org.wwz.ai.domain.agent.runtime.util.ToolSchemaNormalizer;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -18,6 +19,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 /**
@@ -26,19 +28,15 @@ import java.util.stream.Collectors;
  * 说明：{@link #countText(String)} 仍返回<strong>字符数</strong>（兼容 history 预算等旧调用）。
  * 真正 token 粗估请用 {@link #estimateTokens(String)} / {@link #estimatePrompt}。
  */
-@Slf4j
 public class TokenCounter {
 
     /** 每 token 默认按 4 字节估算。 */
     public static final int CHARS_PER_TOKEN = 4;
+    public static final String SOURCE_LOCAL_ESTIMATE = "local_estimate";
+    public static final String SOURCE_PROVIDER_USAGE = "provider_usage";
     private static final int BASE_MESSAGE_TOKENS = 4;
     private static final int FORMAT_TOKENS = 2;
-    private static final int LOW_DETAIL_IMAGE_TOKENS = 85;
-    private static final int HIGH_DETAIL_TILE_TOKENS = 170;
-    private static final int MAX_SIZE = 2048;
-    private static final int HIGH_DETAIL_TARGET_SHORT_SIDE = 768;
-    private static final int TILE_SIZE = 512;
-    private static final int IMAGE_DEFAULT_TOKENS = 2000;
+    public static final int IMAGE_DEFAULT_TOKENS = 2000;
 
     public TokenCounter() {
     }
@@ -61,64 +59,83 @@ public class TokenCounter {
     }
 
     public int countImage(Map<String, Object> imageItem) {
-        String detail = (String) imageItem.getOrDefault("detail", "medium");
-        if ("low".equals(detail)) {
-            return LOW_DETAIL_IMAGE_TOKENS;
+        if (imageItem == null) {
+            return IMAGE_DEFAULT_TOKENS;
         }
-        if ("high".equals(detail) || "medium".equals(detail)) {
-            if (imageItem.containsKey("dimensions")) {
-                @SuppressWarnings("unchecked")
-                List<Integer> dimensions = (List<Integer>) imageItem.get("dimensions");
-                return calculateHighDetailTokens(dimensions.get(0), dimensions.get(1));
-            }
-        }
-        if ("high".equals(detail)) {
-            return calculateHighDetailTokens(1024, 1024);
-        }
-        return 1024;
-    }
-
-    private int calculateHighDetailTokens(int width, int height) {
-        if (width > MAX_SIZE || height > MAX_SIZE) {
-            double scale = MAX_SIZE / (double) Math.max(width, height);
-            width = (int) (width * scale);
-            height = (int) (height * scale);
-        }
-        double scale = HIGH_DETAIL_TARGET_SHORT_SIDE / (double) Math.min(width, height);
-        int scaledWidth = (int) (width * scale);
-        int scaledHeight = (int) (height * scale);
-        int tilesX = (int) Math.ceil(scaledWidth / (double) TILE_SIZE);
-        int tilesY = (int) Math.ceil(scaledHeight / (double) TILE_SIZE);
-        return (tilesX * tilesY * HIGH_DETAIL_TILE_TOKENS) + LOW_DETAIL_IMAGE_TOKENS;
+        return IMAGE_DEFAULT_TOKENS;
     }
 
     public int countContent(Object content) {
         if (content == null) {
             return 0;
         }
-        if (content instanceof String) {
-            return estimateTokens((String) content);
+        if (content instanceof String text) {
+            if (looksLikeMediaPayload(text)) {
+                return IMAGE_DEFAULT_TOKENS;
+            }
+            return estimateTokens(text);
         }
         if (content instanceof List) {
             int tokenCount = 0;
             for (Object item : (List<?>) content) {
-                if (item instanceof String) {
-                    tokenCount += estimateTokens((String) item);
-                } else if (item instanceof Map) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> map = (Map<String, Object>) item;
-                    if (map.containsKey("text")) {
-                        tokenCount += estimateTokens(String.valueOf(map.get("text")));
-                    } else if (map.containsKey("image_url")) {
-                        @SuppressWarnings("unchecked")
-                        Map<String, Object> image = (Map<String, Object>) map.get("image_url");
-                        tokenCount += countImage(image);
-                    }
-                }
+                tokenCount += countContentItem(item);
             }
             return tokenCount;
         }
+        if (content instanceof Map<?, ?> map) {
+            return countContentItem(map);
+        }
         return estimateTokens(String.valueOf(content));
+    }
+
+    @SuppressWarnings("unchecked")
+    private int countContentItem(Object item) {
+        if (item == null) {
+            return 0;
+        }
+        if (item instanceof String text) {
+            if (looksLikeMediaPayload(text)) {
+                return IMAGE_DEFAULT_TOKENS;
+            }
+            return estimateTokens(text);
+        }
+        if (!(item instanceof Map)) {
+            return estimateTokens(String.valueOf(item));
+        }
+        Map<String, Object> map = (Map<String, Object>) item;
+        if (isMediaPart(map)) {
+            return IMAGE_DEFAULT_TOKENS;
+        }
+        if (map.containsKey("text")) {
+            return estimateTokens(String.valueOf(map.get("text")));
+        }
+        return estimateTokens(stableJson(map));
+    }
+
+    private boolean isMediaPart(Map<String, Object> map) {
+        Object type = map.get("type");
+        String typeName = type == null ? "" : String.valueOf(type).toLowerCase();
+        if (typeName.contains("image") || typeName.contains("file") || typeName.contains("document")
+                || typeName.contains("audio") || typeName.contains("video")) {
+            return true;
+        }
+        return map.containsKey("image_url")
+                || map.containsKey("image")
+                || map.containsKey("file")
+                || map.containsKey("file_url")
+                || map.containsKey("document")
+                || map.containsKey("inline_data");
+    }
+
+    private boolean looksLikeMediaPayload(String text) {
+        if (text == null) {
+            return false;
+        }
+        String trimmed = text.trim();
+        return trimmed.startsWith("data:image")
+                || trimmed.startsWith("data:application")
+                || trimmed.startsWith("data:audio")
+                || trimmed.startsWith("data:video");
     }
 
     @SuppressWarnings("unchecked")
@@ -128,7 +145,12 @@ public class TokenCounter {
             return 0;
         }
         for (Map<String, Object> toolCall : toolCalls) {
-            if (toolCall != null && toolCall.containsKey("function")) {
+            if (toolCall == null) {
+                continue;
+            }
+            tokenCount += estimateTokens(String.valueOf(toolCall.getOrDefault("id", "")));
+            tokenCount += estimateTokens(String.valueOf(toolCall.getOrDefault("type", "")));
+            if (toolCall.containsKey("function")) {
                 Map<String, Object> function = (Map<String, Object>) toolCall.get("function");
                 tokenCount += estimateTokens(String.valueOf(function.getOrDefault("name", "")));
                 tokenCount += estimateTokens(String.valueOf(function.getOrDefault("arguments", "")));
@@ -142,6 +164,13 @@ public class TokenCounter {
         tokens += estimateTokens(message.getOrDefault("role", "").toString());
         if (message.containsKey("content")) {
             tokens += countContent(message.get("content"));
+        }
+        if (message.containsKey("reasoning_content") || message.containsKey("reasoningContent")) {
+            Object reasoning = message.get("reasoning_content");
+            if (reasoning == null) {
+                reasoning = message.get("reasoningContent");
+            }
+            tokens += estimateTokens(reasoning == null ? null : String.valueOf(reasoning));
         }
         if (message.containsKey("tool_calls")) {
             @SuppressWarnings("unchecked")
@@ -165,13 +194,27 @@ public class TokenCounter {
     }
 
     /**
-     * 估算领域 Message 列表（不含 system）。
+     * 估算领域 Message 列表（不含 system）。含整包 format overhead。
      */
     public int estimateMessages(List<Message> messages) {
         if (messages == null || messages.isEmpty()) {
             return FORMAT_TOKENS;
         }
         int total = FORMAT_TOKENS;
+        for (Message message : messages) {
+            total += estimateOneMessage(message);
+        }
+        return total;
+    }
+
+    /**
+     * 只计算消息本身，不重复添加整包 format overhead。供 usage anchor 增量使用。
+     */
+    public int estimateMessageDelta(List<Message> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return 0;
+        }
+        int total = 0;
         for (Message message : messages) {
             total += estimateOneMessage(message);
         }
@@ -186,17 +229,22 @@ public class TokenCounter {
         if (message.getRole() != null) {
             tokens += estimateTokens(message.getRole().name());
         }
-        tokens += estimateTokens(message.getContent());
+        tokens += countContent(message.getContent());
+        tokens += estimateTokens(message.getReasoningContent());
         tokens += estimateTokens(message.getToolCallId());
         if (StringUtils.isNotBlank(message.getBase64Image())) {
             tokens += IMAGE_DEFAULT_TOKENS;
         }
         if (message.getToolCalls() != null) {
             for (ToolCall toolCall : message.getToolCalls()) {
-                if (toolCall == null || toolCall.getFunction() == null) {
+                if (toolCall == null) {
                     continue;
                 }
                 tokens += estimateTokens(toolCall.getId());
+                tokens += estimateTokens(toolCall.getType());
+                if (toolCall.getFunction() == null) {
+                    continue;
+                }
                 tokens += estimateTokens(toolCall.getFunction().getName());
                 tokens += estimateTokens(toolCall.getFunction().getArguments());
             }
@@ -211,29 +259,42 @@ public class TokenCounter {
         int tokens = 0;
         if (tools.getToolMap() != null) {
             for (BaseTool tool : tools.getToolMap().values()) {
-                if (tool == null) {
-                    continue;
-                }
-                tokens += estimateTokens(tool.getName());
-                tokens += estimateTokens(tool.getDescription());
-                try {
-                    Object params = tool.toParams();
-                    if (params != null) {
-                        tokens += estimateTokens(String.valueOf(params));
-                    }
-                } catch (Exception ignored) {
-                    // ignore schema reflection failures
-                }
+                tokens += estimateOneToolSchema(tool);
             }
         }
         if (tools.getMcpToolMap() != null) {
             for (McpToolInfo mcp : tools.getMcpToolMap().values()) {
-                if (mcp == null) {
-                    continue;
-                }
-                tokens += estimateTokens(mcp.getName());
-                tokens += estimateTokens(mcp.getDesc());
+                tokens += estimateOneMcpSchema(mcp);
             }
+        }
+        return tokens;
+    }
+
+    private int estimateOneToolSchema(BaseTool tool) {
+        if (tool == null) {
+            return 0;
+        }
+        int tokens = estimateTokens(tool.getName());
+        tokens += estimateTokens(tool.getDescription());
+        try {
+            Object params = tool.toParams();
+            if (params != null) {
+                tokens += estimateTokens(stableJson(params));
+            }
+        } catch (Exception ignored) {
+            // ignore schema reflection failures
+        }
+        return tokens;
+    }
+
+    private int estimateOneMcpSchema(McpToolInfo mcp) {
+        if (mcp == null) {
+            return 0;
+        }
+        int tokens = estimateTokens(mcp.getName());
+        tokens += estimateTokens(mcp.getDesc());
+        if (StringUtils.isNotBlank(mcp.getParameters())) {
+            tokens += estimateTokens(stableJsonFromRaw(mcp.getParameters()));
         }
         return tokens;
     }
@@ -253,34 +314,134 @@ public class TokenCounter {
         return names;
     }
 
+    public String toolSchemaFingerprint(ToolCollection tools) {
+        return shortHash(stableToolSchema(tools));
+    }
+
+    public String fingerprint(PromptShape shape) {
+        if (shape == null) {
+            return shortHash("null");
+        }
+        String systemContent = shape.getSystemMessage() == null
+                ? ""
+                : StringUtils.defaultString(shape.getSystemMessage().getContent());
+        String toolFp = toolSchemaFingerprint(shape.getTools());
+        return shortHash(shape.protocolName() + "|" + systemContent + "|" + toolFp);
+    }
+
     /**
-     * 请求前完整粗估 + 指纹（用于 prompt cache debug）。
+     * 请求前完整粗估 + 指纹（用于 prompt cache debug）。默认按 function_call 口径。
      */
     public PromptEstimate estimatePrompt(Message systemMessage, List<Message> messages, ToolCollection tools) {
-        String systemContent = systemMessage == null ? "" : StringUtils.defaultString(systemMessage.getContent());
+        return estimatePrompt(PromptShape.functionCall(systemMessage, messages, tools));
+    }
+
+    public PromptEstimate estimatePrompt(PromptShape shape) {
+        PromptShape effective = shape == null ? PromptShape.text(null, List.of()) : shape;
+        String systemContent = effective.getSystemMessage() == null
+                ? ""
+                : StringUtils.defaultString(effective.getSystemMessage().getContent());
         int systemTokens = estimateTokens(systemContent);
-        int messageTokens = estimateMessages(messages);
-        int toolTokens = estimateTools(tools);
-        List<String> toolNames = listToolNames(tools);
+        int messageTokens = estimateMessages(effective.getMessages());
+        int toolTokens = effective.isIncludeToolTokens() ? estimateTools(effective.getTools()) : 0;
+        List<String> toolNames = listToolNames(effective.getTools());
         Map<String, Integer> roleCounts = new LinkedHashMap<>();
-        if (messages != null) {
-            for (Message message : messages) {
+        if (effective.getMessages() != null) {
+            for (Message message : effective.getMessages()) {
                 String role = message == null || message.getRole() == null ? "null" : message.getRole().name();
                 roleCounts.merge(role, 1, Integer::sum);
             }
         }
+        String toolSchemaFingerprint = toolSchemaFingerprint(effective.getTools());
+        String promptShapeFingerprint = fingerprint(effective);
         return PromptEstimate.builder()
                 .systemChars(systemContent.length())
                 .systemTokens(systemTokens)
                 .systemFingerprint(shortHash(systemContent))
-                .messageCount(messages == null ? 0 : messages.size())
+                .messageCount(effective.getMessages() == null ? 0 : effective.getMessages().size())
                 .messageTokens(messageTokens)
                 .roleCounts(roleCounts)
                 .toolCount(toolNames.size())
                 .toolNames(toolNames)
                 .toolTokens(toolTokens)
+                .toolSchemaFingerprint(toolSchemaFingerprint)
+                .promptShapeFingerprint(promptShapeFingerprint)
+                .estimateSource(SOURCE_LOCAL_ESTIMATE)
                 .estimatedTotalTokens(systemTokens + messageTokens + toolTokens)
                 .build();
+    }
+
+    public String stableToolSchema(ToolCollection tools) {
+        if (tools == null) {
+            return "";
+        }
+        Map<String, Object> root = new TreeMap<>();
+        if (tools.getToolMap() != null) {
+            for (BaseTool tool : tools.getToolMap().values()) {
+                if (tool == null || StringUtils.isBlank(tool.getName())) {
+                    continue;
+                }
+                Map<String, Object> one = new TreeMap<>();
+                one.put("name", tool.getName());
+                one.put("description", StringUtils.defaultString(tool.getDescription()));
+                try {
+                    one.put("parameters", tool.toParams());
+                } catch (Exception ignored) {
+                    one.put("parameters", Map.of());
+                }
+                root.put("local:" + tool.getName(), one);
+            }
+        }
+        if (tools.getMcpToolMap() != null) {
+            for (McpToolInfo mcp : tools.getMcpToolMap().values()) {
+                if (mcp == null || StringUtils.isBlank(mcp.getName())) {
+                    continue;
+                }
+                Map<String, Object> one = new TreeMap<>();
+                one.put("name", mcp.getName());
+                one.put("description", StringUtils.defaultString(mcp.getDesc()));
+                one.put("parameters", parseJsonOrRaw(mcp.getParameters()));
+                root.put("mcp:" + mcp.getName(), one);
+            }
+        }
+        return stableJson(root);
+    }
+
+    public String stableJson(Object value) {
+        if (value == null) {
+            return "";
+        }
+        if (value instanceof String text) {
+            return stableJsonFromRaw(text);
+        }
+        try {
+            return ToolSchemaNormalizer.toStableJson(value);
+        } catch (Exception e) {
+            return String.valueOf(value);
+        }
+    }
+
+    private String stableJsonFromRaw(String raw) {
+        if (StringUtils.isBlank(raw)) {
+            return "";
+        }
+        try {
+            Object parsed = JSON.parse(raw);
+            return ToolSchemaNormalizer.toStableJson(parsed);
+        } catch (Exception e) {
+            return raw;
+        }
+    }
+
+    private Object parseJsonOrRaw(String raw) {
+        if (StringUtils.isBlank(raw)) {
+            return "";
+        }
+        try {
+            return JSON.parse(raw);
+        } catch (Exception e) {
+            return raw;
+        }
     }
 
     public String shortHash(String text) {
@@ -327,12 +488,17 @@ public class TokenCounter {
         private List<String> toolNames;
         private int toolTokens;
         private int estimatedTotalTokens;
+        private String toolSchemaFingerprint;
+        private String promptShapeFingerprint;
+        private String estimateSource;
 
         public String toLogLine() {
             return "estTotal=" + estimatedTotalTokens
+                    + " source=" + estimateSource
                     + " system(chars=" + systemChars + ",tok~" + systemTokens + ",fp=" + systemFingerprint + ")"
                     + " messages(n=" + messageCount + ",tok~" + messageTokens + ",roles=" + roleCounts + ")"
-                    + " tools(n=" + toolCount + ",tok~" + toolTokens + ",names=" + toolNames + ")";
+                    + " tools(n=" + toolCount + ",tok~" + toolTokens + ",schemaFp=" + toolSchemaFingerprint + ",names=" + toolNames + ")"
+                    + " shapeFp=" + promptShapeFingerprint;
         }
     }
 }

@@ -83,8 +83,10 @@ public class RunReactLoopNode extends AbstractExecuteSupport {
         ReactImplAgent planner = new ReactImplAgent(agentContext);
         planner.setName("plan-solve");
         planner.setDescription("plan-execute main agent: plan mode, dispatch Agent subagents, final user reply");
+        // ORCHESTRATION 为唯一角色底座，不用 REACT_SYSTEM_PROMPT
+        planner.applyPlanSolveSystemPrompt();
         if (agentContext.requirePlanModeState().isPlanMode()) {
-            planner.setSystemPrompt(PlanModePromptInjector.ensurePlanSolveWithPlanModeGuidance(
+            planner.setSystemPrompt(PlanModePromptInjector.ensurePlanModeInstructions(
                     planner.getSystemPrompt()));
             PlanModePromptInjector.applyIfPlanMode(agentContext, planner);
         } else {

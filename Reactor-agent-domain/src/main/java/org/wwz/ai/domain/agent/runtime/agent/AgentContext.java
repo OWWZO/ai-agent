@@ -21,6 +21,7 @@ import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.DeferredMcpCatalog;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceFileReadState;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.llm.ContextTokenTracker;
 import org.wwz.ai.domain.agent.ledger.AgentExecutionRecorder;
 import org.wwz.ai.domain.agent.memory.WorkingMemoryScopes;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
@@ -248,6 +249,12 @@ public class AgentContext {
     Boolean ltmSideEffectsDisabled = Boolean.FALSE;
 
     /**
+     * 非空时：tools[] 仍可上报全量 schema（prompt cache），但 execute 仅允许白名单内工具。
+     * LTM review/flush fork 用于对齐 Hermes「schema 全量 + runtime whitelist」。
+     */
+    java.util.Set<String> toolDispatchWhitelist;
+
+    /**
      * 智能体类型标识（AgentType 数值：PLAN_SOLVE / REACT 等）
      */
     Integer agentType;
@@ -303,6 +310,15 @@ public class AgentContext {
     @ToString.Exclude
     @JSONField(serialize = false)
     AgentRunState agentRunState = AgentRunState.builder().build();
+
+    /**
+     * 当前 Agent 独立的上下文 token tracker。
+     * 不放入共享 {@link AgentRunState}，避免父 Agent、子 Agent 与 LTM fork 互相污染。
+     */
+    @Builder.Default
+    @ToString.Exclude
+    @JSONField(serialize = false)
+    ContextTokenTracker contextTokenTracker = new ContextTokenTracker();
 
 
     // ---- run control ----
@@ -530,6 +546,16 @@ public class AgentContext {
         return Map.copyOf(workspaceReadStateByPath);
     }
 
+    /**
+     * 压缩后丢弃 dedup 状态：旧 workspace_read 正文可能已不在上下文中，
+     * 保留状态会导致再次读取仍返回 unchanged stub。
+     */
+    public void clearWorkspaceReadState() {
+        if (workspaceReadStateByPath != null) {
+            workspaceReadStateByPath.clear();
+        }
+    }
+
 
     public ToolArtifactBinding registerGeneratedArtifact(ToolArtifactSource source, File file) {
         // 工具产物先登记到唯一 registry，再同步到会话级兼容文件列表；
@@ -647,6 +673,13 @@ public class AgentContext {
             agentRunState = AgentRunState.builder().build();
         }
         return agentRunState;
+    }
+
+    public synchronized ContextTokenTracker contextTokenTracker() {
+        if (contextTokenTracker == null) {
+            contextTokenTracker = new ContextTokenTracker();
+        }
+        return contextTokenTracker;
     }
 
     private List<File> copyFiles(List<File> sourceFiles) {

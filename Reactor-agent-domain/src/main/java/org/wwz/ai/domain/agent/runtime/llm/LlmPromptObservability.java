@@ -34,10 +34,17 @@ public final class LlmPromptObservability {
                                                Message systemMessage,
                                                List<Message> messages,
                                                ToolCollection tools) {
-        TokenCounter.PromptEstimate estimate = TOKEN_COUNTER.estimatePrompt(systemMessage, messages, tools);
+        return logRequest(context, model, callKind, PromptShape.functionCall(systemMessage, messages, tools));
+    }
+
+    public static ObservationBundle logRequest(AgentContext context,
+                                               String model,
+                                               String callKind,
+                                               PromptShape shape) {
+        TokenCounter.PromptEstimate estimate = TOKEN_COUNTER.estimatePrompt(shape);
         String requestId = context == null ? "-" : StringUtils.defaultString(context.getRequestId(), "-");
         String sessionId = context == null ? "-" : StringUtils.defaultString(context.getSessionId(), "-");
-        String roleSeq = TOKEN_COUNTER.summarizeRoles(messages);
+        String roleSeq = TOKEN_COUNTER.summarizeRoles(shape == null ? null : shape.getMessages());
 
         String reqLine = "[LLM-REQ] kind=" + callKind + " model=" + model + " session=" + sessionId + " " + estimate.toLogLine();
         String roleLine = "[LLM-REQ] roleSeq=[" + roleSeq + "] messageCount=" + estimate.getMessageCount();
@@ -51,6 +58,7 @@ public final class LlmPromptObservability {
         PromptSnapshot curr = new PromptSnapshot(
                 estimate.getSystemFingerprint(),
                 String.join(",", estimate.getToolNames() == null ? List.of() : estimate.getToolNames()),
+                estimate.getToolSchemaFingerprint(),
                 estimate.getMessageCount(),
                 estimate.getSystemChars()
         );
@@ -60,7 +68,7 @@ public final class LlmPromptObservability {
         String cacheLine;
         if (prev != null && !"-".equals(sessionId)) {
             boolean systemChanged = !Objects.equals(prev.systemFingerprint(), curr.systemFingerprint());
-            boolean toolsChanged = !Objects.equals(prev.toolNamesKey(), curr.toolNamesKey());
+            boolean toolsChanged = !Objects.equals(prev.toolSchemaFingerprint(), curr.toolSchemaFingerprint());
             boolean messagesShrunk = curr.messageCount() + 1 < prev.messageCount();
             if (systemChanged || toolsChanged || messagesShrunk) {
                 cacheStatus = "RISK";
@@ -209,6 +217,7 @@ public final class LlmPromptObservability {
             measured.setPromptTokens(promptTokens);
             measured.setCompletionTokens(completionTokens);
             measured.setUsed(promptTokens);
+            // Hermes 同样区分当前窗口的实测总量与分类估算合计；分段无法由 provider 反推。
             measured.setSource("measured");
             emitContextUsage(context, measured);
         }
@@ -231,7 +240,8 @@ public final class LlmPromptObservability {
             return;
         }
         try {
-            context.getPrinter().send("context_usage", payload);
+            // 这是状态快照，不是终态消息；Hermes 的 usage 更新同样不结束当前执行流。
+            context.getPrinter().send(null, "context_usage", payload, null, false);
         } catch (Exception e) {
             log.debug("emit context_usage failed: {}", e.getMessage());
         }
@@ -275,7 +285,8 @@ public final class LlmPromptObservability {
         return resolveUsage(metadata).getCachedPromptTokens();
     }
 
-    private record PromptSnapshot(String systemFingerprint, String toolNamesKey, int messageCount, int systemChars) {
+    private record PromptSnapshot(String systemFingerprint, String toolNamesKey, String toolSchemaFingerprint,
+                                 int messageCount, int systemChars) {
     }
 
     @Data

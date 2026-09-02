@@ -4,7 +4,7 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.BaseAgent;
-import org.wwz.ai.domain.agent.runtime.prompt.ToolCallPrompt;
+import org.wwz.ai.domain.agent.runtime.prompt.AgentPrompt;
 import org.wwz.ai.domain.agent.runtime.prompt.IntentGatedPrompt;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
@@ -18,7 +18,7 @@ public class StableSystemPromptTest {
 
     @Test
     public void sameInputsYieldIdenticalSystemBytesAcrossConstructions() {
-        String template = ToolCallPrompt.SYSTEM_PROMPT
+        String template = AgentPrompt.SYSTEM_PROMPT
                 + "\r\n\r\n## 当前日期\n\n{{date}}\n\n"
                 + "{{basePrompt}}\n\n"
                 + "<files>\n</files>\n\n"
@@ -32,14 +32,14 @@ public class StableSystemPromptTest {
         Assert.assertEquals(first, third);
         Assert.assertFalse(first.contains("{{date}}"));
         Assert.assertFalse(first.contains("<files>"));
-        Assert.assertTrue(first.contains(ToolCallPrompt.USER_FACING_REPLY_CONTRACT_MARKER));
+        Assert.assertTrue(first.contains(AgentPrompt.USER_FACING_REPLY_CONTRACT_MARKER));
         Assert.assertTrue(first.endsWith("\n"));
     }
 
     @Test
     public void ensureContractIsIdempotent() {
-        String once = ToolCallPrompt.ensureUserFacingReplyContract("hello\r\nworld  ");
-        String twice = ToolCallPrompt.ensureUserFacingReplyContract(once);
+        String once = AgentPrompt.ensureUserFacingReplyContract("hello\r\nworld  ");
+        String twice = AgentPrompt.ensureUserFacingReplyContract(once);
         Assert.assertEquals(once, twice);
         Assert.assertEquals(1, countMarker(once));
     }
@@ -66,7 +66,7 @@ public class StableSystemPromptTest {
 
     @Test
     public void intentPolicyUsesSeparateFrozenSystemVariant() {
-        String template = ToolCallPrompt.ensureUserFacingReplyContract("base");
+        String template = AgentPrompt.ensureUserFacingReplyContract("base");
         ToolCollection tools = new ToolCollection();
         tools.addTool(tool("document_generate"));
 
@@ -91,9 +91,9 @@ public class StableSystemPromptTest {
     private static int countMarker(String s) {
         int n = 0;
         int i = 0;
-        while ((i = s.indexOf(ToolCallPrompt.USER_FACING_REPLY_CONTRACT_MARKER, i)) >= 0) {
+        while ((i = s.indexOf(AgentPrompt.USER_FACING_REPLY_CONTRACT_MARKER, i)) >= 0) {
             n++;
-            i += ToolCallPrompt.USER_FACING_REPLY_CONTRACT_MARKER.length();
+            i += AgentPrompt.USER_FACING_REPLY_CONTRACT_MARKER.length();
         }
         return n;
     }
@@ -104,7 +104,7 @@ public class StableSystemPromptTest {
 
     private static String assemble(String rawTemplate, String sessionId, String agentName, String basePrompt,
                                    String query, ToolCollection tools) {
-        String template = ToolCallPrompt.ensureUserFacingReplyContract(rawTemplate);
+        String template = AgentPrompt.ensureUserFacingReplyContract(rawTemplate);
         ProbeAgent agent = new ProbeAgent();
         agent.setName(agentName);
         agent.setContext(AgentContext.builder()

@@ -9,7 +9,7 @@ import org.wwz.ai.domain.agent.runtime.dto.tool.ToolChoice;
 import org.wwz.ai.domain.agent.runtime.enums.AgentState;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
 import org.wwz.ai.domain.agent.runtime.llm.LlmUserFacingError;
-import org.wwz.ai.domain.agent.runtime.prompt.ToolCallPrompt;
+import org.wwz.ai.domain.agent.runtime.prompt.AgentPrompt;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 
 import java.util.ArrayList;
@@ -49,8 +49,8 @@ public class ReactImplAgent extends ReActAgent {
         AgentBootstrap.configure(this, context, new AgentBootstrap.Profile(
                 "react",
                 "an agent that can execute tool calls.",
-                ReactorConfig::getReactSystemPromptMap,
-                ToolCallPrompt.SYSTEM_PROMPT,
+                config -> Map.of(),
+                AgentPrompt.REACT_SYSTEM_PROMPT,
                 ReactorConfig::getReactModelName,
                 ReactorConfig::getReactMaxSteps,
                 true,
