@@ -16,6 +16,25 @@ function buildCurrentToolBaseUrl(): string {
   return `${origin}/tool`;
 }
 
+export function buildFilePreviewUrlForBrowser(
+  requestId?: string | null,
+  fileName?: string | null
+): string {
+  const origin = buildCurrentToolOrigin();
+  const normalizedRequestId = (requestId || "").trim();
+  const normalizedFileName = (fileName || "").trim();
+  if (!origin || !normalizedRequestId || !normalizedFileName) {
+    return "";
+  }
+  const encodedPath = normalizedFileName
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean)
+    .map(encodeURIComponent)
+    .join("/");
+  return `${origin}/tool/v1/file_tool/preview/${encodeURIComponent(normalizedRequestId)}/${encodedPath}`;
+}
+
 // 本地开发端口、旧域名和当前工具路径都可能出现在历史产物中，需要统一迁移到当前页面。
 function shouldRewriteToCurrentTool(url: URL): boolean {
   if (typeof window === "undefined") {
@@ -117,6 +136,13 @@ export function normalizeFileUrlForBrowser(rawUrl?: string | null): string {
     return currentToolUrl.toString();
   } catch {
     // 相对路径无法被 URL 解析时，仅补当前 origin，不猜测其它外部主机。
+    const currentToolBaseUrl = buildCurrentToolBaseUrl();
+    if (currentToolBaseUrl && (normalized.startsWith("preview/") || normalized.startsWith("download/"))) {
+      return `${currentToolBaseUrl}/v1/file_tool/${normalized}`;
+    }
+    if (currentToolBaseUrl && (normalized.startsWith("/preview/") || normalized.startsWith("/download/"))) {
+      return `${currentToolBaseUrl}/v1/file_tool${normalized}`;
+    }
     if (normalized.startsWith("/tool/")) {
       const currentOrigin = buildCurrentToolOrigin();
       return currentOrigin ? `${currentOrigin}${normalized}` : normalized;

@@ -996,6 +996,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
                       onOpenTaskFiles={() => {
                         setWorkspaceImmersive(false);
                         setSidebarPanel("task-files");
+                        setMobileSidebarOpen(true);
                       }}
                       onFocusModeChange={setWorkspaceImmersive}
                     />

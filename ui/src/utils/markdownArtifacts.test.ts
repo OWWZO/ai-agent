@@ -30,7 +30,7 @@ describe("markdownArtifacts", () => {
     expect(resolveMarkdownMediaKind("./clip.webm?v=1")).toBe("video");
     expect(resolveMarkdownMediaKind("http://x/a.mp3")).toBe("audio");
     expect(resolveMarkdownMediaKind("tone.wav")).toBe("audio");
-    expect(resolveMarkdownMediaKind("chart.png")).toBe("other");
+    expect(resolveMarkdownMediaKind("chart.png")).toBe("image");
     expect(resolveMarkdownMediaExtension("http://x/v1/file_tool/preview/s/a.MP4")).toBe(
       "mp4"
     );
@@ -49,9 +49,9 @@ describe("markdownArtifacts", () => {
     expect(isAbsoluteOrSpecialMarkdownUrl("./report.md")).toBe(false);
   });
 
-  it("normalizes relative refs to basename", () => {
+  it("normalizes relative refs and keeps directories", () => {
     expect(normalizeMarkdownArtifactRef("./outputs/chart.png")).toBe(
-      "chart.png"
+      "outputs/chart.png"
     );
     expect(normalizeMarkdownArtifactRef("report.md?v=1#top")).toBe("report.md");
     expect(normalizeMarkdownArtifactRef("https://a.com/x.png")).toBe("");
@@ -80,6 +80,23 @@ describe("markdownArtifacts", () => {
     ).toBe("https://cdn.example/keep.png");
     expect(resolveMarkdownArtifactHref("missing.png", files)).toBe(
       "missing.png"
+    );
+  });
+
+  it("resolves colliding basenames by relative path", () => {
+    const files = [
+      sampleFile("style.css", "http://x/preview/a/style.css", {
+        relativePath: "theme-a/style.css",
+      }),
+      sampleFile("style.css", "http://x/preview/b/style.css", {
+        relativePath: "theme-b/style.css",
+      }),
+    ];
+    expect(resolveMarkdownArtifactHref("theme-a/style.css", files)).toBe(
+      "http://x/preview/a/style.css"
+    );
+    expect(resolveMarkdownArtifactHref("theme-b/style.css", files)).toBe(
+      "http://x/preview/b/style.css"
     );
   });
 
@@ -191,6 +208,59 @@ describe("markdownArtifacts", () => {
     );
     expect(rewritten).toContain("[x](https://a.com/x)");
     expect(rewritten).toContain("```md\n[别动](report.md)\n```");
+  });
+
+  it("turns bare workspace filenames into preview links", () => {
+    const files = [
+      sampleFile(
+        "notes-competitor-canvas.html",
+        "http://127.0.0.1:1601/v1/file_tool/preview/s1/notes-competitor-canvas.html"
+      ),
+      sampleFile(
+        "style.css",
+        "http://127.0.0.1:1601/v1/file_tool/preview/s1/site/css/style.css",
+        { relativePath: "site/css/style.css" }
+      ),
+    ];
+
+    const rewritten = rewriteMarkdownArtifactRefs(
+      "成品是 notes-competitor-canvas.html，样式在 site/css/style.css。\n\n```txt\nnotes-competitor-canvas.html\n```",
+      files
+    );
+
+    expect(rewritten).toContain(
+      "[notes-competitor-canvas.html](http://127.0.0.1:1601/v1/file_tool/preview/s1/notes-competitor-canvas.html)"
+    );
+    expect(rewritten).toContain(
+      "[site/css/style.css](http://127.0.0.1:1601/v1/file_tool/preview/s1/site/css/style.css)"
+    );
+    expect(rewritten).toContain("```txt\nnotes-competitor-canvas.html\n```");
+  });
+
+  it("embeds bare images and videos instead of turning them into preview links", () => {
+    const files = [
+      sampleFile(
+        "chart.png",
+        "http://127.0.0.1:1601/v1/file_tool/preview/s1/chart.png"
+      ),
+      sampleFile(
+        "clip.mp4",
+        "http://127.0.0.1:1601/v1/file_tool/preview/s1/clip.mp4"
+      ),
+    ];
+
+    const rewritten = rewriteMarkdownArtifactRefs(
+      "见图 chart.png，视频 clip.mp4。",
+      files
+    );
+
+    expect(rewritten).toContain(
+      "![](http://127.0.0.1:1601/v1/file_tool/preview/s1/chart.png)"
+    );
+    expect(rewritten).toContain(
+      "[clip.mp4](http://127.0.0.1:1601/v1/file_tool/preview/s1/clip.mp4)"
+    );
+    expect(rewritten).not.toContain("[chart.png](");
   });
 
   it("collects nested children files under agent timeline containers", () => {

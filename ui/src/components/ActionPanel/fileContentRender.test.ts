@@ -120,6 +120,160 @@ describe("ActionPanel file content rendering", () => {
     });
   });
 
+  it("should hide nested tool result JSON instead of Structured data panel", () => {
+    const task = {
+      messageType: "tool_result",
+      resultMap: {
+        messageType: "tool_result",
+        resultMap: {
+          toolResult: {
+            toolName: "workspace_grep",
+            toolResult: JSON.stringify({ matches: ["a.ts", "b.ts"] }),
+          },
+        },
+      },
+    } as unknown as MESSAGE.Task;
+    let msgTypes: ReturnType<typeof useMsgTypes> | undefined;
+
+    const HookProbe = () => {
+      msgTypes = useMsgTypes(task as unknown as any);
+      return null;
+    };
+    renderToStaticMarkup(createElement(HookProbe));
+
+    expect(msgTypes?.useJSON).toBe(true);
+    expect(
+      resolvePanelView({
+        taskItem: task as unknown as any,
+        msgTypes,
+        markDownContent: "",
+      })
+    ).toMatchObject({
+      type: "empty",
+    });
+  });
+
+  it("should map WebSearch hit payloads to the workspace search panel", () => {
+    const task = {
+      messageType: "tool_result",
+      isFinal: true,
+      toolResult: {
+        toolName: "WebSearch",
+        toolResult: JSON.stringify({
+          hits: [
+            {
+              title: "来源 A",
+              url: "https://example.com/a",
+              snippet: "摘要 A",
+            },
+          ],
+        }),
+      },
+      resultMap: {},
+    } as unknown as MESSAGE.Task;
+    let msgTypes: ReturnType<typeof useMsgTypes> | undefined;
+
+    const HookProbe = () => {
+      msgTypes = useMsgTypes(task as unknown as any);
+      return null;
+    };
+    renderToStaticMarkup(createElement(HookProbe));
+
+    expect(msgTypes?.searchList).toEqual([
+      {
+        name: "来源 A",
+        pageContent: "摘要 A",
+        url: "https://example.com/a",
+      },
+    ]);
+    expect(
+      resolvePanelView({
+        taskItem: task as unknown as any,
+        msgTypes,
+        markDownContent: "",
+      }).type
+    ).toBe("search");
+  });
+
+  it("should hide empty tool results instead of Structured data panel", () => {
+    const task = {
+      messageType: "tool_result",
+      resultMap: {
+        toolResult: {
+          toolName: "workspace_grep",
+          toolResult: "",
+        },
+      },
+    } as unknown as MESSAGE.Task;
+    let msgTypes: ReturnType<typeof useMsgTypes> | undefined;
+
+    const HookProbe = () => {
+      msgTypes = useMsgTypes(task as unknown as any);
+      return null;
+    };
+    renderToStaticMarkup(createElement(HookProbe));
+
+    expect(
+      resolvePanelView({
+        taskItem: task as unknown as any,
+        msgTypes,
+        markDownContent: "",
+      })
+    ).toMatchObject({
+      type: "empty",
+    });
+  });
+
+  it("should use the task-level final flag for replayed plain-text results", () => {
+    const task = {
+      messageType: "tool_result",
+      isFinal: true,
+      finish: true,
+      toolResult: {
+        toolName: "workspace_read",
+        toolResult: "file contents",
+      },
+      resultMap: { parentToolUseId: "parent-1" },
+    } as unknown as MESSAGE.Task;
+
+    const panelView = resolvePanelView({
+      taskItem: task as unknown as any,
+      msgTypes: {},
+      markDownContent: "file contents",
+      isFinal: true,
+    });
+
+    expect(panelView).toEqual({
+      type: "markdown",
+      content: "file contents",
+      isStreaming: false,
+    });
+  });
+
+  it("should preserve an empty deep search result panel", () => {
+    const task = {
+      messageType: "deep_search",
+      resultMap: {
+        messageType: "search",
+        searchResult: {
+          query: ["empty query"],
+          docs: [],
+        },
+      },
+    } as unknown as MESSAGE.Task;
+
+    expect(
+      resolvePanelView({
+        taskItem: task as unknown as any,
+        msgTypes: { searchList: [] },
+        markDownContent: "",
+      })
+    ).toEqual({
+      type: "search",
+      searchList: [],
+    });
+  });
+
   const buildBinaryFileTask = (
     fileName: string,
     overrides?: Partial<MESSAGE.Task>

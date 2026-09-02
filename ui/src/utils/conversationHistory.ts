@@ -6,7 +6,6 @@ import type {
 import { GENERIC_TASK_PRODUCT } from "@/utils/constants";
 
 import { buildConversationTaskData, buildTaskFromEventData, combineData } from "./chat";
-import { artifactRefsToFileInfo } from "./taskArtifacts";
 
 type ConversationHistoryTitleDetail = Pick<
   ConversationHistoryDetail,
@@ -125,7 +124,10 @@ function hydrateRun(
     currentChat.loading = false;
   }
   if (run.contextUsage) {
-    currentChat.contextUsage = { ...run.contextUsage };
+    currentChat.contextUsage = {
+      max: run.contextUsage.max,
+      promptTokens: run.contextUsage.promptTokens,
+    };
   }
 
   return buildConversationTaskData(currentChat, detail.deepThink).currentChat;
@@ -188,6 +190,9 @@ function buildFallbackConclusionEventData(
       result: resolvedSummary.summaryText,
       taskSummary: resolvedSummary.summaryText,
       fileList: resolvedSummary.fileList,
+      ...(resolvedSummary.artifactKeys.length
+        ? { artifactKeys: resolvedSummary.artifactKeys }
+        : {}),
     } as unknown as MESSAGE.Task,
   };
 }
@@ -201,33 +206,21 @@ function resolveFallbackSummary(rawSummaryText?: string | null) {
       summaryText: normalized,
       fileList: [] as MESSAGE.FileInfo[],
       artifactRefs: [] as MESSAGE.ArtifactReference[],
+      artifactKeys: [] as string[],
     };
   }
 
-  const summaryText = normalized.slice(0, delimiterIndex).trim();
-  const artifactSection = normalized.slice(delimiterIndex + delimiter.length).trim();
-  const artifactKeys = artifactSection
+  const artifactKeys = normalized
+    .slice(delimiterIndex + delimiter.length)
+    .trim()
     .split(/[、,\r\n，]+/)
     .map((item) => item.trim())
     .filter(Boolean);
 
-  const artifactRefs = artifactKeys.map((artifactKey) => {
-    const [toolCallId, ...fileNameParts] = artifactKey.split("::");
-    const fileName = fileNameParts.join("::").trim();
-    return {
-      resourceKey: artifactKey,
-      displayName: fileName || artifactKey,
-      downloadUrl: null,
-      previewUrl: null,
-      missing: true,
-      missingReason: "history_summary_artifact_key_only",
-      toolCallId: toolCallId || undefined,
-    } as unknown as MESSAGE.ArtifactReference;
-  });
-
   return {
-    summaryText,
-    fileList: artifactRefsToFileInfo(artifactRefs),
-    artifactRefs,
+    summaryText: normalized,
+    fileList: [] as MESSAGE.FileInfo[],
+    artifactRefs: [] as MESSAGE.ArtifactReference[],
+    artifactKeys,
   };
 }

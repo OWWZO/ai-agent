@@ -12,7 +12,48 @@ type Props = {
   preview?: boolean;
   remove?: (index: number) => void;
   review?: (file: CHAT.TFile) => void;
+  showWorkspaceFilesEntry?: boolean;
+  onOpenWorkspaceFiles?: () => void;
 };
+
+function AllFilesIcon() {
+  return (
+    <svg viewBox="0 0 40 40" className="h-10 w-10" fill="none" aria-hidden="true">
+      <rect x="11" y="7" width="16" height="20" rx="2.5" fill="#f3f3f5" stroke="#e6e6ea" />
+      <rect x="9" y="10" width="18" height="20" rx="2.5" fill="#fafafa" stroke="#e6e6ea" />
+      <path
+        d="M7 18.2c0-1.2.9-2.2 2.1-2.2h5.4c.5 0 .9-.2 1.2-.6l.9-1.1c.3-.4.8-.6 1.3-.6h10.2c1.2 0 2.1 1 2.1 2.2V29c0 1.5-1.2 2.7-2.7 2.7H9.7C8.2 31.7 7 30.5 7 29V18.2z"
+        fill="#ececef"
+        stroke="#e2e2e6"
+      />
+    </svg>
+  );
+}
+
+function WorkspaceFilesEntry({ onOpen }: { onOpen?: () => void }) {
+  return (
+    <button
+      type="button"
+      className="group flex w-full items-center gap-3 rounded-2xl border border-[#e8e8ed] bg-[#fafafa] px-3.5 py-3 text-left transition-colors hover:bg-[#f3f3f5]"
+      onClick={() => onOpen?.()}
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center">
+        <AllFilesIcon />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[14.5px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">
+          全部文件
+        </div>
+        <div className="mt-0.5 truncate text-[12px] font-medium text-[#86868b]">
+          查看或下载文件
+        </div>
+      </div>
+      <span className="inline-flex h-8 shrink-0 items-center rounded-full border border-[#e5e5ea] bg-white px-3.5 text-[12.5px] font-medium text-[#1d1d1f] transition-colors group-hover:bg-[#f5f5f7]">
+        预览
+      </span>
+    </button>
+  );
+}
 
 function resolveExt(file: CHAT.TFile): string {
   return (file.type || file.name?.split(".").pop() || "").toLowerCase();
@@ -91,20 +132,32 @@ function KindBadge({ kind, className }: { kind: FileKind; className?: string }) 
 }
 
 const AttachmentList: ReactorType.FC<Props> = (props) => {
-  const { files, preview, remove, review } = props;
+  const {
+    files,
+    preview,
+    remove,
+    review,
+    showWorkspaceFilesEntry,
+    onOpenWorkspaceFiles,
+  } = props;
   const attachmentList = Array.isArray(files) ? files : [];
 
-  if (!attachmentList.length) {
+  if (!preview && !attachmentList.length) {
     return null;
   }
 
-  // 交付态：主卡 + 其余 mini chips（ClawsGO / 截图样式）
+  // 交付态：重点文件主卡 + 其余 mini chips；工作区其余文件收成一张入口卡
   if (preview) {
+    if (!attachmentList.length && !showWorkspaceFilesEntry) {
+      return null;
+    }
     const [primary, ...rest] = attachmentList;
-    const primaryKind = resolveKind(primary);
+    const primaryKind = primary ? resolveKind(primary) : null;
 
     return (
       <div className="mt-3.5 flex w-full max-w-full flex-col gap-2">
+        {primary && primaryKind ? (
+          <>
         <button
           type="button"
           className="group flex w-full items-center gap-3 rounded-2xl border border-[#e8e8ed] bg-[#fafafa] px-3.5 py-3 text-left transition-colors hover:bg-[#f3f3f5]"
@@ -181,6 +234,11 @@ const AttachmentList: ReactorType.FC<Props> = (props) => {
               );
             })}
           </div>
+        ) : null}
+          </>
+        ) : null}
+        {showWorkspaceFilesEntry ? (
+          <WorkspaceFilesEntry onOpen={onOpenWorkspaceFiles} />
         ) : null}
       </div>
     );

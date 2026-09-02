@@ -13,6 +13,7 @@ import { DURATION, EASE_OUT, useMotionConfig } from "@/lib/motion";
 import {
   Download,
   ExternalLink,
+  ArrowLeft,
   Link2,
   Maximize2,
   Minimize2,
@@ -71,6 +72,7 @@ type ActionViewProps = {
   };
   isFocusMode?: boolean;
   onToggleFocusMode?: () => void;
+  onBack?: () => void;
   onClose?: () => void;
   ref?: React.Ref<ActionViewRef>;
 };
@@ -86,6 +88,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
     runState,
     isFocusMode,
     onToggleFocusMode,
+    onBack,
     pendingPreviewFile,
     onPendingPreviewFileConsumed,
   } = props;
@@ -291,6 +294,17 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
       {/* 顶栏：「动态」+ 已打开文件 pill；点工具回动态，点文件进文件预览 */}
       <div className="reactor-workspace-toolbar flex shrink-0 flex-col gap-1 border-b border-[var(--color-line)] px-3 pt-2.5 pb-1.5">
         <div className="flex items-center gap-2">
+          {onBack ? (
+            <button
+              type="button"
+              className={iconBtnClass}
+              title="返回子 Agent"
+              aria-label="返回子 Agent"
+              onClick={onBack}
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
           {files.length > 0 ? (
             <div
               ref={tabsRef}

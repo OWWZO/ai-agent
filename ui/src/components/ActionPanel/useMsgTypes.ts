@@ -4,6 +4,11 @@ import {
   buildDeepSearchResultItems,
   resolveDeepSearchStage,
 } from "@/utils/deepSearch";
+import {
+  resolveTaskResultMap,
+  resolveTaskToolResult,
+  resolveTaskToolResultText,
+} from "@/utils/chat/toolCalls";
 import { useMemo } from "react";
 import { PanelItemType, SearchListItem } from "./type";
 import {
@@ -15,30 +20,57 @@ import {
   isPdfFileLike,
   isPptFileLike,
 } from "@/utils/taskArtifacts";
+import { normalizeToolName } from "@/components/Dialogue/tools/toolMeta";
 
 export const getSearchList = (taskItem?: PanelItemType) => {
   if (!taskItem) {
     return [];
   }
-  const { messageType, resultMap } = taskItem;
+  const { messageType } = taskItem;
+  const resultMap = resolveTaskResultMap(taskItem);
 
-  const toolName = taskItem.toolResult?.toolName;
+  const toolResult = resolveTaskToolResult(taskItem);
+  const toolName = normalizeToolName(String(
+    toolResult?.toolName ||
+    (typeof resultMap.toolName === "string" ? resultMap.toolName : "")
+  ));
   if (messageType === 'tool_result') {
-    if (toolName === 'internal_search' || toolName === 'web_search') {
-      const toolResult = taskItem.toolResult?.toolResult;
+    if (toolName === 'search') {
+      const resultText = resolveTaskToolResultText(taskItem);
       let tool: any = {};
       try {
-        tool = JSON.parse(toolResult || "{}");
+        tool = JSON.parse(resultText || "{}");
       } catch {
         tool = {};
       }
-      const list = tool?.data || tool || [];
-      return isValidJSON(toolResult) && list
-        ? list?.map((item: MESSAGE.ToolResultDataType) => ({
-          name: item.pageName || item.name,
-          pageContent: item.pageContent || item.page_content,
-          url: item.sourceUrl || item.source_url
-        }))
+      const list =
+        [tool?.data, tool?.hits, tool?.results, tool].find((value) =>
+          Array.isArray(value)
+        ) || [];
+      return isValidJSON(resultText) && list.length
+        ? list.map((item) => {
+          const row =
+            item && typeof item === "object"
+              ? (item as Record<string, unknown>)
+              : {};
+          return {
+            name: String(row.pageName || row.name || row.title || ""),
+            pageContent: String(
+              row.pageContent ||
+                row.page_content ||
+                row.snippet ||
+                row.content ||
+                ""
+            ),
+            url: String(
+              row.sourceUrl ||
+                row.source_url ||
+                row.url ||
+                row.link ||
+                ""
+            ),
+          };
+        })
         : [];
     }
     return [];
@@ -70,7 +102,11 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
     if (!taskItem) {
       return;
     }
-    const { messageType, toolResult, resultMap } = taskItem;
+    const { messageType } = taskItem;
+    const resultMap = resolveTaskResultMap(taskItem);
+    const toolResult = resolveTaskToolResult(taskItem);
+    const toolResultText = resolveTaskToolResultText(taskItem);
+    const rawToolName = String(toolResult?.toolName || "").toLowerCase();
     const primaryFile = getPrimaryTaskFile(taskItem);
     const fileName = primaryFile?.name || '';
     const isImageFile = isImageFileLike(primaryFile);
@@ -88,8 +124,8 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
     let isHtml = false;
     if (messageType === 'code' && resultMap.codeOutput) {
       isHtml = isHTML(resultMap.codeOutput);
-    } else if (messageType === 'tool_result' && toolResult?.toolName === 'code_interpreter' && toolResult.toolResult) {
-      isHtml = isHTML(toolResult.toolResult);
+    } else if (messageType === 'tool_result' && rawToolName === 'code_interpreter' && toolResultText) {
+      isHtml = isHTML(toolResultText);
     }
     const useHtml = messageType === 'html' || (!!primaryFile && isHtmlFile);
     const useGenUi = messageType === 'ui_tree';
@@ -121,8 +157,8 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
       // Agent 观察值可能是 JSON，但仍走 SubAgent markdown，不能当成空白 Structured data。
       useJSON:
         messageType === "tool_result" &&
-        !!toolResult?.toolResult &&
-        isValidJSON(toolResult.toolResult) &&
+        !!toolResultText &&
+        isValidJSON(toolResultText) &&
         !isAgentDispatchTask(taskItem as unknown as CHAT.Task),
       isHtml,
       searchList,

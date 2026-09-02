@@ -274,6 +274,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
           <TaskFileSidebar
             taskList={taskList}
             selectedFileKey={selectedTaskFileKey}
+            sessionId={selectedSessionId}
             onSelectFile={onSelectTaskFile}
             onBack={() => onCloseTaskFiles?.()}
             onRefresh={onRefreshTaskFiles}

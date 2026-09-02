@@ -5,6 +5,10 @@ import {
   shouldRenderDeepSearchWorkspace,
 } from "@/utils/deepSearch";
 import { getStableTaskIdentity } from "@/utils/chat";
+import {
+  resolveTaskResultMap,
+  resolveTaskToolResult,
+} from "@/utils/chat/toolCalls";
 
 export interface PreviewRendererFlags {
   useFile?: boolean;
@@ -24,7 +28,7 @@ export function filterPreviewTaskList(taskList?: PanelItemType[]) {
       !["task_summary", "result"].includes(item.messageType) &&
       (
         item.messageType !== "deep_search" ||
-        shouldRenderDeepSearchWorkspace(item.resultMap?.messageType)
+        shouldRenderDeepSearchWorkspace(resolveTaskResultMap(item).messageType)
       )
   );
 }
@@ -61,16 +65,17 @@ export function resolvePreviewTitle(
     return "";
   }
 
-  const { messageType, resultMap } = taskItem;
+  const { messageType } = taskItem;
   // 标题按工具结果、文件产物、深搜阶段依次解析，避免把内部 messageType 直接暴露给用户。
   if (messageType === "tool_result") {
+    const toolResult = resolveTaskToolResult(taskItem);
     if (
-      taskItem.toolResult?.toolName === "image_generation_tool" &&
+      toolResult?.toolName === "image_generation_tool" &&
       primaryFile?.name
     ) {
       return primaryFile.name;
     }
-    return taskItem.toolResult?.toolName || "工具执行";
+    return toolResult?.toolName || "工具执行";
   }
 
   if (
@@ -82,11 +87,12 @@ export function resolvePreviewTitle(
   }
 
   if (messageType === "deep_search") {
-    const stage = resolveDeepSearchStage(resultMap?.messageType);
+    const resolvedResultMap = resolveTaskResultMap(taskItem);
+    const stage = resolveDeepSearchStage(resolvedResultMap.messageType);
     const titleQueries =
       stage === "report"
-        ? resultMap?.query
-        : resultMap?.chapterTitle || resultMap?.searchResult?.query;
+        ? resolvedResultMap.query
+        : resolvedResultMap.chapterTitle || resolvedResultMap.searchResult?.query;
     return resolveDeepSearchTitle(stage, titleQueries);
   }
 
@@ -100,7 +106,7 @@ export function resolvePreviewLeadingIcon(
     return undefined;
   }
 
-  const stage = resolveDeepSearchStage(taskItem.resultMap?.messageType);
+  const stage = resolveDeepSearchStage(resolveTaskResultMap(taskItem).messageType);
   return stage === "extend" ||
     stage === "search" ||
     stage === "chapter_summary"

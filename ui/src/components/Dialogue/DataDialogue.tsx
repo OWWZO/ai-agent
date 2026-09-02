@@ -28,7 +28,7 @@ const DataDialogue: FC<Props> = memo((props) => {
 
       {chat.think ? (
         <div className="mt-6 w-full">
-          <Reasoning isStreaming={chat.loading} defaultOpen>
+          <Reasoning isStreaming={Boolean(chat.loading && !chat.chartData)} defaultOpen>
             <ReasoningTrigger />
             <ReasoningContent>{chat.think}</ReasoningContent>
           </Reasoning>

@@ -49,15 +49,8 @@ export interface ConversationReplayFrame {
 }
 
 export interface ConversationContextUsage {
-  sys: number;
-  tools: number;
-  history: number;
-  files: number;
   max: number;
-  used: number;
   promptTokens?: number;
-  completionTokens?: number;
-  source?: string;
 }
 
 export interface ConversationHistoryRunDetail {

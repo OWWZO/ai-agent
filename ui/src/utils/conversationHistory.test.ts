@@ -10,7 +10,11 @@ import {
   toConversationHistoryTitle,
 } from "./conversationHistory";
 import { buildConversationTaskData } from "./chat";
-import { getTaskFiles } from "./taskArtifacts";
+import {
+  pickFeaturedDeliveryFiles,
+  resolveTaskSummaryText,
+} from "@/components/Dialogue/contentHelpers";
+import { collectChatArtifactFiles } from "./markdownArtifacts";
 
 function createReplayFrame(eventData: MESSAGE.EventData): ConversationReplayFrame {
   return {
@@ -486,7 +490,7 @@ describe("conversationHistory hydrate", () => {
     expect(taskData.currentChat.tasks[0]?.[0]?.children?.[0]?.messageType).toBe("code");
   });
 
-  it("parses $$$ summary fallback into summary text and attachments", () => {
+  it("keeps $$$ in history fallback so frontend can map session files", () => {
     const history = hydrateConversationFromReplayFrames({
       sessionId: "session-summary-fallback-001",
       title: "总结兜底会话",
@@ -503,7 +507,7 @@ describe("conversationHistory hydrate", () => {
           status: "SUCCESS",
           queryText: "请整理总结",
           finalSummaryText:
-            "请查看最终报告。$$$ call_report_001::final-report.html、call_report_002::checklist.md",
+            "请查看最终报告。$$$ final-report.html、checklist.md",
           startedAt: "2026-05-02T13:00:00",
           finishedAt: "2026-05-02T13:05:00",
           replayFrames: [],
@@ -512,20 +516,101 @@ describe("conversationHistory hydrate", () => {
     });
 
     expect(history.chatList).toHaveLength(1);
-    expect(history.chatList[0].conclusion?.result).toBe("请查看最终报告。");
-    expect((history.chatList[0].conclusion as any)?.taskSummary).toBe("请查看最终报告。");
-    expect(getTaskFiles(history.chatList[0].conclusion)).toEqual([
-      expect.objectContaining({
-        name: "final-report.html",
-        resourceKey: "call_report_001::final-report.html",
-        missing: true,
-      }),
-      expect.objectContaining({
-        name: "checklist.md",
-        resourceKey: "call_report_002::checklist.md",
-        missing: true,
-      }),
+    expect(history.chatList[0].conclusion?.result).toContain("$$$");
+    expect((history.chatList[0].conclusion as any)?.taskSummary).toContain(
+      "final-report.html"
+    );
+    expect((history.chatList[0].conclusion as any)?.artifactKeys).toEqual([
+      "final-report.html",
+      "checklist.md",
     ]);
+    expect(resolveTaskSummaryText(history.chatList[0].conclusion)).toBe(
+      "请查看最终报告。"
+    );
+    expect(
+      pickFeaturedDeliveryFiles(history.chatList[0].conclusion).map(
+        (item) => item.relativePath
+      )
+    ).toEqual(["final-report.html", "checklist.md"]);
+  });
+
+  it("maps history $$$ names onto replayed workspace files", () => {
+    const history = hydrateConversationFromReplayFrames({
+      sessionId: "session-summary-files-001",
+      title: "历史文件映射",
+      status: "SUCCESS",
+      deepThink: false,
+      runCount: 1,
+      finishedRunCount: 1,
+      failedRunCount: 0,
+      startedAt: "2026-05-02T13:00:00",
+      lastActiveAt: "2026-05-02T13:05:00",
+      runs: [
+        {
+          requestId: "req-summary-files-001",
+          status: "SUCCESS",
+          queryText: "做个页面",
+          finalSummaryText: "页面已生成。$$$ simple-showcase.html",
+          startedAt: "2026-05-02T13:00:00",
+          finishedAt: "2026-05-02T13:05:00",
+          replayFrames: [
+            createReplayFrame({
+              taskId: "task-1",
+              taskOrder: 1,
+              messageType: "task",
+              messageOrder: 1,
+              messageId: "msg-file-1",
+              resultMap: {
+                requestId: "req-summary-files-001",
+                messageId: "msg-file-1",
+                messageType: "file",
+                messageTime: "1714620001000",
+                finish: true,
+                isFinal: true,
+                resultMap: {
+                  fileListOnly: true,
+                  fileInfo: [
+                    {
+                      fileName: "simple-showcase.html",
+                      relativePath: "simple-showcase.html",
+                      domainUrl: "https://example.com/preview/simple-showcase.html",
+                      ossUrl: "https://example.com/download/simple-showcase.html",
+                    },
+                  ],
+                },
+              } as unknown as MESSAGE.Task,
+            }),
+            createReplayFrame({
+              taskId: "task-1",
+              taskOrder: 2,
+              messageType: "task",
+              messageOrder: 2,
+              messageId: "msg-result-1",
+              resultMap: {
+                requestId: "req-summary-files-001",
+                messageId: "msg-result-1",
+                messageType: "result",
+                messageTime: "1714620002000",
+                finish: true,
+                isFinal: true,
+                result: "页面已生成。$$$ simple-showcase.html",
+                taskSummary: "页面已生成。$$$ simple-showcase.html",
+                artifactKeys: ["simple-showcase.html"],
+              } as unknown as MESSAGE.Task,
+            }),
+          ],
+        },
+      ],
+    });
+
+    const chat = history.chatList[0];
+    expect(resolveTaskSummaryText(chat.conclusion)).toBe("页面已生成。");
+    expect(
+      pickFeaturedDeliveryFiles(
+        chat.conclusion,
+        collectChatArtifactFiles(chat)
+      ).map((item) => item.name)
+    ).toEqual(["simple-showcase.html"]);
   });
 
   it("restores the latest context usage from the session detail", () => {
@@ -543,15 +628,8 @@ describe("conversationHistory hydrate", () => {
           status: "SUCCESS",
           queryText: "查看上下文",
           contextUsage: {
-            sys: 1200,
-            tools: 2600,
-            history: 9000,
-            files: 0,
             max: 128000,
-            used: 13100,
             promptTokens: 13100,
-            completionTokens: 700,
-            source: "measured",
           },
           replayFrames: [],
         },
@@ -559,15 +637,8 @@ describe("conversationHistory hydrate", () => {
     });
 
     expect(history.chatList[0].contextUsage).toEqual({
-      sys: 1200,
-      tools: 2600,
-      history: 9000,
-      files: 0,
       max: 128000,
-      used: 13100,
       promptTokens: 13100,
-      completionTokens: 700,
-      source: "measured",
     });
   });
 });

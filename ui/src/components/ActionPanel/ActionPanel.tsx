@@ -14,13 +14,15 @@ import WordRenderer from "./WordRenderer";
 import SearchListRenderer from "./SearchListRenderer";
 import DeepSearchChapterPanel from "./DeepSearchChapterPanel";
 import DocumentFallback from "./DocumentFallback";
-import { JsonViewer } from "./JsonViewer";
 import { PanelItemType } from "./type";
 import { PanelProvider } from ".";
 import { useMemoizedFn } from "ahooks";
 import { getPrimaryTaskFile } from "@/utils/taskArtifacts";
 import { resolvePanelView } from "./panelResolver";
-
+import {
+  resolveTaskResultMap,
+  resolveTaskToolResultText,
+} from "@/utils/chat/toolCalls";
 
 interface ActionPanelProps {
   taskItem?: PanelItemType;
@@ -93,13 +95,17 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
   const msgTypes = useMsgTypes(taskItem);
   const { markDownContent } = useContent(taskItem);
 
-  const { resultMap, toolResult } = taskItem || {};
+  const resultMap = resolveTaskResultMap(taskItem);
+  const toolResultText = resolveTaskToolResultText(taskItem);
   const primaryFile = useMemo(() => getPrimaryTaskFile(taskItem), [taskItem]);
   const htmlUrl = primaryFile?.url;
   const downloadHtmlUrl = primaryFile?.downloadUrl;
   const missingReason = primaryFile?.missingReason;
 
   const { codeOutput } = resultMap || {};
+  const isFinal = Boolean(
+    taskItem?.isFinal || taskItem?.finish || resultMap?.isFinal
+  );
 
   const panelView = useMemo(() => {
     return resolvePanelView({
@@ -110,9 +116,9 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
       downloadHtmlUrl,
       missingReason,
       allowShowToolBar,
-      isFinal: resultMap?.isFinal,
+      isFinal,
       codeOutput,
-      toolResultText: toolResult?.toolResult,
+      toolResultText,
       primaryFile,
     });
   }, [
@@ -123,8 +129,8 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
     downloadHtmlUrl,
     missingReason,
     allowShowToolBar,
-    resultMap?.isFinal,
-    toolResult?.toolResult,
+    isFinal,
+    toolResultText,
     primaryFile,
     codeOutput,
   ]);
@@ -255,12 +261,6 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
               fileName={panelView.fileName}
               missingReason={panelView.missingReason}
             />
-          </ContentWrapper>
-        );
-      case "json":
-        return (
-          <ContentWrapper key="json">
-            <JsonViewer className="h-full" data={panelView.jsonData} />
           </ContentWrapper>
         );
       case "markdown":

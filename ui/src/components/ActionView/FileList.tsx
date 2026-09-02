@@ -28,17 +28,18 @@ import {
   FileText,
   Download,
   Copy,
-  ChevronRight,
   FileSpreadsheet,
   FileCode,
   FileIcon,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
+  buildWorkspaceTree,
   collectWorkspaceFiles,
   workspaceFileKey,
   type WorkspaceFileItem,
 } from "./workspaceFiles";
+import WorkspaceFileTree from "./WorkspaceFileTree";
 
 type FileItem = WorkspaceFileItem;
 
@@ -145,30 +146,11 @@ const FileList: React.FC<{
 
     return (
       <div className="h-full overflow-auto p-3">
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-          {fileList.map((item) => (
-            <Card
-              key={workspaceFileKey(item)}
-              className="group cursor-pointer rounded-xl bg-transparent py-0 shadow-none ring-0 transition-colors duration-150 hover:bg-muted/35"
-              onClick={() => setActiveItem(workspaceFileKey(item))}
-            >
-              <CardContent className="flex items-center gap-2.5 p-2.5">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#f5f5f7]">
-                  {getFileIcon(item.type)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[12px] font-medium leading-5 text-[#1d1d1f]">
-                    {item.name}
-                  </p>
-                  <p className="text-xs text-[#86868b]">
-                    {item.missing ? item.missingReason || "内容不可读取" : item.messageTime}
-                  </p>
-                </div>
-                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[#c7c7cc] transition-colors group-hover:text-[#86868b]" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <WorkspaceFileTree
+          nodes={buildWorkspaceTree(fileList)}
+          selectedFileKey={activeItem}
+          onSelectFile={(file) => setActiveItem(workspaceFileKey(file))}
+        />
       </div>
     );
   }

@@ -1,5 +1,13 @@
 import type { DeepSearchChapterWorkspaceModel } from "@/types/deepSearch";
-import { buildDeepSearchChapterWorkspaceModel } from "@/utils/deepSearch";
+import {
+  buildDeepSearchChapterWorkspaceModel,
+  resolveDeepSearchStage,
+} from "@/utils/deepSearch";
+import {
+  resolveTaskResultMap,
+  resolveTaskToolResult,
+  resolveTaskToolResultText,
+} from "@/utils/chat/toolCalls";
 import type { PanelItemType, SearchListItem } from "./type";
 
 export interface PanelResolverMessageTypes {
@@ -62,11 +70,6 @@ type DeepSearchChapterPanelView = {
   model: DeepSearchChapterWorkspaceModel;
 };
 
-type JsonPanelView = {
-  type: "json";
-  jsonData: object;
-};
-
 type MarkdownPanelView = {
   type: "markdown";
   content: string;
@@ -91,7 +94,6 @@ export type PanelView =
   | InlineHtmlPanelView
   | FilePanelView
   | DownloadOnlyPanelView
-  | JsonPanelView
   | MarkdownPanelView;
 
 interface ResolvePanelViewParams {
@@ -141,6 +143,9 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
     return { type: "empty" };
   }
 
+  const resolvedToolResultText =
+    toolResultText || resolveTaskToolResultText(taskItem);
+
   if (taskItem.messageType === "ask_user_question") {
     return {
       type: "ask_user_question",
@@ -167,7 +172,10 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
   } = msgTypes || {};
 
   if (taskItem.messageType === "deep_search") {
-    const deepSearchTask = taskItem as unknown as Pick<CHAT.Task, "messageType" | "resultMap">;
+    const deepSearchTask = {
+      ...taskItem,
+      resultMap: resolveTaskResultMap(taskItem),
+    } as unknown as Pick<CHAT.Task, "messageType" | "resultMap">;
     const chapterModel = buildDeepSearchChapterWorkspaceModel(deepSearchTask);
     if (chapterModel) {
       return {
@@ -175,12 +183,41 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
         model: chapterModel,
       };
     }
+
+    const stage = resolveDeepSearchStage(deepSearchTask.resultMap?.messageType);
+    if (stage === "search" || stage === "chapter_summary") {
+      return {
+        type: "search",
+        searchList: searchList || [],
+      };
+    }
   }
+
+  const resolvedResultMap = resolveTaskResultMap(taskItem);
+  const resolvedToolResult = resolveTaskToolResult(taskItem);
+  const resolvedToolName =
+    resolvedToolResult?.toolName ||
+    (typeof resolvedResultMap.toolName === "string"
+      ? resolvedResultMap.toolName
+      : "工具执行");
 
   if (searchList?.length) {
     return {
       type: "search",
       searchList,
+    };
+  }
+
+  if (
+    taskItem.messageType === "tool_result" &&
+    ["internal_search", "web_search", "websearch", "search"].includes(
+      resolvedToolName.toLowerCase()
+    ) &&
+    (!resolvedToolResultText.trim() || Boolean(useJSON))
+  ) {
+    return {
+      type: "search",
+      searchList: [],
     };
   }
 
@@ -219,7 +256,7 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
   if (useCode && isHtml) {
     return {
       type: "inline-html",
-      htmlUrl: `data:text/html;charset=utf-8,${encodeURIComponent(toolResultText || "")}`,
+      htmlUrl: `data:text/html;charset=utf-8,${encodeURIComponent(resolvedToolResultText)}`,
     };
   }
 
@@ -247,8 +284,17 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
     return fileView("file", primaryFile, missingReason);
   }
 
-  // 工具结构化出参（Structured data / JSON）暂不展示。
+  // 无产物的纯 JSON / Structured data 不进入工作区展示。
   if (useJSON) {
+    return { type: "empty" };
+  }
+
+  if (
+    taskItem.messageType === "tool_result" &&
+    !markDownContent.trim() &&
+    !resolvedToolResultText.trim() &&
+    !primaryFile
+  ) {
     return { type: "empty" };
   }
 

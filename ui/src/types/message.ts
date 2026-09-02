@@ -127,6 +127,8 @@ declare global {
       digitalEmployee?: string
       plan?: Plan
       result?: string
+      taskSummary?: string
+      fileList?: FileInfo[]
       toolResult?: ToolResult
       planThought?: string
       plannerRoundId?: string
@@ -146,6 +148,8 @@ declare global {
     interface ArtifactReference {
       artifactType?: string
       displayName?: string
+      relativePath?: string
+      originFileName?: string
       resourceKey?: string
       downloadUrl?: string | null
       previewUrl?: string | null
@@ -170,9 +174,10 @@ declare global {
       agentType?: number
       searchResult?: SearchResult
       resultMap?: ResultMap
-      messageType?: string
-      requestId?: string
-      query?: string
+       messageType?: string
+       requestId?: string
+       sessionId?: string
+       query?: string
       isFinal?: boolean
       searchFinish?: boolean
       answer?: string
@@ -185,9 +190,11 @@ declare global {
       /** deep_search 分章总结缓存，key 为 chapterId 或章节标题 */
       chapters?: Record<string, DeepSearchChapterState>
       taskSummary?: string
-      fileList?: FileInfo[]
-      fileInfo?: FileInfo[]
-      command?: string
+       fileList?: FileInfo[]
+       fileInfo?: FileInfo[]
+       /** file 事件仅用于会话文件列表，不应自动打开工作区预览 */
+       fileListOnly?: boolean
+       command?: string
       primaryFileName?: string
       previewUrl?: string
       downloadUrl?: string
@@ -292,6 +299,8 @@ declare global {
       missing?: boolean
       missingReason?: string
       resourceKey?: string
+      relativePath?: string
+      originFileName?: string
     }
 
     type EventResult = object

@@ -1,5 +1,9 @@
 import { buildDeepSearchExtendMarkdown, resolveDeepSearchStage } from "@/utils/deepSearch";
 import { buildSubAgentMarkdown, isAgentDispatchTask } from "@/utils/chat/subagent";
+import {
+  resolveTaskResultMap,
+  resolveTaskToolResultText,
+} from "@/utils/chat/toolCalls";
 import { PanelItemType } from "./type";
 
 function buildToolCallMarkdown(resultMap?: PanelItemType["resultMap"]) {
@@ -26,14 +30,16 @@ export const resolveMarkdownContent = (taskItem?: PanelItemType) => {
     return markDownContent;
   }
 
-  const { messageType, toolResult, resultMap } = taskItem;
+  const { messageType } = taskItem;
+  const resultMap = resolveTaskResultMap(taskItem);
+  const toolResultText = resolveTaskToolResultText(taskItem);
 
   switch (messageType) {
     case "tool_result":
       if (isAgentDispatchTask(taskItem as unknown as CHAT.Task)) {
         markDownContent = buildSubAgentMarkdown(taskItem as unknown as CHAT.Task);
       } else {
-        markDownContent = toolResult?.toolResult || "";
+        markDownContent = toolResultText;
       }
       break;
     case "llm_reasoning":

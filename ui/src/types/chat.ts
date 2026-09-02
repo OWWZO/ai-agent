@@ -32,15 +32,8 @@ declare global {
     >;
 
     export type ContextUsage = {
-      sys: number;
-      tools: number;
-      history: number;
-      files: number;
       max: number;
-      used: number;
       promptTokens?: number;
-      completionTokens?: number;
-      source?: string;
     };
 
     export type TimelineEntry = {
@@ -75,6 +68,7 @@ declare global {
       resourceKey?: string;
       mimeType?: string | null;
       originFileName?: string;
+      relativePath?: string;
     };
 
     export type TInputInfo = {
@@ -123,6 +117,23 @@ declare global {
         children?: Task[];
       }
     >;
+
+    export type AgentDetailTarget = {
+      tool: Task;
+      chat: ChatItem;
+    };
+
+    export type OpenTaskHandler = (
+      task: Task,
+      chat: ChatItem,
+      backTarget?: AgentDetailTarget
+    ) => void;
+
+    export type OpenFileHandler = (
+      file: TFile,
+      chat: ChatItem,
+      backTarget?: AgentDetailTarget
+    ) => void;
 
     export type DataChatChartItem = Record<string, unknown>;
 
@@ -185,8 +196,6 @@ declare global {
       modelCode: string;
       schemaList: { columnComment: string; columnName: string; dataType: string; columnId: string }[];
     };
-
-
     export type ConversationSessionItem = import("@/services/agentConversation").ConversationSessionItem;
     export type ConversationHistoryDetail = import("@/services/agentConversation").ConversationHistoryDetail;
     export type ConversationHistoryRunDetail = import("@/services/agentConversation").ConversationHistoryRunDetail;

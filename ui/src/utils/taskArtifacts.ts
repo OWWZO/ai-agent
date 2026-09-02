@@ -1,4 +1,8 @@
-import { normalizeFileUrlForBrowser } from "@/utils/fileUrl";
+import {
+  buildFilePreviewUrlForBrowser,
+  normalizeFileUrlForBrowser,
+} from "@/utils/fileUrl";
+import { resolveTaskResultMap } from "@/utils/chat/toolCalls";
 
 /**
  * 任务产物和附件引用归一化工具。
@@ -22,6 +26,81 @@ const firstText = (...values: unknown[]) => {
     }
   }
   return "";
+};
+
+const isBareFileReference = (value: string) => {
+  return Boolean(value) &&
+    !value.includes("/") &&
+    !value.includes("\\") &&
+    !/^[a-z][a-z0-9+.-]*:/i.test(value) &&
+    !value.startsWith("//") &&
+    !value.startsWith("#");
+};
+
+export function basenameOfPath(pathLike?: string | null): string {
+  const normalized = toText(pathLike).replace(/\\/g, "/");
+  if (!normalized) {
+    return "";
+  }
+  const segments = normalized.split("/").filter(Boolean);
+  return segments[segments.length - 1] || normalized;
+}
+
+export function normalizeRelativePath(pathLike?: string | null): string {
+  let stripped = toText(pathLike).replace(/\\/g, "/");
+  if (!stripped) {
+    return "";
+  }
+  while (stripped.startsWith("./")) {
+    stripped = stripped.slice(2);
+  }
+  while (stripped.startsWith("/")) {
+    stripped = stripped.slice(1);
+  }
+  const parts = stripped.split("/").filter((part) => part && part !== ".");
+  if (!parts.length || parts.some((part) => part === "..")) {
+    return "";
+  }
+  return parts.join("/");
+}
+
+/** workspace_write/edit 的 file 事件只同步文件目录，不参与工作区自动跟随。 */
+export function isFileListOnlyTask(
+  task?: Partial<CHAT.Task> | Partial<MESSAGE.Task> | null
+): boolean {
+  if (!task) {
+    return false;
+  }
+  const resultMap = resolveTaskResultMap(task);
+  const taskType = toText(task.messageType).toLowerCase();
+  const resultType = toText(resultMap.messageType).toLowerCase();
+  const messageType = taskType && taskType !== "task" ? taskType : resultType;
+  const value = resultMap.fileListOnly ??
+    (task as unknown as Record<string, unknown>).fileListOnly;
+  return messageType === "file" && (
+    value === true || String(value).toLowerCase() === "true"
+  );
+}
+
+const parseWorkspaceDescriptionPath = (description?: unknown) => {
+  const text = toText(description);
+  if (/^workspace:/i.test(text)) {
+    return text.slice("workspace:".length);
+  }
+  return "";
+};
+
+const resolveTaskFileUrl = (
+  rawUrl: unknown,
+  fileName: string,
+  requestId?: string
+) => {
+  const value = firstText(rawUrl);
+  if (isBareFileReference(value)) {
+    const fallback = buildFilePreviewUrlForBrowser(requestId, fileName);
+    return fallback || normalizeFileUrlForBrowser(value);
+  }
+  return normalizeFileUrlForBrowser(value);
 };
 
 const toSize = (value: unknown) => {
@@ -136,25 +215,14 @@ const resolveFileExtension = (
  * 不同来源的任务附件可能只带 fileInfo，也可能只带 artifactRefs。
  * 这里统一归一化成前端稳定的文件结构，避免各组件各写一套兜底逻辑。
  */
-export const normalizeTaskFile = (raw: any): CHAT.TFile | null => {
+export const normalizeTaskFile = (
+  raw: any,
+  options?: { requestId?: string; sessionId?: string }
+): CHAT.TFile | null => {
   if (!raw || typeof raw !== "object") {
     return null;
   }
 
-  const previewUrl = normalizeFileUrlForBrowser(firstText(
-    raw.previewUrl,
-    raw.domainUrl,
-    raw.url,
-    raw.ossUrl,
-    raw.downloadUrl
-  ));
-  const downloadUrl = normalizeFileUrlForBrowser(firstText(
-    raw.downloadUrl,
-    raw.ossUrl,
-    raw.domainUrl,
-    raw.url,
-    raw.previewUrl
-  ));
   const resourceKey = firstText(
     raw.resourceKey,
     raw.ossUrl,
@@ -164,12 +232,43 @@ export const normalizeTaskFile = (raw: any): CHAT.TFile | null => {
     raw.displayName,
     raw.name
   );
+  const relativePath = normalizeRelativePath(
+    firstText(
+      raw.relativePath,
+      toText(raw.originFileName).includes("/") || toText(raw.originFileName).includes("\\")
+        ? raw.originFileName
+        : undefined,
+      parseWorkspaceDescriptionPath(raw.description),
+      toText(raw.fileName).includes("/") || toText(raw.fileName).includes("\\")
+        ? raw.fileName
+        : undefined
+    )
+  );
   const name = firstText(
+    relativePath ? basenameOfPath(relativePath) : undefined,
     raw.displayName,
     raw.fileName,
     raw.name,
+    isBareFileReference(toText(raw.url)) ? raw.url : undefined,
     resourceKey,
     "未命名文件"
+  );
+  const requestId = firstText(
+    options?.sessionId,
+    options?.requestId,
+    raw.sessionId,
+    raw.requestId
+  );
+  const urlName = relativePath || name;
+  const previewUrl = resolveTaskFileUrl(
+    firstText(raw.previewUrl, raw.domainUrl, raw.url, raw.ossUrl, raw.downloadUrl),
+    urlName,
+    requestId
+  );
+  const downloadUrl = resolveTaskFileUrl(
+    firstText(raw.downloadUrl, raw.ossUrl, raw.domainUrl, raw.url, raw.previewUrl),
+    urlName,
+    requestId
   );
   const missing = Boolean(raw.missing) || (!previewUrl && !downloadUrl);
 
@@ -186,6 +285,8 @@ export const normalizeTaskFile = (raw: any): CHAT.TFile | null => {
     ) || undefined,
     resourceKey: resourceKey || undefined,
     mimeType: raw.mimeType ?? null,
+    originFileName: firstText(raw.originFileName, relativePath) || undefined,
+    relativePath: relativePath || undefined,
   };
 };
 
@@ -206,6 +307,8 @@ export const artifactRefsToFileInfo = (artifactRefs?: unknown[]) => {
       missing: file.missing,
       missingReason: file.missingReason,
       resourceKey: file.resourceKey,
+      relativePath: file.relativePath,
+      originFileName: file.originFileName,
     }));
 };
 
@@ -383,27 +486,36 @@ const readNestedResultMap = (taskLike: any) => {
   return nested && typeof nested === "object" ? nested : undefined;
 };
 
-const readResultMapFile = (resultMap?: Record<string, unknown>) => {
+const readResultMapFile = (
+  resultMap?: Record<string, unknown>,
+  requestId?: string
+) => {
   if (!resultMap || typeof resultMap !== "object") {
     return null;
   }
 
-  const previewUrl = normalizeFileUrlForBrowser(
-    firstText(resultMap.previewUrl, resultMap.domainUrl, resultMap.url)
-  );
-  const downloadUrl = normalizeFileUrlForBrowser(firstText(
-    resultMap.downloadUrl,
-    resultMap.ossUrl,
-    resultMap.previewUrl,
-    resultMap.domainUrl,
-    resultMap.url
-  ));
   const primaryFileName = firstText(
     resultMap.primaryFileName,
     resultMap.fileName,
     resultMap.filename,
     resultMap.displayName,
     resultMap.name
+  );
+  const previewUrl = resolveTaskFileUrl(
+    firstText(resultMap.previewUrl, resultMap.domainUrl, resultMap.url),
+    primaryFileName,
+    requestId
+  );
+  const downloadUrl = resolveTaskFileUrl(
+    firstText(
+      resultMap.downloadUrl,
+      resultMap.ossUrl,
+      resultMap.previewUrl,
+      resultMap.domainUrl,
+      resultMap.url
+    ),
+    primaryFileName,
+    requestId
   );
 
   if (!previewUrl && !downloadUrl && !primaryFileName) {
@@ -420,10 +532,14 @@ const readResultMapFile = (resultMap?: Record<string, unknown>) => {
   };
 };
 
-const readPrimaryResultMapFile = (taskLike: any) => {
+const readPrimaryResultMapFile = (taskLike: any, requestId?: string) => {
+  const resolvedResultMap = resolveTaskResultMap(taskLike);
   const nestedResultMap = readNestedResultMap(taskLike);
-  const nestedFile = readResultMapFile(nestedResultMap);
-  const currentFile = readResultMapFile(taskLike?.resultMap);
+  const nestedFile = readResultMapFile(nestedResultMap, requestId);
+  const currentFile = readResultMapFile(
+    resolvedResultMap as unknown as Record<string, unknown>,
+    requestId
+  );
 
   if (!nestedFile && !currentFile) {
     return null;
@@ -441,7 +557,8 @@ const readRawFiles = (taskLike: any) => {
   }
 
   const nestedResultMap = readNestedResultMap(taskLike);
-  const candidates = [
+  const resolvedResultMap = resolveTaskResultMap(taskLike);
+  const candidates: unknown[] = [
     taskLike?.artifactRefs,
     taskLike?.fileInfo,
     taskLike?.fileList,
@@ -451,34 +568,106 @@ const readRawFiles = (taskLike: any) => {
     taskLike?.resultMap?.fileList,
     nestedResultMap?.fileInfo,
     nestedResultMap?.fileList,
+    resolvedResultMap.artifactRefs,
+    resolvedResultMap.fileInfo,
+    resolvedResultMap.fileList,
   ];
 
+  const files = candidates.flatMap((candidate) =>
+    Array.isArray(candidate) ? candidate : []
+  );
+  return [...files, ...readToolResultFiles(taskLike)];
+};
+
+const readToolResultFiles = (taskLike: any): unknown[] => {
+  const resultMap = resolveTaskResultMap(taskLike) as unknown as Record<string, unknown>;
+  const candidates = [taskLike?.toolResult, resultMap.toolResult];
+  const files: unknown[] = [];
+
   for (const candidate of candidates) {
-    if (Array.isArray(candidate) && candidate.length) {
-      return candidate;
+    const values = Array.isArray(candidate) ? candidate : [candidate];
+    for (const value of values) {
+      if (!value) {
+        continue;
+      }
+      if (typeof value === "object") {
+        const record = value as Record<string, unknown>;
+        files.push(record.fileList, record.fileInfo, record.artifactRefs);
+        if (typeof record.toolResult === "string") {
+          try {
+            files.push(JSON.parse(record.toolResult));
+          } catch {
+            // 工具结果可能是普通文本，不包含结构化文件信息。
+          }
+        }
+        continue;
+      }
+      if (typeof value !== "string") {
+        continue;
+      }
+      try {
+        const parsed = JSON.parse(value) as Record<string, unknown>;
+        files.push(parsed.fileList, parsed.fileInfo, parsed.artifactRefs);
+        if (parsed.detail && typeof parsed.detail === "object") {
+          const detail = parsed.detail as Record<string, unknown>;
+          files.push(detail.fileList, detail.fileInfo, detail.artifactRefs);
+        }
+      } catch {
+        // 工具结果可能是 key=value 文本，不包含结构化文件信息。
+      }
     }
   }
 
-  return [];
+  return files.flatMap((value) => (Array.isArray(value) ? value : []));
+};
+
+const resolveTaskFileRequestId = (taskLike: any) => {
+  if (!taskLike || typeof taskLike !== "object") {
+    return "";
+  }
+  const nestedResultMap = readNestedResultMap(taskLike);
+  const resolvedResultMap = resolveTaskResultMap(taskLike);
+  return firstText(
+    taskLike.sessionId,
+    nestedResultMap?.sessionId,
+    resolvedResultMap.sessionId,
+    taskLike.requestId,
+    nestedResultMap?.requestId,
+    resolvedResultMap.requestId
+  );
 };
 
 export const getTaskFiles = (taskLike: any): CHAT.TFile[] => {
   const dedup = new Map<string, CHAT.TFile>();
+  const requestId = resolveTaskFileRequestId(taskLike);
 
   readRawFiles(taskLike).forEach((raw) => {
-    const file = normalizeTaskFile(raw);
+    const file = normalizeTaskFile(raw, { requestId });
     if (!file) {
       return;
     }
-    const key = file.resourceKey || file.downloadUrl || file.url || file.name;
+    const key = file.downloadUrl || file.url || file.relativePath || file.resourceKey || file.name;
     if (!key) {
       return;
     }
-    dedup.set(key, file);
+    const existing = dedup.get(key);
+    if (!existing) {
+      dedup.set(key, file);
+      return;
+    }
+    dedup.set(key, {
+      ...existing,
+      ...file,
+      relativePath: file.relativePath || existing.relativePath,
+      originFileName: file.originFileName || existing.originFileName,
+    });
   });
 
   const files = Array.from(dedup.values());
-  const primaryFilePatch = normalizeTaskFile(readPrimaryResultMapFile(taskLike));
+  const primaryFilePatch = normalizeTaskFile(
+    readPrimaryResultMapFile(taskLike, requestId),
+    { requestId }
+  );
 
   if (!primaryFilePatch) {
     return files;
@@ -501,6 +690,8 @@ export const getTaskFiles = (taskLike: any): CHAT.TFile[] => {
     missingReason: files[0].missingReason || primaryFilePatch.missingReason,
     resourceKey: files[0].resourceKey || primaryFilePatch.resourceKey,
     mimeType: files[0].mimeType || primaryFilePatch.mimeType,
+    relativePath: files[0].relativePath || primaryFilePatch.relativePath,
+    originFileName: files[0].originFileName || primaryFilePatch.originFileName,
   };
 
   return files;

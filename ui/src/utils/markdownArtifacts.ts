@@ -1,4 +1,4 @@
-import { getTaskFiles } from "@/utils/taskArtifacts";
+import { getTaskFiles, normalizeRelativePath } from "@/utils/taskArtifacts";
 
 /**
  * 终答 Markdown 里的相对文件引用解析。
@@ -21,6 +21,16 @@ const MARKDOWN_AUDIO_EXTENSIONS = new Set([
   "aac",
   "flac",
   "opus",
+]);
+const MARKDOWN_IMAGE_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "bmp",
+  "svg",
+  "avif",
 ]);
 
 export type MarkdownMediaKind = "video" | "audio" | "image" | "other";
@@ -78,6 +88,9 @@ export function resolveMarkdownMediaKind(href?: string | null): MarkdownMediaKin
   if (MARKDOWN_AUDIO_EXTENSIONS.has(ext)) {
     return "audio";
   }
+  if (MARKDOWN_IMAGE_EXTENSIONS.has(ext)) {
+    return "image";
+  }
   return "other";
 }
 
@@ -93,7 +106,7 @@ export function isAbsoluteOrSpecialMarkdownUrl(href?: string | null): boolean {
 }
 
 /**
- * 将 Markdown 引用路径收敛为可匹配的文件名（去掉 ./、query、hash）。
+ * 将 Markdown 引用路径收敛为工作区相对路径（去掉 ./、query、hash，保留目录）。
  */
 export function normalizeMarkdownArtifactRef(href?: string | null): string {
   const text = toText(href);
@@ -109,12 +122,18 @@ export function normalizeMarkdownArtifactRef(href?: string | null): string {
   }
 
   const withoutQuery = decoded.split("#")[0]?.split("?")[0] || "";
-  const stripped = withoutQuery.replace(/^\.\//, "").replace(/^\//, "").trim();
-  return basenameOf(stripped);
+  return normalizeRelativePath(withoutQuery);
 }
 
 const fileLookupKeys = (file: CHAT.TFile): string[] => {
   const keys = new Set<string>();
+  const relativePath = normalizeRelativePath(
+    file.relativePath || file.originFileName || file.name
+  ).toLowerCase();
+  if (relativePath) {
+    keys.add(relativePath);
+    keys.add(basenameOf(relativePath).toLowerCase());
+  }
   const name = toText(file.name).toLowerCase();
   if (name) {
     keys.add(name);
@@ -123,7 +142,6 @@ const fileLookupKeys = (file: CHAT.TFile): string[] => {
   const resourceKey = toText(file.resourceKey).toLowerCase();
   if (resourceKey) {
     keys.add(resourceKey);
-    keys.add(basenameOf(resourceKey).toLowerCase());
   }
   return [...keys].filter(Boolean);
 };
@@ -166,9 +184,9 @@ export function resolveMarkdownArtifactHref(
   }
 
   const lookup = buildArtifactFileLookup(files);
+  const lowered = lookupName.toLowerCase();
   const matched =
-    lookup.get(lookupName.toLowerCase()) ||
-    lookup.get(basenameOf(lookupName).toLowerCase());
+    lookup.get(lowered) || lookup.get(basenameOf(lookupName).toLowerCase());
 
   if (!matched) {
     return raw;
@@ -181,6 +199,84 @@ const CODE_FENCE_SEGMENT_PATTERN = /(```[\s\S]*?```)/g;
 // ![alt](path) 与 [text](path)，排除已是协议/锚点的目标
 const MARKDOWN_LINK_OR_IMAGE_PATTERN =
   /(!?\[[^\]]*]\()([^)\s]+)(\))/g;
+
+const PROTECTED_MARKDOWN_SEGMENT_PATTERN =
+  /(\[[^\]]*]\([^)]+\)|`[^`]+`|https?:\/\/[^\s)]+)/g;
+
+function embedBareWorkspaceRef(needle: string, url: string) {
+  const kind = resolveMarkdownMediaKind(needle);
+  if (kind === "image") {
+    return `![](${url})`;
+  }
+  return `[${needle}](${url})`;
+}
+
+function collectBareWorkspacePathRefs(files?: CHAT.TFile[] | null) {
+  const refs: Array<{ needle: string; url: string }> = [];
+  const byPath = new Map<string, CHAT.TFile>();
+  const basenameCount = new Map<string, number>();
+  for (const file of files || []) {
+    if (!file || file.missing) {
+      continue;
+    }
+    const url = toText(file.url) || toText(file.downloadUrl);
+    if (!url) {
+      continue;
+    }
+    const path = normalizeRelativePath(
+      file.relativePath || file.originFileName || file.name
+    );
+    if (!path) {
+      continue;
+    }
+    byPath.set(path.toLowerCase(), file);
+    const base = basenameOf(path).toLowerCase();
+    basenameCount.set(base, (basenameCount.get(base) || 0) + 1);
+  }
+  for (const [path, file] of byPath) {
+    const url = toText(file.url) || toText(file.downloadUrl);
+    const originalPath =
+      normalizeRelativePath(file.relativePath || file.originFileName || file.name) ||
+      path;
+    refs.push({ needle: originalPath, url });
+    const base = basenameOf(originalPath);
+    if (base && basenameCount.get(base.toLowerCase()) === 1 && base !== originalPath) {
+      refs.push({ needle: base, url });
+    }
+  }
+  refs.sort((left, right) => right.needle.length - left.needle.length);
+  return refs;
+}
+
+function rewriteBareWorkspaceFileRefs(
+  segment: string,
+  files?: CHAT.TFile[] | null
+) {
+  const refs = collectBareWorkspacePathRefs(files);
+  if (!refs.length) {
+    return segment;
+  }
+  return segment
+    .split(PROTECTED_MARKDOWN_SEGMENT_PATTERN)
+    .map((part) => {
+      if (
+        !part ||
+        part.startsWith("[") ||
+        part.startsWith("`") ||
+        /^https?:\/\//i.test(part)
+      ) {
+        return part;
+      }
+      let next = part;
+      for (const ref of refs) {
+        const escaped = ref.needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const pattern = new RegExp(`(?<![\\w./-])${escaped}(?![\\w./-])`, "g");
+        next = next.replace(pattern, embedBareWorkspaceRef(ref.needle, ref.url));
+      }
+      return next;
+    })
+    .join("");
+}
 
 /**
  * 渲染前把相对文件引用替换为产物 URL。
@@ -201,7 +297,7 @@ export function rewriteMarkdownArtifactRefs(
       if (segment.startsWith("```")) {
         return segment;
       }
-      return segment.replace(
+      const withLinks = segment.replace(
         MARKDOWN_LINK_OR_IMAGE_PATTERN,
         (full, prefix: string, href: string, suffix: string) => {
           const resolved = resolveMarkdownArtifactHref(href, files);
@@ -211,6 +307,7 @@ export function rewriteMarkdownArtifactRefs(
           return `${prefix}${resolved}${suffix}`;
         }
       );
+      return rewriteBareWorkspaceFileRefs(withLinks, files);
     })
     .join("");
 }
