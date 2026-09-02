@@ -19,6 +19,8 @@ public class File {
     private Integer fileSize;
     private String description;
     private String originFileName;
+    /** 工作区内相对路径，可含目录，如 report/index.html */
+    private String relativePath;
     private String originOssUrl;
     private String originDomainUrl;
     private Boolean isInternalFile;

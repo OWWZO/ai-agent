@@ -36,8 +36,8 @@ public class EmitUiTreeTool implements BaseTool {
     @Override
     public String getDescription() {
         return "Emit a validated gen UI tree (schemaVersion 1) that renders inline in chat and in the side panel "
-                + "with real React components (Chart=ECharts, ThreeJsFrame=procedural 3D, Model3D=glb/gltf). "
-                + "PREFERRED path for charts, KPI tiles, dashboards, multi-card layouts, data tables, simple 3D, "
+                + "with real React components (Chart=ECharts, ThreeJsFrame=procedural or sandboxed scripted 3D, Model3D=glb/gltf). "
+                + "PREFERRED path for charts, KPI tiles, dashboards, multi-card layouts, data tables, simple or scripted 3D, "
                 + "and teaching labs (ParametricLab / PythagorasLab: drag sliders; "
                 + "ConceptDemo / AnimStepLab: playable concept step animation). "
                 + "Do NOT use canvas_publish for simple charts/3D shapes — use Chart / ThreeJsFrame instead. "

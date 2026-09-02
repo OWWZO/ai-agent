@@ -204,18 +204,19 @@ public final class GenUiCatalog {
         list.add(entry("HostedCanvasFrame", "Hosted canvas frame", Map.of("canvasId", "string", "height", "number")));
         list.add(entry("HtmlFrame", "Sandboxed HTML frame", Map.of("html", "string", "height", "number", "title", "string")));
         list.add(entry("ThreeJsFrame",
-                "Procedural Three.js scene (box/sphere/icosahedron/…). Prefer over free-form HTML for simple 3D.",
-                Map.of(
-                        "geometry", "box|sphere|icosahedron|octahedron|dodecahedron|tetrahedron|torusKnot",
-                        "color", "hex color",
-                        "accentColor", "hex color",
-                        "height", "number",
-                        "background", "css color",
-                        "autoRotate", "boolean",
-                        "wireframe", "boolean",
-                        "particles", "number",
-                        "orbiters", "number",
-                        "title", "string"
+                "Procedural or sandboxed scripted Three.js scene. Use geometry props for simple 3D and sceneScript for custom scenes.",
+                Map.ofEntries(
+                        Map.entry("geometry", "box|sphere|icosahedron|octahedron|dodecahedron|tetrahedron|torusKnot"),
+                        Map.entry("color", "hex color"),
+                        Map.entry("accentColor", "hex color"),
+                        Map.entry("height", "number"),
+                        Map.entry("background", "css color"),
+                        Map.entry("autoRotate", "boolean"),
+                        Map.entry("wireframe", "boolean"),
+                        Map.entry("particles", "number"),
+                        Map.entry("orbiters", "number"),
+                        Map.entry("title", "string"),
+                        Map.entry("sceneScript", "JavaScript scene body in sandbox; globals: THREE, OrbitControls, GLTFLoader, container, canvas, onResize, frameOptions")
                 )));
         list.add(entry("JsonDebug", "JSON debug viewer", Map.of("value", "object|string", "title", "string")));
         return List.copyOf(list);

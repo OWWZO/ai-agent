@@ -31,36 +31,34 @@ public final class WorkspaceFileRegistration {
     }
 
     /**
-     * 本地 workspace 文件登记预览 URL，并向前端推送 file 事件。
+     * 本地 workspace 文件登记预览 URL，建立工具产物关联，并同步到会话文件列表。
      * <p>
-     * 与 file_tool 一致走 {@code messageType=file}；workspace_write/edit 已在
-     * BaseAgent 中跳过 tool_result，避免「写入文件 + tool_result」双卡片。
+     * workspace_write/edit 仍会发送普通 {@code tool_result}；这里的 {@code file}
+     * 事件仅用于填充前端“全部文件”文件夹，不应自动打开右侧预览。
      * </p>
      *
      * @param relativePath 工作区内相对路径（可含目录）
      * @param absolutePath 本地绝对路径
      * @param commandLabel 前端 file 卡片 command 文案
-     * @return 给 tool 结果附加的说明；失败时返回错误提示
      */
-    public static String registerLocalFile(AgentContext agentContext,
-                                           String relativePath,
-                                           Path absolutePath,
-                                           String commandLabel) {
+    public static void registerLocalFile(AgentContext agentContext,
+                                         String relativePath,
+                                         Path absolutePath,
+                                         String commandLabel) {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            return null;
+            return;
         }
         if (absolutePath == null || !Files.isRegularFile(absolutePath)) {
-            return "登记失败: 本地文件不存在";
+            return;
         }
         try {
             ReactorConfig reactorConfig = agentContext.getRuntimeDependencies().requireReactorConfig();
             FileArtifactPort fileArtifactPort = agentContext.getRuntimeDependencies().requireFileArtifactPort();
             if (reactorConfig == null || StringUtils.isBlank(reactorConfig.getCodeInterpreterUrl())) {
-                return null;
+                return;
             }
 
-            String uploadName = relativePath == null ? absolutePath.getFileName().toString()
-                    : relativePath.replace('\\', '/');
+            String uploadName = normalizeWorkspaceRelativePath(relativePath, absolutePath);
             String baseName = Path.of(uploadName).getFileName().toString();
             if (StringUtils.isBlank(baseName)) {
                 baseName = "workspace-file.md";
@@ -72,14 +70,14 @@ public final class WorkspaceFileRegistration {
             long size = Files.size(absolutePath);
             FileRequest fileRequest = FileRequest.builder()
                     .requestId(agentContext.getSessionId())
-                    .fileName(baseName)
+                    .fileName(uploadName)
                     .description("workspace:" + uploadName)
                     .localPath(absolutePath.toAbsolutePath().normalize().toString())
                     .build();
             FileResponse fileResponse = fileArtifactPort.register(
                     reactorConfig.getCodeInterpreterUrl(), fileRequest);
             if (fileResponse == null) {
-                return "登记失败: empty response";
+                return;
             }
             if (fileResponse.getFileSize() == null) {
                 fileResponse.setFileSize((int) Math.min(size, Integer.MAX_VALUE));
@@ -88,6 +86,8 @@ public final class WorkspaceFileRegistration {
             ToolArtifactSource artifactSource = agentContext.getCurrentToolArtifactSource();
             File file = File.builder()
                     .fileName(baseName)
+                    .originFileName(uploadName)
+                    .relativePath(uploadName)
                     .description("workspace:" + uploadName)
                     .ossUrl(fileResponse.getOssUrl())
                     .domainUrl(fileResponse.getDomainUrl())
@@ -98,10 +98,13 @@ public final class WorkspaceFileRegistration {
                 agentContext.registerGeneratedArtifact(artifactSource, file);
             }
 
-            // 与 file_tool 同形：fileInfo + command，供工作区列表与终答 Markdown 相对引用解析
             if (agentContext.getPrinter() != null) {
                 Map<String, Object> resultMap = new HashMap<>();
                 resultMap.put("command", StringUtils.defaultIfBlank(commandLabel, "写入文件"));
+                resultMap.put("requestId", agentContext.getSessionId());
+                resultMap.put("sessionId", agentContext.getSessionId());
+                resultMap.put("relativePath", uploadName);
+                resultMap.put("fileListOnly", true);
                 if (artifactSource != null) {
                     resultMap.put("toolCallId", artifactSource.getToolCallId());
                     resultMap.put("toolName", artifactSource.getToolName());
@@ -109,6 +112,7 @@ public final class WorkspaceFileRegistration {
                 List<CodeInterpreterResponse.FileInfo> fileInfo = new ArrayList<>();
                 fileInfo.add(CodeInterpreterResponse.FileInfo.builder()
                         .fileName(baseName)
+                        .relativePath(uploadName)
                         .ossUrl(fileResponse.getOssUrl())
                         .domainUrl(fileResponse.getDomainUrl())
                         .fileSize(fileResponse.getFileSize())
@@ -121,10 +125,37 @@ public final class WorkspaceFileRegistration {
                 log.debug("workspace file registered, command={}, path={}, domainUrl={}",
                         commandLabel, absolutePath, fileResponse.getDomainUrl());
             }
-            return "已登记预览: " + fileResponse.getDomainUrl();
         } catch (Exception e) {
             log.warn("workspace file register failed, path={}", absolutePath, e);
-            return "登记失败: " + e.getMessage();
         }
+    }
+
+    static String normalizeWorkspaceRelativePath(String relativePath, Path absolutePath) {
+        String uploadName = StringUtils.isBlank(relativePath)
+                ? (absolutePath == null || absolutePath.getFileName() == null
+                ? "workspace-file"
+                : absolutePath.getFileName().toString())
+                : relativePath.replace('\\', '/').trim();
+        while (uploadName.startsWith("./")) {
+            uploadName = uploadName.substring(2);
+        }
+        while (uploadName.startsWith("/")) {
+            uploadName = uploadName.substring(1);
+        }
+        if (StringUtils.isBlank(uploadName)) {
+            return fallbackFileName(absolutePath);
+        }
+        for (String part : uploadName.split("/")) {
+            if ("..".equals(part)) {
+                return fallbackFileName(absolutePath);
+            }
+        }
+        return uploadName;
+    }
+
+    private static String fallbackFileName(Path absolutePath) {
+        return absolutePath == null || absolutePath.getFileName() == null
+                ? "workspace-file"
+                : absolutePath.getFileName().toString();
     }
 }

@@ -61,8 +61,8 @@ public final class HtmlCanvasGuidePayload {
                         + "product, and brand—not a house style from this guide.");
         guide.put("when_to_call", List.of(
                 "Use for substantial, branded, interactive, or appearance-sensitive HTML pages.",
-                "Skip for trivial HTML fragments when the contract is already known.",
-                "This guide is for canvas_publish(mode=html). GenUI HtmlFrame is a separate path.",
+                "Skip when the page has not first been written to the active workspace.",
+                "This guide is for canvas_publish. GenUI HtmlFrame is a separate path.",
                 "Charts / KPI / dashboards → use emit_ui_tree (Chart component), NOT canvas_publish."
         ));
         guide.put("design_method", List.of(
@@ -86,27 +86,25 @@ public final class HtmlCanvasGuidePayload {
         ));
         guide.put("preview_runtime", Map.of(
                 "injected",
-                "Body fragments and bare full documents (no Tailwind CDN, no substantial authored "
-                        + "stylesheet) get Tailwind CDN, Inter, host reset/helpers with light color-scheme, "
-                        + "wa-* utilities, and Three.js as window.THREE (cdn three@0.160). Full documents "
-                        + "that already load Tailwind or ship a substantial <style> / non-font stylesheet "
-                        + "are left intact (THREE still injected when page mentions WebGL and does not load three).",
+                "No preview shell, CSS, or script assets are injected. The workspace file must include its "
+                        + "own complete HTML structure and any required styles, scripts, fonts, and media.",
                 "document_shape",
-                "A body fragment and a full HTML document both work. Prefer a fragment when you want "
-                        + "host Tailwind/wa-* helpers. Use a full document when you own CSS.",
+                "Write a complete HTML document. A fragment may render as HTML, but it has no injected host "
+                        + "styles or helper assets.",
                 "javascript",
-                "Raw scripts and on* handlers are stored. Preview opens with JS enabled "
-                        + "(script-src allows self/cdn/unsafe-inline). Design a useful no-JS state when possible.",
+                "The preview URL serves the existing file. Include scripts in that file when needed and keep "
+                        + "the page useful when scripts are unavailable.",
                 "three_js",
                 "Use preloaded window.THREE for free-form WebGL in canvas_publish. "
-                        + "Prefer emit_ui_tree ThreeJsFrame for structured scenes and Model3D for glb/gltf URLs. "
+                        + "Prefer emit_ui_tree ThreeJsFrame for structured or sandboxed scripted scenes and Model3D for glb/gltf URLs. "
                         + "Do not add another Three.js script unless you need a different version.",
                 "html_css_svg",
-                "Inline <style>, class/style attributes, and SVG/chart primitives are supported."
+                "Inline <style>, class/style attributes, and SVG/chart primitives are supported when written "
+                        + "into the workspace file."
         ));
         guide.put("available_shell_tokens", Map.of(
                 "note",
-                "Optional compatibility primitives, not a prescribed aesthetic.",
+                "Not injected by the preview host; define any compatibility primitives in the workspace file if needed.",
                 "font",
                 "Inter, system-ui, -apple-system, sans-serif.",
                 "utilities",
@@ -118,17 +116,12 @@ public final class HtmlCanvasGuidePayload {
                 )
         ));
         guide.put("reactor_delivery", Map.of(
-                "inline_budget",
-                "Prefer compact html under ~20KB soft tool-call budget. Escape quotes as \\\" and newlines as \\n. "
-                        + "Prefer a body fragment so the host shell applies.",
-                "large_html",
-                "If HTML is large or truncation is likely: write the file via workspace_write / file_tool first, "
-                        + "then canvas_publish with html_path (or filename already in session products).",
+                "delivery",
+                "Write the complete HTML file via workspace_write first, then call canvas_publish with its required html_path. "
+                        + "The path must already exist under the active session workspace.",
                 "mode",
-                "P0 supports mode=html only. File is uploaded to the session file service and previewed as HTML "
-                        + "with JS enabled and host shell injection for bare pages.",
-                "filename",
-                "Optional. Defaults from title with .html suffix. Must end with .html or .htm."
+                "P0 is internally fixed to html. canvas_publish reuses the existing file-service preview/download "
+                        + "routes and does not upload or register the file again."
         ));
         guide.put("quality_gate", List.of(
                 "First viewport communicates what this is, why it matters, and what to do next.",

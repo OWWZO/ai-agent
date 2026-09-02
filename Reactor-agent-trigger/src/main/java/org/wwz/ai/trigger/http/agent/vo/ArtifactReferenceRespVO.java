@@ -8,6 +8,7 @@ import lombok.Data;
 public class ArtifactReferenceRespVO {
     private String artifactType;
     private String displayName;
+    private String relativePath;
     private String resourceKey;
     private String downloadUrl;
     private String previewUrl;

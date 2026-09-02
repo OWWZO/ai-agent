@@ -15,7 +15,7 @@ import lombok.NoArgsConstructor;
 public class WorkspaceRuntimeOptions {
 
     /**
-     * 是否启用工作区文件工具，并在 agent 侧下线 file_tool。
+     * 是否启用工作区文件工具。
      */
     @Builder.Default
     private boolean enabled = false;

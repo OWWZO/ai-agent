@@ -49,8 +49,9 @@ public final class GenUiGuidePayload {
                 "Concept / knowledge animation (playable steps, flow, layering, formula transform) → ConceptDemo or AnimStepLab.",
                 "Structured 3D (geometry/color/particles) → emit_ui_tree ThreeJsFrame.",
                 "Existing glb/gltf URL → emit_ui_tree Model3D (src required).",
+                "Custom Three.js scene or complex 3D assembly → emit_ui_tree ThreeJsFrame with props.sceneScript. The script is a JavaScript body executed in an isolated sandbox iframe; window.THREE, window.OrbitControls, window.GLTFLoader, window.container, window.canvas, window.onResize and window.frameOptions are available.",
                 "Free-form WebGL HTML → canvas_publish (window.THREE preloaded on bare pages).",
-                "Hosted webpage / landing / printable HTML report / page-scale layout → canvas_publish(mode=html).",
+                "Hosted webpage / landing / printable HTML report / page-scale layout -> canvas_publish after workspace_write.",
                 "If markdown is enough, stay in markdown; offer GenUI only when visual layout earns it."
         ));
         guide.put("teaching_labs", List.of(
@@ -79,6 +80,14 @@ public final class GenUiGuidePayload {
                 "WorkedExample: reveal steps then final answer. BeforeAfter: drag compare two images/texts.",
                 "NumberLine / CoordinateGrid: standalone or inside BindScope. ParametricLab scene=number_line|coordinate also works."
         ));
+        guide.put("three_js_script", List.of(
+                "sceneScript is a JavaScript body, not an HTML document and not a <script> wrapper.",
+                "The isolated iframe exposes window.THREE, window.OrbitControls, window.GLTFLoader, window.container, window.canvas, window.onResize, window.frameOptions and window.importThreeAddon.",
+                "Create the renderer with new THREE.WebGLRenderer({canvas, antialias:true}) or append renderer.domElement to container; the script owns the scene, camera, lights and animation loop.",
+                "Register onResize(() => ...) to update renderer size and camera aspect when the chat panel changes width.",
+                "Use new GLTFLoader().load(url, ...) for glb/gltf models. Model and texture URLs must be browser-reachable and allow CORS from the sandbox; prefer GLB with embedded textures.",
+                "For additional Three.js addons, use importThreeAddon('loaders/OBJLoader.js') or another path under three/addons/."
+        ));
         guide.put("layout_structure", List.of(
                 "Use domain components such as Card, FeatureGrid, KpiBoard, Table and Chart to structure visual output.",
                 "Keep nesting shallow (≤3–4 levels) and prefer a small number of meaningful components.",
@@ -87,6 +96,7 @@ public final class GenUiGuidePayload {
         guide.put("anti_patterns", List.of(
                 "Invalid kind / snake_case kinds.",
                 "Props beside kind instead of under props.",
+                "Do not put HTML markup in ThreeJsFrame.sceneScript; use HtmlFrame or canvas_publish for HTML documents.",
                 "Emoji on every line.",
                 "Flat 10+ peer nodes without a domain container such as Card."
         ));

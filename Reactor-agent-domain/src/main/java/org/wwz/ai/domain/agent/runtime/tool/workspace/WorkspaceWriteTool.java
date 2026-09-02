@@ -1,7 +1,5 @@
 package org.wwz.ai.domain.agent.runtime.tool.workspace;
 
-import org.apache.commons.lang3.StringUtils;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -89,14 +87,11 @@ public class WorkspaceWriteTool extends AbstractWorkspacePathTool {
 
             String agentPath = toAgentPath(filePath);
             String relativePath = toRelativePath(workspaceRoot, filePath);
-            String registerNote = WorkspaceFileRegistration.registerLocalFile(
+            WorkspaceFileRegistration.registerLocalFile(
                     agentContext, relativePath, filePath, "写入文件");
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("path", agentPath);
             data.put("chars", content.length());
-            if (StringUtils.isNotBlank(registerNote)) {
-                data.put("registerNote", registerNote);
-            }
             return okResult(data);
         } catch (WorkspaceAccessException e) {
             log.warn("{} workspace_write failed, input={}", requestId(), input, e);

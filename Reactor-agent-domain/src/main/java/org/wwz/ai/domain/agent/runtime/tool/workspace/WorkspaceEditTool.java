@@ -1,7 +1,5 @@
 package org.wwz.ai.domain.agent.runtime.tool.workspace;
 
-import org.apache.commons.lang3.StringUtils;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -136,7 +134,7 @@ public class WorkspaceEditTool extends AbstractWorkspacePathTool {
 
             Path workspaceRoot = requireWorkspaceRoot();
             String relativePath = toRelativePath(workspaceRoot, filePath);
-            String registerNote = WorkspaceFileRegistration.registerLocalFile(
+            WorkspaceFileRegistration.registerLocalFile(
                     agentContext, relativePath, filePath, "编辑文件");
 
             Map<String, Object> data = new LinkedHashMap<>();
@@ -144,9 +142,6 @@ public class WorkspaceEditTool extends AbstractWorkspacePathTool {
             data.put("replacements", replaceAll ? occurrences : 1);
             data.put("charsBefore", original.length());
             data.put("charsAfter", updated.length());
-            if (StringUtils.isNotBlank(registerNote)) {
-                data.put("registerNote", registerNote);
-            }
             return okResult(data);
         } catch (WorkspaceAccessException e) {
             log.warn("{} workspace_edit failed, input={}", requestId(), input, e);

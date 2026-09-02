@@ -3,21 +3,17 @@ package org.wwz.ai.domain.agent.runtime.tool.common.canvas;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.CanvasPublishToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRefMapper;
+import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.CodeInterpreterResponse;
-import org.wwz.ai.domain.agent.runtime.dto.File;
-import org.wwz.ai.domain.agent.runtime.dto.FileRequest;
-import org.wwz.ai.domain.agent.runtime.dto.FileResponse;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspacePaths;
-import org.wwz.ai.domain.agent.runtime.util.StringUtil;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,15 +24,17 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Publish HTML canvas into the session file service for right-panel preview.
- * P0: mode=html only; storage via existing file service (decision 1.A).
+ * 发布当前会话工作区中已经存在的 HTML 文件。
+ * <p>
+ * 文件由 workspace_write/edit 写入、登记并建立 artifact；本工具只生成稳定的
+ * preview/download URL，并按需通知前端打开预览，避免再次上传或登记同一文件。
+ * </p>
  */
 @Slf4j
 @Data
 public class CanvasPublishTool implements BaseTool {
 
-    /** Soft inline budget (~20KB); larger HTML should use html_path. */
-    private static final int SOFT_INLINE_HTML_BYTES = 20_480;
+    private static final String HTML_MODE = "html";
 
     private AgentContext agentContext;
 
@@ -47,17 +45,12 @@ public class CanvasPublishTool implements BaseTool {
 
     @Override
     public String getDescription() {
-        return "Publish an HTML canvas document into the workspace preview panel. "
+        return "Publish an existing HTML file from the active workspace into the preview panel. "
                 + "Use ONLY when the user explicitly wants HTML / a webpage / printable report, "
                 + "or page-scale layout that cannot be expressed by GenUI components. "
-                + "Charts / KPI / dashboards / multi-card UI → prefer emit_ui_tree (not this tool). "
-                + "Prefer this over report_tool for HTML deliverables. mode=html only. "
-                + "Payload: (1) compact html ≲ ~20KB → inline `html` (prefer body fragment so host "
-                + "Tailwind/Inter/wa-* shell applies); "
-                + "(2) larger → write file first (workspace_write/file_tool) then `html_path`. "
-                + "Inline scripts and on* handlers are stored; preview opens with JS enabled "
-                + "(CSP allows scripts). Call get_html_canvas_guide for substantial pages. "
-                + "Escape double quotes as \\\" and newlines as \\n in inline html.";
+                + "Charts / KPI / dashboards / multi-card UI -> prefer emit_ui_tree (not this tool). "
+                + "First write the page with workspace_write, then pass its html_path. "
+                + "html_path is required; this tool does not accept inline HTML or upload/register files.";
     }
 
     @Override
@@ -66,26 +59,9 @@ public class CanvasPublishTool implements BaseTool {
         title.put("type", "string");
         title.put("description", "Canvas title shown to the user.");
 
-        Map<String, Object> mode = new HashMap<>();
-        mode.put("type", "string");
-        mode.put("enum", List.of("html"));
-        mode.put("description", "Publish mode. P0 only supports html.");
-
-        Map<String, Object> html = new HashMap<>();
-        html.put("type", "string");
-        html.put("description",
-                "Full HTML document or body fragment for mode=html when ≲ ~20KB. "
-                        + "Larger pages: write file then pass html_path.");
-
         Map<String, Object> htmlPath = new HashMap<>();
         htmlPath.put("type", "string");
-        htmlPath.put("description",
-                "Relative path under the active workspace (or session product file name) "
-                        + "containing UTF-8 HTML. Preferred for large pages.");
-
-        Map<String, Object> filename = new HashMap<>();
-        filename.put("type", "string");
-        filename.put("description", "Optional output file name ending with .html/.htm.");
+        htmlPath.put("description", "Required path to an existing HTML file under the active workspace.");
 
         Map<String, Object> openInPanel = new HashMap<>();
         openInPanel.put("type", "boolean");
@@ -93,248 +69,174 @@ public class CanvasPublishTool implements BaseTool {
 
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("title", title);
-        properties.put("mode", mode);
-        properties.put("html", html);
         properties.put("html_path", htmlPath);
-        properties.put("filename", filename);
         properties.put("open_in_panel", openInPanel);
 
         Map<String, Object> parameters = new HashMap<>();
         parameters.put("type", "object");
         parameters.put("properties", properties);
-        parameters.put("required", List.of("title", "mode"));
+        parameters.put("required", List.of("html_path"));
+        parameters.put("additionalProperties", false);
         return parameters;
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public Object execute(Object input) {
+        String title = "Canvas";
         try {
-            // 入口先统一参数并校验 mode，再在 inline HTML 与 workspace 文件之间择一取源；
-            // 之后所有路径都经过同一 sanitizer、文件名和 artifact 登记流程。
             Map<String, Object> params = input instanceof Map<?, ?> map
                     ? castMap(map)
                     : Map.of();
-            String title = stringVal(params.get("title"));
-            String mode = stringVal(params.get("mode"));
-            if (StringUtils.isBlank(mode)) {
-                mode = "html";
-            }
-            if (!"html".equalsIgnoreCase(mode)) {
-                return failure(title, mode, "P0 only supports mode=html. Got: " + mode);
-            }
-            if (StringUtils.isBlank(title)) {
-                title = "Canvas";
-            }
-
-            boolean salvaged = Boolean.TRUE.equals(params.get("__salvaged"));
-            String html = stringVal(params.get("html"));
+            title = StringUtils.defaultIfBlank(stringVal(params.get("title")), "Canvas");
             String htmlPath = stringVal(params.get("html_path"));
-            String filename = stringVal(params.get("filename"));
+            boolean salvaged = Boolean.TRUE.equals(params.get("__salvaged"));
             boolean openInPanel = params.get("open_in_panel") == null
                     || Boolean.TRUE.equals(params.get("open_in_panel"))
                     || "true".equalsIgnoreCase(String.valueOf(params.get("open_in_panel")));
 
-            if (StringUtils.isBlank(html) && StringUtils.isBlank(htmlPath)) {
-                return failure(title, mode,
-                        "Provide either `html` (inline) or `html_path` (file under workspace/session).");
+            if (StringUtils.isBlank(htmlPath)) {
+                return failure(title, "html_path is required; write the file with workspace_write first");
+            }
+            if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
+                return failure(title, "canvas_publish requires an active agent context");
             }
 
-            if (StringUtils.isNotBlank(htmlPath)) {
-                // html_path 只能指向当前 session workspace，读取失败返回可解释的工具错误，
-                // 不回退为空 HTML，避免把路径问题伪装成成功预览。
-                String loaded = loadHtmlFromPath(htmlPath);
-                if (loaded == null) {
-                    return failure(title, mode, "html_path not found or unreadable: " + htmlPath);
-                }
-                html = loaded;
-                if (StringUtils.isBlank(filename)) {
-                    filename = Path.of(htmlPath.replace('\\', '/')).getFileName().toString();
-                }
+            String relativePath = resolveWorkspaceRelativePath(htmlPath);
+            if (relativePath == null) {
+                return failure(title, "html_path not found or outside the active workspace: " + htmlPath);
             }
 
-            // 保留脚本（allowJs=true）；为裸页面注入宿主 shell。
-            html = HtmlPreviewSanitizer.buildPreviewHtml(html, true);
-
-            int htmlBytes = html.getBytes(StandardCharsets.UTF_8).length;
-            // inline 大小只是软预算：告警不阻止兼容调用，真正的大页面仍建议通过 html_path
-            // 传入，避免模型上下文和请求体同时承载完整 HTML。
-            if (StringUtils.isBlank(htmlPath) && htmlBytes > SOFT_INLINE_HTML_BYTES && !salvaged) {
-                log.warn("{} canvas_publish large inline html bytes={} (soft budget={})",
-                        agentContext.getRequestId(), htmlBytes, SOFT_INLINE_HTML_BYTES);
+            ReactorConfig reactorConfig = agentContext.getRuntimeDependencies().requireReactorConfig();
+            if (reactorConfig == null || StringUtils.isBlank(reactorConfig.getCodeInterpreterUrl())) {
+                return failure(title, "canvas_publish file service URL is not configured");
             }
 
-            String uploadName = resolveUploadFileName(filename, title);
-            ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
-            return uploadAndNotify(title, mode, html, uploadName, openInPanel, salvaged, artifactSource);
+            Path filePath = WorkspacePaths.skillOutputSessionRoot(agentContext.getSessionId())
+                    .resolve(relativePath)
+                    .normalize();
+            int fileSize = (int) Math.min(Files.size(filePath), Integer.MAX_VALUE);
+            String fileName = Path.of(relativePath).getFileName().toString();
+            String previewUrl = buildFileUrl(reactorConfig, "preview", relativePath);
+            String downloadUrl = buildFileUrl(reactorConfig, "download", relativePath);
+
+            List<CodeInterpreterResponse.FileInfo> fileInfo = new ArrayList<>();
+            fileInfo.add(CodeInterpreterResponse.FileInfo.builder()
+                    .fileName(fileName)
+                    .relativePath(relativePath)
+                    .ossUrl(downloadUrl)
+                    .domainUrl(previewUrl)
+                    .fileSize(fileSize)
+                    .build());
+
+            ToolArtifactSource artifactSource = agentContext.getCurrentToolArtifactSource();
+            if (openInPanel && agentContext.getPrinter() != null) {
+                String toolCallId = artifactSource == null ? null : artifactSource.getToolCallId();
+                CodeInterpreterResponse htmlResponse = CodeInterpreterResponse.builder()
+                        .isFinal(true)
+                        .toolCallId(toolCallId)
+                        .fileInfo(fileInfo)
+                        .data(title)
+                        .codeOutput(title)
+                        .build();
+                String digitalEmployee = agentContext.getToolCollection() == null
+                        ? null
+                        : agentContext.getToolCollection().getDigitalEmployee(getName());
+                agentContext.getPrinter().send(toolCallId, "html", htmlResponse, digitalEmployee, true);
+            }
+
+            CanvasPublishToolOutput structuredOutput = CanvasPublishToolOutput.builder()
+                    .title(title)
+                    .mode(HTML_MODE)
+                    .primaryFileName(fileName)
+                    .previewUrl(previewUrl)
+                    .downloadUrl(downloadUrl)
+                    .openInPanel(openInPanel)
+                    .salvaged(salvaged)
+                    .fileRefs(ToolFileRefMapper.fromCodeInterpreterFileInfo(fileInfo))
+                    .build();
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("message", "Canvas published.");
+            fields.put("title", title);
+            fields.put("mode", HTML_MODE);
+            fields.put("fileName", fileName);
+            fields.put("relativePath", relativePath);
+            fields.put("openInPanel", openInPanel);
+            fields.put("salvaged", salvaged);
+            return ToolResultPayload.okData(getName(), fields, structuredOutput);
         } catch (Exception e) {
             log.error("{} canvas_publish error", agentContext == null ? "-" : agentContext.getRequestId(), e);
-            return failure(null, "html", "canvas_publish failed: " + e.getMessage());
+            return failure(title, "canvas_publish failed: " + e.getMessage());
         }
     }
 
-    private ToolResultPayload uploadAndNotify(String title,
-                                              String mode,
-                                              String html,
-                                              String uploadName,
-                                              boolean openInPanel,
-                                              boolean salvaged,
-                                              ToolArtifactSource artifactSource) {
-        // 文件服务上传、运行时 artifact 登记和前端预览事件属于同一次工具结果的三个投影：
-        // 上传失败直接终止；上传成功后先登记稳定引用，再按 openInPanel 决定是否通知 UI。
-        ReactorConfig reactorConfig = requireReactorConfig();
-        FileArtifactPort fileArtifactPort = requireFileArtifactPort();
-
-        FileRequest fileRequest = FileRequest.builder()
-                .requestId(agentContext.getSessionId())
-                .fileName(uploadName)
-                .description(StringUtils.left(StringUtils.defaultIfBlank(title, "Canvas HTML"), 80))
-                .content(html)
-                .build();
-        fileRequest.setFileName(StringUtil.removeSpecialChars(fileRequest.getFileName()));
-        if (StringUtils.isBlank(fileRequest.getFileName())) {
-            fileRequest.setFileName("canvas.html");
-        }
-        if (!fileRequest.getFileName().toLowerCase().endsWith(".html")
-                && !fileRequest.getFileName().toLowerCase().endsWith(".htm")) {
-            fileRequest.setFileName(fileRequest.getFileName() + ".html");
-        }
-
-        log.info("{} canvas_publish upload name={} salvaged={} bytes={}",
-                agentContext.getRequestId(),
-                fileRequest.getFileName(),
-                salvaged,
-                html.getBytes(StandardCharsets.UTF_8).length);
-
-        FileResponse fileResponse;
-        try {
-            fileResponse = fileArtifactPort.upload(reactorConfig.getCodeInterpreterUrl(), fileRequest);
-        } catch (Exception e) {
-            log.error("{} canvas_publish upload error", agentContext.getRequestId(), e);
-            return failure(title, mode, "Upload failed for " + fileRequest.getFileName() + ": " + e.getMessage());
-        }
-        if (fileResponse == null) {
-            return failure(title, mode, "Upload failed for " + fileRequest.getFileName());
-        }
-
-        List<CodeInterpreterResponse.FileInfo> fileInfo = new ArrayList<>();
-        fileInfo.add(CodeInterpreterResponse.FileInfo.builder()
-                .fileName(fileRequest.getFileName())
-                .ossUrl(fileResponse.getOssUrl())
-                .domainUrl(fileResponse.getDomainUrl())
-                .fileSize(fileResponse.getFileSize())
-                .build());
-
-        File file = File.builder()
-                .ossUrl(fileResponse.getOssUrl())
-                .domainUrl(fileResponse.getDomainUrl())
-                .fileName(fileRequest.getFileName())
-                .fileSize(fileResponse.getFileSize())
-                .description(title)
-                .isInternalFile(false)
-                .build();
-        agentContext.registerGeneratedArtifact(artifactSource, file);
-
-        if (openInPanel && agentContext.getPrinter() != null) {
-            String toolCallId = artifactSource == null ? null : artifactSource.getToolCallId();
-            CodeInterpreterResponse htmlResponse = CodeInterpreterResponse.builder()
-                    .isFinal(true)
-                    .toolCallId(toolCallId)
-                    .fileInfo(fileInfo)
-                    .data(title)
-                    .codeOutput(title)
-                    .build();
-            String digitalEmployee = agentContext.getToolCollection() == null
-                    ? null
-                    : agentContext.getToolCollection().getDigitalEmployee(getName());
-            // 对齐 report_tool(fileType=html)，让 ActionView/HTMLRenderer 能打开同一预览协议。
-            agentContext.getPrinter().send(toolCallId, "html", htmlResponse, digitalEmployee, true);
-        }
-
-        String preview = StringUtils.defaultIfBlank(fileResponse.getDomainUrl(), fileResponse.getOssUrl());
-        String download = StringUtils.defaultIfBlank(fileResponse.getOssUrl(), fileResponse.getDomainUrl());
-        CanvasPublishToolOutput structuredOutput = CanvasPublishToolOutput.builder()
-                .title(title)
-                .mode(mode)
-                .primaryFileName(fileRequest.getFileName())
-                .previewUrl(preview)
-                .downloadUrl(download)
-                .openInPanel(openInPanel)
-                .salvaged(salvaged)
-                .fileRefs(ToolFileRefMapper.fromCodeInterpreterFileInfo(fileInfo))
-                .build();
-        Map<String, Object> fields = new LinkedHashMap<>();
-        fields.put("message", "Canvas published. Prefer the HTML preview panel; do not call report_tool for the same page.");
-        fields.put("title", title);
-        fields.put("mode", mode);
-        fields.put("fileName", fileRequest.getFileName());
-        fields.put("previewUrl", preview);
-        fields.put("downloadUrl", download);
-        fields.put("openInPanel", openInPanel);
-        fields.put("salvaged", salvaged);
-        return ToolResultPayload.okData(getName(), fields, structuredOutput);
-    }
-
-    private String loadHtmlFromPath(String htmlPath) {
-        if (StringUtils.isBlank(htmlPath) || agentContext == null || StringUtils.isBlank(agentContext.getSessionId())) {
+    private String resolveWorkspaceRelativePath(String htmlPath) {
+        if (agentContext == null || StringUtils.isBlank(agentContext.getSessionId())) {
             return null;
         }
         String normalized = htmlPath.trim().replace('\\', '/');
-        // 先拒绝明显的父目录片段，再用 normalize + startsWith 做最终边界判断；绝对路径也
-        // 必须位于当前 session root 内，不能借工具参数读取任意本机文件。
-        if (normalized.contains("..")) {
+        if (StringUtils.isBlank(normalized)) {
             return null;
         }
         try {
-            Path sessionRoot = WorkspacePaths.skillOutputSessionRoot(agentContext.getSessionId());
-            Path candidate;
-            Path asPath = Path.of(normalized);
-            if (asPath.isAbsolute()) {
-                candidate = asPath.normalize();
-                if (!candidate.startsWith(sessionRoot)) {
-                    return null;
-                }
-            } else {
-                candidate = sessionRoot.resolve(normalized).normalize();
-                if (!candidate.startsWith(sessionRoot)) {
-                    return null;
-                }
+            Path sessionRoot = WorkspacePaths.skillOutputSessionRoot(agentContext.getSessionId())
+                    .toAbsolutePath()
+                    .normalize();
+            Path inputPath = Path.of(normalized);
+            Path candidate = inputPath.isAbsolute()
+                    ? inputPath.normalize()
+                    : sessionRoot.resolve(normalized).normalize();
+            if (!candidate.startsWith(sessionRoot) || !Files.isRegularFile(candidate)) {
+                return null;
             }
-            if (Files.isRegularFile(candidate)) {
-                return Files.readString(candidate, StandardCharsets.UTF_8);
+
+            // 检查真实路径，避免工作区内的符号链接把 html_path 指向工作区外。
+            if (!candidate.toRealPath().startsWith(sessionRoot.toRealPath())) {
+                return null;
             }
+            return sessionRoot.relativize(candidate).toString().replace('\\', '/');
         } catch (Exception e) {
-            log.warn("{} canvas_publish html_path read failed path={}", agentContext.getRequestId(), htmlPath, e);
+            log.warn("{} canvas_publish html_path validation failed path={}",
+                    agentContext.getRequestId(), htmlPath, e);
+            return null;
         }
-        return null;
     }
 
-    private String resolveUploadFileName(String filename, String title) {
-        if (StringUtils.isNotBlank(filename)) {
-            return filename.trim();
-        }
-        String base = StringUtils.defaultIfBlank(title, "canvas")
-                .replaceAll("[\\\\/:*?\"<>|]", "_")
-                .trim();
-        if (base.isEmpty()) {
-            base = "canvas";
-        }
-        if (base.length() > 80) {
-            base = base.substring(0, 80);
-        }
-        if (!base.toLowerCase().endsWith(".html") && !base.toLowerCase().endsWith(".htm")) {
-            base = base + ".html";
-        }
-        return base;
+    private String buildFileUrl(ReactorConfig reactorConfig, String operation, String relativePath) {
+        String baseUrl = StringUtils.removeEnd(reactorConfig.getCodeInterpreterUrl(), "/");
+        return baseUrl
+                + "/v1/file_tool/"
+                + operation
+                + "/"
+                + encodePathSegment(agentContext.getSessionId())
+                + "/"
+                + encodePath(relativePath);
     }
 
-    private ToolResultPayload failure(String title, String mode, String message) {
+    private String encodePath(String path) {
+        StringBuilder encoded = new StringBuilder();
+        for (String segment : path.replace('\\', '/').split("/")) {
+            if (segment.isEmpty()) {
+                continue;
+            }
+            if (encoded.length() > 0) {
+                encoded.append('/');
+            }
+            encoded.append(encodePathSegment(segment));
+        }
+        return encoded.toString();
+    }
+
+    private String encodePathSegment(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
+    private ToolResultPayload failure(String title, String message) {
         return ToolResultPayload.failure(
                 message,
                 message,
                 CanvasPublishToolOutput.builder()
                         .title(title)
-                        .mode(mode)
+                        .mode(HTML_MODE)
                         .build(),
                 message
         );
@@ -356,19 +258,5 @@ public class CanvasPublishTool implements BaseTool {
         }
         String s = String.valueOf(value).trim();
         return s.isEmpty() ? null : s;
-    }
-
-    private ReactorConfig requireReactorConfig() {
-        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("CanvasPublishTool missing ReactorRuntimeDependencies");
-        }
-        return agentContext.getRuntimeDependencies().requireReactorConfig();
-    }
-
-    private FileArtifactPort requireFileArtifactPort() {
-        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("CanvasPublishTool missing ReactorRuntimeDependencies");
-        }
-        return agentContext.getRuntimeDependencies().requireFileArtifactPort();
     }
 }

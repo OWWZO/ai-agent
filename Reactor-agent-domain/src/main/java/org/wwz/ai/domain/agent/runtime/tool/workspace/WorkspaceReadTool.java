@@ -90,7 +90,6 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
                     unchanged.put("startLine", startLine);
                     unchanged.put("lineCount", lineCount);
                     unchanged.put("message", FILE_UNCHANGED_STUB);
-                    unchanged.put("file", Map.of("filePath", agentPath));
                     return okResult(unchanged);
                 }
             }
@@ -125,13 +124,9 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
             data.put("path", agentPath);
             data.put("startLine", startLine);
             data.put("endLine", fromIndex + (toIndex - fromIndex));
+            data.put("numLines", toIndex - fromIndex);
+            data.put("totalLines", lineList.size());
             data.put("content", body);
-            data.put("file", Map.of(
-                    "filePath", agentPath,
-                    "content", body,
-                    "numLines", toIndex - fromIndex,
-                    "startLine", startLine,
-                    "totalLines", lineList.size()));
             if (truncated) {
                 data.put("truncated", Boolean.TRUE);
             }
@@ -161,16 +156,11 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
         }
         // observation 只保留元数据；整图走 base64Image，由 DomainMessageConverter 转成 Spring AI Media。
         String dataUrl = "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(bytes);
-        String agentPath = toAgentPath(filePath);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("type", "image");
-        data.put("path", agentPath);
+        data.put("path", toAgentPath(filePath));
         data.put("mimeType", mimeType);
         data.put("size", bytes.length);
-        data.put("file", Map.of(
-                "filePath", agentPath,
-                "type", mimeType,
-                "originalSize", bytes.length));
         data.put("message", "Image loaded as multimodal content; inspect the attached image media.");
         return ToolResultPayload.builder()
                 .llmData(data)

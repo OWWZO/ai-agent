@@ -37,5 +37,6 @@ public class CodeInterpreterResponse {
         private String ossUrl;
         private String domainUrl;
         private Integer fileSize;
+        private String relativePath;
     }
 }

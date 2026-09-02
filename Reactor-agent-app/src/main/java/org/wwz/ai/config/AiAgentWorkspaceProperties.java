@@ -11,7 +11,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class AiAgentWorkspaceProperties {
 
     /**
-     * 是否启用 workspace_* 工具，并在 agent 可见工具中下线 file_tool。
+     * 是否启用 workspace_* 工具。
      */
     private boolean enabled = true;
 

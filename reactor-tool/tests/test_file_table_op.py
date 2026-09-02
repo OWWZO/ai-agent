@@ -5,15 +5,19 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from reactor_tool.db.file_table_op import FileDB, normalize_stored_file_name
+from reactor_tool.db.file_table_op import (
+    FileDB,
+    normalize_stored_file_name,
+    normalize_stored_relative_path,
+)
+from reactor_tool.model.protocal import get_file_id
 
 
 class FileNameSafetyTest(unittest.TestCase):
     def test_should_sanitize_long_windows_file_name_before_writing(self):
         raw_name = (
             "researchandcompare<>multi-agent:collaboration/architectures?"
-            "decision_framework" * 12
-            + ".txt"
+            "decision_framework" * 12 + ".txt"
         )
 
         with tempfile.TemporaryDirectory(prefix="file-name-safety-") as temp_dir:
@@ -29,6 +33,20 @@ class FileNameSafetyTest(unittest.TestCase):
     def test_should_reject_empty_file_name(self):
         with self.assertRaises(ValueError):
             normalize_stored_file_name("   ")
+
+    def test_should_keep_relative_directories(self):
+        self.assertEqual(
+            "site/css/style.css",
+            normalize_stored_relative_path("./site/css/style.css"),
+        )
+        self.assertNotEqual(
+            get_file_id("session-1", normalize_stored_relative_path("a/style.css")),
+            get_file_id("session-1", normalize_stored_relative_path("b/style.css")),
+        )
+
+    def test_should_reject_relative_path_escape(self):
+        with self.assertRaises(ValueError):
+            normalize_stored_relative_path("../secret.txt")
 
 
 if __name__ == "__main__":

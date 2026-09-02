@@ -28,11 +28,11 @@ public class GetHtmlCanvasGuideTool implements BaseTool {
 
     @Override
     public String getDescription() {
-        return "Return the on-demand professional HTML guide for canvas_publish(mode=html): "
-                + "design method, visual quality, accessibility, preview runtime "
-                + "(Tailwind/Inter/wa-* shell, JS enabled), Reactor delivery (inline vs html_path), "
+        return "Return the on-demand professional HTML guide for canvas_publish: "
+                + "design method, visual quality, accessibility, preview runtime for an existing workspace HTML file, "
+                + "and Reactor delivery (workspace html_path only), "
                 + "and a structural template. Charts/KPI/dashboards → emit_ui_tree instead. "
-                + "Use for substantial or appearance-sensitive webpages; skip for trivial HTML. "
+                + "Use for substantial or appearance-sensitive webpages after writing the HTML to workspace. "
                 + "Read-only, no side effects.";
     }
 

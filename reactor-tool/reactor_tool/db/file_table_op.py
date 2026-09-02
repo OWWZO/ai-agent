@@ -5,6 +5,7 @@
 - FileInfoOp: 元数据增查（同 file_id 覆盖更新）
 - get_file_*_url: 拼预览/下载 URL，供 Java 与前端消费
 """
+
 import os
 import re
 from typing import List
@@ -67,8 +68,16 @@ class _FileDB(object):
                 file_data = b""
         if not file_data:
             raise ValueError(f"uploaded file is empty: {file_name}")
-        safe_scope = "".join(c if c not in '<>:"/\\|?*' else "_" for c in str(scope)) if scope else ""
-        save_directory = self._work_dir if not safe_scope else os.path.join(self._work_dir, safe_scope)
+        safe_scope = (
+            "".join(c if c not in '<>:"/\\|?*' else "_" for c in str(scope))
+            if scope
+            else ""
+        )
+        save_directory = (
+            self._work_dir
+            if not safe_scope
+            else os.path.join(self._work_dir, safe_scope)
+        )
         if not os.path.exists(save_directory):
             os.makedirs(save_directory)
         save_path = os.path.join(save_directory, file_name)
@@ -82,7 +91,10 @@ FileDB = _FileDB()
 
 _INVALID_FILE_NAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _WINDOWS_RESERVED_FILE_NAMES = {
-    "CON", "PRN", "AUX", "NUL",
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
     *(f"COM{index}" for index in range(1, 10)),
     *(f"LPT{index}" for index in range(1, 10)),
 }
@@ -104,10 +116,24 @@ def normalize_stored_file_name(file_name: str) -> str:
     if stem.upper() in _WINDOWS_RESERVED_FILE_NAMES:
         stem = f"_{stem}"
 
-    suffix = suffix[:_MAX_STORED_FILE_NAME_LENGTH - 1]
+    suffix = suffix[: _MAX_STORED_FILE_NAME_LENGTH - 1]
     max_stem_length = max(1, _MAX_STORED_FILE_NAME_LENGTH - len(suffix))
     normalized = f"{stem[:max_stem_length]}{suffix}"
     return normalized
+
+
+def normalize_stored_relative_path(file_name: str) -> str:
+    """保留目录结构的相对路径归一化；拒绝 .. 逃逸。"""
+    raw = (file_name or "").strip().replace("\\", "/")
+    while raw.startswith("./"):
+        raw = raw[2:]
+    raw = raw.lstrip("/")
+    parts = [part for part in raw.split("/") if part and part != "."]
+    if not parts:
+        raise ValueError("file_name is empty")
+    if any(part == ".." for part in parts):
+        raise ValueError("path traversal is not allowed")
+    return "/".join(normalize_stored_file_name(part) for part in parts)
 
 
 class FileInfoOp(object):
@@ -115,8 +141,14 @@ class FileInfoOp(object):
 
     @classmethod
     @timer()
-    async def add_by_content(cls, filename: str, content: str, file_id: str, description: str = None,
-                             request_id: str = None) -> FileInfo:
+    async def add_by_content(
+        cls,
+        filename: str,
+        content: str,
+        file_id: str,
+        description: str = None,
+        request_id: str = None,
+    ) -> FileInfo:
         """文本内容落盘 + 写元数据。"""
         # 先落盘再写元数据，确保数据库中的 file_path 指向已经存在的文件。
         filename = normalize_stored_file_name(filename)
@@ -128,13 +160,15 @@ class FileInfoOp(object):
             description=description,
             file_size=os.path.getsize(file_path),
             status=1,
-            request_id=request_id
+            request_id=request_id,
         )
         return await cls.add(file_info)
 
     @staticmethod
     @timer()
-    async def add_by_file(file: UploadFile, file_id: str, request_id: str = None) -> FileInfo:
+    async def add_by_file(
+        file: UploadFile, file_id: str, request_id: str = None
+    ) -> FileInfo:
         """multipart 上传流落盘 + 写元数据。"""
         file.filename = normalize_stored_file_name(file.filename)
         file_path = await FileDB.save_by_data(file, scope=request_id)
@@ -146,7 +180,7 @@ class FileInfoOp(object):
             description="",
             file_size=os.path.getsize(file_path),
             status=1,
-            request_id=request_id
+            request_id=request_id,
         )
         return await FileInfoOp.add(file_info)
 
@@ -162,7 +196,7 @@ class FileInfoOp(object):
     ) -> FileInfo:
         """登记已落盘文件：不拷贝内容，file_path 指向已有绝对路径。"""
         # register 与 upload 的区别是只登记引用；因此必须先验证源文件存在，再把绝对路径写入元数据。
-        filename = normalize_stored_file_name(filename)
+        filename = normalize_stored_relative_path(filename)
         if not local_path or not os.path.isfile(local_path):
             raise FileNotFoundError(f"local file not found: {local_path}")
         abs_path = os.path.abspath(local_path)
@@ -227,12 +261,12 @@ class FileInfoOp(object):
 
 
 def get_file_preview_url(file_id: str, file_name: str):
-    """拼预览 URL：/preview/{request_id}/{file_name}。"""
-    normalized_file_name = normalize_stored_file_name(file_name)
+    """拼预览 URL：/preview/{request_id}/{file_name}，file_name 可含相对目录。"""
+    normalized_file_name = normalize_stored_relative_path(file_name)
     return f"{os.getenv('FILE_SERVER_URL')}/preview/{file_id}/{normalized_file_name}"
 
 
 def get_file_download_url(file_id: str, file_name: str):
-    """拼下载 URL：/download/{request_id}/{file_name}。"""
-    normalized_file_name = normalize_stored_file_name(file_name)
+    """拼下载 URL：/download/{request_id}/{file_name}，file_name 可含相对目录。"""
+    normalized_file_name = normalize_stored_relative_path(file_name)
     return f"{os.getenv('FILE_SERVER_URL')}/download/{file_id}/{normalized_file_name}"

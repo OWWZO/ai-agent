@@ -39,6 +39,8 @@ public class VisitorIdentityFilter extends OncePerRequestFilter {
                 || StringUtils.startsWith(path, "/api/agent/visitor")
                 || StringUtils.startsWith(path, "/api/agent/conversation/sessions")
                 || StringUtils.startsWith(path, "/api/agent/file")
+                // 工作区 zip 下载需要访客身份做会话归属校验
+                || StringUtils.startsWith(path, "/api/agent/workspace")
                 // stop / follow 需要访客身份做会话归属校验
                 || StringUtils.startsWith(path, "/api/agent/run")
                 // ask-user answer / resume / cancel 需要访客身份做归属与 claim

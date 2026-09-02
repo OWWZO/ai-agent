@@ -71,12 +71,44 @@ public class WorkspaceReadStateStore {
         }
     }
 
+    /**
+     * 压缩成功后清空内存 + 落盘状态（对齐 cc-haha：compact 后 clear readFileState）。
+     * 子 Agent 不持有跨轮 JSON，只清内存。
+     */
+    public void clear(AgentContext agentContext) {
+        if (agentContext == null) {
+            return;
+        }
+        agentContext.clearWorkspaceReadState();
+        if (isSubAgent(agentContext) || StringUtils.isBlank(agentContext.getWorkspaceRoot())) {
+            return;
+        }
+        clearPersisted(agentContext.getWorkspaceRoot());
+    }
+
+    /** 删除会话工作区旁的 read-state.json（pre-run 压缩时尚无 AgentContext）。 */
+    public void clearPersisted(String workspaceRoot) {
+        if (StringUtils.isBlank(workspaceRoot)) {
+            return;
+        }
+        Path storeFile = storeFile(workspaceRoot);
+        try {
+            if (Files.deleteIfExists(storeFile)) {
+                log.info("cleared workspace read-state path={}", storeFile);
+            }
+        } catch (Exception e) {
+            log.warn("clear workspace read-state failed, path={}", storeFile, e);
+        }
+    }
+
     public void persist(AgentContext agentContext) {
         if (agentContext == null || StringUtils.isBlank(agentContext.getWorkspaceRoot()) || isSubAgent(agentContext)) {
             return;
         }
         Map<String, WorkspaceFileReadState> states = agentContext.snapshotWorkspaceReadState();
         if (states == null || states.isEmpty()) {
+            // 空快照必须删掉旧 JSON，否则下一轮 hydrate 会把已 clear 的状态读回来。
+            clearPersisted(agentContext.getWorkspaceRoot());
             return;
         }
         Path storeFile = storeFile(agentContext.getWorkspaceRoot());
