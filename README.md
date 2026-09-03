@@ -268,7 +268,7 @@ Execution Ledger 是 Reactor 运行时的唯一执行事实主路径。它让“
 | `ai_agent_artifact` | 上传文件、生成文件和稳定产物引用 |
 | `ai_agent_working_memory_*` | 面向下一轮 LLM 上下文的工作记忆投影 |
 
-历史回放读取账本并生成展示投影；工作记忆只服务跨轮上下文 hydrate，不作为 UI 历史回放的第二套事实源。完整 DDL 见 [`schema.sql`](Reactor-agent-app/src/main/resources/db/schema.sql)。
+历史回放读取账本并生成展示投影；工作记忆只服务跨轮上下文 hydrate，不作为 UI 历史回放的第二套事实源。当前表结构以 live MySQL 为准，项目内同步快照见 [`schema.sql`](Reactor-agent-app/src/main/resources/db/schema.sql)。
 
 ## API 入口
 
@@ -292,7 +292,7 @@ Execution Ledger 是 Reactor 运行时的唯一执行事实主路径。它让“
 | [`application-dev.yml`](Reactor-agent-app/src/main/resources/application-dev.yml) | 本地端口、数据库、工具 URL、模型与 Skill 配置 |
 | [`ui/.env`](ui/.env) | React 开发环境的 Backend 地址 |
 | [`reactor-tool/.env_template`](reactor-tool/.env_template) | Python 工具、搜索、模型、RAG 与沙箱配置模板 |
-| [`schema.sql`](Reactor-agent-app/src/main/resources/db/schema.sql) | 数据库结构真相源 |
+| [`schema.sql`](Reactor-agent-app/src/main/resources/db/schema.sql) | 从 live MySQL 同步的数据库结构快照与初始化参考 |
 | [`data.sql`](Reactor-agent-app/src/main/resources/db/data.sql) | 问数示例数据 |
 
 密钥只应通过环境变量、Secret Manager 或部署系统注入。不要把真实的模型、搜索、向量库或 Cookie 凭证提交到 YAML、`.env`、日志、Prompt 或执行事件中。
@@ -331,7 +331,7 @@ pnpm build
 - [前端开发说明](ui/README.md)
 - [Python Tool Runtime 说明](reactor-tool/README.md)
 - [前端贡献指南](ui/CONTRIBUTING.md)
-- [数据库结构](Reactor-agent-app/src/main/resources/db/schema.sql)
+- [数据库结构快照 SQL](Reactor-agent-app/src/main/resources/db/schema.sql)
 - [GitHub Issues](https://github.com/OWWZO/ai-agent/issues)
 
 ### 常见扩展方式

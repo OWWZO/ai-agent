@@ -120,12 +120,12 @@ autobots:
 ### 数据库脚本
 | 文件 | 说明 |
 |-----|------|
-| `db/schema.sql` | 数据库表结构 |
+| `db/schema.sql` | 从 live MySQL 同步的数据库结构快照与初始化参考 |
 | `db/data.sql` | 初始数据 |
 
 ### 核心表（Execution Ledger 唯一主路径）
 
-对话写入、历史列表、历史回放、会话记忆均以 ledger 为真相源；完整 DDL 见 `db/schema.sql`。
+对话写入、历史列表、历史回放、会话记忆均以 ledger 为真相源；表结构以 live MySQL 为准，`db/schema.sql` 是同步快照与初始化参考。
 
 **Ledger / 会话：**
 - `ai_agent_dialogue_session`: 会话头表（标题、轮次统计、最近活跃）

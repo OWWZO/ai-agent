@@ -1,5 +1,8 @@
 -- =============================================================================
--- Reactor-agent persistence source of truth
+-- Reactor-agent database schema snapshot
+--
+-- The live MySQL ai-agent-station schema is authoritative. This file is a
+-- synchronized initialization/reference snapshot and may lag behind it.
 --
 -- Conversation / history / memory / replay main path = Execution Ledger only:
 --   ai_agent_dialogue_session, ai_agent_dialogue_run,
@@ -31,7 +34,7 @@ CREATE TABLE IF NOT EXISTS admin_user (
     UNIQUE KEY uk_user_id (user_id),
     KEY idx_create_time (create_time),
     KEY idx_status (status)
-) COMMENT='管理员用户表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='管理员用户表';
 
 CREATE TABLE IF NOT EXISTS ai_client_api (
     id               BIGINT        NOT NULL AUTO_INCREMENT COMMENT '自增主键ID',
@@ -46,29 +49,17 @@ CREATE TABLE IF NOT EXISTS ai_client_api (
     PRIMARY KEY (id),
     UNIQUE KEY uk_api_id (api_id),
     KEY idx_status (status)
-) COMMENT='OpenAI API配置表';
-
-CREATE TABLE IF NOT EXISTS ai_agent_session_capability (
-    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
-    session_id  VARCHAR(64)  NOT NULL COMMENT '会话 ID',
-    kind        VARCHAR(16)  NOT NULL COMMENT 'skill|mcp',
-    ref_id      VARCHAR(128) NOT NULL COMMENT 'skill name 或 mcpId',
-    enabled     TINYINT      NOT NULL DEFAULT 0 COMMENT '0 关 1 开',
-    update_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_sess_kind_ref (session_id, kind, ref_id),
-    KEY idx_session (session_id)
-) COMMENT='会话能力差集开关';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='OpenAI API配置表';
 
 CREATE TABLE IF NOT EXISTS ai_client_model (
     id          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '自增主键ID',
-    model_id    VARCHAR(64)   NOT NULL COMMENT '模型引用标识，允许多条配置共用',
+    model_id    VARCHAR(64)   NOT NULL COMMENT '全局唯一模型ID',
     api_id      VARCHAR(64)   NOT NULL COMMENT '关联的API配置ID',
-    model_usage VARCHAR(128)  NOT NULL DEFAULT '缺省的' COMMENT '模型用途；fallback/backup/备用模型表示备用模型',
+    model_usage VARCHAR(128)  NOT NULL DEFAULT '缺省的' COMMENT '模型用途',
+    supports_thinking TINYINT NOT NULL DEFAULT 0 COMMENT 'support deep thinking',
+    context_window INT       NULL DEFAULT NULL COMMENT 'context window tokens',
     model_name  VARCHAR(64)   NOT NULL COMMENT '模型名称',
     model_type  VARCHAR(32)   NOT NULL COMMENT '模型类型：openai、deepseek、claude',
-    supports_thinking TINYINT NOT NULL DEFAULT 0 COMMENT '是否支持深度思考',
-    context_window INT NULL DEFAULT NULL COMMENT '上下文窗口 token',
     status      TINYINT       NOT NULL DEFAULT 1 COMMENT '状态：0-禁用，1-启用',
     create_time DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -76,7 +67,7 @@ CREATE TABLE IF NOT EXISTS ai_client_model (
     KEY idx_model_id (model_id),
     KEY idx_api_config_id (api_id),
     KEY idx_status (status)
-) COMMENT='聊天模型配置表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='聊天模型配置表';
 
 CREATE TABLE IF NOT EXISTS ai_client_tool_mcp (
     id               BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -90,7 +81,19 @@ CREATE TABLE IF NOT EXISTS ai_client_tool_mcp (
     update_time      DATETIME      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
     UNIQUE KEY uk_mcp_id (mcp_id)
-) COMMENT='MCP客户端配置表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='MCP客户端配置表';
+
+CREATE TABLE IF NOT EXISTS ai_agent_session_capability (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '涓婚敭',
+    session_id  VARCHAR(64)  NOT NULL COMMENT '浼氳瘽 ID',
+    kind        VARCHAR(16)  NOT NULL COMMENT 'skill|mcp',
+    ref_id      VARCHAR(128) NOT NULL COMMENT 'skill name 鎴?mcpId',
+    enabled     TINYINT      NOT NULL DEFAULT 0 COMMENT '0 鍏?1 寮',
+    update_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_sess_kind_ref (session_id, kind, ref_id),
+    KEY idx_session (session_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='浼氳瘽鑳藉姏宸?泦寮?叧';
 
 CREATE TABLE IF NOT EXISTS ai_agent_sub_agent_definition (
     id                      BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -120,7 +123,7 @@ CREATE TABLE IF NOT EXISTS chat_model_info (
   business_prompt text COMMENT '模型业务限定提示词',
   yn tinyint NOT NULL DEFAULT '1' COMMENT '是否有效',
   PRIMARY KEY (id)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS chat_model_schema (
   id bigint NOT NULL AUTO_INCREMENT COMMENT '主键',
@@ -136,7 +139,7 @@ CREATE TABLE IF NOT EXISTS chat_model_schema (
   analyze_suggest tinyint NOT NULL DEFAULT '0' COMMENT '分析建议0可选，-1禁止用于分析维度，1建议',
   yn tinyint NOT NULL DEFAULT '1' COMMENT '是否有效',
   PRIMARY KEY (id)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS sales_data (
     row_id INT PRIMARY KEY COMMENT '行 ID',
@@ -159,7 +162,7 @@ CREATE TABLE IF NOT EXISTS sales_data (
     quantity INT DEFAULT NULL COMMENT '销售数量',
     discount DECIMAL(10, 4) DEFAULT NULL COMMENT '折扣',
     profit DECIMAL(10, 4) DEFAULT NULL COMMENT '利润'
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS ai_agent_visitor_identity (
     id               BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -171,31 +174,31 @@ CREATE TABLE IF NOT EXISTS ai_agent_visitor_identity (
     last_ip          VARCHAR(128)   NULL COMMENT '最近访问IP',
     last_user_agent  VARCHAR(512)   NULL COMMENT '最近访问UA',
     username         VARCHAR(64)    NULL COMMENT '当前浏览器访客首次命名用户名',
-    create_time      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    create_time      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建\r\n  时间',
     update_time      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     deleted          TINYINT(1)     NOT NULL DEFAULT 0 COMMENT '软删除',
     PRIMARY KEY (id),
     UNIQUE KEY uk_visitor_identity_visitor (visitor_id),
     UNIQUE KEY uk_visitor_identity_token (token_digest),
     KEY idx_visitor_identity_last_seen (deleted, last_seen_at DESC)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='匿名访客身份表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='匿名访客\r\n  身份表';
 
 CREATE TABLE IF NOT EXISTS ai_agent_dialogue_run (
     id                      BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    run_uid                 VARCHAR(64)    NOT NULL COMMENT '对外稳定运行ID，首期复用 requestId',
+    run_uid                 VARCHAR(64)    NOT NULL COMMENT '对外稳定运行ID，首期复用\r\n  requestId',
     request_id              VARCHAR(64)    NOT NULL COMMENT '单次请求ID',
     session_id              VARCHAR(64)    NOT NULL COMMENT '会话ID',
     visitor_id              VARCHAR(64)    NULL COMMENT '匿名访客ID',
-    entry_agent             VARCHAR(32)    NOT NULL COMMENT '入口执行链 react / plan_solve',
-    status                  TINYINT        NOT NULL DEFAULT 0 COMMENT '0=RUNNING,1=SUCCESS,2=FAILED,3=TIMEOUT,4=STOPPED,5=WAITING_INPUT',
+    entry_agent             VARCHAR(32)    NOT NULL COMMENT '入口执行链 react /\r\n  plan_solve',
+    status                  TINYINT        NOT NULL DEFAULT 0 COMMENT '0=RUNNING,1=SUCCESS,2=FAILED,3=TIMEOUT,4=STOPPED',
     query_text              MEDIUMTEXT     NULL COMMENT '用户原始问题',
     final_summary_text      MEDIUMTEXT     NULL COMMENT '最终总结文本',
     llm_call_count          INT            NOT NULL DEFAULT 0 COMMENT 'LLM 调用次数',
     tool_call_count         INT            NOT NULL DEFAULT 0 COMMENT '工具调用次数',
     artifact_count          INT            NOT NULL DEFAULT 0 COMMENT '产物数量',
-    prompt_tokens_total     INT            NOT NULL DEFAULT 0 COMMENT 'LLM 输入 token 总量',
-    completion_tokens_total INT            NOT NULL DEFAULT 0 COMMENT 'LLM 输出 token 总量',
-    total_tokens_total      INT            NOT NULL DEFAULT 0 COMMENT 'LLM token 总量',
+    prompt_tokens_total     INT            NOT NULL DEFAULT 0 COMMENT 'LLM 输入 token\r\n  总量',
+    completion_tokens_total INT            NOT NULL DEFAULT 0 COMMENT 'LLM 输出 token\r\n  总量',
+    total_tokens_total      INT            NOT NULL DEFAULT 0 COMMENT 'LLM token 总\r\n  量',
     error_code              VARCHAR(64)    NULL COMMENT '失败码',
     error_msg               TEXT           NULL COMMENT '失败信息',
     started_at              DATETIME(3)    NOT NULL COMMENT 'run 开始时间',
@@ -210,14 +213,14 @@ CREATE TABLE IF NOT EXISTS ai_agent_dialogue_run (
     KEY idx_dialogue_session_create (session_id, deleted, create_time DESC),
     KEY idx_dialogue_run_visitor_create (visitor_id, deleted, create_time DESC),
     KEY idx_dialogue_entry_status (entry_agent, status, deleted, create_time DESC)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='对话执行总账表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='对话执行\r\n  总账表';
 
 CREATE TABLE IF NOT EXISTS ai_agent_dialogue_session (
     id                 BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     session_id         VARCHAR(64)    NOT NULL COMMENT '会话ID',
     visitor_id         VARCHAR(64)    NULL COMMENT '匿名访客ID',
     title              VARCHAR(256)   NOT NULL COMMENT '会话标题',
-    status             TINYINT        NOT NULL DEFAULT 0 COMMENT '会话终态，复用 run 状态枚举',
+    status             TINYINT        NOT NULL DEFAULT 0 COMMENT '会话终态，复用 run\r\n  状态枚举',
     latest_request_id  VARCHAR(64)    NULL COMMENT '最近一次请求ID',
     latest_query_text  MEDIUMTEXT     NULL COMMENT '最近一次问题预览',
     latest_summary_text MEDIUMTEXT    NULL COMMENT '最近一次总结文本',
@@ -226,14 +229,14 @@ CREATE TABLE IF NOT EXISTS ai_agent_dialogue_session (
     failed_run_count   INT            NOT NULL DEFAULT 0 COMMENT '失败/停止/超时轮次',
     started_at         DATETIME(3)    NULL COMMENT '首轮开始时间',
     last_active_at     DATETIME(3)    NULL COMMENT '最近活跃时间',
-    create_time        DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    create_time        DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建\r\n  时间',
     update_time        DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     deleted            TINYINT(1)     NOT NULL DEFAULT 0 COMMENT '软删除',
     PRIMARY KEY (id),
     UNIQUE KEY uk_dialogue_session_id (session_id, deleted),
     KEY idx_dialogue_session_visitor_active (visitor_id, deleted, last_active_at DESC),
     KEY idx_dialogue_session_active (deleted, last_active_at DESC, id DESC)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='对话会话主表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='对话会话\r\n  主表';
 
 CREATE TABLE IF NOT EXISTS ai_agent_llm_invocation (
     id                BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -244,19 +247,12 @@ CREATE TABLE IF NOT EXISTS ai_agent_llm_invocation (
     call_kind         VARCHAR(16)    NOT NULL COMMENT 'ask / askTool',
     streaming         TINYINT(1)     NOT NULL DEFAULT 0 COMMENT '是否流式',
     model_name        VARCHAR(128)   NULL COMMENT '模型名',
-    response_text     MEDIUMTEXT     NULL COMMENT '完整响应文本(content)',
+    response_text     MEDIUMTEXT     NULL COMMENT '完整响应文本',
     reasoning_content MEDIUMTEXT     NULL COMMENT '模型原生 CoT / reasoning_content',
     tool_call_count   INT            NOT NULL DEFAULT 0 COMMENT '工具调用数量',
     prompt_tokens     INT            NOT NULL DEFAULT 0 COMMENT 'prompt token',
     completion_tokens INT            NOT NULL DEFAULT 0 COMMENT 'completion token',
     total_tokens      INT            NOT NULL DEFAULT 0 COMMENT 'total token',
-    cached_prompt_tokens INT           NULL COMMENT 'prompt_tokens_details.cached_tokens',
-    prompt_text_tokens   INT           NULL COMMENT 'prompt_tokens_details.text_tokens',
-    prompt_audio_tokens  INT           NULL COMMENT 'prompt_tokens_details.audio_tokens',
-    prompt_image_tokens  INT           NULL COMMENT 'prompt_tokens_details.image_tokens',
-    completion_text_tokens  INT        NULL COMMENT 'completion_tokens_details.text_tokens',
-    completion_audio_tokens INT        NULL COMMENT 'completion_tokens_details.audio_tokens',
-    reasoning_tokens        INT        NULL COMMENT 'completion_tokens_details.reasoning_tokens',
     system_fingerprint  VARCHAR(64)    NULL COMMENT 'system 指纹',
     est_total_tokens    INT            NULL COMMENT '粗估总 token',
     est_system_tokens   INT            NULL COMMENT '粗估 system token',
@@ -264,6 +260,13 @@ CREATE TABLE IF NOT EXISTS ai_agent_llm_invocation (
     est_tool_tokens     INT            NULL COMMENT '粗估 tools token',
     message_count       INT            NULL COMMENT 'messages 条数',
     tool_count          INT            NULL COMMENT 'tools 数量',
+    cached_prompt_tokens INT           NULL COMMENT '缓存命中 prompt token',
+    prompt_text_tokens   INT           NULL COMMENT 'prompt_tokens_details.text_tokens',
+    prompt_audio_tokens  INT           NULL COMMENT 'prompt_tokens_details.audio_tokens',
+    prompt_image_tokens  INT           NULL COMMENT 'prompt_tokens_details.image_tokens',
+    completion_text_tokens  INT        NULL COMMENT 'completion_tokens_details.text_tokens',
+    completion_audio_tokens INT        NULL COMMENT 'completion_tokens_details.audio_tokens',
+    reasoning_tokens        INT        NULL COMMENT 'completion_tokens_details.reasoning_tokens',
     cache_status        VARCHAR(32)    NULL COMMENT 'OK/RISK/MISS/UNKNOWN',
     cache_risk_flags    VARCHAR(256)   NULL COMMENT 'systemChanged,toolsChanged,...',
     finish_reason     VARCHAR(32)    NULL COMMENT '完成原因',
@@ -272,14 +275,14 @@ CREATE TABLE IF NOT EXISTS ai_agent_llm_invocation (
     started_at        DATETIME(3)    NOT NULL COMMENT '开始时间',
     finished_at       DATETIME(3)    NULL COMMENT '结束时间',
     duration_ms       BIGINT         NULL COMMENT '耗时毫秒',
-    create_time       DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    create_time       DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建\r\n  时间',
     update_time       DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     deleted           TINYINT(1)     NOT NULL DEFAULT 0 COMMENT '软删除',
     PRIMARY KEY (id),
     UNIQUE KEY uk_run_invocation_seq (run_id, invocation_seq),
     KEY idx_llm_run_seq (run_id, deleted, invocation_seq),
     KEY idx_llm_model_create (model_name, deleted, create_time DESC)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='LLM 调用账本表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='LLM 调用\r\n  账本表';
 
 CREATE TABLE IF NOT EXISTS ai_agent_tool_invocation (
     id                BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -297,12 +300,12 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_invocation (
     tool_provider     VARCHAR(64)    NULL COMMENT '工具提供方 local / mcp',
     input_json        JSON           NOT NULL COMMENT '工具入参 JSON',
     llm_oberserve     MEDIUMTEXT     NULL COMMENT '回传给主智能体的最终 observation',
-    status            TINYINT        NOT NULL DEFAULT 0 COMMENT '0=RUNNING,1=SUCCESS,2=FAILED,3=TIMEOUT,5=WAITING_INPUT',
+    status            TINYINT        NOT NULL DEFAULT 0 COMMENT '0=RUNNING,1=SUCCESS,2=FAILED,3=TIMEOUT',
     error_msg         TEXT           NULL COMMENT '错误信息',
     started_at        DATETIME(3)    NOT NULL COMMENT '开始时间',
     finished_at       DATETIME(3)    NULL COMMENT '结束时间',
     duration_ms       BIGINT         NULL COMMENT '耗时毫秒',
-    create_time       DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    create_time       DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建\r\n  时间',
     update_time       DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     deleted           TINYINT(1)     NOT NULL DEFAULT 0 COMMENT '软删除',
     PRIMARY KEY (id),
@@ -311,7 +314,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_invocation (
     KEY idx_tool_run_create (run_id, deleted, create_time DESC),
     KEY idx_tool_name_create (tool_name, deleted, create_time DESC),
     KEY idx_tool_parent_call (run_id, parent_tool_call_id, deleted)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工具调用账本表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工具调用\r\n  账本表';
 
 CREATE TABLE IF NOT EXISTS ai_agent_user_question (
     id                   BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -455,7 +458,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_output_image_generation (
     tool_invocation_id BIGINT         NULL COMMENT '所属 tool invocation ID',
     run_id             BIGINT         NULL COMMENT '所属 run ID',
     request_id         VARCHAR(64)    NOT NULL COMMENT '请求ID',
-    request_source     VARCHAR(32)    NOT NULL COMMENT '请求来源 agent/workspace',
+    request_source     VARCHAR(32)    NOT NULL COMMENT '请求来源 agent/\r\n  workspace',
     session_id         VARCHAR(64)    NULL COMMENT '会话ID',
     tool_call_id       VARCHAR(128)   NOT NULL COMMENT 'toolCallId',
     status             TINYINT        NOT NULL COMMENT '终态状态',
@@ -488,7 +491,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_output_canvas_publish (
     status               TINYINT        NOT NULL COMMENT '终态状态',
     error_msg            TEXT           NULL COMMENT '错误信息',
     title                VARCHAR(500)   NULL COMMENT '画布标题',
-    mode                 VARCHAR(32)    NULL COMMENT '发布模式 html/embed/gen_ui',
+    mode                 VARCHAR(32)    NULL COMMENT '发布模式',
     primary_file_name    VARCHAR(256)   NULL COMMENT '主文件名',
     preview_url          VARCHAR(1024)  NULL COMMENT '预览地址',
     download_url         VARCHAR(1024)  NULL COMMENT '下载地址',
@@ -549,7 +552,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_artifact (
     id                 BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     run_id             BIGINT         NULL COMMENT '所属 run ID',
     request_id         VARCHAR(64)    NULL COMMENT '所属请求ID，兼容非 run 场景',
-    tool_invocation_id BIGINT         NULL COMMENT '所属 tool invocation，输入文件为空',
+    tool_invocation_id BIGINT         NULL COMMENT '所属 tool invocation，输入文件为\r\n  空',
     tool_call_id       VARCHAR(128)   NULL COMMENT '所属 toolCallId，输入文件为空',
     artifact_role      VARCHAR(16)    NOT NULL COMMENT 'input / output',
     visibility         VARCHAR(16)    NOT NULL COMMENT 'visible / internal',
@@ -563,7 +566,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_artifact (
     file_size          BIGINT         NULL COMMENT '文件大小',
     file_hash          VARCHAR(128)   NULL COMMENT '文件哈希',
     metadata_json      JSON           NULL COMMENT '扩展元数据',
-    create_time        DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    create_time        DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创\r\n  建时间',
     update_time        DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     deleted            TINYINT(1)     NOT NULL DEFAULT 0 COMMENT '软删除',
     PRIMARY KEY (id),
@@ -572,7 +575,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_artifact (
     KEY idx_artifact_request_tool (request_id, tool_call_id, deleted, create_time DESC),
     KEY idx_artifact_tool (tool_invocation_id, deleted, create_time DESC),
     KEY idx_artifact_role (artifact_role, visibility, deleted, create_time DESC)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='执行输入输出产物账本表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='执行输入\r\n  输出产物账本表';
 
 CREATE TABLE IF NOT EXISTS ai_agent_featured_conversation (
     id                 BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -598,27 +601,6 @@ CREATE TABLE IF NOT EXISTS ai_agent_featured_conversation (
     KEY idx_featured_conversation_status_sort (status, deleted, sort_order DESC, id DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='精品会话发布表';
 
-CREATE TABLE IF NOT EXISTS ai_agent_prompt_memory_stream (
-    id                  BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    session_id          VARCHAR(64)  NOT NULL DEFAULT '' COMMENT '会话ID（策展流可作来源元数据）',
-    owner_type          VARCHAR(16)  NOT NULL DEFAULT 'SESSION' COMMENT 'USER/VISITOR/SESSION',
-    owner_id            VARCHAR(64)  NOT NULL DEFAULT '' COMMENT '用户级归属键；SESSION 模式可等于 session_id',
-    memory_scope        VARCHAR(32)  NOT NULL COMMENT '记忆作用域 curated/user/react...',
-    prompt_contract_id  VARCHAR(128) NOT NULL COMMENT '提示词契约ID',
-    tool_contract_id    VARCHAR(128) NOT NULL COMMENT '工具契约ID',
-    latest_turn_seq     INT          NOT NULL DEFAULT 0 COMMENT '最近已发布轮次',
-    active_request_id   VARCHAR(64)  NULL COMMENT '当前持有租约的请求ID',
-    lease_expire_at     DATETIME(3)  NULL COMMENT '写入租约过期时间',
-    version             INT          NOT NULL DEFAULT 0 COMMENT '乐观版本号',
-    create_time         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    deleted             TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '软删除',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_prompt_memory_stream_owner (owner_type, owner_id, memory_scope, prompt_contract_id, tool_contract_id),
-    KEY idx_prompt_memory_stream_session (session_id, memory_scope, deleted),
-    KEY idx_prompt_memory_stream_lease (active_request_id, lease_expire_at, deleted)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='提示词记忆流头（含用户级策展）';
-
 CREATE TABLE IF NOT EXISTS ai_agent_ltm_curated_entry (
     id                  BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     stream_id           BIGINT       NULL COMMENT '可选 FK -> prompt_memory_stream.id',
@@ -638,51 +620,14 @@ CREATE TABLE IF NOT EXISTS ai_agent_ltm_curated_entry (
     KEY idx_ltm_curated_stream (stream_id, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户级策展记忆条目（无向量）';
 
-CREATE TABLE IF NOT EXISTS ai_agent_prompt_memory_turn (
-    id                  BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    stream_id           BIGINT       NOT NULL COMMENT '所属记忆流ID',
-    request_id          VARCHAR(64)  NOT NULL COMMENT '请求ID',
-    run_id              BIGINT       NULL COMMENT '关联 dialogue_run.id',
-    turn_seq            INT          NOT NULL COMMENT '流内递增轮次',
-    baseline_turn_seq   INT          NOT NULL COMMENT '构建前已发布基线轮次',
-    status              TINYINT      NOT NULL COMMENT '0构建中 1已就绪 2已失效',
-    message_count       INT          NOT NULL DEFAULT 0 COMMENT '本轮增量消息数',
-    started_at          DATETIME(3)  NULL COMMENT '构建开始时间',
-    finished_at         DATETIME(3)  NULL COMMENT '发布完成时间',
-    create_time         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    deleted             TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '软删除',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_prompt_memory_turn_request (request_id),
-    UNIQUE KEY uk_prompt_memory_turn_stream_seq (stream_id, turn_seq),
-    KEY idx_prompt_memory_turn_stream_ready (stream_id, status, deleted, turn_seq)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='提示词记忆发布轮次';
-
-CREATE TABLE IF NOT EXISTS ai_agent_prompt_memory_message (
-    id                  BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    turn_id             BIGINT       NOT NULL COMMENT '所属记忆轮次ID',
-    seq_no              INT          NOT NULL COMMENT '轮次内消息顺序',
-    role                VARCHAR(16)  NOT NULL COMMENT '消息角色',
-    content             LONGTEXT     NULL COMMENT '文本内容',
-    base64_image        LONGTEXT     NULL COMMENT '图片base64内容',
-    tool_call_id        VARCHAR(128) NULL COMMENT '工具调用ID',
-    tool_calls_json     JSON         NULL COMMENT '工具调用数组',
-    create_time         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    deleted             TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '软删除',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_prompt_memory_message_turn_seq (turn_id, seq_no),
-    KEY idx_prompt_memory_message_turn (turn_id, deleted, seq_no)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='提示词记忆消息行';
-
 CREATE TABLE IF NOT EXISTS ai_agent_working_memory_turn (
     id                 BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     session_id         VARCHAR(64)  NOT NULL COMMENT '会话ID',
     memory_scope       VARCHAR(64)  NOT NULL DEFAULT 'main' COMMENT 'main 或 sub:{agentId}',
-    request_id         VARCHAR(128) NOT NULL COMMENT '请求ID（含 sub:* / wm-compact-*）',
+    request_id         VARCHAR(128) NOT NULL COMMENT '请求ID（含 wm-compact-* 合成 id）',
     run_id             BIGINT       NULL COMMENT '关联 dialogue_run.id',
-    turn_seq           INT          NOT NULL COMMENT 'scope 内从 1 递增',
-    entry_agent        VARCHAR(32)  NOT NULL COMMENT 'react / plan_solve / sub_*',
+    turn_seq           INT          NOT NULL COMMENT 'session 内从 1 递增',
+    entry_agent        VARCHAR(32)  NOT NULL COMMENT 'react / plan_solve',
     status             TINYINT      NOT NULL DEFAULT 1 COMMENT '1=READY,0=BUILDING,2=INVALID',
     schema_version     INT          NOT NULL DEFAULT 1 COMMENT '投影协议版本',
     message_count      INT          NOT NULL DEFAULT 0 COMMENT '消息条数',
@@ -705,8 +650,8 @@ CREATE TABLE IF NOT EXISTS ai_agent_working_memory_message (
     session_id           VARCHAR(64)   NOT NULL COMMENT '会话ID',
     memory_scope         VARCHAR(64)   NOT NULL DEFAULT 'main' COMMENT 'main 或 sub:{agentId}',
     turn_id              BIGINT        NOT NULL COMMENT 'FK -> working_memory_turn.id',
-    request_id           VARCHAR(128)  NOT NULL COMMENT '请求ID（含 sub:* / wm-compact-*）',
-    origin_message_key   VARCHAR(192)  NOT NULL COMMENT '原始消息业务锚点 request_id:seq_no',
+    request_id           VARCHAR(128)  NOT NULL COMMENT '请求ID（含 wm-compact-* 合成 id）',
+    origin_message_key   VARCHAR(192)  NOT NULL COMMENT '???????????? request_id:seq_no',
     run_id               BIGINT        NULL COMMENT '关联 dialogue_run.id',
     seq_no               INT           NOT NULL COMMENT 'turn 内从 0 递增',
     role                 VARCHAR(16)   NOT NULL COMMENT 'USER/ASSISTANT/TOOL/SYSTEM',
@@ -716,7 +661,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_working_memory_message (
     tool_calls_json      JSON          NULL COMMENT 'ASSISTANT.toolCalls',
     base64_image         MEDIUMTEXT    NULL COMMENT '预留',
     message_kind         VARCHAR(32)   NOT NULL COMMENT 'query/assistant/tool_observation/final_summary/system_note',
-    visibility           VARCHAR(32)   NOT NULL DEFAULT 'ALL' COMMENT '首期固定 ALL',
+    visibility           VARCHAR(32)   NOT NULL DEFAULT 'ALL' COMMENT '可见性固定 ALL',
     token_estimate       INT           NOT NULL DEFAULT 0 COMMENT 'token 估算',
     create_time          DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time          DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -731,31 +676,31 @@ CREATE TABLE IF NOT EXISTS ai_agent_working_memory_message (
     FULLTEXT KEY ft_wm_msg_content (content) WITH PARSER ngram
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工作记忆消息行（自包含 hydrate）';
 
--- ��������ѹ���¼�����ƣ����ԡ�ǰ�� token��ժҪ���ġ�ѹ����ͶӰ���գ�
+-- 工作记忆压缩事件审计表（记录压缩前后 token、摘要文本、压缩后的投影状态）
 CREATE TABLE IF NOT EXISTS ai_agent_working_memory_compaction (
-    id                    BIGINT        NOT NULL AUTO_INCREMENT COMMENT '����ID',
-    session_id            VARCHAR(64)   NOT NULL COMMENT '�ỰID',
-    trigger_request_id    VARCHAR(64)   NOT NULL COMMENT '����ѹ���ĵ�ǰ����ID',
-    compact_request_id    VARCHAR(128)  NULL COMMENT 'д�� working_memory �� compact request_id',
+    id                    BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    session_id            VARCHAR(64)   NOT NULL COMMENT '会话ID',
+    trigger_request_id    VARCHAR(64)   NOT NULL COMMENT '触发压缩的当前请求ID',
+    compact_request_id    VARCHAR(128)  NULL COMMENT '写入 working_memory 的 compact request_id',
     strategy              VARCHAR(32)   NOT NULL COMMENT 'micro-only/session-memory/full-llm/drop-oldest',
     status                TINYINT       NOT NULL DEFAULT 1 COMMENT '1=SUCCESS,2=FAILED',
-    before_tokens         INT           NOT NULL DEFAULT 0 COMMENT 'ѹ��ǰ token ����',
-    after_tokens          INT           NOT NULL DEFAULT 0 COMMENT 'ѹ���� token ����',
-    before_message_count  INT           NOT NULL DEFAULT 0 COMMENT 'ѹ��ǰ��Ϣ����',
-    after_message_count   INT           NOT NULL DEFAULT 0 COMMENT 'ѹ������Ϣ����',
-    threshold_tokens      INT           NOT NULL DEFAULT 0 COMMENT '������ֵ',
-    summary_text          MEDIUMTEXT    NULL COMMENT 'ע���� summary ���ģ����У�',
-    before_messages_json  MEDIUMTEXT    NULL COMMENT 'ѹ��ǰ Message �б� JSON����ƣ�',
-    after_messages_json   MEDIUMTEXT    NULL COMMENT 'ѹ���� Message �б� JSON�����/���ؽ���',
-    error_message         VARCHAR(1024) NULL COMMENT 'ʧ��ԭ��',
-    create_time           DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '����ʱ��',
-    update_time           DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '����ʱ��',
-    deleted               TINYINT(1)    NOT NULL DEFAULT 0 COMMENT '��ɾ��',
+    before_tokens         INT           NOT NULL DEFAULT 0 COMMENT '压缩前 token 估算',
+    after_tokens          INT           NOT NULL DEFAULT 0 COMMENT '压缩后 token 估算',
+    before_message_count  INT           NOT NULL DEFAULT 0 COMMENT '压缩前消息条数',
+    after_message_count   INT           NOT NULL DEFAULT 0 COMMENT '压缩后消息条数',
+    threshold_tokens      INT           NOT NULL DEFAULT 0 COMMENT '触发阈值',
+    summary_text          MEDIUMTEXT    NULL COMMENT '注入用 summary 正文（若有）',
+    before_messages_json  MEDIUMTEXT    NULL COMMENT '压缩前 Message 列表 JSON（审计）',
+    after_messages_json   MEDIUMTEXT    NULL COMMENT '压缩后 Message 列表 JSON（审计/可重建）',
+    error_message         VARCHAR(1024) NULL COMMENT '失败原因',
+    create_time           DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time           DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted               TINYINT(1)    NOT NULL DEFAULT 0 COMMENT '软删除',
     PRIMARY KEY (id),
     KEY idx_wm_compaction_session (session_id, deleted, id DESC),
     KEY idx_wm_compaction_trigger (trigger_request_id, deleted),
     KEY idx_wm_compaction_strategy (session_id, strategy, deleted)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='��������ѹ���¼���Ʊ�';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工作记忆压缩事件审计表';
 
 -- LTM memory-only fork 执行观测（压缩前 flush / background review）
 CREATE TABLE IF NOT EXISTS ai_agent_ltm_fork_execution (
@@ -765,7 +710,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_ltm_fork_execution (
     fork_request_id         VARCHAR(128)  NULL COMMENT 'fork 自身 requestId',
     fork_kind               VARCHAR(32)   NOT NULL COMMENT 'flush / bg-review',
     status                  TINYINT       NOT NULL DEFAULT 1 COMMENT '1=SUCCESS 2=FAILED 3=SKIPPED 4=TIMEOUT',
-    skip_reason             VARCHAR(64)   NULL COMMENT '跳过原因',
+    skip_reason             VARCHAR(64)   NULL COMMENT '跳过原因: disabled/duplicate/min-turns/interval/in-flight/null-owner/...',
     owner_type              VARCHAR(16)   NULL COMMENT 'USER/VISITOR',
     owner_id                VARCHAR(64)   NULL COMMENT '归属键',
     user_turns              INT           NULL COMMENT '触发时 user turn 数（flush）',
