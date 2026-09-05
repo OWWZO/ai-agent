@@ -10,6 +10,7 @@
 - LLMModelInfoFactory: 模型 context 窗口与 max_output 注册表
 - AnalysisContext: 自动分析任务的运行态上下文
 """
+
 import asyncio
 import contextvars
 import json
@@ -22,7 +23,9 @@ class _RequestIdCtx(object):
     """基于 contextvars 的请求 ID 容器，保证异步链路日志可关联。"""
 
     def __init__(self):
-        self._request_id = contextvars.ContextVar("request_id", default="default-request-id")
+        self._request_id = contextvars.ContextVar(
+            "request_id", default="default-request-id"
+        )
 
     @property
     def request_id(self):
@@ -39,6 +42,7 @@ RequestIdCtx = _RequestIdCtx()
 
 class LLMModelInfo(BaseModel):
     """单个 LLM 的上下文窗口与输出上限配置。"""
+
     model: str
     context_length: int
     max_output: int
@@ -72,8 +76,12 @@ class _LLMModelInfoFactory:
 LLMModelInfoFactory = _LLMModelInfoFactory()
 
 # 预置常用模型容量（可按部署环境继续 register）
-LLMModelInfoFactory.register(LLMModelInfo(model="gpt-4.1", context_length=1000000, max_output=32000))
-LLMModelInfoFactory.register(LLMModelInfo(model="DeepSeek-V3", context_length=64000, max_output=8000))
+LLMModelInfoFactory.register(
+    LLMModelInfo(model="gpt-4.1", context_length=1000000, max_output=32000)
+)
+LLMModelInfoFactory.register(
+    LLMModelInfo(model="DeepSeek-V3", context_length=64000, max_output=8000)
+)
 
 
 class AnalysisContext(object):
@@ -82,7 +90,16 @@ class AnalysisContext(object):
     持有表 schema、业务知识、洞察结果队列，供分析 Agent 多步读写。
     """
 
-    def __init__(self, task: str, request_id: str, modelCodeList: List[str], schemas: List[Dict], businessKnowledge: str = None, queue: asyncio.Queue = None, **kwargs):
+    def __init__(
+        self,
+        task: str,
+        request_id: str,
+        modelCodeList: List[str],
+        schemas: List[Dict],
+        businessKnowledge: str = None,
+        queue: asyncio.Queue = None,
+        **kwargs,
+    ):
         self.request_id = request_id
         self.task = task  # 用户原始分析任务
         self.modelCodeList = modelCodeList  # 数据模型 ID 列表
@@ -95,17 +112,33 @@ class AnalysisContext(object):
         self.current_task = task  # 当前子任务描述（多步分析时会更新）
 
         self.insights = []  # 已沉淀的洞察列表
+        self.data_fetch_error = None  # 取数失败时阻止后续分析继续使用猜测数据
 
         self.queue = queue  # 可选：流式事件推送队列
 
     @property
     def schemas_json(self) -> str:
         """将 schema 转为 JSON 字符串，注入 LLM prompt。"""
-        schemas = [{
-            "table": s["modelName"],
-            "columns": [{"name": c["columnName"], "type": c["dataType"], "comment": c["columnComment"], "valueExample": c.get("fewShot")} for c in s["schemaList"]],
-            "noAnalysisColumns": [c["columnName"] for c in s["schemaList"] if c.get("analyzeSuggest", 0) == -1],
-        } for s in self.schemas]
+        schemas = [
+            {
+                "table": s["modelName"],
+                "columns": [
+                    {
+                        "name": c["columnName"],
+                        "type": c["dataType"],
+                        "comment": c["columnComment"],
+                        "valueExample": c.get("fewShot"),
+                    }
+                    for c in s["schemaList"]
+                ],
+                "noAnalysisColumns": [
+                    c["columnName"]
+                    for c in s["schemaList"]
+                    if c.get("analyzeSuggest", 0) == -1
+                ],
+            }
+            for s in self.schemas
+        ]
         return json.dumps(schemas, ensure_ascii=False, indent=2)
 
     @property
@@ -113,13 +146,26 @@ class AnalysisContext(object):
         """将 schema 转为 Markdown 表格，便于模型阅读。"""
         schemas = ""
         for s in self.schemas:
-            columns = "| name | type | comment | valueExample |\n| --- | --- | --- | --- |\n"
-            columns += "\n".join([f"| {c['columnName']} | {c['dataType']} | {c['columnComment']} | {c.get('fewShot', '')} |" for c in s["schemaList"]])
-            noAnalysisColumns = [c["columnName"] for c in s["schemaList"] if c.get("analyzeSuggest", 0) == -1]
-            schemas += f"""\ntable: {s['modelName']}\n\ncolumns:\n\n{columns}\n\nnoAnalysisColumns: {noAnalysisColumns}\n"""
+            columns = (
+                "| name | type | comment | valueExample |\n| --- | --- | --- | --- |\n"
+            )
+            columns += "\n".join(
+                [
+                    f"| {c['columnName']} | {c['dataType']} | {c['columnComment']} | {c.get('fewShot', '')} |"
+                    for c in s["schemaList"]
+                ]
+            )
+            noAnalysisColumns = [
+                c["columnName"]
+                for c in s["schemaList"]
+                if c.get("analyzeSuggest", 0) == -1
+            ]
+            schemas += f"""\ntable: {s["modelName"]}\n\ncolumns:\n\n{columns}\n\nnoAnalysisColumns: {noAnalysisColumns}\n"""
         return schemas
 
     def save_insight(self, df: "pd.DataFrame", insight: str, analysis_process: str):  # type: ignore
         """保存一步分析得到的洞察（数据帧 + 结论 + 过程）。"""
-        self.insights.append({"data": df, "insight": insight, "analysis_process": analysis_process})
+        self.insights.append(
+            {"data": df, "insight": insight, "analysis_process": analysis_process}
+        )
         return f"保存洞察（{insight}）成功"

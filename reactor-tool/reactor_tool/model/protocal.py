@@ -225,9 +225,16 @@ class CalEngineRequest(BaseModel):
 class AutoAnalysisRequest(BaseModel):
     """自动多步数据分析请求。"""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     request_id: str = Field(description="Request ID")
     task: str = Field(
         description="分析任务，请提供完整的分析任务，保持用户的原始语义，不要串改、引申"
+    )
+    report_file_name: Optional[str] = Field(
+        default=None,
+        alias="reportFileName",
+        description="最终分析报告文件名称，由调用方提供且不超过20个字符（含扩展名）",
     )
     modelCodeList: List[str] = Field(description="数据模型 id，标识数据源")
     businessKnowledge: Optional[str] = Field(

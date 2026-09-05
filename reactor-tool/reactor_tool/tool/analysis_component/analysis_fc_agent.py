@@ -66,6 +66,9 @@ class AnalysisPythonInterpreterTool(Tool):
     description = (
         "在受控 Python 沙箱中执行分析代码。"
         "代码内可调用: get_data, data_trans, insight_analysis, save_insight, final_answer。"
+        "内层签名为 get_data(query: str)、data_trans(df, column, measure, measure_type, trans_type)、"
+        "insight_analysis(df, breakdown, measure, measure_type, analysis_method)、"
+        "save_insight(df, insight, analysis_process)、final_answer(answer)。"
         "变量跨步保留。收工必须在代码中调用 final_answer(...)。"
     )
     inputs = {
@@ -79,7 +82,10 @@ class AnalysisPythonInterpreterTool(Tool):
     }
     output_type = "string"
 
-    def __init__(self, inner_tools: Dict[str, Tool], *args, **kwargs):
+    def __init__(
+        self, inner_tools: Dict[str, Tool], *args, context: Any = None, **kwargs
+    ):
+        self._context = context
         self._executor = LocalPythonExecutor(
             AUTHORIZED_IMPORTS,
             additional_functions={"dir": dir},
@@ -89,6 +95,17 @@ class AnalysisPythonInterpreterTool(Tool):
         self.last_output: Any = None
         self.last_logs = ""
         super().__init__(*args, **kwargs)
+
+    def _data_fetch_failure_result(self) -> str | None:
+        reason = getattr(self._context, "data_fetch_error", None)
+        if not reason:
+            return None
+        self.last_is_final = True
+        self.last_output = {
+            "insights": [],
+            "summary": reason,
+        }
+        return f"Code execution stopped: {reason}"
 
     def forward(self, code: str) -> str:
         code = (code or "").strip()
@@ -101,14 +118,18 @@ class AnalysisPythonInterpreterTool(Tool):
         try:
             output, logs, is_final = self._executor(code)
         except Exception as exc:
-            # 执行异常只作为当前步骤的 observation 返回，外层 Agent 仍可据此修正下一步代码。
+            # 普通代码异常作为 observation 返回；取数失败由上下文状态转为终止事件。
             self.last_is_final = False
             self.last_output = None
             self.last_logs = str(exc)
+            if failure := self._data_fetch_failure_result():
+                return failure
             return f"Code execution error: {exc}"
         self.last_is_final = bool(is_final)
         self.last_output = output
         self.last_logs = logs or ""
+        if failure := self._data_fetch_failure_result():
+            return failure
         return f"Stdout:\n{self.last_logs}\nOutput: {output}"
 
 
@@ -238,6 +259,7 @@ class AnalysisFCCodeAgent:
         model_id: str | None = None,
         api_base: str | None = None,
         api_key: str | None = None,
+        context: Any = None,
     ):
         self.instructions = instructions or ""
         self.max_steps = max_steps or 10
@@ -249,7 +271,9 @@ class AnalysisFCCodeAgent:
         )
         self.api_base = api_base or os.getenv("OPENAI_BASE_URL") or ""
         self.api_key = api_key or os.getenv("OPENAI_API_KEY") or ""
-        self.runner = AnalysisPythonInterpreterTool(inner_tools=inner_tools)
+        self.runner = AnalysisPythonInterpreterTool(
+            inner_tools=inner_tools, context=context
+        )
         self._openai_tools = [get_tool_json_schema(self.runner)]
 
     def _system_prompt(self) -> str:
@@ -261,7 +285,15 @@ class AnalysisFCCodeAgent:
             "3. 业务工具只能在 code 内调用：get_data, data_trans, insight_analysis, save_insight, final_answer。\n"
             "4. 禁止在外层直接调用 get_data 等业务工具（它们不是外层 FC 工具）。\n"
             "5. 变量跨步保留，直接使用上一步变量名；可用 dir() 查看，但优先用明确变量名。\n"
-            "6. Thought 用中文，code 用 Python。\n\n"
+            "6. Thought 用中文，code 用 Python。\n"
+            "【内层工具的真实 Python 签名 - 必须严格遵守】\n"
+            "- get_data(query: str) -> pandas.DataFrame：只接受一个 query 字符串；示例：df = get_data(query='根据商品类别分组，统计销售数量')。\n"
+            "- 禁止调用 get_data()；每次调用必须传入一个非空 query 字符串。检查数据源/表时也必须传 query，例如：source_check = get_data(query='请检查当前可访问的数据源和表，返回表名和可用字段，重点识别销量相关字段；不要返回明细数据。')。\n"
+            "- data_trans(df, column: str, measure: str, measure_type: str, trans_type: str) -> pandas.DataFrame。\n"
+            "- insight_analysis(df, breakdown: str, measure: str, measure_type: str, analysis_method: str) -> list。\n"
+            "- save_insight(df, insight: str, analysis_process: str) -> str。\n"
+            "- final_answer(answer: str) -> dict。\n"
+            "不要给 get_data 传 table、columns、table_name、metrics 等参数；不要把参数字典作为 get_data 的位置参数。\n\n"
             f"{self.instructions}"
         )
 

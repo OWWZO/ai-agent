@@ -10,7 +10,11 @@ from typing import Any
 
 from reactor_tool.tool.docread._compat import get_struct_logger
 
-from reactor_tool.tool.dataprep._data import build_result, extend_input_schema, resolve_input
+from reactor_tool.tool.dataprep._data import (
+    build_result,
+    extend_input_schema,
+    resolve_input,
+)
 from reactor_tool.tool.docread._compat import SyncTool, ToolCategory, ToolContext
 
 logger = get_struct_logger(__name__)
@@ -38,7 +42,9 @@ class DataCleanTool(SyncTool):
     version = "1.0.0"
     timeout_sec = 300
     aliases = ["clean", "preprocess", "data_preprocess"]
-    search_hint = "clean deduplicate missing values normalize trim whitespace preprocess"
+    search_hint = (
+        "clean deduplicate missing values normalize trim whitespace preprocess"
+    )
     is_concurrency_safe = True
     is_read_only = False
     interrupt_behavior = "cancel"
@@ -49,76 +55,83 @@ class DataCleanTool(SyncTool):
     def parameters(self) -> dict[str, Any]:
         properties: dict[str, Any] = {
             "operations": {
-                    "type": "array",
-                    "description": "List of cleaning operations to apply in order.",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "type": {
+                "type": "array",
+                "description": "List of cleaning operations to apply in order.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": [
+                                "remove_duplicates",
+                                "fill_missing",
+                                "drop_missing",
+                                "trim_whitespace",
+                                "normalize_types",
+                            ],
+                            "description": "Type of cleaning operation.",
+                        },
+                        "columns": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Columns to apply operation to. If empty, applies to all columns.",
+                        },
+                        "keep": {
+                            "type": "string",
+                            "enum": ["first", "last", "none"],
+                            "description": "For remove_duplicates: which duplicate to keep.",
+                            "default": "first",
+                        },
+                        "fill_value": {
+                            "description": "For fill_missing with fill_strategy='value': literal value to use; do not use 'value'.",
+                        },
+                        "fill_strategy": {
+                            "type": "string",
+                            "enum": [
+                                "value",
+                                "mean",
+                                "median",
+                                "mode",
+                                "ffill",
+                                "bfill",
+                            ],
+                            "description": "For fill_missing: strategy to use; 'value' requires fill_value.",
+                            "default": "value",
+                        },
+                        "axis": {
+                            "type": "string",
+                            "enum": ["rows", "columns"],
+                            "description": "For drop_missing: drop rows or columns.",
+                            "default": "rows",
+                        },
+                        "how": {
+                            "type": "string",
+                            "enum": ["any", "all"],
+                            "description": "For drop_missing: drop if 'any' or 'all' values are missing.",
+                            "default": "any",
+                        },
+                        "thresh": {
+                            "type": "integer",
+                            "description": "For drop_missing: minimum non-null values required.",
+                        },
+                        "type_map": {
+                            "type": "object",
+                            "description": "For normalize_types: column to type mapping.",
+                            "additionalProperties": {
                                 "type": "string",
-                                "enum": [
-                                    "remove_duplicates",
-                                    "fill_missing",
-                                    "drop_missing",
-                                    "trim_whitespace",
-                                    "normalize_types",
-                                ],
-                                "description": "Type of cleaning operation.",
-                            },
-                            "columns": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Columns to apply operation to. If empty, applies to all columns.",
-                            },
-                            "keep": {
-                                "type": "string",
-                                "enum": ["first", "last", "none"],
-                                "description": "For remove_duplicates: which duplicate to keep.",
-                                "default": "first",
-                            },
-                            "fill_value": {
-                                "description": "For fill_missing: value to fill with, or strategy name.",
-                            },
-                            "fill_strategy": {
-                                "type": "string",
-                                "enum": ["value", "mean", "median", "mode", "ffill", "bfill"],
-                                "description": "For fill_missing: strategy to use.",
-                                "default": "value",
-                            },
-                            "axis": {
-                                "type": "string",
-                                "enum": ["rows", "columns"],
-                                "description": "For drop_missing: drop rows or columns.",
-                                "default": "rows",
-                            },
-                            "how": {
-                                "type": "string",
-                                "enum": ["any", "all"],
-                                "description": "For drop_missing: drop if 'any' or 'all' values are missing.",
-                                "default": "any",
-                            },
-                            "thresh": {
-                                "type": "integer",
-                                "description": "For drop_missing: minimum non-null values required.",
-                            },
-                            "type_map": {
-                                "type": "object",
-                                "description": "For normalize_types: column to type mapping.",
-                                "additionalProperties": {
-                                    "type": "string",
-                                    "enum": ["int", "float", "str", "bool", "datetime"],
-                                },
+                                "enum": ["int", "float", "str", "bool", "datetime"],
                             },
                         },
-                        "required": ["type"],
                     },
+                    "required": ["type"],
                 },
-                "output_format": {
-                    "type": "string",
-                    "enum": ["records", "dict"],
-                    "description": "Output format: 'records' (list of dicts) or 'dict' (column-oriented).",
-                    "default": "records",
-                },
+            },
+            "output_format": {
+                "type": "string",
+                "enum": ["records", "dict"],
+                "description": "Output format: 'records' (list of dicts) or 'dict' (column-oriented).",
+                "default": "records",
+            },
         }
         extend_input_schema(properties)
         return {
@@ -128,10 +141,14 @@ class DataCleanTool(SyncTool):
             "additionalProperties": False,
         }
 
-    def get_activity_description(self, params: dict[str, Any] | None = None) -> str | None:
+    def get_activity_description(
+        self, params: dict[str, Any] | None = None
+    ) -> str | None:
         return "Cleaning data"
 
-    def execute_sync(self, params: dict[str, Any], context: ToolContext) -> dict[str, Any]:
+    def execute_sync(
+        self, params: dict[str, Any], context: ToolContext
+    ) -> dict[str, Any]:
         """Execute data cleaning operations.
 
         Args:
@@ -148,7 +165,9 @@ class DataCleanTool(SyncTool):
         try:
             import pandas as pd
         except ImportError as e:
-            raise RuntimeError("pandas is not installed. Install with: pip install pandas") from e
+            raise RuntimeError(
+                "pandas is not installed. Install with: pip install pandas"
+            ) from e
 
         # 清洗操作必须按声明顺序执行，例如先填充再删除缺失值会产生不同结果。
         data = resolve_input(params, context, required=False)
@@ -175,7 +194,9 @@ class DataCleanTool(SyncTool):
         columns_before = list(df.columns)
         operations_applied: list[dict[str, Any]] = []
 
-        logger.info("Starting data cleaning", rows=rows_before, columns=len(columns_before))
+        logger.info(
+            "Starting data cleaning", rows=rows_before, columns=len(columns_before)
+        )
 
         # 每一步都记录影响行列数，便于上层展示结果并定位清洗造成的数据变化。
         for op in operations:
@@ -191,16 +212,22 @@ class DataCleanTool(SyncTool):
                     keep_param = keep if keep != "none" else False
                     df = df.drop_duplicates(subset=subset, keep=keep_param)
                     removed = rows_pre - len(df)
-                    operations_applied.append({
-                        "type": op_type,
-                        "columns": subset or "all",
-                        "duplicates_removed": removed,
-                    })
+                    operations_applied.append(
+                        {
+                            "type": op_type,
+                            "columns": subset or "all",
+                            "duplicates_removed": removed,
+                        }
+                    )
                     logger.debug("Removed duplicates", count=removed)
 
                 elif op_type == "fill_missing":
                     strategy = op.get("fill_strategy", "value")
                     fill_value = op.get("fill_value")
+                    if strategy == "value" and "fill_value" not in op:
+                        raise ValueError(
+                            "fill_missing with fill_strategy='value' requires 'fill_value'; do not use 'value'"
+                        )
                     filled_count = 0
 
                     for col in target_cols:
@@ -227,13 +254,17 @@ class DataCleanTool(SyncTool):
 
                         filled_count += missing_before - df[col].isna().sum()
 
-                    operations_applied.append({
-                        "type": op_type,
-                        "strategy": strategy,
-                        "columns": target_cols,
-                        "values_filled": int(filled_count),
-                    })
-                    logger.debug("Filled missing values", count=filled_count, strategy=strategy)
+                    operations_applied.append(
+                        {
+                            "type": op_type,
+                            "strategy": strategy,
+                            "columns": target_cols,
+                            "values_filled": int(filled_count),
+                        }
+                    )
+                    logger.debug(
+                        "Filled missing values", count=filled_count, strategy=strategy
+                    )
 
                 elif op_type == "drop_missing":
                     rows_pre = len(df)
@@ -254,20 +285,26 @@ class DataCleanTool(SyncTool):
                             drop_kwargs["subset"] = subset
                         df = df.dropna(**drop_kwargs)
                         dropped = rows_pre - len(df)
-                        operations_applied.append({
-                            "type": op_type,
-                            "axis": "rows",
-                            "rows_dropped": dropped,
-                        })
+                        operations_applied.append(
+                            {
+                                "type": op_type,
+                                "axis": "rows",
+                                "rows_dropped": dropped,
+                            }
+                        )
                     else:
                         df = df.dropna(**drop_kwargs)
                         dropped = cols_pre - len(df.columns)
-                        operations_applied.append({
-                            "type": op_type,
-                            "axis": "columns",
-                            "columns_dropped": dropped,
-                        })
-                    logger.debug("Dropped missing", axis=op.get("axis", "rows"), count=dropped)
+                        operations_applied.append(
+                            {
+                                "type": op_type,
+                                "axis": "columns",
+                                "columns_dropped": dropped,
+                            }
+                        )
+                    logger.debug(
+                        "Dropped missing", axis=op.get("axis", "rows"), count=dropped
+                    )
 
                 elif op_type == "trim_whitespace":
                     trimmed_cols = []
@@ -279,10 +316,12 @@ class DataCleanTool(SyncTool):
                                 lambda x: x.strip() if isinstance(x, str) else x
                             )
                             trimmed_cols.append(col)
-                    operations_applied.append({
-                        "type": op_type,
-                        "columns_trimmed": trimmed_cols,
-                    })
+                    operations_applied.append(
+                        {
+                            "type": op_type,
+                            "columns_trimmed": trimmed_cols,
+                        }
+                    )
                     logger.debug("Trimmed whitespace", columns=trimmed_cols)
 
                 elif op_type == "normalize_types":
@@ -294,7 +333,9 @@ class DataCleanTool(SyncTool):
                             continue
                         try:
                             if dtype == "int":
-                                df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
+                                df[col] = pd.to_numeric(
+                                    df[col], errors="coerce"
+                                ).astype("Int64")
                             elif dtype == "float":
                                 df[col] = pd.to_numeric(df[col], errors="coerce")
                             elif dtype == "str":
@@ -305,12 +346,19 @@ class DataCleanTool(SyncTool):
                                 df[col] = pd.to_datetime(df[col], errors="coerce")
                             converted[col] = dtype
                         except Exception as e:
-                            logger.warning("Type conversion failed", column=col, dtype=dtype, error=str(e))
+                            logger.warning(
+                                "Type conversion failed",
+                                column=col,
+                                dtype=dtype,
+                                error=str(e),
+                            )
 
-                    operations_applied.append({
-                        "type": op_type,
-                        "conversions": converted,
-                    })
+                    operations_applied.append(
+                        {
+                            "type": op_type,
+                            "conversions": converted,
+                        }
+                    )
                     logger.debug("Normalized types", conversions=converted)
 
             except Exception as e:
@@ -319,7 +367,9 @@ class DataCleanTool(SyncTool):
 
         for col in df.columns:
             if hasattr(df[col], "dt"):
-                df[col] = df[col].apply(lambda x: x.isoformat() if pd.notna(x) else None)
+                df[col] = df[col].apply(
+                    lambda x: x.isoformat() if pd.notna(x) else None
+                )
 
         output_records = df.to_dict(orient="records")
         logger.info(
