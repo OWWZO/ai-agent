@@ -31,7 +31,12 @@ public class DataAnalysisRequest {
      * 分析任务描述
      */
     private String task;
-    
+
+    /**
+     * 最终分析报告文件名
+     */
+    private String report_file_name;
+
     /**
      * 使用的模型代码列表
      */

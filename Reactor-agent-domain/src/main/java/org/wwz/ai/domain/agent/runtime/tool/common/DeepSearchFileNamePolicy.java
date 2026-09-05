@@ -4,7 +4,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 
 /**
- * DeepSearch 产物命名规则：文件名以 reportFileName 为基准，不从完整 query 派生。
+ * 报告产物命名规则：文件名以 reportFileName 为基准，不从完整任务文本派生。
  */
 final class DeepSearchFileNamePolicy {
 
@@ -21,11 +21,16 @@ final class DeepSearchFileNamePolicy {
     }
 
     static String resolveReportFileName(String requestedFileName) {
+        return resolveReportFileName(requestedFileName, DEFAULT_REPORT_FILE_NAME);
+    }
+
+    static String resolveReportFileName(String requestedFileName, String fallbackFileName) {
         String fileName = sanitizeReportFileName(requestedFileName);
         if (validateReportFileName(requestedFileName) == null) {
             return fileName;
         }
-        return DEFAULT_REPORT_FILE_NAME;
+        String fallback = sanitizeReportFileName(fallbackFileName);
+        return validateReportFileName(fallback) == null ? fallback : DEFAULT_REPORT_FILE_NAME;
     }
 
     static String validateReportFileName(String requestedFileName) {

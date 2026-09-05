@@ -48,7 +48,7 @@ public class CodeInterpreterTool implements BaseTool {
             """;
 
     private static final String PARAMS = """
-            {"type":"object","properties":{"task":{"description":"任务的描述，不仅包括提供任务目标、任务的相关要求，还包括详细的完成任务需要的细节信息。详细是指不仅包含上下文中提及的所有与任务的相关内容，同时，包括：用户提供的业务名词、业务背景、数据等相关内容，确保这是一个易于理解、步骤明确、且能完成完整任务的描述。完整任务的定义是所有依赖项都在这里写清楚，明确无歧义，信息无丢失，基于上下文已有的数据进行。禁止编造数据，写出来的程序是基于上下文已有的数据进行。","type":"string"}},"required":["task"]}
+            {"type":"object","properties":{"task":{"description":"任务的描述，不仅包括提供任务目标、任务的相关要求，还包括详细的完成任务需要的细节信息。详细是指不仅包含上下文中提及的所有与任务的相关内容，同时，包括：用户提供的业务名词、业务背景、数据等相关内容，确保这是一个易于理解、步骤明确、且能完成完整任务的描述。完整任务的定义是所有依赖项都在这里写清楚，明确无歧义，信息无丢失，基于上下文已有的数据进行。禁止编造数据，写出来的程序是基于上下文已有的数据进行。","type":"string"},"fileName":{"description":"最终代码解释器报告文件名称，必填且不超过20个字符（含扩展名），例如：销售趋势分析报告.md","type":"string","maxLength":20}},"required":["task","fileName"]}
             """;
 
     private AgentContext agentContext;
@@ -73,11 +73,17 @@ public class CodeInterpreterTool implements BaseTool {
         try {
             Map<String, Object> params = (Map<String, Object>) input;
             String task = (String) params.get("task");
+            String requestedFileName = params.get("fileName") == null
+                    ? null
+                    : String.valueOf(params.get("fileName"));
+            String reportFileName = DeepSearchFileNamePolicy.resolveReportFileName(
+                    requestedFileName, "代码解释器输出.md");
             List<String> fileNames = agentContext.getProductFiles().stream().map(File::getFileName).collect(Collectors.toList());
             CodeInterpreterRequest request = CodeInterpreterRequest.builder()
                     .requestId(agentContext.getSessionId()) // 适配多轮对话
                     .query(agentContext.getQuery())
                     .task(task)
+                    .fileName(reportFileName)
                     .fileNames(fileNames)
                     .stream(true)
                     .build();

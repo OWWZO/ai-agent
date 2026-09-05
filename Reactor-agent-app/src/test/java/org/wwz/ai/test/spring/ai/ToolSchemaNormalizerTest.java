@@ -152,6 +152,19 @@ public class ToolSchemaNormalizerTest {
         );
     }
 
+    @Test
+    public void test_dataCleanFillMissingSchemaUsesFillValue() {
+        Map<String, Object> schema = new DataCleanTool().toParams();
+        Map<?, ?> operations = (Map<?, ?>) ((Map<?, ?>) schema.get("properties")).get("operations");
+        Map<?, ?> operationItems = (Map<?, ?>) operations.get("items");
+        Map<?, ?> operationProperties = (Map<?, ?>) operationItems.get("properties");
+
+        Assert.assertTrue(operationProperties.containsKey("fill_value"));
+        Assert.assertTrue(operationProperties.containsKey("fill_strategy"));
+        Assert.assertFalse(operationProperties.containsKey("value"));
+        Assert.assertEquals(List.of("type"), operationItems.get("required"));
+    }
+
     private void assertNoIncompleteSchemaWarning(BaseTool... tools) {
         Logger logger = (Logger) LoggerFactory.getLogger(ToolSchemaNormalizer.class);
         ListAppender<ILoggingEvent> listAppender = new ListAppender<>();

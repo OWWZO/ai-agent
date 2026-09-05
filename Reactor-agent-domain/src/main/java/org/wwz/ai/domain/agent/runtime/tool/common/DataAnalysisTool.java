@@ -68,13 +68,19 @@ public class DataAnalysisTool implements ContextIsolatableTool {
         businessKnowledgeParam.put("type", "string");
         businessKnowledgeParam.put("description", "businessKnowledge");
 
+        Map<String, Object> reportFileNameParam = new HashMap<>();
+        reportFileNameParam.put("type", "string");
+        reportFileNameParam.put("maxLength", DeepSearchFileNamePolicy.MAX_REPORT_FILE_NAME_LENGTH);
+        reportFileNameParam.put("description", "最终分析报告文件名称，必填且不超过20个字符（含扩展名），例如：销售趋势分析报告.md");
+
         Map<String, Object> parameters = new HashMap<>();
         parameters.put("type", "object");
         Map<String, Object> properties = new HashMap<>();
         properties.put("task", taskParam);
         properties.put("businessKnowledge", businessKnowledgeParam);
+        properties.put("reportFileName", reportFileNameParam);
         parameters.put("properties", properties);
-        parameters.put("required", Arrays.asList("task", "businessKnowledge"));
+        parameters.put("required", Arrays.asList("task", "businessKnowledge", "reportFileName"));
 
         return parameters;
     }
@@ -85,11 +91,17 @@ public class DataAnalysisTool implements ContextIsolatableTool {
             Map<String, Object> params = (Map<String, Object>) input;
             String task = (String) params.getOrDefault("task", "");
             String businessKnowledge = (String) params.getOrDefault("businessKnowledge", "");
+            String requestedReportFileName = params.get("reportFileName") == null
+                    ? null
+                    : String.valueOf(params.get("reportFileName"));
+            String reportFileName = DeepSearchFileNamePolicy.resolveReportFileName(
+                    requestedReportFileName, "数据分析报告.md");
 
             DataAnalysisRequest request = DataAnalysisRequest.builder()
                     .request_id(agentContext.getSessionId())
                     .erp("reactor")
                     .task(task)
+                    .report_file_name(reportFileName)
                     .modelCodeList(Arrays.asList("modelCode"))
                     .businessKnowledge(businessKnowledge)
                     .build();

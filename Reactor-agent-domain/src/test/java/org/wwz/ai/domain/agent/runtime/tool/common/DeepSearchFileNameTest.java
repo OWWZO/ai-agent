@@ -42,4 +42,10 @@ public class DeepSearchFileNameTest {
         Assert.assertEquals("深度搜索报告_search_result.txt",
                 DeepSearchFileNamePolicy.buildSearchResultFileName(reportFileName));
     }
+
+    @Test
+    public void shouldUseTheFallbackForOtherReportTypes() {
+        Assert.assertEquals("数据分析报告.md",
+                DeepSearchFileNamePolicy.resolveReportFileName(null, "数据分析报告.md"));
+    }
 }
