@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """MRAG 文档/知识库管理 API：建库、上传、删文件、列文件、全文就绪状态。"""
+
 import os
 import tempfile
 import uuid
@@ -11,7 +12,11 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from reactor_tool.db.file_table_op import FileInfoOp, get_file_download_url, get_file_preview_url
+from reactor_tool.db.file_table_op import (
+    FileInfoOp,
+    get_file_download_url,
+    get_file_preview_url,
+)
 from reactor_tool.model.protocal import get_file_id
 
 from ...document import DocumentProcessor
@@ -30,20 +35,20 @@ router = APIRouter(prefix="/documents", tags=["文档处理"])
 # 支持的文件类型。这里只保留当前解析链路已验证可处理的格式，避免上传成功但后台解析失败。
 SUPPORTED_FILE_TYPES = {
     # 文档类型
-    'application/pdf': '.pdf',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
-    'text/plain': '.txt',
-    'text/markdown': '.md',
-    'text/x-markdown': '.md',
+    "application/pdf": ".pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "text/plain": ".txt",
+    "text/markdown": ".md",
+    "text/x-markdown": ".md",
     # 图片类型
-    'image/jpeg': '.jpg',
-    'image/jpg': '.jpg',
-    'image/png': '.png',
-    'image/gif': '.gif',
-    'image/bmp': '.bmp',
-    'image/webp': '.webp',
-    'image/tiff': '.tiff',
-    'image/tif': '.tif'
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/bmp": ".bmp",
+    "image/webp": ".webp",
+    "image/tiff": ".tiff",
+    "image/tif": ".tif",
 }
 
 # 最大文件大小 (50MB)
@@ -71,18 +76,25 @@ def _resolve_file_extension(file: UploadFile) -> str:
 
     raise HTTPException(
         status_code=400,
-        detail=f"不支持的文件类型: {content_type or file_extension or 'unknown'}。支持的类型: {_get_supported_extensions()}"
+        detail=f"不支持的文件类型: {content_type or file_extension or 'unknown'}。支持的类型: {_get_supported_extensions()}",
     )
 
 
 def _is_s3_configured() -> bool:
     return all(
         os.getenv(env_name, "").strip()
-        for env_name in ("S3_BUCKET_NAME", "S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_ENDPOINT")
+        for env_name in (
+            "S3_BUCKET_NAME",
+            "S3_ACCESS_KEY",
+            "S3_SECRET_KEY",
+            "S3_ENDPOINT",
+        )
     )
 
 
-async def _upload_to_local_file_storage(file: UploadFile, document_id: str, safe_filename: str):
+async def _upload_to_local_file_storage(
+    file: UploadFile, document_id: str, safe_filename: str
+):
     """
     直接复用本地文件服务的底层落盘逻辑，避免通过 HTTP 回调自身导致阻塞。
     """
@@ -96,17 +108,23 @@ async def _upload_to_local_file_storage(file: UploadFile, document_id: str, safe
         file_info = await FileInfoOp.add_by_file(
             file=file,
             file_id=get_file_id(request_id, stored_filename),
-            request_id=request_id
+            request_id=request_id,
         )
     finally:
         file.filename = original_filename
 
-    download_url = get_file_download_url(file_id=file_info.request_id, file_name=file_info.filename)
-    preview_url = get_file_preview_url(file_id=file_info.request_id, file_name=file_info.filename)
+    download_url = get_file_download_url(
+        file_id=file_info.request_id, file_name=file_info.filename
+    )
+    preview_url = get_file_preview_url(
+        file_id=file_info.request_id, file_name=file_info.filename
+    )
     return download_url, preview_url, file_info.filename
 
 
-def _normalize_source_type(raw_source_type: Optional[str], title: Optional[str], file_url: Optional[str]) -> str:
+def _normalize_source_type(
+    raw_source_type: Optional[str], title: Optional[str], file_url: Optional[str]
+) -> str:
     """兼容历史脏数据，统一给前端返回稳定来源语义。"""
     source_type = (raw_source_type or "").strip().lower()
     normalized_title = (title or "").strip()
@@ -127,6 +145,59 @@ def _resolve_global_status(kb_file: KBFileModel) -> str:
     task_status = kb_file.task_status or {}
     status_value = task_status.get("global_status") or kb_file.file_status or ""
     return str(status_value).upper()
+
+
+def _running_task_status() -> dict:
+    return {
+        "global_status": TaskStatusEnum.RUNNING.value,
+        "worker_pid": os.getpid(),
+    }
+
+
+def _ingest_worker_alive(pid) -> bool:
+    """判断入库 worker 是否还在。进程崩溃/重启后 pid 会失效。"""
+    if pid is None:
+        return False
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    cmdline_path = Path(f"/proc/{pid}/cmdline")
+    if not cmdline_path.exists():
+        return True
+    try:
+        cmdline = (
+            cmdline_path.read_bytes().replace(b"\x00", b" ").decode(errors="ignore")
+        )
+    except OSError:
+        return False
+    return (
+        "server.py" in cmdline
+        or "multiprocessing.spawn" in cmdline
+        or "uvicorn" in cmdline
+    )
+
+
+def _fail_orphaned_running_file(kb_file: KBFileModel, kb_file_store) -> KBFileModel:
+    """worker 崩溃时 BackgroundTasks 不会回写 FAILED，列表/全文读取时补标失败。"""
+    if _resolve_global_status(kb_file) != TaskStatusEnum.RUNNING.value:
+        return kb_file
+    task_status = kb_file.task_status or {}
+    pid = task_status.get("worker_pid")
+    if _ingest_worker_alive(pid):
+        return kb_file
+    kb_file.file_status = TaskStatusEnum.FAILED.value
+    kb_file.task_status = {
+        "global_status": TaskStatusEnum.FAILED.value,
+        "error_message": "入库进程已退出，请重新入库",
+        "worker_pid": pid,
+    }
+    kb_file_store.update_file(kb_file)
+    return kb_file
 
 
 def _serialize_kb_file(kb_file: KBFileModel) -> dict:
@@ -150,7 +221,9 @@ def _build_full_content_payload(
         "file_id": kb_file.file_id,
         "title": kb_file.title or "",
         "file_url": kb_file.file_url or "",
-        "source_type": _normalize_source_type(kb_file.source_type, kb_file.title, kb_file.file_url),
+        "source_type": _normalize_source_type(
+            kb_file.source_type, kb_file.title, kb_file.file_url
+        ),
         "file_status": _resolve_global_status(kb_file),
         "content_status": content_status,
         "content_format": FULL_CONTENT_FORMAT_MARKDOWN,
@@ -163,12 +236,12 @@ def _build_full_content_payload(
 async def upload_document(file: UploadFile = File(...)):
     """
     上传文档和图片到OSS并返回访问链接
-    
-    支持的文件类型: 
+
+    支持的文件类型:
     - 文档: PDF, DOC, DOCX, TXT, XLS, XLSX, PPT, PPTX
     - 图片: JPG, JPEG, PNG, GIF, BMP, WEBP, TIFF, TIF, SVG
     最大文件大小: 50MB
-    
+
     返回:
         - document_id: 文档唯一标识
         - filename: 原始文件名
@@ -192,7 +265,7 @@ async def upload_document(file: UploadFile = File(...)):
         if file_size > MAX_FILE_SIZE:
             raise HTTPException(
                 status_code=400,
-                detail=f"文件大小超过限制。最大允许: {MAX_FILE_SIZE // (1024 * 1024)}MB，当前文件: {file_size // (1024 * 1024)}MB"
+                detail=f"文件大小超过限制。最大允许: {MAX_FILE_SIZE // (1024 * 1024)}MB，当前文件: {file_size // (1024 * 1024)}MB",
             )
 
         if file_size == 0:
@@ -214,7 +287,9 @@ async def upload_document(file: UploadFile = File(...)):
             # OSS 分支需要临时文件作为 SDK 输入，finally 负责删除中间文件；
             # 返回的 permanent_url 才是后续 MRAG 异步入库使用的稳定来源。
             # 创建临时文件
-            with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
+            with tempfile.NamedTemporaryFile(
+                delete=False, suffix=file_extension
+            ) as temp_file:
                 temp_file.write(file_content)
                 temp_file_path = temp_file.name
 
@@ -224,12 +299,12 @@ async def upload_document(file: UploadFile = File(...)):
                 # 使用日期作为目录结构: documents/YYYY/MM/DD/
                 oss_dir = f"documents/{upload_date.year:04d}/{upload_date.month:02d}/{upload_date.day:02d}"
 
-                logger.info(f"开始上传文档到OSS: {safe_filename}, 大小: {file_size} bytes")
+                logger.info(
+                    f"开始上传文档到OSS: {safe_filename}, 大小: {file_size} bytes"
+                )
 
                 success, permanent_url, presigned_url = upload_oss(
-                    file_path=temp_file_path,
-                    dir_=oss_dir,
-                    is_delete=False
+                    file_path=temp_file_path, dir_=oss_dir, is_delete=False
                 )
 
                 if not success:
@@ -253,19 +328,21 @@ async def upload_document(file: UploadFile = File(...)):
                             "presigned_url": presigned_url,
                             "preview_url": permanent_url,
                             "storage_type": "s3",
-                            "oss_path": f"{oss_dir}/{safe_filename}"
-                        }
-                    }
+                            "oss_path": f"{oss_dir}/{safe_filename}",
+                        },
+                    },
                 )
             finally:
                 if os.path.exists(temp_file_path):
                     os.remove(temp_file_path)
 
         logger.info(f"S3 未配置，改用本地文件服务保存文档: {safe_filename}")
-        permanent_url, preview_url, stored_filename = await _upload_to_local_file_storage(
-            file=file,
-            document_id=document_id,
-            safe_filename=safe_filename
+        (
+            permanent_url,
+            preview_url,
+            stored_filename,
+        ) = await _upload_to_local_file_storage(
+            file=file, document_id=document_id, safe_filename=safe_filename
         )
 
         logger.info(f"文档上传成功: {document_id}, 本地访问链接: {permanent_url}")
@@ -287,9 +364,9 @@ async def upload_document(file: UploadFile = File(...)):
                     "presigned_url": permanent_url,
                     "preview_url": preview_url,
                     "storage_type": "local",
-                    "oss_path": stored_filename
-                }
-            }
+                    "oss_path": stored_filename,
+                },
+            },
         )
 
     except HTTPException:
@@ -297,6 +374,7 @@ async def upload_document(file: UploadFile = File(...)):
     except Exception as e:
         logger.error(f"文档上传过程中发生错误: {str(e)}")
         import traceback
+
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"服务器内部错误: {str(e)}")
 
@@ -328,11 +406,7 @@ async def create_knowledge_base(request: CreateKnowledgeBaseRequest):
     )
     kb_store.create_kb(kb_model)
 
-    res = {
-        "code": 200,
-        "msg": "success",
-        "data": kb_model.model_dump()
-    }
+    res = {"code": 200, "msg": "success", "data": kb_model.model_dump()}
     logger.info(f"create knowledge base, {res}")
     return res
 
@@ -365,7 +439,7 @@ async def delete_knowledge_base(request: DeleteKnowledgeBaseRequest):
         "data": {
             "kb_id": request.kb_id,
             "deleted_file_count": deleted_file_count,
-        }
+        },
     }
 
 
@@ -385,7 +459,7 @@ async def list_knowledge_base(request: ListKnowledgeBaseRequest):
             "list": [kb_model.model_dump() for kb_model in kb_models],
             "page_no": request.page_no,
             "page_size": request.page_size,
-        }
+        },
     }
     logger.info(f"list knowledge base, {res}")
     return res
@@ -418,7 +492,7 @@ def add_file(filename, file_url, kb_id):
         doc_count=0,
         create_time=datetime.now(),
         modify_time=datetime.now(),
-        deleted=0
+        deleted=0,
     )
     kb_file_store = get_kb_file_store()
     kb_file_store.add_file(kb_file)
@@ -428,17 +502,21 @@ def add_file(filename, file_url, kb_id):
         download_utils.download_file(file_url, local_file_path)
 
         kb_file.file_status = TaskStatusEnum.RUNNING.value
-        kb_file.task_status = {"global_status": TaskStatusEnum.RUNNING.value}
+        kb_file.task_status = _running_task_status()
         kb_file_store.update_file(kb_file)
 
-        processor = DocumentProcessor(kb_id, file_id, work_dir, local_file_path, file_url)
+        processor = DocumentProcessor(
+            kb_id, file_id, work_dir, local_file_path, file_url
+        )
         processor.process()
 
         kb_file.file_status = TaskStatusEnum.SUCCESS.value
         kb_file.task_status = {"global_status": TaskStatusEnum.SUCCESS.value}
         kb_file_store.update_file(kb_file)
     except Exception as e:
-        logger.exception(f"处理知识库文件失败: kb_id={kb_id}, file_id={file_id}, filename={filename}")
+        logger.exception(
+            f"处理知识库文件失败: kb_id={kb_id}, file_id={file_id}, filename={filename}"
+        )
         kb_file.file_status = TaskStatusEnum.FAILED.value
         kb_file.task_status = {
             "global_status": TaskStatusEnum.FAILED.value,
@@ -470,11 +548,7 @@ async def add_files(request: AddFilesRequest, background_tasks: BackgroundTasks)
             kb_id=request.kb_id,
         )
 
-    return {
-        "code": 200,
-        "msg": "success",
-        "data": {}
-    }
+    return {"code": 200, "msg": "success", "data": {}}
 
 
 def add_web_url(url, kb_id):
@@ -498,7 +572,7 @@ def add_web_url(url, kb_id):
         doc_count=0,
         create_time=datetime.now(),
         modify_time=datetime.now(),
-        deleted=0
+        deleted=0,
     )
     kb_file_store = get_kb_file_store()
     kb_file_store.add_file(kb_file)
@@ -521,7 +595,7 @@ def add_web_url(url, kb_id):
             f.write(markdown_content)
 
         kb_file.file_status = TaskStatusEnum.RUNNING.value
-        kb_file.task_status = {"global_status": TaskStatusEnum.RUNNING.value}
+        kb_file.task_status = _running_task_status()
         kb_file_store.update_file(kb_file)
 
         processor = DocumentProcessor(kb_id, file_id, work_dir, local_file_path, url)
@@ -531,7 +605,9 @@ def add_web_url(url, kb_id):
         kb_file.task_status = {"global_status": TaskStatusEnum.SUCCESS.value}
         kb_file_store.update_file(kb_file)
     except Exception as e:
-        logger.exception(f"处理网页知识失败: kb_id={kb_id}, file_id={file_id}, url={url}")
+        logger.exception(
+            f"处理网页知识失败: kb_id={kb_id}, file_id={file_id}, url={url}"
+        )
         kb_file.file_status = TaskStatusEnum.FAILED.value
         kb_file.task_status = {
             "global_status": TaskStatusEnum.FAILED.value,
@@ -549,14 +625,17 @@ class AddWebUrlRequest(BaseModel):
 
 
 @router.post("/add_web_url")
-async def async_add_web_url(request: AddWebUrlRequest, background_tasks: BackgroundTasks):
+async def async_add_web_url(
+    request: AddWebUrlRequest, background_tasks: BackgroundTasks
+):
     # 与 add_files 一样，接口成功只表示后台任务已排队；处理进度和错误写回知识库
     # 文件记录，由列表/全文接口统一读取。
     kb_id = request.kb_id
     url = request.url
     background_tasks.add_task(
         add_web_url,
-        url, kb_id,
+        url,
+        kb_id,
     )
 
     return {
@@ -584,11 +663,7 @@ async def delete_files(request: DeleteFileRequest):
     vector_store = VectorStore()
     vector_store.delete_by_file_ids(kb_id, file_ids)
 
-    return {
-        "code": 200,
-        "msg": "success",
-        "data": {}
-    }
+    return {"code": 200, "msg": "success", "data": {}}
 
 
 class ListKBFilesRequest(BaseModel):
@@ -603,7 +678,10 @@ async def list_kb_files(request: ListKBFilesRequest):
     page_no = request.page_no
     page_size = request.page_size
     kb_file_store = get_kb_file_store()
-    records = kb_file_store.list_kb_files(kb_id, page_no, page_size)
+    records = [
+        _fail_orphaned_running_file(record, kb_file_store)
+        for record in kb_file_store.list_kb_files(kb_id, page_no, page_size)
+    ]
     total = kb_file_store.count_kb_files(kb_id)
     return {
         "code": 200,
@@ -613,7 +691,7 @@ async def list_kb_files(request: ListKBFilesRequest):
             "records": [_serialize_kb_file(record) for record in records],
             "page_no": page_no,
             "page_size": page_size,
-        }
+        },
     }
 
 
@@ -632,6 +710,7 @@ async def get_file_full_content(request: GetFileFullContentRequest):
     if not kb_file:
         raise HTTPException(status_code=404, detail="文件不存在或已删除")
 
+    kb_file = _fail_orphaned_running_file(kb_file, kb_file_store)
     global_status = _resolve_global_status(kb_file)
     if global_status in {TaskStatusEnum.PENDING.value, TaskStatusEnum.RUNNING.value}:
         return {
@@ -641,12 +720,14 @@ async def get_file_full_content(request: GetFileFullContentRequest):
                 kb_file,
                 content_status=FULL_CONTENT_PROCESSING,
                 error_message="正文仍在生成中，请稍后重试。",
-            )
+            ),
         }
 
     if global_status == TaskStatusEnum.FAILED.value:
         task_status = kb_file.task_status or {}
-        error_message = str(task_status.get("error_message") or "文件处理失败，暂无可回显正文。")
+        error_message = str(
+            task_status.get("error_message") or "文件处理失败，暂无可回显正文。"
+        )
         return {
             "code": 200,
             "msg": "success",
@@ -654,7 +735,7 @@ async def get_file_full_content(request: GetFileFullContentRequest):
                 kb_file,
                 content_status=FULL_CONTENT_FAILED,
                 error_message=error_message,
-            )
+            ),
         }
 
     canonical_doc = kb_doc_store.get_canonical_doc(request.kb_id, request.file_id)
@@ -666,7 +747,7 @@ async def get_file_full_content(request: GetFileFullContentRequest):
                 kb_file,
                 content_status=FULL_CONTENT_UNAVAILABLE,
                 error_message="当前文件暂无可回显正文。",
-            )
+            ),
         }
 
     return {
@@ -676,5 +757,5 @@ async def get_file_full_content(request: GetFileFullContentRequest):
             kb_file,
             content_status=FULL_CONTENT_READY,
             content=canonical_doc.text or "",
-        )
+        ),
     }

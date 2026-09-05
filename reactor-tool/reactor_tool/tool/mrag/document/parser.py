@@ -29,7 +29,9 @@ work_dir
 |   |-- page2.png
 |   |-- ...
 """
+
 import os
+import re
 import shutil
 import tempfile
 import time
@@ -40,6 +42,7 @@ from typing import Optional
 import requests
 
 from .mineru_client import MinerUClient
+from ..runtime_mode import is_multimodal_image_index_enabled
 from ..utils import oss_utils, download_utils
 from ..utils.logger_utils import logger
 
@@ -109,6 +112,39 @@ class DocumentParser:
 
         return sorted(asset_paths)
 
+    @staticmethod
+    def _referenced_image_names(markdown: str) -> set[str]:
+        """从 markdown/HTML 引用中取出真正被正文使用的图片文件名。"""
+        names = set()
+        for raw in re.findall(r"!\[[^\]]*\]\(([^)]+)\)", markdown or ""):
+            names.add(os.path.basename(raw.strip().split()[0].split("?")[0]))
+        for raw in re.findall(
+            r"<img\b[^>]*\bsrc=['\"]([^'\"]+)['\"]", markdown or "", flags=re.I
+        ):
+            names.add(os.path.basename(raw.strip().split("?")[0]))
+        names.discard("")
+        return names
+
+    def _keep_referenced_images(self, markdown: str, src_dir: str, dst_dir: str) -> int:
+        """只拷贝正文引用过的图片，丢掉 MinerU 裁出但未写入 markdown 的碎片。"""
+        if not os.path.isdir(src_dir):
+            return 0
+        keep = self._referenced_image_names(markdown)
+        copied = 0
+        skipped = 0
+        for name in os.listdir(src_dir):
+            src_path = os.path.join(src_dir, name)
+            if not os.path.isfile(src_path):
+                continue
+            if name not in keep:
+                skipped += 1
+                continue
+            os.makedirs(dst_dir, exist_ok=True)
+            shutil.copy2(src_path, os.path.join(dst_dir, name))
+            copied += 1
+        logger.info(f"保留 markdown 引用图片 {copied} 张，忽略未引用 {skipped} 张")
+        return copied
+
 
 class DocxDocumentParser(DocumentParser):
     """Docx文档解析器"""
@@ -138,6 +174,7 @@ class DocxDocumentParser(DocumentParser):
             return True
         except Exception as e:
             import traceback
+
             logger.error(traceback.format_exc())
             logger.error(f"解析 docx 文档失败: {self._file_path}, 错误: {e}")
             return False
@@ -161,19 +198,19 @@ class DocxDocumentParser(DocumentParser):
         import re
 
         # 一、二、三、四、五、六、七、八、九、十
-        if re.match(r'^[一二三四五六七八九十]+、', text):
+        if re.match(r"^[一二三四五六七八九十]+、", text):
             return 2
 
         # （一）（二）（三）
-        if re.match(r'^[（(][一二三四五六七八九十]+[）)]', text):
+        if re.match(r"^[（(][一二三四五六七八九十]+[）)]", text):
             return 3
 
         # 1. 2. 3. (数字后面跟点和空格或直接是内容)
-        if re.match(r'^\d+[.、]', text):
+        if re.match(r"^\d+[.、]", text):
             return 4
 
         # (1) (2) (3)
-        if re.match(r'^[（(]\d+[）)]', text):
+        if re.match(r"^[（(]\d+[）)]", text):
             return 5
 
         return 0
@@ -198,13 +235,17 @@ class DocxDocumentParser(DocumentParser):
             body = doc.element.body
 
             # 删除所有的删除标记 (w:del)
-            for del_element in body.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del'):
+            for del_element in body.findall(
+                ".//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del"
+            ):
                 parent = del_element.getparent()
                 if parent is not None:
                     parent.remove(del_element)
 
             # 处理所有的插入标记 (w:ins) - 保留内容，删除标记
-            for ins_element in body.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins'):
+            for ins_element in body.findall(
+                ".//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins"
+            ):
                 parent = ins_element.getparent()
                 if parent is not None:
                     # 将插入标记中的内容移到父元素
@@ -216,12 +257,16 @@ class DocxDocumentParser(DocumentParser):
                     parent.remove(ins_element)
 
             # 删除所有的移动标记 (w:moveFrom, w:moveTo)
-            for move_from in body.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom'):
+            for move_from in body.findall(
+                ".//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom"
+            ):
                 parent = move_from.getparent()
                 if parent is not None:
                     parent.remove(move_from)
 
-            for move_to in body.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo'):
+            for move_to in body.findall(
+                ".//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo"
+            ):
                 parent = move_to.getparent()
                 if parent is not None:
                     # 将移动标记中的内容移到父元素
@@ -306,26 +351,33 @@ class DocxDocumentParser(DocumentParser):
                     for run in paragraph.runs:
                         # 检查是否包含图片
                         for drawing in run.element.findall(
-                                './/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}drawing'):
+                            ".//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}drawing"
+                        ):
                             # 提取图片
                             for blip in drawing.findall(
-                                    './/{http://schemas.openxmlformats.org/drawingml/2006/main}blip'):
+                                ".//{http://schemas.openxmlformats.org/drawingml/2006/main}blip"
+                            ):
                                 embed_id = blip.get(
-                                    '{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
+                                    "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
+                                )
                                 if embed_id:
                                     image_part = doc.part.related_parts[embed_id]
                                     image_counter += 1
                                     image_filename = f"image_{image_counter}.png"
-                                    image_path = os.path.join(self._images_dir, image_filename)
+                                    image_path = os.path.join(
+                                        self._images_dir, image_filename
+                                    )
 
                                     # 保存图片
-                                    with open(image_path, 'wb') as f:
+                                    with open(image_path, "wb") as f:
                                         f.write(image_part.blob)
 
                                     logger.debug(f"提取图片: {image_filename}")
 
                                     # 在 Markdown 中添加图片引用
-                                    md_content.append(f"\n![{image_filename}](images/{image_filename})\n")
+                                    md_content.append(
+                                        f"\n![{image_filename}](images/{image_filename})\n"
+                                    )
 
                 elif isinstance(element, CT_Tbl):
                     # 处理表格
@@ -335,23 +387,33 @@ class DocxDocumentParser(DocumentParser):
                     # 表格头部
                     if len(table.rows) > 0:
                         header_cells = table.rows[0].cells
-                        header = "| " + " | ".join([cell.text.strip() for cell in header_cells]) + " |"
+                        header = (
+                            "| "
+                            + " | ".join([cell.text.strip() for cell in header_cells])
+                            + " |"
+                        )
                         md_content.append(header + "\n")
 
                         # 表格分隔符
-                        separator = "| " + " | ".join(["---" for _ in header_cells]) + " |"
+                        separator = (
+                            "| " + " | ".join(["---" for _ in header_cells]) + " |"
+                        )
                         md_content.append(separator + "\n")
 
                         # 表格内容
                         for row in table.rows[1:]:
                             cells = row.cells
-                            row_text = "| " + " | ".join([cell.text.strip() for cell in cells]) + " |"
+                            row_text = (
+                                "| "
+                                + " | ".join([cell.text.strip() for cell in cells])
+                                + " |"
+                            )
                             md_content.append(row_text + "\n")
 
                     md_content.append("\n")
 
             # 写入 Markdown 文件
-            with open(self._md_file_path, 'w', encoding='utf-8') as f:
+            with open(self._md_file_path, "w", encoding="utf-8") as f:
                 f.writelines(md_content)
 
             logger.info(f"内容提取完成，共提取 {image_counter} 张图片")
@@ -385,7 +447,7 @@ class DocxDocumentParser(DocumentParser):
             success = False
 
             # 方法1: 尝试使用 docx2pdf (Windows)
-            if os.name == 'nt':
+            if os.name == "nt":
                 success = self._convert_with_docx2pdf()
 
             # 方法2: 尝试使用 LibreOffice (跨平台)
@@ -436,7 +498,7 @@ class DocxDocumentParser(DocumentParser):
             for i, image in enumerate(images, start=1):
                 page_filename = f"page_{i}.png"
                 page_path = os.path.join(self._pages_dir, page_filename)
-                image.save(page_path, 'PNG')
+                image.save(page_path, "PNG")
                 logger.debug(f"保存页面: {page_filename}")
 
             # 删除临时 PDF 文件
@@ -468,15 +530,18 @@ class DocxDocumentParser(DocumentParser):
 
             # 检查 LibreOffice 是否安装
             libreoffice_cmd = None
-            for cmd in ['libreoffice', 'soffice']:
+            for cmd in ["libreoffice", "soffice"]:
                 try:
-                    subprocess.run([cmd, '--version'],
-                                   capture_output=True,
-                                   check=True,
-                                   timeout=5)
+                    subprocess.run(
+                        [cmd, "--version"], capture_output=True, check=True, timeout=5
+                    )
                     libreoffice_cmd = cmd
                     break
-                except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+                except (
+                    subprocess.CalledProcessError,
+                    FileNotFoundError,
+                    subprocess.TimeoutExpired,
+                ):
                     continue
 
             if not libreoffice_cmd:
@@ -489,16 +554,15 @@ class DocxDocumentParser(DocumentParser):
             # 使用 LibreOffice 转换
             cmd = [
                 libreoffice_cmd,
-                '--headless',
-                '--convert-to', 'pdf',
-                '--outdir', self._work_dir,
-                self._file_path
+                "--headless",
+                "--convert-to",
+                "pdf",
+                "--outdir",
+                self._work_dir,
+                self._file_path,
             ]
 
-            result = subprocess.run(cmd,
-                                    capture_output=True,
-                                    text=True,
-                                    timeout=60)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
             if result.returncode != 0:
                 logger.debug(f"LibreOffice 转换失败: {result.stderr}")
@@ -516,7 +580,7 @@ class DocxDocumentParser(DocumentParser):
             for i, image in enumerate(images, start=1):
                 page_filename = f"page_{i}.png"
                 page_path = os.path.join(self._pages_dir, page_filename)
-                image.save(page_path, 'PNG')
+                image.save(page_path, "PNG")
                 logger.debug(f"保存页面: {page_filename}")
 
             # 删除临时 PDF 文件
@@ -551,28 +615,23 @@ class DocxDocumentParser(DocumentParser):
 
             # 检查 unoconv 是否安装
             try:
-                subprocess.run(['unoconv', '--version'],
-                               capture_output=True,
-                               check=True,
-                               timeout=5)
-            except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+                subprocess.run(
+                    ["unoconv", "--version"], capture_output=True, check=True, timeout=5
+                )
+            except (
+                subprocess.CalledProcessError,
+                FileNotFoundError,
+                subprocess.TimeoutExpired,
+            ):
                 logger.debug("unoconv 未安装")
                 return False
 
             # 转换为 PDF
             pdf_path = os.path.join(self._work_dir, f"{self._filename}.pdf")
 
-            cmd = [
-                'unoconv',
-                '-f', 'pdf',
-                '-o', pdf_path,
-                self._file_path
-            ]
+            cmd = ["unoconv", "-f", "pdf", "-o", pdf_path, self._file_path]
 
-            result = subprocess.run(cmd,
-                                    capture_output=True,
-                                    text=True,
-                                    timeout=60)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
             if result.returncode != 0:
                 logger.debug(f"unoconv 转换失败: {result.stderr}")
@@ -590,7 +649,7 @@ class DocxDocumentParser(DocumentParser):
             for i, image in enumerate(images, start=1):
                 page_filename = f"page_{i}.png"
                 page_path = os.path.join(self._pages_dir, page_filename)
-                image.save(page_path, 'PNG')
+                image.save(page_path, "PNG")
                 logger.debug(f"保存页面: {page_filename}")
 
             # 删除临时 PDF 文件
@@ -653,7 +712,9 @@ class MarkdownDocumentParser(DocumentParser):
 
         # 检查文件是否在work_dir里
         if not abs_file_path.startswith(abs_work_dir):
-            logger.info(f"文件不在work_dir里，复制文件: {abs_file_path} -> {self._md_file_path}")
+            logger.info(
+                f"文件不在work_dir里，复制文件: {abs_file_path} -> {self._md_file_path}"
+            )
             shutil.copy2(abs_file_path, self._md_file_path)
         else:
             # 如果文件已经在work_dir里，但文件名不是标准的md文件名，则复制
@@ -676,11 +737,11 @@ class MarkdownDocumentParser(DocumentParser):
         logger.info(f"开始处理图片链接: {self._md_file_path}")
 
         # 读取Markdown文件
-        with open(self._md_file_path, 'r', encoding='utf-8') as f:
+        with open(self._md_file_path, "r", encoding="utf-8") as f:
             content = f.read()
 
         # 匹配Markdown图片语法: ![alt](url)
-        image_pattern = r'!\[([^\]]*)\]\(([^\)]+)\)'
+        image_pattern = r"!\[([^\]]*)\]\(([^\)]+)\)"
         matches = re.finditer(image_pattern, content)
 
         image_counter = 0
@@ -691,7 +752,7 @@ class MarkdownDocumentParser(DocumentParser):
             image_url = match.group(2)
 
             # 检查是否是HTTP/HTTPS链接
-            if image_url.startswith('http://') or image_url.startswith('https://'):
+            if image_url.startswith("http://") or image_url.startswith("https://"):
                 try:
                     image_counter += 1
 
@@ -699,8 +760,16 @@ class MarkdownDocumentParser(DocumentParser):
                     parsed_url = urllib.parse.urlparse(image_url)
                     url_path = parsed_url.path
                     ext = os.path.splitext(url_path)[1]
-                    if not ext or ext not in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.svg', '.webp']:
-                        ext = '.png'  # 默认使用png
+                    if not ext or ext not in [
+                        ".png",
+                        ".jpg",
+                        ".jpeg",
+                        ".gif",
+                        ".bmp",
+                        ".svg",
+                        ".webp",
+                    ]:
+                        ext = ".png"  # 默认使用png
 
                     # 生成本地文件名
                     image_filename = f"image_{image_counter}{ext}"
@@ -711,13 +780,12 @@ class MarkdownDocumentParser(DocumentParser):
 
                     # 设置User-Agent避免被某些网站拒绝
                     req = urllib.request.Request(
-                        image_url,
-                        headers={'User-Agent': 'Mozilla/5.0'}
+                        image_url, headers={"User-Agent": "Mozilla/5.0"}
                     )
 
                     with urllib.request.urlopen(req, timeout=30) as response:
                         image_data = response.read()
-                        with open(image_path, 'wb') as f:
+                        with open(image_path, "wb") as f:
                             f.write(image_data)
 
                     logger.debug(f"图片下载成功: {image_filename}")
@@ -725,7 +793,9 @@ class MarkdownDocumentParser(DocumentParser):
                     # 更新Markdown中的图片链接
                     old_image_ref = f"![{alt_text}]({image_url})"
                     new_image_ref = f"![{alt_text}](images/{image_filename})"
-                    updated_content = updated_content.replace(old_image_ref, new_image_ref)
+                    updated_content = updated_content.replace(
+                        old_image_ref, new_image_ref
+                    )
 
                 except (URLError, HTTPError) as e:
                     logger.warning(f"下载图片失败: {image_url}, 错误: {e}")
@@ -734,7 +804,7 @@ class MarkdownDocumentParser(DocumentParser):
 
         # 保存更新后的Markdown文件
         if updated_content != content:
-            with open(self._md_file_path, 'w', encoding='utf-8') as f:
+            with open(self._md_file_path, "w", encoding="utf-8") as f:
                 f.write(updated_content)
             logger.info(f"已更新Markdown文件，共下载 {image_counter} 张图片")
         else:
@@ -787,11 +857,13 @@ class MarkdownDocumentParser(DocumentParser):
             logger.info("尝试使用 imgkit 生成预览...")
 
             # 读取Markdown内容
-            with open(self._md_file_path, 'r', encoding='utf-8') as f:
+            with open(self._md_file_path, "r", encoding="utf-8") as f:
                 md_content = f.read()
 
             # 转换为HTML
-            html_content = markdown2.markdown(md_content, extras=['tables', 'fenced-code-blocks'])
+            html_content = markdown2.markdown(
+                md_content, extras=["tables", "fenced-code-blocks"]
+            )
 
             # 添加CSS样式
             html_with_style = f"""
@@ -847,9 +919,9 @@ class MarkdownDocumentParser(DocumentParser):
             page_path = os.path.join(self._pages_dir, "page_1.png")
 
             options = {
-                'format': 'png',
-                'encoding': 'UTF-8',
-                'width': 800,
+                "format": "png",
+                "encoding": "UTF-8",
+                "width": 800,
             }
 
             imgkit.from_string(html_with_style, page_path, options=options)
@@ -878,11 +950,13 @@ class MarkdownDocumentParser(DocumentParser):
             logger.info("尝试使用 playwright 生成预览...")
 
             # 读取Markdown内容
-            with open(self._md_file_path, 'r', encoding='utf-8') as f:
+            with open(self._md_file_path, "r", encoding="utf-8") as f:
                 md_content = f.read()
 
             # 转换为HTML
-            html_content = markdown2.markdown(md_content, extras=['tables', 'fenced-code-blocks'])
+            html_content = markdown2.markdown(
+                md_content, extras=["tables", "fenced-code-blocks"]
+            )
 
             # 添加CSS样式
             html_with_style = f"""
@@ -937,11 +1011,11 @@ class MarkdownDocumentParser(DocumentParser):
             # 使用playwright截图
             with sync_playwright() as p:
                 browser = p.chromium.launch()
-                page = browser.new_page(viewport={'width': 800, 'height': 600})
+                page = browser.new_page(viewport={"width": 800, "height": 600})
                 page.set_content(html_with_style)
 
                 # 等待页面加载完成
-                page.wait_for_load_state('networkidle')
+                page.wait_for_load_state("networkidle")
 
                 # 截图
                 page_path = os.path.join(self._pages_dir, "page_1.png")
@@ -1017,69 +1091,156 @@ class PdfParser(DocumentParser):
             # 如果无法获取页数，返回一个较大的值以触发分页处理
             return 100
 
-    def _split_pdf_by_pages(self, start_page: int, end_page: int, output_path: str) -> bool:
-        """按页数范围拆分PDF文件"""
+    def _split_pdf_by_pages(
+        self, start_page: int, end_page: int, output_path: str
+    ) -> bool:
+        """按页数范围拆分 PDF。
+
+        必须一次 insert 整段页面。逐页 insert_pdf 会把字体/图片等共享对象复制 N 份，
+        15MB 的扫描件切 150 页时会被撑到几百 MB，随后撞上 MinerU 200MB 限制。
+        """
+        try:
+            import fitz
+
+            new_doc = fitz.open()
+            try:
+                with fitz.open(self._file_path) as doc:
+                    total_pages = doc.page_count
+                    start_page = max(0, min(start_page, total_pages - 1))
+                    end_page = max(start_page, min(end_page, total_pages - 1))
+                    new_doc.insert_pdf(doc, from_page=start_page, to_page=end_page)
+                # 不要用 clean=True：部分复杂 PDF 会让 PyMuPDF 原生崩溃，
+                # worker 直接退出，入库状态会永远停在 RUNNING。
+                new_doc.save(output_path, garbage=4, deflate=True)
+            finally:
+                new_doc.close()
+            return True
+        except Exception as e:
+            logger.error(f"拆分PDF失败 (页码 {start_page}-{end_page}): {e}")
+            return False
+
+    @staticmethod
+    def _mineru_max_upload_bytes() -> int:
+        """MinerU 官方上传上限约 200MB，默认留 20MB 余量。"""
+        return int(os.getenv("MINERU_MAX_UPLOAD_BYTES", str(180 * 1024 * 1024)))
+
+    def _resolve_mineru_wait_timeout_seconds(self, pdf_path: str) -> int:
+        """按页数放大 MinerU 轮询超时，避免 150 页 VLM 任务卡死在默认 300s。"""
+        configured = (os.getenv("MINERU_WAIT_TIMEOUT_SECONDS") or "").strip()
+        if configured:
+            return max(1, int(configured))
+        page_count = 1
+        try:
+            import fitz
+
+            with fitz.open(pdf_path) as doc:
+                page_count = max(1, doc.page_count)
+        except Exception:
+            page_count = max(1, self._get_pdf_page_count())
+        per_page = int(os.getenv("MINERU_WAIT_SECONDS_PER_PAGE", "25"))
+        return max(300, min(page_count * per_page, 3600))
+
+    def _extract_pdf_page_range_text(self, start_page: int, end_page: int) -> str:
+        """从原 PDF 按页抽文本，避免打开被撑爆的临时分块导致 worker OOM。"""
         try:
             import fitz
 
             with fitz.open(self._file_path) as doc:
-                # 确保页数范围有效
                 total_pages = doc.page_count
                 start_page = max(0, min(start_page, total_pages - 1))
                 end_page = max(start_page, min(end_page, total_pages - 1))
-
-                # 创建新的PDF文档
-                new_doc = fitz.open()
-                for page_num in range(start_page, end_page + 1):
-                    new_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
-
-                new_doc.save(output_path)
-                new_doc.close()
-                return True
+                texts = [
+                    doc[page_num].get_text() or ""
+                    for page_num in range(start_page, end_page + 1)
+                ]
+            return "\n".join(texts).strip()
         except Exception as e:
-            logger.error(f"拆分PDF失败 (页码 {start_page}-{end_page}): {e}")
-            return False
+            logger.error(f"按页提取 PDF 文本失败 (页码 {start_page}-{end_page}): {e}")
+            return ""
+
+    @staticmethod
+    def _remove_if_exists(path: str) -> None:
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except OSError:
+            pass
+
+    def _split_pdf_range_under_limit(
+        self,
+        start_page: int,
+        end_page: int,
+        output_path: str,
+        max_bytes: int,
+    ) -> list:
+        """把页范围拆到 MinerU 可上传的体积；单页仍超限则放弃该页的 MinerU 路径。"""
+        if not self._split_pdf_by_pages(start_page, end_page, output_path):
+            return []
+        size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+        if size <= max_bytes:
+            logger.info(f"PDF分块页 {start_page + 1}-{end_page + 1} 大小 {size} bytes")
+            return [(start_page, end_page, output_path)]
+        if start_page == end_page:
+            logger.error(
+                f"单页 PDF 仍超过 MinerU 上传限制: page={start_page + 1}, size={size}, limit={max_bytes}"
+            )
+            self._remove_if_exists(output_path)
+            return []
+        logger.warning(
+            f"PDF分块页 {start_page + 1}-{end_page + 1} 大小 {size} bytes 超过限制 {max_bytes}，对半拆分"
+        )
+        self._remove_if_exists(output_path)
+        mid = (start_page + end_page) // 2
+        stem, ext = os.path.splitext(output_path)
+        left_path = f"{stem}_{start_page}_{mid}{ext}"
+        right_path = f"{stem}_{mid + 1}_{end_page}{ext}"
+        return self._split_pdf_range_under_limit(
+            start_page, mid, left_path, max_bytes
+        ) + self._split_pdf_range_under_limit(mid + 1, end_page, right_path, max_bytes)
 
     def _call_mineru_api(self, file_url: str) -> str:
         """调用MinerU API处理单个PDF文件"""
         # 旧 API 只负责创建任务并返回 task_id，结果内容不在本次响应中；
         # 调用方必须继续走轮询阶段，不能把提交成功当成解析完成。
-        data = {
-            "url": file_url,
-            "model_version": "vlm"
-        }
+        data = {"url": file_url, "model_version": "vlm"}
 
-        response = requests.post(os.getenv("MINERU_BASE_URL"), headers=self.headers, json=data)
+        response = requests.post(
+            os.getenv("MINERU_BASE_URL"), headers=self.headers, json=data
+        )
 
         if response.status_code != 200:
             raise Exception(f"Mineru API error: {response.text}")
 
-        return response.json()['data']['task_id']
+        return response.json()["data"]["task_id"]
 
-    def _wait_for_mineru_result(self, task_id: str) -> Optional[str]:
+    def _wait_for_mineru_result(
+        self, task_id: str, timeout_seconds: int = 300
+    ) -> Optional[str]:
         """等待MinerU处理完成并返回结果URL"""
         # 轮询只接受 done/failed 两个终态；中间状态按固定间隔等待，并设置
         # 总超时，避免外部服务卡住时占用整个文档解析任务。
         start_time = time.time()
 
         while True:
-            response = requests.get(os.getenv("MINERU_BASE_URL") + "/" + task_id, headers=self.headers)
+            response = requests.get(
+                os.getenv("MINERU_BASE_URL") + "/" + task_id, headers=self.headers
+            )
             if response.status_code != 200:
                 raise Exception(f"Mineru API error: {response.text}")
 
-            data = response.json()['data']
+            data = response.json()["data"]
             logger.debug(f"MinerU task {task_id} status: {data}")
 
-            if data.get('state') == 'done':
-                return data.get('full_zip_url')
+            if data.get("state") == "done":
+                return data.get("full_zip_url")
 
-            if data.get('state') == 'failed':
+            if data.get("state") == "failed":
                 raise Exception(f"Mineru API error: {data['message']}")
 
             time.sleep(5)
 
             cost_time = time.time() - start_time
-            if cost_time > 300:  # 5分钟超时
+            if cost_time > timeout_seconds:
                 raise Exception(f"Mineru API timeout")
 
     def _resolve_mineru_upload_mode(self) -> str:
@@ -1100,16 +1261,26 @@ class PdfParser(DocumentParser):
                 model_version="vlm",
             )
             self._mineru_client.upload_file(upload_target.upload_url, pdf_path)
+            timeout_seconds = self._resolve_mineru_wait_timeout_seconds(pdf_path)
             return self._mineru_client.wait_batch_result(
                 batch_id=upload_target.batch_id,
                 file_name=file_name,
                 data_id=data_id,
+                timeout_seconds=timeout_seconds,
             )
 
-        storage_dir = f"mrag/{self.uid}" if request_key == "full" else f"mrag/{self.uid}/{request_key}"
-        _, _, file_url = oss_utils.upload_oss(pdf_path, dir_=storage_dir, is_delete=False)
+        storage_dir = (
+            f"mrag/{self.uid}"
+            if request_key == "full"
+            else f"mrag/{self.uid}/{request_key}"
+        )
+        _, _, file_url = oss_utils.upload_oss(
+            pdf_path, dir_=storage_dir, is_delete=False
+        )
         task_id = self._call_mineru_api(file_url)
-        return self._wait_for_mineru_result(task_id)
+        return self._wait_for_mineru_result(
+            task_id, timeout_seconds=self._resolve_mineru_wait_timeout_seconds(pdf_path)
+        )
 
     def _resolve_poppler_path(self) -> Optional[str]:
         """解析 pdf2image 依赖的 Poppler 目录。"""
@@ -1118,7 +1289,9 @@ class PdfParser(DocumentParser):
             if os.path.isdir(configured_path):
                 logger.info(f"使用配置的 POPPLER_PATH: {configured_path}")
                 return configured_path
-            logger.warning(f"配置的 POPPLER_PATH 不存在，将继续尝试自动探测: {configured_path}")
+            logger.warning(
+                f"配置的 POPPLER_PATH 不存在，将继续尝试自动探测: {configured_path}"
+            )
 
         # 如果系统 PATH 已经能找到 pdftoppm，则无需额外透传目录。
         if shutil.which("pdftoppm"):
@@ -1146,7 +1319,9 @@ class PdfParser(DocumentParser):
 
         return None
 
-    def _download_and_extract_mineru_result(self, full_zip_url: str, output_dir: str) -> Optional[str]:
+    def _download_and_extract_mineru_result(
+        self, full_zip_url: str, output_dir: str
+    ) -> Optional[str]:
         """下载并解压MinerU处理结果"""
         # ZIP 只是传输容器，解析阶段真正消费的是其中的 Markdown；临时 ZIP
         # 无论成功或失败都在 finally 删除，避免长任务污染共享临时目录。
@@ -1156,7 +1331,7 @@ class PdfParser(DocumentParser):
             logger.info(f"Downloaded MinerU result to: {tmp_file_path}")
 
             # 解压文件
-            zipfile.ZipFile(tmp_file_path, 'r').extractall(output_dir)
+            zipfile.ZipFile(tmp_file_path, "r").extractall(output_dir)
 
             # 找到markdown文件
             md_files = [file for file in os.listdir(output_dir) if file.endswith(".md")]
@@ -1174,30 +1349,42 @@ class PdfParser(DocumentParser):
             if os.path.exists(tmp_file_path):
                 os.remove(tmp_file_path)
 
-    def _process_single_pdf_chunk(self, pdf_path: str, chunk_index: int) -> Optional[str]:
+    def _process_single_pdf_chunk(
+        self, pdf_path: str, chunk_index: int
+    ) -> Optional[str]:
         """处理单个PDF分块，直接返回处理后的markdown内容"""
         # 分块结果先在独立临时目录中解压，再把图片复制到主产物目录并改写
         # Markdown 相对路径；这样不同分块的同名图片不会互相覆盖。
         try:
             # 提交分块给 MinerU，返回统一的结果包地址
-            full_zip_url = self._submit_pdf_to_mineru(pdf_path, request_key=f"chunk_{chunk_index}")
+            full_zip_url = self._submit_pdf_to_mineru(
+                pdf_path, request_key=f"chunk_{chunk_index}"
+            )
             if not full_zip_url:
                 return None
 
             # 创建临时目录存储结果
-            chunk_output_dir = os.path.join(tempfile.gettempdir(), f"mineru_chunk_{chunk_index}_{uuid.uuid4().hex}")
+            chunk_output_dir = os.path.join(
+                tempfile.gettempdir(), f"mineru_chunk_{chunk_index}_{uuid.uuid4().hex}"
+            )
             os.makedirs(chunk_output_dir, exist_ok=True)
 
             try:
                 # 下载并解压MinerU结果
-                tmp_file_path = os.path.join(chunk_output_dir, f"chunk_{chunk_index}_result.zip")
+                tmp_file_path = os.path.join(
+                    chunk_output_dir, f"chunk_{chunk_index}_result.zip"
+                )
                 download_utils.download_file(full_zip_url, tmp_file_path)
 
                 # 解压zip文件
-                zipfile.ZipFile(tmp_file_path, 'r').extractall(chunk_output_dir)
+                zipfile.ZipFile(tmp_file_path, "r").extractall(chunk_output_dir)
 
                 # 找到markdown文件
-                md_files = [file for file in os.listdir(chunk_output_dir) if file.endswith(".md")]
+                md_files = [
+                    file
+                    for file in os.listdir(chunk_output_dir)
+                    if file.endswith(".md")
+                ]
                 if not md_files:
                     logger.error(f"分块 {chunk_index} 未找到markdown文件")
                     return None
@@ -1206,26 +1393,26 @@ class PdfParser(DocumentParser):
                 md_file_path = os.path.join(chunk_output_dir, md_file)
 
                 # 读取markdown内容
-                with open(md_file_path, 'r', encoding='utf-8') as f:
+                with open(md_file_path, "r", encoding="utf-8") as f:
                     content = f.read()
 
-                # 处理图片 - 将图片复制到主images目录
+                # 只保留 markdown 引用过的图；MinerU zip 里其余裁图不入库、不 OCR。
                 chunk_images_dir = os.path.join(chunk_output_dir, "images")
-                if os.path.exists(chunk_images_dir):
-                    # 为分块创建子目录，避免图片名冲突
-                    chunk_images_subdir = os.path.join(self._images_dir, f"chunk_{chunk_index}")
-                    os.makedirs(chunk_images_subdir, exist_ok=True)
-
-                    # 复制所有图片到分块子目录
-                    for image_file in os.listdir(chunk_images_dir):
-                        src_path = os.path.join(chunk_images_dir, image_file)
-                        dst_path = os.path.join(chunk_images_subdir, image_file)
-                        if os.path.isfile(src_path):
-                            shutil.copy2(src_path, dst_path)
-                            logger.info(f"复制分块 {chunk_index} 图片: {image_file}")
-
-                    # 更新markdown内容中的图片路径
-                    content = content.replace("](images/", f"](images/chunk_{chunk_index}/")
+                copied = self._keep_referenced_images(
+                    content,
+                    chunk_images_dir,
+                    os.path.join(self._images_dir, f"chunk_{chunk_index}"),
+                )
+                if copied:
+                    content = content.replace(
+                        "](images/", f"](images/chunk_{chunk_index}/"
+                    )
+                    content = content.replace(
+                        'src="images/', f'src="images/chunk_{chunk_index}/'
+                    )
+                    content = content.replace(
+                        "src='images/", f"src='images/chunk_{chunk_index}/"
+                    )
 
                 logger.info(f"分块 {chunk_index} 处理完成")
                 return content
@@ -1248,18 +1435,22 @@ class PdfParser(DocumentParser):
             total_pages = self._get_pdf_page_count()
             logger.info(f"PDF文件总页数: {total_pages}")
 
-            # 配置参数
-            SMALL_PDF_THRESHOLD = int(os.getenv("SMALL_PDF_PAGE_THRESHOLD", "10"))
-            CHUNK_SIZE = int(os.getenv("PDF_CHUNK_SIZE", "4"))
+            # 配置参数：≤阈值整文件一次提交；超过后按 CHUNK_SIZE 页切块给 MinerU
+            SMALL_PDF_THRESHOLD = int(os.getenv("SMALL_PDF_PAGE_THRESHOLD", "25"))
+            CHUNK_SIZE = int(os.getenv("PDF_CHUNK_SIZE", "25"))
 
             all_content = []
 
             if total_pages <= SMALL_PDF_THRESHOLD:
                 # 小PDF文件，直接处理
-                logger.info(f"PDF页数 {total_pages} 小于阈值 {SMALL_PDF_THRESHOLD}，直接处理整个文件")
+                logger.info(
+                    f"PDF页数 {total_pages} 小于阈值 {SMALL_PDF_THRESHOLD}，直接处理整个文件"
+                )
 
                 # 提交整份 PDF 给 MinerU，返回统一的结果包地址
-                full_zip_url = self._submit_pdf_to_mineru(self._file_path, request_key="full")
+                full_zip_url = self._submit_pdf_to_mineru(
+                    self._file_path, request_key="full"
+                )
                 if full_zip_url:
                     # 创建临时目录
                     tmpdir = tempfile.gettempdir()
@@ -1270,32 +1461,47 @@ class PdfParser(DocumentParser):
                     logger.info(f"Downloaded result to: {tmp_file_path}")
 
                     # 解压
-                    tmp_empty_dir = os.path.join(tmpdir, f"tmp_empty_dir_{uuid.uuid4().hex}")
+                    tmp_empty_dir = os.path.join(
+                        tmpdir, f"tmp_empty_dir_{uuid.uuid4().hex}"
+                    )
                     os.makedirs(tmp_empty_dir, exist_ok=True)
-                    zipfile.ZipFile(tmp_file_path, 'r').extractall(tmp_empty_dir)
+                    zipfile.ZipFile(tmp_file_path, "r").extractall(tmp_empty_dir)
 
                     # 处理markdown文件
-                    md_files = [file for file in os.listdir(tmp_empty_dir) if file.endswith(".md")]
+                    md_files = [
+                        file
+                        for file in os.listdir(tmp_empty_dir)
+                        if file.endswith(".md")
+                    ]
                     if md_files:
                         md_file = md_files[0]
                         logger.info(f"Found markdown file: {md_file}")
 
                         # 移动markdown文件
-                        shutil.move(os.path.join(tmp_empty_dir, md_file), self._md_file_path)
+                        shutil.move(
+                            os.path.join(tmp_empty_dir, md_file), self._md_file_path
+                        )
 
-                        # 处理图片目录
-                        image_dir = os.path.dirname(self._images_dir)
-                        if os.path.exists(self._images_dir):
-                            shutil.rmtree(self._images_dir)
-                        mineru_images_dir = os.path.join(tmp_empty_dir, "images")
-                        if os.path.exists(mineru_images_dir):
-                            shutil.move(mineru_images_dir, image_dir)
+                        if os.path.exists(self._md_file_path):
+                            with open(
+                                self._md_file_path, "r", encoding="utf-8"
+                            ) as md_fp:
+                                markdown = md_fp.read()
+                            if os.path.exists(self._images_dir):
+                                shutil.rmtree(self._images_dir)
+                            self._keep_referenced_images(
+                                markdown,
+                                os.path.join(tmp_empty_dir, "images"),
+                                self._images_dir,
+                            )
 
                         logger.info("整个PDF文件处理完成")
                         return
                     else:
                         logger.error("No markdown file found in result")
-                        raise Exception("MinerU processing failed: no markdown file generated")
+                        raise Exception(
+                            "MinerU processing failed: no markdown file generated"
+                        )
                 else:
                     raise Exception("MinerU processing failed: no result URL")
 
@@ -1303,10 +1509,14 @@ class PdfParser(DocumentParser):
                 # 大文件的临时 PDF 只在本次解析期间存在，finally 会统一清理；
                 # all_content 保留分页标记，方便后续检索定位原始页段。
                 # 大PDF文件，分页处理
-                logger.info(f"PDF页数 {total_pages} 超过阈值 {SMALL_PDF_THRESHOLD}，将按每 {CHUNK_SIZE} 页进行分页处理")
+                logger.info(
+                    f"PDF页数 {total_pages} 超过阈值 {SMALL_PDF_THRESHOLD}，将按每 {CHUNK_SIZE} 页进行分页处理"
+                )
 
                 # 创建临时目录存储分块文件
-                temp_chunks_dir = os.path.join(tempfile.gettempdir(), f"pdf_chunks_{self.uid}")
+                temp_chunks_dir = os.path.join(
+                    tempfile.gettempdir(), f"pdf_chunks_{self.uid}"
+                )
                 os.makedirs(temp_chunks_dir, exist_ok=True)
 
                 try:
@@ -1315,23 +1525,34 @@ class PdfParser(DocumentParser):
                     for start_page in range(0, total_pages, CHUNK_SIZE):
                         end_page = min(start_page + CHUNK_SIZE - 1, total_pages - 1)
 
-                        logger.info(f"处理分块 {chunk_index}: 页码 {start_page + 1}-{end_page + 1}")
+                        logger.info(
+                            f"处理分块 {chunk_index}: 页码 {start_page + 1}-{end_page + 1}"
+                        )
 
                         # 创建分块PDF文件
-                        chunk_pdf_path = os.path.join(temp_chunks_dir, f"chunk_{chunk_index}.pdf")
+                        chunk_pdf_path = os.path.join(
+                            temp_chunks_dir, f"chunk_{chunk_index}.pdf"
+                        )
 
-                        if self._split_pdf_by_pages(start_page, end_page, chunk_pdf_path):
+                        if self._split_pdf_by_pages(
+                            start_page, end_page, chunk_pdf_path
+                        ):
                             # 处理分块
-                            chunk_content = self._process_single_pdf_chunk(chunk_pdf_path, chunk_index)
+                            chunk_content = self._process_single_pdf_chunk(
+                                chunk_pdf_path, chunk_index
+                            )
 
                             if chunk_content:
                                 # 添加页码标记
                                 all_content.append(
-                                    f"\n<!-- Chunk {chunk_index}: Pages {start_page + 1}-{end_page + 1} -->\n")
+                                    f"\n<!-- Chunk {chunk_index}: Pages {start_page + 1}-{end_page + 1} -->\n"
+                                )
                                 all_content.append(chunk_content)
                                 logger.info(f"分块 {chunk_index} 处理完成")
                             else:
-                                logger.warning(f"分块 {chunk_index} 处理失败，将使用备用方案")
+                                logger.warning(
+                                    f"分块 {chunk_index} 处理失败，将使用备用方案"
+                                )
                                 # 对该分块使用直接提取方法
                                 try:
                                     import fitz
@@ -1342,10 +1563,13 @@ class PdfParser(DocumentParser):
                                             chunk_text += page.get_text()
                                         if chunk_text:
                                             all_content.append(
-                                                f"\n<!-- Chunk {chunk_index}: Pages {start_page + 1}-{end_page + 1} -->\n")
+                                                f"\n<!-- Chunk {chunk_index}: Pages {start_page + 1}-{end_page + 1} -->\n"
+                                            )
                                             all_content.append(chunk_text)
                                 except Exception as e:
-                                    logger.error(f"分块 {chunk_index} 备用方案也失败: {e}")
+                                    logger.error(
+                                        f"分块 {chunk_index} 备用方案也失败: {e}"
+                                    )
 
                         chunk_index += 1
 
@@ -1366,6 +1590,7 @@ class PdfParser(DocumentParser):
         except Exception as e:
             logger.error(f"MinerU分页处理失败: {e}")
             import traceback
+
             logger.error(traceback.format_exc())
             raise
 
@@ -1389,12 +1614,15 @@ class PdfParser(DocumentParser):
                     image_data = base_image["image"]
                     image_ext = base_image["ext"]
                     # 保存图片到本地
-                    image_path = os.path.join(self._images_dir, f"image_{xref}.{image_ext}")
-                    with open(image_path, 'wb') as f:
+                    image_path = os.path.join(
+                        self._images_dir, f"image_{xref}.{image_ext}"
+                    )
+                    with open(image_path, "wb") as f:
                         f.write(image_data)
         except Exception as e:
             logger.error(f"直接读取PDF文件失败: {str(e)}")
             import traceback
+
             logger.error(traceback.format_exc())
 
         try:
@@ -1405,12 +1633,15 @@ class PdfParser(DocumentParser):
                     tables = page.extract_tables()
                     for table in tables:
                         for row in table:
-                            row = [str(cell) if cell is not None else "" for cell in row]
+                            row = [
+                                str(cell) if cell is not None else "" for cell in row
+                            ]
                             content += " | ".join(row) + "\n"
 
         except Exception as e:
             logger.error(f"提取PDF表格失败: {str(e)}")
             import traceback
+
             logger.error(traceback.format_exc())
 
         if content:
@@ -1431,6 +1662,7 @@ class PdfParser(DocumentParser):
 
         except Exception as e:
             import traceback
+
             logger.error(traceback.format_exc())
             logger.error(f"MinerU 解析 pdf 文档失败: {self._file_path}, 错误: {e}")
 
@@ -1438,10 +1670,16 @@ class PdfParser(DocumentParser):
             logger.info("尝试使用备用方案直接提取PDF内容")
             self._extract_pdf_directly()
 
+        # text_proxy 不启用页面向量/预览检索，跳过全量页面渲染以节省耗时与磁盘。
+        if not is_multimodal_image_index_enabled():
+            logger.info("当前为 text_proxy 模式，跳过 PDF 页面预览图片生成")
+            return
+
         try:
-            # 生成页面预览图片
+            # 生成页面预览图片（仅 multimodal 需要）
             logger.info("开始生成PDF页面预览图片")
             import pdf2image
+
             convert_kwargs = {}
             poppler_path = self._resolve_poppler_path()
             if poppler_path:
@@ -1452,7 +1690,7 @@ class PdfParser(DocumentParser):
             for i, image in enumerate(images, start=1):
                 page_filename = f"page_{i}.png"
                 page_path = os.path.join(self._pages_dir, page_filename)
-                image.save(page_path, 'PNG')
+                image.save(page_path, "PNG")
                 logger.debug(f"保存页面: {page_filename}")
 
             logger.info(f"PDF页面预览生成完成，共 {len(images)} 页")
@@ -1485,7 +1723,16 @@ def get_document_parser(file_extension: str):
         return PlainTextDocumentParser
     elif file_extension == ".pdf":
         return PdfParser
-    elif file_extension in {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".tif"}:
+    elif file_extension in {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".bmp",
+        ".webp",
+        ".tiff",
+        ".tif",
+    }:
         return ImageParser
     else:
         raise ValueError(f"Unsupported file extension: {file_extension}")

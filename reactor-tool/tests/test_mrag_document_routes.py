@@ -19,7 +19,6 @@ from reactor_tool.tool.mrag.storage.models.kb_file_model import KBFileModel
 
 
 class MragDocumentRoutesTest(unittest.TestCase):
-
     def setUp(self):
         app = FastAPI()
         app.include_router(document_module.router, prefix="/v1")
@@ -57,8 +56,12 @@ class MragDocumentRoutesTest(unittest.TestCase):
             modifier=None,
         )
 
-        with patch.object(document_module, "get_kb_file_store", return_value=file_store):
-            with patch.object(document_module, "get_kb_doc_store", return_value=doc_store):
+        with patch.object(
+            document_module, "get_kb_file_store", return_value=file_store
+        ):
+            with patch.object(
+                document_module, "get_kb_doc_store", return_value=doc_store
+            ):
                 response = self.client.post(
                     "/v1/documents/get_file_full_content",
                     json={"kb_id": "kb-1", "file_id": "file-1"},
@@ -97,10 +100,14 @@ class MragDocumentRoutesTest(unittest.TestCase):
             {
                 "name": "processing",
                 "file_status": TaskStatusEnum.RUNNING.value,
-                "task_status": {"global_status": TaskStatusEnum.RUNNING.value},
+                "task_status": {
+                    "global_status": TaskStatusEnum.RUNNING.value,
+                    "worker_pid": 123,
+                },
                 "doc": None,
                 "expected_status": "PROCESSING",
                 "expected_message": "正文仍在生成中",
+                "worker_alive": True,
             },
             {
                 "name": "failed",
@@ -142,12 +149,21 @@ class MragDocumentRoutesTest(unittest.TestCase):
                 doc_store = MagicMock()
                 doc_store.get_canonical_doc.return_value = case["doc"]
 
-                with patch.object(document_module, "get_kb_file_store", return_value=file_store):
-                    with patch.object(document_module, "get_kb_doc_store", return_value=doc_store):
-                        response = self.client.post(
-                            "/v1/documents/get_file_full_content",
-                            json={"kb_id": "kb-1", "file_id": "file-1"},
-                        )
+                with patch.object(
+                    document_module, "get_kb_file_store", return_value=file_store
+                ):
+                    with patch.object(
+                        document_module, "get_kb_doc_store", return_value=doc_store
+                    ):
+                        with patch.object(
+                            document_module,
+                            "_ingest_worker_alive",
+                            return_value=case.get("worker_alive", False),
+                        ):
+                            response = self.client.post(
+                                "/v1/documents/get_file_full_content",
+                                json={"kb_id": "kb-1", "file_id": "file-1"},
+                            )
 
                 self.assertEqual(200, response.status_code)
                 payload = response.json()["data"]
@@ -165,9 +181,15 @@ class MragDocumentRoutesTest(unittest.TestCase):
         vector_store = MagicMock()
 
         with patch.object(document_module, "get_kb_store", return_value=kb_store):
-            with patch.object(document_module, "get_kb_file_store", return_value=file_store):
-                with patch.object(document_module, "get_kb_doc_store", return_value=doc_store):
-                    with patch.object(document_module, "VectorStore", return_value=vector_store):
+            with patch.object(
+                document_module, "get_kb_file_store", return_value=file_store
+            ):
+                with patch.object(
+                    document_module, "get_kb_doc_store", return_value=doc_store
+                ):
+                    with patch.object(
+                        document_module, "VectorStore", return_value=vector_store
+                    ):
                         response = self.client.post(
                             "/v1/documents/delete_knowledge_base",
                             json={"kb_id": "kb-1"},
@@ -197,15 +219,107 @@ class MragDocumentRoutesTest(unittest.TestCase):
                 def process(self):
                     return None
 
-            with patch.object(document_module.tempfile, "gettempdir", return_value=temp_dir):
-                with patch.object(document_module, "get_kb_file_store", return_value=kb_file_store):
-                    with patch("reactor_tool.tool.mrag.utils.crawl_utils.crawl", return_value="# 网页标题\n\n正文"):
-                        with patch.object(document_module, "DocumentProcessor", ProcessorStub, create=True):
-                            document_module.add_web_url("https://example.com/article", "kb-1")
+            with patch.object(
+                document_module.tempfile, "gettempdir", return_value=temp_dir
+            ):
+                with patch.object(
+                    document_module, "get_kb_file_store", return_value=kb_file_store
+                ):
+                    with patch(
+                        "reactor_tool.tool.mrag.utils.crawl_utils.crawl",
+                        return_value="# 网页标题\n\n正文",
+                    ):
+                        with patch.object(
+                            document_module,
+                            "DocumentProcessor",
+                            ProcessorStub,
+                            create=True,
+                        ):
+                            document_module.add_web_url(
+                                "https://example.com/article", "kb-1"
+                            )
 
         self.assertTrue(kb_file_store.add_file.called)
         created_file = kb_file_store.add_file.call_args.args[0]
         self.assertEqual(SourceTypeEnum.URL.value, created_file.source_type)
+
+    def test_should_mark_running_file_failed_when_ingest_worker_is_dead(self):
+        file_store = MagicMock()
+        running_file = KBFileModel(
+            kb_id="kb-1",
+            file_id="file-dead",
+            file_url="http://127.0.0.1:1601/download/req/demo.pdf",
+            title="demo.pdf",
+            source_type=SourceTypeEnum.FILE.value,
+            task_status={
+                "global_status": TaskStatusEnum.RUNNING.value,
+                "worker_pid": 999999,
+            },
+            file_status=TaskStatusEnum.RUNNING.value,
+            doc_count=0,
+            create_time=datetime(2026, 9, 5, 0, 27, 0),
+            modify_time=datetime(2026, 9, 5, 0, 27, 23),
+            deleted=0,
+        )
+        file_store.list_kb_files.return_value = [running_file]
+        file_store.count_kb_files.return_value = 1
+
+        with patch.object(
+            document_module, "get_kb_file_store", return_value=file_store
+        ):
+            with patch.object(
+                document_module, "_ingest_worker_alive", return_value=False
+            ):
+                response = self.client.post(
+                    "/v1/documents/list_kb_files",
+                    json={"kb_id": "kb-1", "page_no": 1, "page_size": 10},
+                )
+
+        self.assertEqual(200, response.status_code)
+        payload = response.json()
+        self.assertEqual("FAILED", payload["data"]["records"][0]["file_status"])
+        self.assertEqual(
+            "入库进程已退出，请重新入库",
+            payload["data"]["records"][0]["task_status"]["error_message"],
+        )
+        file_store.update_file.assert_called_once()
+
+    def test_should_keep_running_file_when_ingest_worker_is_alive(self):
+        file_store = MagicMock()
+        running_file = KBFileModel(
+            kb_id="kb-1",
+            file_id="file-live",
+            file_url="http://127.0.0.1:1601/download/req/demo.pdf",
+            title="demo.pdf",
+            source_type=SourceTypeEnum.FILE.value,
+            task_status={
+                "global_status": TaskStatusEnum.RUNNING.value,
+                "worker_pid": 123,
+            },
+            file_status=TaskStatusEnum.RUNNING.value,
+            doc_count=0,
+            create_time=datetime(2026, 9, 5, 0, 27, 0),
+            modify_time=datetime(2026, 9, 5, 0, 27, 23),
+            deleted=0,
+        )
+        file_store.list_kb_files.return_value = [running_file]
+        file_store.count_kb_files.return_value = 1
+
+        with patch.object(
+            document_module, "get_kb_file_store", return_value=file_store
+        ):
+            with patch.object(
+                document_module, "_ingest_worker_alive", return_value=True
+            ):
+                response = self.client.post(
+                    "/v1/documents/list_kb_files",
+                    json={"kb_id": "kb-1", "page_no": 1, "page_size": 10},
+                )
+
+        self.assertEqual(200, response.status_code)
+        payload = response.json()
+        self.assertEqual("RUNNING", payload["data"]["records"][0]["file_status"])
+        file_store.update_file.assert_not_called()
 
 
 if __name__ == "__main__":
