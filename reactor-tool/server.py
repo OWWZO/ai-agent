@@ -107,7 +107,7 @@ if __name__ == "__main__":
     parser = OptionParser()
     parser.add_option("--host", dest="host", type="string", default="0.0.0.0")
     parser.add_option("--port", dest="port", type="int", default=1601)
-    parser.add_option("--workers", dest="workers", type="int", default=5)
+    parser.add_option("--workers", dest="workers", type="int", default=3)
     parser.add_option(
         "--role",
         dest="role",

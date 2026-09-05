@@ -4,6 +4,7 @@ import os
 import tempfile
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 from reactor_tool.model.protocal import BashSandboxRequest
 from reactor_tool.tool import bash_sandbox
@@ -552,6 +553,104 @@ def test_e2b_skips_task_description_as_filename():
     assert all(long_stem[:20] not in p for p in written)
 
 
+def test_e2b_file_upload_retries_transient_transport_errors():
+    import httpx
+    from reactor_tool.tool import e2b_file_upload
+
+    for error in (
+        httpx.RemoteProtocolError("peer closed connection"),
+        httpx.ReadTimeout("operation timed out"),
+    ):
+
+        class FakeFiles:
+            def __init__(self):
+                self.calls = 0
+
+            def write_files(self, files):
+                self.calls += 1
+                if self.calls < 3:
+                    raise error
+
+        files_api = FakeFiles()
+
+        class FakeSandbox:
+            files = files_api
+
+        with (
+            patch.object(e2b_file_upload.random, "uniform", return_value=0.0),
+            patch.object(e2b_file_upload.time, "sleep") as sleep,
+        ):
+            bash_sandbox._e2b_write_files(
+                FakeSandbox(), [{"path": "/home/user/workspace/a.txt", "data": b"a"}]
+            )
+
+        assert files_api.calls == 3
+        assert sleep.call_count == 2
+
+
+def test_e2b_file_upload_does_not_retry_non_transient_errors():
+    class FakeFiles:
+        def __init__(self):
+            self.calls = 0
+
+        def write_files(self, files):
+            self.calls += 1
+            raise ValueError("invalid file path")
+
+    files_api = FakeFiles()
+
+    class FakeSandbox:
+        files = files_api
+
+    from reactor_tool.tool import e2b_file_upload
+
+    with patch.object(e2b_file_upload.time, "sleep") as sleep:
+        try:
+            bash_sandbox._e2b_write_files(
+                FakeSandbox(), [{"path": "/home/user/workspace/a.txt", "data": b"a"}]
+            )
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("non-transient upload error should be raised")
+
+    assert files_api.calls == 1
+    sleep.assert_not_called()
+
+
+def test_idle_ttl_skips_in_use_session():
+    kills = {"n": 0}
+
+    class FakeSandbox:
+        def kill(self):
+            kills["n"] += 1
+
+    bash_sandbox._shutdown_all_sessions()
+    entry = bash_sandbox._SessionSandbox(
+        session_id="sess-busy",
+        sandbox=FakeSandbox(),
+        remote_root="/home/user/workspace",
+        last_used_at=time.time() - 400,
+        in_use=1,
+    )
+    with bash_sandbox._pool_guard:
+        bash_sandbox._pool["sess-busy"] = entry
+
+    prev = os.environ.get("BASH_SANDBOX_IDLE_TTL_SEC")
+    os.environ["BASH_SANDBOX_IDLE_TTL_SEC"] = "300"
+    try:
+        bash_sandbox._reap_idle_sessions()
+        assert "sess-busy" in bash_sandbox._pool
+        assert kills["n"] == 0
+        assert bash_sandbox._pool["sess-busy"].in_use == 1
+    finally:
+        bash_sandbox._shutdown_all_sessions()
+        if prev is None:
+            os.environ.pop("BASH_SANDBOX_IDLE_TTL_SEC", None)
+        else:
+            os.environ["BASH_SANDBOX_IDLE_TTL_SEC"] = prev
+
+
 def test_idle_ttl_reaps_session():
     kills = {"n": 0}
 
@@ -594,5 +693,8 @@ if __name__ == "__main__":
     test_e2b_skill_mode_sticky_upgrades_session()
     test_incremental_push_helpers_unit()
     test_e2b_skips_task_description_as_filename()
+    test_e2b_file_upload_retries_transient_transport_errors()
+    test_e2b_file_upload_does_not_retry_non_transient_errors()
+    test_idle_ttl_skips_in_use_session()
     test_idle_ttl_reaps_session()
     print("OK")

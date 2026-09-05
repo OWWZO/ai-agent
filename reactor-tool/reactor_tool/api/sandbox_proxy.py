@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """API 角色：把 bash / code_execution 反代到 sandbox 单进程。"""
+
 from __future__ import annotations
 
 import httpx
@@ -35,7 +36,7 @@ async def proxy_sandbox_tool(request: Request) -> Response:
             headers[key] = request.headers[key]
 
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=_TIMEOUT, trust_env=False) as client:
             upstream = await client.post(target, content=body, headers=headers)
     except httpx.RequestError as exc:
         logger.exception("[sandbox-proxy] {} -> {} failed", name, target)
@@ -48,4 +49,6 @@ async def proxy_sandbox_tool(request: Request) -> Response:
         )
 
     media = upstream.headers.get("content-type") or "application/json"
-    return Response(content=upstream.content, status_code=upstream.status_code, media_type=media)
+    return Response(
+        content=upstream.content, status_code=upstream.status_code, media_type=media
+    )

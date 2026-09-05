@@ -3,7 +3,10 @@
 基于官方 `code-interpreter-v1`（保留 `run_code` 内核），预装：
 
 - 数据分析常用包（pandas / numpy / matplotlib …）
+- **pypdf / pdfplumber / reportlab / pypdfium2** 及 Poppler / qpdf
+- **DOCX/PPTX、OCR、公开源和 GIF** Python 依赖
 - **Playwright + Chromium** 及系统依赖
+- **LibreOffice / Pandoc / Tesseract** 文档转换和 OCR 命令
 - **websockets**
 - **yt-dlp[default] + Node.js**，用于 YouTube 视频搜索、详情和字幕
 

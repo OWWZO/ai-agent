@@ -3,6 +3,7 @@
 Flow: create sandbox → upload local workspace → run_code (persistent kernel) →
 diff remote files → download produced files to local workspace → kill sandbox.
 """
+
 from __future__ import annotations
 
 import base64
@@ -18,11 +19,13 @@ from reactor_tool.tool.python_sandbox_executor import (
     PythonSandboxExecutionResult,
 )
 from reactor_tool.tool.sandbox_backend_config import (
+    apply_e2b_no_proxy,
     get_e2b_sandbox_timeout_seconds,
     get_e2b_template,
     get_e2b_workdir,
     require_e2b_api_key,
 )
+from reactor_tool.tool.e2b_file_upload import write_e2b_files
 
 _EXCLUDED_TOP_DIRS = frozenset({"input"})
 _EXCLUDED_FILE_NAMES = frozenset({"__last_source__.py"})
@@ -86,7 +89,9 @@ class E2BPythonSandboxExecutor:
             for name, path in policy.input_file_paths.items()
         }
 
-    def execute(self, code: str, source_file: str | None = None) -> PythonSandboxExecutionResult:
+    def execute(
+        self, code: str, source_file: str | None = None
+    ) -> PythonSandboxExecutionResult:
         self._ensure_started()
         assert self._sandbox is not None
         self._sync_workspace_to_remote()
@@ -188,6 +193,7 @@ class E2BPythonSandboxExecutor:
         if factory is None:
             from e2b_code_interpreter import Sandbox
 
+            apply_e2b_no_proxy()
             create_kwargs["api_key"] = require_e2b_api_key()
             factory = Sandbox.create
         else:
@@ -248,12 +254,7 @@ class E2BPythonSandboxExecutor:
 
     def _write_files(self, files: list[dict[str, Any]]) -> None:
         assert self._sandbox is not None
-        write_files = getattr(self._sandbox.files, "write_files", None)
-        if callable(write_files):
-            write_files(files)
-            return
-        for item in files:
-            self._sandbox.files.write(item["path"], item["data"])
+        write_e2b_files(self._sandbox.files, files, label="code_execution")
 
     def _snapshot_remote_files(self) -> dict[str, tuple[int, int]]:
         assert self._sandbox is not None
@@ -326,7 +327,9 @@ class E2BPythonSandboxExecutor:
             produced.append(
                 {
                     "file_path": str(local_path),
-                    "relative_path": local_path.relative_to(self._local_workspace).as_posix(),
+                    "relative_path": local_path.relative_to(
+                        self._local_workspace
+                    ).as_posix(),
                     "name": name,
                     "size": local_path.stat().st_size,
                     "mime_type": "image/png",
@@ -404,10 +407,7 @@ def build_workspace_path(relative_path: str) -> str:
             bootstrap = f"import os\nos.chdir({self._remote_output!r})\n"
 
         # Align with ``python script.py``: inject script metadata before user code.
-        meta = (
-            f"__name__ = '__main__'\n"
-            f"__file__ = {remote_source!r}\n"
-        )
+        meta = f"__name__ = '__main__'\n__file__ = {remote_source!r}\n"
         return f"{bootstrap}\n{meta}\n{code}\n"
 
     def _resolve_remote_source_file(self, source_file: str | None) -> str:

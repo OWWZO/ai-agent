@@ -6,7 +6,7 @@
 - e2b 双路径：
   - 默认（命令不含 skills/ 且 session 未升级）：一次性建→推 workspace→exec→kill（对齐 code_execution）
   - skill 会话池：命令含 skills/ 首次升级后强粘性；复用沙箱 + workspace/skills 增量推送 + skills 回写；
-    每次访问刷新 idle TTL（默认 5min）
+    每次访问刷新 idle TTL（默认 5min）；in_use>0 的会话不被 reaper 回收
 """
 
 from __future__ import annotations
@@ -27,12 +27,14 @@ from loguru import logger
 from reactor_tool.model.protocal import BashSandboxRequest, BashSandboxResponse
 from reactor_tool.util.file_util import upload_file_by_path
 from reactor_tool.tool.sandbox_backend_config import (
+    apply_e2b_no_proxy,
     get_e2b_sandbox_timeout_seconds,
     get_e2b_template,
     get_e2b_workdir,
     get_sandbox_backend,
     require_e2b_api_key,
 )
+from reactor_tool.tool.e2b_file_upload import write_e2b_files
 
 SKILLS_DIR = "skills"
 _DEFAULT_IDLE_TTL_SEC = 300  # 5 minutes，对齐「会话复用 + 空闲回收」
@@ -374,6 +376,7 @@ class _SessionSandbox:
     uploaded: Dict[str, Tuple[int, int]] = field(default_factory=dict)
     last_used_at: float = field(default_factory=time.time)
     lock: threading.Lock = field(default_factory=threading.Lock)
+    in_use: int = 0
 
 
 _pool_guard = threading.Lock()
@@ -451,6 +454,8 @@ def _reap_idle_sessions() -> None:
     expired: List[_SessionSandbox] = []
     with _pool_guard:
         for sid, entry in list(_pool.items()):
+            if entry.in_use > 0:
+                continue
             if now - entry.last_used_at >= ttl:
                 expired.append(_pool.pop(sid))
     for entry in expired:
@@ -484,9 +489,16 @@ def _shutdown_all_sessions() -> None:
 atexit.register(_shutdown_all_sessions)
 
 
+def _release_session_use(entry: _SessionSandbox) -> None:
+    with _pool_guard:
+        entry.in_use = max(0, entry.in_use - 1)
+        entry.last_used_at = time.time()
+
+
 def _create_e2b_sandbox(timeout_sec: int) -> Any:
     from e2b_code_interpreter import Sandbox
 
+    apply_e2b_no_proxy()
     idle = _idle_ttl_sec()
     # 沙箱云端 lifetime 必须盖住空闲 TTL，否则未到我们的 reap 就被 E2B 杀掉
     lifetime = max(
@@ -535,6 +547,8 @@ def _acquire_session_sandbox(
                 remote_root=get_e2b_workdir(),
             )
             _pool[sid] = entry
+        entry.in_use += 1
+        entry.last_used_at = time.time()
 
     with entry.lock:
         if entry.sandbox is not None:
@@ -556,8 +570,9 @@ def _acquire_session_sandbox(
             return entry, True
         except Exception:
             with _pool_guard:
+                entry.in_use = max(0, entry.in_use - 1)
                 cur = _pool.get(sid)
-                if cur is entry and entry.sandbox is None:
+                if cur is entry and entry.sandbox is None and entry.in_use == 0:
                     _pool.pop(sid, None)
             raise
 
@@ -605,6 +620,7 @@ def _create_ephemeral_e2b_sandbox(timeout_sec: int) -> Any:
     """一次性沙箱：lifetime 只盖住本次命令，不按 idle TTL 拉长。"""
     from e2b_code_interpreter import Sandbox
 
+    apply_e2b_no_proxy()
     create_kwargs: dict[str, Any] = {
         "api_key": require_e2b_api_key(),
         "timeout": get_e2b_sandbox_timeout_seconds(float(timeout_sec)),
@@ -677,70 +693,74 @@ def _exec_e2b_skill_session(
     """skill 强粘性会话：懒建/复用 → workspace/skills 增量推送 → exec → skills 增量回写。"""
     entry, created = _acquire_session_sandbox(session_id, timeout_sec)
     synced: List[str] = []
-
-    with entry.lock:
-        sandbox = entry.sandbox
-        remote_root = entry.remote_root
-        assert sandbox is not None
-        try:
-            ws_up, ws_skip = _e2b_push_workspace_incremental(
-                sandbox, workspace, remote_root, entry.uploaded
-            )
-            sk_up, sk_skip = (0, 0)
-            if lib_root is not None and lib_root.is_dir():
-                sk_up, sk_skip = _e2b_push_skills_incremental(
-                    sandbox, lib_root, remote_root, disabled, entry.uploaded
-                )
-            before = _e2b_snapshot_workspace_files(sandbox, remote_root)
-            logger.info(
-                "[bash_sandbox] skill-session push session={} created={} workspace(up={},skip={}) skills(up={},skip={})",
-                entry.session_id,
-                created,
-                ws_up,
-                ws_skip,
-                sk_up,
-                sk_skip,
-            )
-
-            exit_code, stdout, stderr, timed_out = _e2b_run_command(
-                sandbox, command, remote_root, timeout_sec
-            )
-            _e2b_download_changed_files(
-                sandbox, remote_root, workspace, before, produced_paths
-            )
-            stdout, t1 = _truncate_text(stdout, max_output_chars)
-            stderr, t2 = _truncate_text(stderr, max_output_chars)
-
-            if lib_root is not None:
-                synced = _e2b_incremental_sync_skills(sandbox, remote_root, lib_root)
-
-            entry.last_used_at = time.time()
-            logger.info(
-                "[bash_sandbox] skill-session done session={} created={} exit={} timedOut={} synced={}",
-                entry.session_id,
-                created,
-                exit_code,
-                timed_out,
-                synced,
-            )
-            return exit_code, stdout, stderr, t1 or t2, timed_out, synced
-        except Exception:
-            # 通道异常：置 dead，下次重建（对齐 kimicode markDead）
-            logger.exception(
-                "[bash_sandbox] exec channel failed session={}", entry.session_id
-            )
-            entry.sandbox = None
-            entry.uploaded.clear()
+    try:
+        with entry.lock:
+            sandbox = entry.sandbox
+            remote_root = entry.remote_root
+            assert sandbox is not None
             try:
-                kill = getattr(sandbox, "kill", None)
-                if callable(kill):
-                    kill()
+                ws_up, ws_skip = _e2b_push_workspace_incremental(
+                    sandbox, workspace, remote_root, entry.uploaded
+                )
+                sk_up, sk_skip = (0, 0)
+                if lib_root is not None and lib_root.is_dir():
+                    sk_up, sk_skip = _e2b_push_skills_incremental(
+                        sandbox, lib_root, remote_root, disabled, entry.uploaded
+                    )
+                before = _e2b_snapshot_workspace_files(sandbox, remote_root)
+                logger.info(
+                    "[bash_sandbox] skill-session push session={} created={} workspace(up={},skip={}) skills(up={},skip={})",
+                    entry.session_id,
+                    created,
+                    ws_up,
+                    ws_skip,
+                    sk_up,
+                    sk_skip,
+                )
+
+                exit_code, stdout, stderr, timed_out = _e2b_run_command(
+                    sandbox, command, remote_root, timeout_sec
+                )
+                _e2b_download_changed_files(
+                    sandbox, remote_root, workspace, before, produced_paths
+                )
+                stdout, t1 = _truncate_text(stdout, max_output_chars)
+                stderr, t2 = _truncate_text(stderr, max_output_chars)
+
+                if lib_root is not None:
+                    synced = _e2b_incremental_sync_skills(
+                        sandbox, remote_root, lib_root
+                    )
+
+                entry.last_used_at = time.time()
+                logger.info(
+                    "[bash_sandbox] skill-session done session={} created={} exit={} timedOut={} synced={}",
+                    entry.session_id,
+                    created,
+                    exit_code,
+                    timed_out,
+                    synced,
+                )
+                return exit_code, stdout, stderr, t1 or t2, timed_out, synced
             except Exception:
-                pass
-            with _pool_guard:
-                if _pool.get(entry.session_id) is entry:
-                    _pool.pop(entry.session_id, None)
-            raise
+                # 通道异常：置 dead，下次重建（对齐 kimicode markDead）
+                logger.exception(
+                    "[bash_sandbox] exec channel failed session={}", entry.session_id
+                )
+                entry.sandbox = None
+                entry.uploaded.clear()
+                try:
+                    kill = getattr(sandbox, "kill", None)
+                    if callable(kill):
+                        kill()
+                except Exception:
+                    pass
+                with _pool_guard:
+                    if _pool.get(entry.session_id) is entry:
+                        _pool.pop(entry.session_id, None)
+                raise
+    finally:
+        _release_session_use(entry)
 
 
 def _file_sig(path: Path) -> Tuple[int, int]:
@@ -1078,12 +1098,8 @@ def _e2b_write_files(sandbox: Any, files: list[dict[str, Any]]) -> None:
         safe.append(item)
     if not safe:
         return
-    write_files = getattr(files_api, "write_files", None)
-    if callable(write_files):
-        write_files(safe)
-        return
-    for item in safe:
-        files_api.write(item["path"], item["data"])
+
+    write_e2b_files(files_api, safe, label="bash_sandbox")
 
 
 def _e2b_run_command(

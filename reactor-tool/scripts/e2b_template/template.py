@@ -1,7 +1,8 @@
 """E2B custom template for Reactor code_execution / code_interpreter.
 
 Base: code-interpreter-v1 (keeps run_code kernel).
-Adds: common data stack + Playwright Chromium + yt-dlp for public YouTube access.
+Adds: common data stack + PDF tooling + Playwright Chromium + yt-dlp for public
+YouTube access.
 """
 
 from __future__ import annotations
@@ -26,6 +27,27 @@ _PIP_PACKAGES = [
     "altair",
     "tabulate",
     "pillow",
+    "pyyaml",
+    "sqlalchemy",
+    "statsmodels",
+    # PDF skills use both Python libraries and command-line tools below.
+    "pypdf",
+    "pdfplumber",
+    "reportlab",
+    "pypdfium2",
+    "pdf2image",
+    "pymupdf",
+    # Document skills use these parsers and validation/rendering helpers.
+    "python-docx",
+    "python-pptx",
+    "markitdown[pptx]",
+    "defusedxml",
+    "lxml",
+    "markdown2",
+    # OCR, animated image, and public-source skills.
+    "pytesseract",
+    "imageio",
+    "feedparser",
     # YouTube extraction requires yt-dlp's default JS challenge support.
     "yt-dlp[default]>=2026.07.04",
 ]
@@ -58,6 +80,15 @@ template = (
             "fonts-liberation",
             "fonts-noto-cjk",
             "nodejs",
+            "poppler-utils",
+            "qpdf",
+            "libreoffice",
+            "pandoc",
+            "tesseract-ocr",
+            "tesseract-ocr-chi-sim",
+            "tesseract-ocr-chi-tra",
+            "gcc",
+            "libc6-dev",
         ],
         no_install_recommends=True,
     )

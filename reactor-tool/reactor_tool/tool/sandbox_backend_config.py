@@ -1,4 +1,5 @@
 """Code-execution sandbox backend selection (local subprocess vs E2B cloud)."""
+
 from __future__ import annotations
 
 import os
@@ -45,3 +46,26 @@ def get_e2b_sandbox_timeout_seconds(exec_timeout_seconds: float) -> int:
     if raw:
         return max(60, int(raw))
     return max(300, int(exec_timeout_seconds) + 120)
+
+
+_E2B_NO_PROXY_HOSTS = ("e2b.app", ".e2b.app", "e2b.dev", ".e2b.dev")
+
+
+def apply_e2b_no_proxy() -> None:
+    """让 E2B API / sandbox 主机绕过 HTTP(S)_PROXY。
+
+    e2b SDK 的 httpx 默认 trust_env=True；只设 proxy=None 仍会走环境代理。
+    往 NO_PROXY 追加 e2b 域名是进程级、可并发安全的（只排除这些主机）。
+    """
+    for key in ("NO_PROXY", "no_proxy"):
+        current = os.environ.get(key, "")
+        parts = [p.strip() for p in current.split(",") if p.strip()]
+        existing = set(parts)
+        changed = key not in os.environ
+        for host in _E2B_NO_PROXY_HOSTS:
+            if host not in existing:
+                parts.append(host)
+                existing.add(host)
+                changed = True
+        if changed:
+            os.environ[key] = ",".join(parts)
