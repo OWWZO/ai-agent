@@ -55,7 +55,9 @@ class CodeInterpreterOutputUploadTest(unittest.IsolatedAsyncioTestCase):
                 "downloadUrl": f"download/{request_id}/{file_name}",
             }
 
-        async def fake_upload_file(content: str, file_name: str, file_type: str, request_id: str):
+        async def fake_upload_file(
+            content: str, file_name: str, file_type: str, request_id: str
+        ):
             return {
                 "fileName": file_name,
                 "domainUrl": f"preview/{request_id}/{file_name}",
@@ -79,42 +81,99 @@ class CodeInterpreterOutputUploadTest(unittest.IsolatedAsyncioTestCase):
         def fake_create_ci_agent(*args, **kwargs):
             return FakeAgent(kwargs["output_dir"])
 
-        with patch(
-            "reactor_tool.tool.code_interpreter.download_all_files_in_path",
-            new=AsyncMock(return_value=[]),
-        ), patch(
-            "reactor_tool.tool.code_interpreter.get_prompt",
-            return_value=prompt_template,
-        ), patch(
-            "reactor_tool.tool.code_interpreter.create_ci_agent",
-            side_effect=fake_create_ci_agent,
-        ), patch(
-            "reactor_tool.tool.code_interpreter.upload_file_by_path",
-            new=AsyncMock(side_effect=fake_upload_file_by_path),
-        ), patch(
-            "reactor_tool.tool.code_interpreter.upload_file",
-            new=AsyncMock(side_effect=fake_upload_file),
-        ), patch(
-            "reactor_tool.tool.code_interpreter.FinalAnswerStep",
-            new=FakeFinalAnswerStep,
+        with (
+            patch(
+                "reactor_tool.tool.code_interpreter.download_all_files_in_path",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch(
+                "reactor_tool.tool.code_interpreter.get_prompt",
+                return_value=prompt_template,
+            ),
+            patch(
+                "reactor_tool.tool.code_interpreter.create_ci_agent",
+                side_effect=fake_create_ci_agent,
+            ),
+            patch(
+                "reactor_tool.tool.code_interpreter.upload_file_by_path",
+                new=AsyncMock(side_effect=fake_upload_file_by_path),
+            ),
+            patch(
+                "reactor_tool.tool.code_interpreter.upload_file",
+                new=AsyncMock(side_effect=fake_upload_file),
+            ),
+            patch(
+                "reactor_tool.tool.code_interpreter.FinalAnswerStep",
+                new=FakeFinalAnswerStep,
+            ),
         ):
             outputs = [
                 item
                 async for item in code_interpreter_module.code_interpreter_agent(
                     task="生成图表",
                     request_id="req-image-output",
+                    report_file_name="图表报告.md",
                     stream=True,
                 )
             ]
 
-        self.assertEqual(1, len(outputs))
-        result = outputs[0]
+        result = next(item for item in outputs if isinstance(item, ActionOutput))
         self.assertIsInstance(result, ActionOutput)
         self.assertEqual("图表已生成", result.content)
         self.assertEqual(
-            ["chart.png", "生成图表_代码输出.md"],
+            ["chart.png", "图表报告.md"],
             [item["fileName"] for item in result.file_list],
         )
+
+    async def test_should_keep_final_answer_when_report_upload_fails(self):
+        code_interpreter_module = load_code_interpreter_module()
+        prompt_template = {"task_template": "{{ task }}"}
+
+        class FakeAgent:
+            def run(self, task: str, stream: bool = True, max_steps: int = 10):
+                yield FakeFinalAnswerStep("结论仍然可用")
+
+            def get_produced_files(self):
+                return []
+
+            def close_sandbox(self):
+                return None
+
+        with (
+            patch(
+                "reactor_tool.tool.code_interpreter.download_all_files_in_path",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch(
+                "reactor_tool.tool.code_interpreter.get_prompt",
+                return_value=prompt_template,
+            ),
+            patch(
+                "reactor_tool.tool.code_interpreter.create_ci_agent",
+                return_value=FakeAgent(),
+            ),
+            patch(
+                "reactor_tool.tool.code_interpreter.upload_file",
+                new=AsyncMock(side_effect=RuntimeError("HTTP 500")),
+            ),
+            patch(
+                "reactor_tool.tool.code_interpreter.FinalAnswerStep",
+                new=FakeFinalAnswerStep,
+            ),
+        ):
+            outputs = [
+                item
+                async for item in code_interpreter_module.code_interpreter_agent(
+                    task="生成结论",
+                    request_id="req-report-upload-failure",
+                    report_file_name="结论报告.md",
+                    stream=True,
+                )
+            ]
+
+        result = next(item for item in outputs if isinstance(item, ActionOutput))
+        self.assertEqual("结论仍然可用", result.content)
+        self.assertEqual([], result.file_list)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ from reactor_tool.db.file_table_op import (
     normalize_stored_file_name,
     normalize_stored_relative_path,
 )
+from reactor_tool.util.file_name import normalize_report_file_name
 from reactor_tool.model.protocal import get_file_id
 
 
@@ -33,6 +34,23 @@ class FileNameSafetyTest(unittest.TestCase):
     def test_should_reject_empty_file_name(self):
         with self.assertRaises(ValueError):
             normalize_stored_file_name("   ")
+
+    def test_should_limit_utf8_file_name_bytes_without_cutting_a_character(self):
+        normalized = normalize_stored_file_name("测" * 120 + ".txt")
+
+        self.assertLessEqual(len(normalized.encode("utf-8")), 240)
+        self.assertTrue(normalized.endswith(".txt"))
+        normalized.encode("utf-8").decode("utf-8")
+
+    def test_should_apply_deepsearch_report_name_limit(self):
+        self.assertEqual(
+            "数据分析报告.md",
+            normalize_report_file_name("测" * 40, "数据分析报告.md"),
+        )
+        self.assertEqual(
+            "a_b.md",
+            normalize_report_file_name("a/b", "数据分析报告.md"),
+        )
 
     def test_should_keep_relative_directories(self):
         self.assertEqual(

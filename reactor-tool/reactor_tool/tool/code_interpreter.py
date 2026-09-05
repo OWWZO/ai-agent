@@ -8,6 +8,7 @@
 
 对外由 api/tool.py 的 /code_interpreter 调用 code_interpreter_agent。
 """
+
 import asyncio
 import importlib
 import json
@@ -37,7 +38,12 @@ from reactor_tool.tool.code_interpreter_policy import (
     build_permission_policy,
     validate_code_against_policy,
 )
-from reactor_tool.util.file_util import download_all_files_in_path, upload_file, upload_file_by_path
+from reactor_tool.util.file_name import normalize_report_file_name
+from reactor_tool.util.file_util import (
+    download_all_files_in_path,
+    upload_file,
+    upload_file_by_path,
+)
 from reactor_tool.util.log_util import timer
 from reactor_tool.util.llm_util import ask_llm_sync_iter
 from reactor_tool.util.prompt_util import get_prompt
@@ -105,10 +111,16 @@ def _decode_utf8(content: bytes) -> str:
 
 def _normalize_message_value(value: Any) -> Any:
     if isinstance(value, dict):
-        return {key: _normalize_message_value(val) for key, val in value.items() if val is not None}
+        return {
+            key: _normalize_message_value(val)
+            for key, val in value.items()
+            if val is not None
+        }
     if isinstance(value, list):
         return [_normalize_message_value(item) for item in value]
-    if hasattr(value, "value") and not isinstance(value, (str, bytes, int, float, bool)):
+    if hasattr(value, "value") and not isinstance(
+        value, (str, bytes, int, float, bool)
+    ):
         return _normalize_message_value(value.value)
     return value
 
@@ -130,6 +142,7 @@ def _chat_message_to_dict(message: Any) -> dict:
 
 class RawOpenAICompatHTTPModel(OpenAIServerModel):
     """直连 OpenAI 兼容 HTTP 的 smolagents 模型适配（绕过 litellm 部分限制）。"""
+
     """
     复用 llm_util 中统一的大模型请求逻辑，保持和其他工具一致。
     """
@@ -165,7 +178,9 @@ class RawOpenAICompatHTTPModel(OpenAIServerModel):
         if self.kwargs.get("timeout") is not None:
             completion_kwargs["timeout"] = self.kwargs.get("timeout")
 
-        message_payload = [_chat_message_to_dict(message) for message in prepared_messages]
+        message_payload = [
+            _chat_message_to_dict(message) for message in prepared_messages
+        ]
         return message_payload, model_id, extra_headers, completion_kwargs
 
     def generate_stream(
@@ -176,12 +191,14 @@ class RawOpenAICompatHTTPModel(OpenAIServerModel):
         tools_to_call_from=None,
         **kwargs,
     ):
-        message_payload, model_id, extra_headers, completion_kwargs = self._prepare_llm_kwargs(
-            messages=messages,
-            stop_sequences=stop_sequences,
-            response_format=response_format,
-            tools_to_call_from=tools_to_call_from,
-            **kwargs,
+        message_payload, model_id, extra_headers, completion_kwargs = (
+            self._prepare_llm_kwargs(
+                messages=messages,
+                stop_sequences=stop_sequences,
+                response_format=response_format,
+                tools_to_call_from=tools_to_call_from,
+                **kwargs,
+            )
         )
         logger.info(f"[code_interpreter] llm_util stream request: model={model_id}")
 
@@ -204,12 +221,14 @@ class RawOpenAICompatHTTPModel(OpenAIServerModel):
         tools_to_call_from=None,
         **kwargs,
     ) -> ChatMessage:
-        message_payload, model_id, extra_headers, completion_kwargs = self._prepare_llm_kwargs(
-            messages=messages,
-            stop_sequences=stop_sequences,
-            response_format=response_format,
-            tools_to_call_from=tools_to_call_from,
-            **kwargs,
+        message_payload, model_id, extra_headers, completion_kwargs = (
+            self._prepare_llm_kwargs(
+                messages=messages,
+                stop_sequences=stop_sequences,
+                response_format=response_format,
+                tools_to_call_from=tools_to_call_from,
+                **kwargs,
+            )
         )
         content_parts: list[str] = []
         logger.info(f"[code_interpreter] llm_util aggregate request: model={model_id}")
@@ -230,6 +249,7 @@ class RawOpenAICompatHTTPModel(OpenAIServerModel):
             raw={},
         )
 
+
 @timer()
 async def code_interpreter_agent(
     task: str,
@@ -239,6 +259,7 @@ async def code_interpreter_agent(
     request_id: str = "",
     stream: bool = True,
     permission_profile: str = "analysis",
+    report_file_name: Optional[str] = None,
 ):
     """代码解释器主入口：建工作区 → 下载输入 → 权限策略 → 驱动 CIAgent 流式产出。"""
     work_dir = ""
@@ -272,7 +293,6 @@ async def code_interpreter_agent(
         files = []
         if import_files:
             for import_file in import_files:
-
                 file_name = import_file["file_name"]
 
                 file_path = import_file["file_path"]
@@ -291,20 +311,24 @@ async def code_interpreter_agent(
                 # 文本文件
                 elif file_name.split(".")[-1] in ["txt", "md", "html"]:
                     try:
-                        with open(file_path, "r", encoding='utf-8') as rf:
+                        with open(file_path, "r", encoding="utf-8") as rf:
                             files.append(
                                 {
                                     "path": file_path,
-                                    "abstract": "".join(rf.readlines())[:max_file_abstract_size],
+                                    "abstract": "".join(rf.readlines())[
+                                        :max_file_abstract_size
+                                    ],
                                 }
                             )
                     except UnicodeDecodeError:
                         # UTF-8失败时尝试GBK
-                        with open(file_path, "r", encoding='gbk') as rf:
+                        with open(file_path, "r", encoding="gbk") as rf:
                             files.append(
                                 {
                                     "path": file_path,
-                                    "abstract": "".join(rf.readlines())[:max_file_abstract_size],
+                                    "abstract": "".join(rf.readlines())[
+                                        :max_file_abstract_size
+                                    ],
                                 }
                             )
 
@@ -326,7 +350,9 @@ async def code_interpreter_agent(
             task=task,
             output_dir=output_dir,
             permission_profile=permission_policy.profile,
-            available_helpers=permission_policy.to_prompt_context()["available_helpers"],
+            available_helpers=permission_policy.to_prompt_context()[
+                "available_helpers"
+            ],
             input_file_names=permission_policy.to_prompt_context()["input_file_names"],
         )
 
@@ -343,8 +369,12 @@ async def code_interpreter_agent(
                     abstract = str(item.get("abstract") or "").strip()
                     if not abstract:
                         continue
-                    preview = abstract if len(abstract) <= 800 else abstract[:800] + "\n..."
-                    abstracts.append(f"### 预览 `{item.get('path')}`\n\n```\n{preview}\n```")
+                    preview = (
+                        abstract if len(abstract) <= 800 else abstract[:800] + "\n..."
+                    )
+                    abstracts.append(
+                        f"### 预览 `{item.get('path')}`\n\n```\n{preview}\n```"
+                    )
                 if abstracts:
                     yield "\n## 数据预览  \n\n" + "\n\n".join(abstracts) + "\n"
             yield "\n# 执行过程  \n"
@@ -380,20 +410,36 @@ async def code_interpreter_agent(
                         file_path = produced_file.get("file_path")
                         if not file_path:
                             continue
-                        file_info = await upload_file_by_path(
-                            file_path=file_path, request_id=request_id
-                        )
-                        if file_info:
-                            file_list.append(file_info)
-                    code_name = f"{task[:20]}_代码输出.md"
-                    file_list.append(
-                        await upload_file(
+                        try:
+                            file_info = await upload_file_by_path(
+                                file_path=file_path, request_id=request_id
+                            )
+                            if file_info:
+                                file_list.append(file_info)
+                        except Exception:
+                            logger.exception(
+                                "[code_interpreter] produced file upload failed: {}",
+                                file_path,
+                            )
+                    code_name = normalize_report_file_name(
+                        report_file_name or f"{str(task or '')[:20]}_代码输出.md",
+                        "代码解释器输出.md",
+                    )
+                    try:
+                        report_info = await upload_file(
                             content=step.output,
                             file_name=code_name,
                             file_type="md",
                             request_id=request_id,
                         )
-                    )
+                        if report_info:
+                            file_list.append(report_info)
+                    except Exception:
+                        # 报告上传是交付增强项，不能覆盖已经完成的代码执行结论。
+                        logger.exception(
+                            "[code_interpreter] final report upload failed, file_name={}",
+                            code_name,
+                        )
                     yield "\n# 执行结论  \n"
                     output = ActionOutput(content=step.output, file_list=file_list)
                     yield output
@@ -428,7 +474,9 @@ def _ci_model_id_and_litellm_kwargs():
     - qwen* / dashscope/*  → 走阿里 DashScope 兼容接口
     - glm-* / zhipuai/glm-* → 走智谱 OpenAI 兼容接口
     """
-    model_id = (os.getenv("CODE_INTEPRETER_MODEL") or os.getenv("DEFAULT_MODEL") or "gpt-4.1").strip()
+    model_id = (
+        os.getenv("CODE_INTEPRETER_MODEL") or os.getenv("DEFAULT_MODEL") or "gpt-4.1"
+    ).strip()
 
     # 1) Qwen / DashScope
     if model_id.startswith("qwen") or model_id.startswith("dashscope/"):
@@ -441,7 +489,9 @@ def _ci_model_id_and_litellm_kwargs():
         if not api_base.endswith("/v1"):
             api_base = api_base + "/v1"
         api_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY")
-        final_model = model_id.split("/", 1)[1] if model_id.startswith("dashscope/") else model_id
+        final_model = (
+            model_id.split("/", 1)[1] if model_id.startswith("dashscope/") else model_id
+        )
         return final_model, {
             "api_base": api_base,
             "api_key": api_key,
@@ -507,12 +557,18 @@ def create_ci_agent(
             model_id=model_id,
             api_base=api_base,
             api_key=api_key,
-            **{k: v for k, v in litellm_extra.items() if k not in ("api_base", "api_key")},
+            **{
+                k: v
+                for k, v in litellm_extra.items()
+                if k not in ("api_base", "api_key")
+            },
         )
 
     if permission_policy is None:
         workspace_root = str(Path(output_dir or tempfile.mkdtemp()).resolve())
-        final_output_dir = str(Path(output_dir or Path(workspace_root).joinpath("output")).resolve())
+        final_output_dir = str(
+            Path(output_dir or Path(workspace_root).joinpath("output")).resolve()
+        )
         permission_policy = build_permission_policy(
             profile="analysis",
             workspace_root=workspace_root,
@@ -527,7 +583,9 @@ def create_ci_agent(
         return_full_result=return_full_result,
         additional_authorized_imports=list(permission_policy.authorized_imports),
         output_dir=output_dir,
-        before_execute=lambda code_action: validate_code_against_policy(code_action, permission_policy),
+        before_execute=lambda code_action: validate_code_against_policy(
+            code_action, permission_policy
+        ),
         runtime_permission_policy=permission_policy,
     )
 

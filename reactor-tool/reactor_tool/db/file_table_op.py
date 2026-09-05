@@ -7,7 +7,6 @@
 """
 
 import os
-import re
 from typing import List
 
 from fastapi import UploadFile
@@ -15,6 +14,7 @@ from sqlmodel import select
 
 from reactor_tool.db.file_table import FileInfo
 from reactor_tool.db.db_engine import async_session_local
+from reactor_tool.util.file_name import normalize_stored_file_name
 from reactor_tool.util.log_util import timer
 
 
@@ -87,39 +87,6 @@ class _FileDB(object):
 
 
 FileDB = _FileDB()
-
-
-_INVALID_FILE_NAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
-_WINDOWS_RESERVED_FILE_NAMES = {
-    "CON",
-    "PRN",
-    "AUX",
-    "NUL",
-    *(f"COM{index}" for index in range(1, 10)),
-    *(f"LPT{index}" for index in range(1, 10)),
-}
-_MAX_STORED_FILE_NAME_LENGTH = 120
-
-
-def normalize_stored_file_name(file_name: str) -> str:
-    """统一文件名，避免 Windows 非法字符、保留名和超长路径导致落盘失败。"""
-    # 归一化结果同时用于落盘、file_id 计算和 URL 生成，必须在所有入口保持一致。
-    normalized = os.path.basename((file_name or "").strip())
-    if not normalized:
-        raise ValueError("file_name is empty")
-
-    normalized = _INVALID_FILE_NAME_CHARS.sub("_", normalized).rstrip(" .")
-    if not normalized:
-        raise ValueError("file_name is empty")
-
-    stem, suffix = os.path.splitext(normalized)
-    if stem.upper() in _WINDOWS_RESERVED_FILE_NAMES:
-        stem = f"_{stem}"
-
-    suffix = suffix[: _MAX_STORED_FILE_NAME_LENGTH - 1]
-    max_stem_length = max(1, _MAX_STORED_FILE_NAME_LENGTH - len(suffix))
-    normalized = f"{stem[:max_stem_length]}{suffix}"
-    return normalized
 
 
 def normalize_stored_relative_path(file_name: str) -> str:

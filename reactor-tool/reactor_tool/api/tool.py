@@ -53,6 +53,7 @@ from reactor_tool.tool.mrag.storage.store_factory import (
 )
 from reactor_tool.tool.web_fetcher import WebFetcher
 from reactor_tool.tool.code_interpreter_policy import CodeExecutionPermissionError
+from reactor_tool.util.file_name import normalize_report_file_name
 from reactor_tool.util.file_util import upload_file
 from reactor_tool.util.prompt_util import get_prompt
 from reactor_tool.util.middleware_util import RequestHandlerRoute
@@ -115,6 +116,7 @@ async def post_code_interpreter(
                 task=body.task,
                 file_names=body.file_names,
                 request_id=body.request_id,
+                report_file_name=body.file_name,
                 stream=True,
                 permission_profile=body.permission_profile,
             ):
@@ -231,6 +233,7 @@ async def post_code_interpreter(
                 task=body.task,
                 file_names=body.file_names,
                 request_id=body.request_id,
+                report_file_name=body.file_name,
                 stream=body.stream,
                 permission_profile=body.permission_profile,
             ):
@@ -255,14 +258,27 @@ async def post_code_interpreter(
         out_file_type = getattr(body, "file_type", None) or "md"
         if out_file_type == "ppt":
             out_file_type = "html"
-        file_info = [
-            await upload_file(
-                content=content,
-                file_name=out_file_name,
-                request_id=body.request_id,
-                file_type=out_file_type,
+        if out_file_type == "md":
+            out_file_name = normalize_report_file_name(
+                out_file_name, "代码解释器输出.md"
             )
-        ]
+        file_info = []
+        try:
+            file_info.append(
+                await upload_file(
+                    content=content,
+                    file_name=out_file_name,
+                    request_id=body.request_id,
+                    file_type=out_file_type,
+                )
+            )
+        except Exception:
+            # 非流式调用也要保留已经生成的正文，文件上传失败不能把成功结果变成 HTTP 500。
+            logger.exception(
+                "code_interpreter final report upload failed, request_id={}, file_name={}",
+                body.request_id,
+                out_file_name,
+            )
         return {
             "code": 200,
             "data": content,

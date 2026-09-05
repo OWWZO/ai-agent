@@ -7,6 +7,7 @@
 
 import mimetypes
 import os
+import re
 from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, File, Form, UploadFile
@@ -31,6 +32,46 @@ from reactor_tool.db.file_table_op import (
 
 
 router = APIRouter(route_class=RequestHandlerRoute)
+
+_THREE_JS_URL = "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"
+_THREE_JS_TAG = f'<script src="{_THREE_JS_URL}"></script>\n'
+_THREE_SCRIPT_HINT = re.compile(
+    r"(?is)<script\b[^>]*\bsrc\s*=\s*['\"][^'\"]*three(?:\.min)?\.js"
+)
+_THREE_USAGE_HINT = re.compile(
+    r"(?is)(?:\bwindow\s*\.\s*THREE\b|\bTHREE\s*\.\s*[A-Za-z_$]|"
+    r"\bfrom\s*['\"]three['\"]|three/addons/)"
+)
+
+
+def _inject_three_runtime(html: str) -> str:
+    """Inject the legacy global Three.js runtime before authored scripts when needed."""
+    if not _THREE_USAGE_HINT.search(html) or _THREE_SCRIPT_HINT.search(html):
+        return html
+
+    head_close = re.search(r"(?is)</head\s*>", html)
+    if head_close:
+        return html[: head_close.start()] + _THREE_JS_TAG + html[head_close.start() :]
+
+    head_open = re.search(r"(?is)<head\b[^>]*>", html)
+    if head_open:
+        return html[: head_open.end()] + "\n" + _THREE_JS_TAG + html[head_open.end() :]
+
+    return _THREE_JS_TAG + html
+
+
+def _build_html_preview_content(file_path: str, file_name: str) -> bytes | None:
+    """Return an injected HTML preview body, or None when the file needs no rewrite."""
+    if not file_name.lower().endswith((".html", ".htm")):
+        return None
+    try:
+        with open(file_path, "rb") as file:
+            raw = file.read()
+        html = raw.decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    preview = _inject_three_runtime(html)
+    return preview.encode("utf-8") if preview != html else None
 
 
 async def _get_file_info_by_request_and_name(request_id: str, raw_file_name: str):
@@ -231,14 +272,23 @@ async def preview_file(file_id: str, file_name: str):
 
     encoded_file_name = quote(file_name)
 
+    common_headers = {
+        "Content-Disposition": f"{disposition}; filename=\"{encoded_file_name}\"; filename*=UTF-8''{encoded_file_name}",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    }
+    injected_content = _build_html_preview_content(file_info.file_path, file_name)
+    if injected_content is not None:
+        return Response(
+            content=injected_content,
+            media_type=content_type,
+            headers=common_headers,
+        )
+
     return FileResponse(
         file_info.file_path,
         filename=os.path.basename(file_name),
         media_type=content_type,
-        headers={
-            "Content-Disposition": f"{disposition}; filename=\"{encoded_file_name}\"; filename*=UTF-8''{encoded_file_name}",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        },
+        headers=common_headers,
     )

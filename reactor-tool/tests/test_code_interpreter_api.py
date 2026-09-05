@@ -19,9 +19,15 @@ class CodeInterpreterApiTest(unittest.TestCase):
             captured_kwargs.update(kwargs)
             yield ActionOutput(content="ok", file_list=[])
 
-        with patch("reactor_tool.tool.code_interpreter.code_interpreter_agent", new=fake_agent), patch(
-            "reactor_tool.api.tool.upload_file",
-            new=AsyncMock(return_value={"fileName": "code_output.md"}),
+        with (
+            patch(
+                "reactor_tool.tool.code_interpreter.code_interpreter_agent",
+                new=fake_agent,
+            ),
+            patch(
+                "reactor_tool.api.tool.upload_file",
+                new=AsyncMock(return_value={"fileName": "code_output.md"}),
+            ) as upload,
         ):
             client = TestClient(app)
             response = client.post(
@@ -29,6 +35,7 @@ class CodeInterpreterApiTest(unittest.TestCase):
                 json={
                     "requestId": "req-api-1",
                     "task": "生成一个汇总文件",
+                    "fileName": "汇总报告.md",
                     "permissionProfile": "workspace",
                     "stream": False,
                 },
@@ -36,6 +43,8 @@ class CodeInterpreterApiTest(unittest.TestCase):
 
         self.assertEqual(200, response.status_code)
         self.assertEqual("workspace", captured_kwargs.get("permission_profile"))
+        self.assertEqual("汇总报告.md", captured_kwargs.get("report_file_name"))
+        self.assertEqual("汇总报告.md", upload.await_args.kwargs["file_name"])
 
 
 if __name__ == "__main__":
