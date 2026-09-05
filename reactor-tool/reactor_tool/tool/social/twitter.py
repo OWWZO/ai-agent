@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from typing import Any
 
 from .common import (
@@ -51,7 +52,11 @@ def _tweet_items(payload: Any) -> list[dict[str, Any]]:
                 tweet = {**tweet, "replies": payload["replies"]}
             return [tweet]
         return [payload]
-    return [item for item in payload if isinstance(item, dict)] if isinstance(payload, list) else []
+    return (
+        [item for item in payload if isinstance(item, dict)]
+        if isinstance(payload, list)
+        else []
+    )
 
 
 def _normalize_tweet(item: dict[str, Any]) -> dict[str, Any]:
@@ -81,20 +86,27 @@ def _normalize_tweet(item: dict[str, Any]) -> dict[str, Any]:
         ),
         "username": username,
         "created_at": bounded_text(
-            first_value(source, "created_at", "createdAt", "createdAtISO", "createdAtLocal"), 100
+            first_value(
+                source, "created_at", "createdAt", "createdAtISO", "createdAtLocal"
+            ),
+            100,
         ),
         "url": bounded_text(url, 2_000),
         "likes": first_value(source, "likes", "like_count", "favorite_count")
         or first_value(metrics, "likes"),
         "reposts": first_value(source, "reposts", "retweets", "retweet_count")
         or first_value(metrics, "retweets"),
-        "replies": first_value(source, "replies", "reply_count") or first_value(metrics, "replies"),
-        "views": first_value(source, "views", "view_count") or first_value(metrics, "views"),
+        "replies": first_value(source, "replies", "reply_count")
+        or first_value(metrics, "replies"),
+        "views": first_value(source, "views", "view_count")
+        or first_value(metrics, "views"),
     }
     nested_replies = source.get("replies")
     if isinstance(nested_replies, list):
         result["reply_items"] = [
-            _normalize_tweet(reply) for reply in nested_replies if isinstance(reply, dict)
+            _normalize_tweet(reply)
+            for reply in nested_replies
+            if isinstance(reply, dict)
         ]
     return result
 
@@ -109,7 +121,9 @@ def _run_cli(operation: str, params: dict[str, Any]) -> Any:
 
     if operation == "search":
         if not query:
-            raise SocialPlatformError("INVALID_INPUT", "query is required for Twitter search")
+            raise SocialPlatformError(
+                "INVALID_INPUT", "query is required for Twitter search"
+            )
         args = ["search", query, "--json", "--max", str(limit)]
     elif operation in {"tweet", "thread"}:
         if not target:
@@ -117,13 +131,17 @@ def _run_cli(operation: str, params: dict[str, Any]) -> Any:
         args = ["tweet", target, "--json"]
     elif operation == "article":
         if not target:
-            raise SocialPlatformError("INVALID_INPUT", "tweet_id is required for article")
+            raise SocialPlatformError(
+                "INVALID_INPUT", "tweet_id is required for article"
+            )
         args = ["article", target, "--json"]
     elif operation == "feed":
         args = ["feed", "--json", "--max", str(limit)]
     elif operation in {"timeline", "user_posts"}:
         if not username:
-            raise SocialPlatformError("INVALID_INPUT", "username is required for timeline")
+            raise SocialPlatformError(
+                "INVALID_INPUT", "username is required for timeline"
+            )
         args = ["user-posts", username, "--json", "--max", str(limit)]
     else:
         raise SocialPlatformError(
@@ -131,7 +149,17 @@ def _run_cli(operation: str, params: dict[str, Any]) -> Any:
             "unsupported Twitter operation; use search, tweet, thread, article, feed, timeline, or user_posts",
         )
 
-    command = [os.getenv("REACTOR_TWITTER_COMMAND", "twitter"), *args]
+    configured_command = os.getenv("REACTOR_TWITTER_COMMAND", "").strip()
+    command = (
+        [configured_command, *args]
+        if configured_command
+        else [
+            sys.executable,
+            "-m",
+            "reactor_tool.tool.social.twitter_cli_runner",
+            *args,
+        ]
+    )
     output = command_output(
         command,
         env=_command_env(auth_token, ct0),

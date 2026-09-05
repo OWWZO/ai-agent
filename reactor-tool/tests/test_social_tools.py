@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -11,6 +12,8 @@ from reactor_tool.api.social import router
 from reactor_tool.tool.social import reddit, twitter, xueqiu
 from reactor_tool.tool.social.common import SocialPlatformError
 from reactor_tool.tool.social.service import execute_social
+from reactor_tool.tool.social import twitter_cli_runner
+from reactor_tool.tool.social.twitter_cli_runner import _extract_search_query_id
 
 
 def test_missing_credentials_return_structured_auth_error(monkeypatch):
@@ -51,7 +54,12 @@ def test_twitter_passes_credentials_only_to_child_environment(monkeypatch):
                             "id": "123",
                             "text": "hello",
                             "author": {"name": "Alice", "screenName": "alice"},
-                            "metrics": {"likes": 3, "retweets": 2, "replies": 1, "views": 9},
+                            "metrics": {
+                                "likes": 3,
+                                "retweets": 2,
+                                "replies": 1,
+                                "views": 9,
+                            },
                         }
                     ]
                 },
@@ -66,7 +74,12 @@ def test_twitter_passes_credentials_only_to_child_environment(monkeypatch):
     assert result["items"][0]["id"] == "123"
     assert result["items"][0]["username"] == "alice"
     assert result["items"][0]["likes"] == 3
-    assert captured["command"][:2] == ["twitter", "search"]
+    assert captured["command"][:4] == [
+        sys.executable,
+        "-m",
+        "reactor_tool.tool.social.twitter_cli_runner",
+        "search",
+    ]
     assert "auth-secret" not in captured["command"]
     assert "ct0-secret" not in captured["command"]
     assert captured["env"]["TWITTER_AUTH_TOKEN"] == "auth-secret"
@@ -98,6 +111,29 @@ def test_twitter_proxy_is_forwarded_to_cli(monkeypatch):
     env = twitter._command_env("auth-secret", "ct0-secret")
 
     assert env["TWITTER_PROXY"] == "socks5://127.0.0.1:7890"
+
+
+def test_twitter_runner_extracts_search_query_id_from_bundle():
+    bundle = 'queryId:"hyPfJYJ_XAtDYoslQc-Rgg",operationName:"SearchTimeline"'
+
+    assert _extract_search_query_id(bundle) == "hyPfJYJ_XAtDYoslQc-Rgg"
+    assert _extract_search_query_id('operationName:"SearchTimeline"') is None
+
+
+def test_twitter_runner_retries_query_id_fetch(monkeypatch):
+    attempts = {"count": 0}
+
+    def flaky_fetch(url):
+        attempts["count"] += 1
+        if attempts["count"] < 2:
+            raise TimeoutError("temporary timeout")
+        return "ok"
+
+    monkeypatch.setattr(twitter_cli_runner, "_authenticated_url_fetch", flaky_fetch)
+    monkeypatch.setattr(twitter_cli_runner.time, "sleep", lambda _: None)
+
+    assert twitter_cli_runner._fetch_with_retry("https://x.com/home") == "ok"
+    assert attempts["count"] == 2
 
 
 def test_reddit_proxy_is_forwarded_to_http_client(monkeypatch):

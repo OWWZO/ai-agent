@@ -98,7 +98,9 @@ def _bound_result(result: dict[str, Any]) -> dict[str, Any]:
     if len(encoded) <= MAX_OUTPUT_CHARS:
         return result
 
-    result.setdefault("warnings", []).append("result was shortened to stay within the output limit")
+    result.setdefault("warnings", []).append(
+        "result was shortened to stay within the output limit"
+    )
     items = result.get("items")
     if isinstance(items, list):
         for item in items:
@@ -111,17 +113,23 @@ def _bound_result(result: dict[str, Any]) -> dict[str, Any]:
                     item[key] = value[:20]
         while (
             len(items) > 1
-            and len(json.dumps(result, ensure_ascii=False, default=str)) > MAX_OUTPUT_CHARS
+            and len(json.dumps(result, ensure_ascii=False, default=str))
+            > MAX_OUTPUT_CHARS
         ):
             items.pop()
         if len(json.dumps(result, ensure_ascii=False, default=str)) > MAX_OUTPUT_CHARS:
             result["items"] = [
-                {"truncated": True, "message": "platform result exceeded the output limit"}
+                {
+                    "truncated": True,
+                    "message": "platform result exceeded the output limit",
+                }
             ]
     return result
 
 
-def error_result(platform: str, operation: str, error: SocialPlatformError) -> dict[str, Any]:
+def error_result(
+    platform: str, operation: str, error: SocialPlatformError
+) -> dict[str, Any]:
     return {
         "ok": False,
         "platform": platform,
@@ -161,12 +169,17 @@ def command_output(
     except subprocess.TimeoutExpired as exc:
         raise SocialPlatformError("TIMEOUT", f"{command[0]} timed out") from exc
     except OSError as exc:
-        raise SocialPlatformError("UPSTREAM_ERROR", f"{command[0]} could not start") from exc
+        raise SocialPlatformError(
+            "UPSTREAM_ERROR", f"{command[0]} could not start"
+        ) from exc
 
     stdout = (completed.stdout or "")[:MAX_COMMAND_OUTPUT_CHARS]
     stderr = (completed.stderr or "")[:MAX_COMMAND_OUTPUT_CHARS]
     if completed.returncode != 0:
-        detail = scrub_text(stderr or stdout or "command failed", secrets)
+        detail = scrub_text(
+            "\n".join(value for value in (stdout, stderr) if value) or "command failed",
+            secrets,
+        )
         lower = detail.casefold()
         if any(marker in lower for marker in ("timed out", "curl: (28)", "timeout")):
             code = "NETWORK_TIMEOUT"
