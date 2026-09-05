@@ -11,7 +11,6 @@ import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRegistry;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRunner;
 import org.wwz.ai.domain.agent.runtime.tool.common.AgentDispatchTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.CodeInterpreterTool;
 import org.wwz.ai.domain.agent.runtime.askuser.PendingUserQuestionRegistry;
 import org.wwz.ai.domain.agent.runtime.planmode.PendingPlanApprovalRegistry;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanArtifactStore;
@@ -30,7 +29,6 @@ import org.wwz.ai.domain.agent.runtime.tool.common.DataAnalysisTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.CodeExecutionTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.DeepSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.ImageGenerationTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.MultiModalAgent;
 import org.wwz.ai.domain.agent.runtime.tool.common.docgen.ChartGeneratorTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.docgen.ChecklistGenerateTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.docgen.DocumentGenerateTool;
@@ -194,13 +192,9 @@ public class AgentToolCollectionFactory {
             }
 
             List<String> agentToolList = parseToolNames(reactorConfig.getMultiAgentToolListMap()
-                            .getOrDefault("default", "search,web_fetch,web_search,code,code_execution,docgen,docread,dataprep,canvas,multimodalagent,image_generation,data_analysis")
+                            .getOrDefault("default", "search,web_fetch,web_search,code_execution,docgen,docread,dataprep,canvas,image_generation,data_analysis")
                     );
 
-            if (agentToolList.contains("code")) {
-                CodeInterpreterTool codeInterpreterTool = new CodeInterpreterTool();
-                addTool(toolCollection, codeInterpreterTool, agentContext, CodeInterpreterTool::setAgentContext);
-            }
             if (agentToolList.contains("docgen")
                     || agentToolList.contains("document_generate")
                     || agentToolList.contains("slides_generate")
@@ -305,10 +299,6 @@ public class AgentToolCollectionFactory {
             if (agentToolList.contains("code_execution")) {
                 CodeExecutionTool codeExecutionTool = new CodeExecutionTool();
                 addTool(toolCollection, codeExecutionTool, agentContext, CodeExecutionTool::setAgentContext);
-            }
-            if (agentToolList.contains("multimodalagent")) {
-                MultiModalAgent multiModalAgent = new MultiModalAgent();
-                addTool(toolCollection, multiModalAgent, agentContext, MultiModalAgent::setAgentContext);
             }
             if (agentToolList.contains("image_generation")) {
                 ImageGenerationTool imageGenerationTool = new ImageGenerationTool();

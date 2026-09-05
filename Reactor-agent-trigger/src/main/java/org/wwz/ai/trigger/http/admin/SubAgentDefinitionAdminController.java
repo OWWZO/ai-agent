@@ -70,13 +70,11 @@ public class SubAgentDefinitionAdminController {
                 "deep_search",
                 "WebFetch",
                 "WebSearch",
-                // code / report / skill / media
-                 "code_interpreter",
+                 // code / skill / media
                  "code_execution",
                  "skill_tool",
-                "image_generation_tool",
-                "data_analysis",
-                "multimodalagent_tool",
+                 "image_generation_tool",
+                 "data_analysis",
                 // LTM / session（子 Agent 运行时默认剥离写记忆与 session_search）
                 "memory",
                 "session_search",

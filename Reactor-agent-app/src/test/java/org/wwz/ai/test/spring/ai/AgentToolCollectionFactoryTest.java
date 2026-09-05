@@ -69,15 +69,15 @@ public class AgentToolCollectionFactoryTest {
 
         ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentRequest("html"));
 
-        // 顺序随 tool_list 配置；本测显式只挂 search/web_fetch/code/multimodalagent（默认不含 report）
+        // code_interpreter 和 multimodalagent_tool 已从主 Agent 工具装配移除；code_execution 保留。
         Assert.assertFalse(toolCollection.getToolMap().containsKey("file_tool"));
-        Assert.assertTrue(toolCollection.getToolMap().containsKey("code_interpreter"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("code_interpreter"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("code_execution"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("report_tool"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("planning"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("deep_search"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("WebFetch"));
-        Assert.assertTrue(toolCollection.getToolMap().containsKey("multimodalagent_tool"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("multimodalagent_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("skill_tool"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("skill_author"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("script_runner_tool"));
@@ -198,17 +198,17 @@ public class AgentToolCollectionFactoryTest {
         Assert.assertFalse(toolCollection.getToolMap().containsKey("skill_tool"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("script_runner_tool"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("file_tool"));
-        Assert.assertTrue(toolCollection.getToolMap().containsKey("multimodalagent_tool"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("multimodalagent_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("Agent"));
     }
 
     @Test
-    public void shouldNotIncludeMultiModalAgentWhenRemovedFromDefaultList() {
+    public void shouldNotIncludeRemovedToolsEvenWhenConfigured() {
         McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
         Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
 
         ReactorConfig reactorConfig = buildReactorConfig();
-        reactorConfig.setMultiAgentToolList("{\"default\":\"search,code,report\"}");
+        reactorConfig.setMultiAgentToolList("{\"default\":\"search,code,code_execution,multimodalagent,report\"}");
 
         AgentToolCollectionFactory factory = newFactory(
                 reactorConfig,
@@ -226,6 +226,8 @@ public class AgentToolCollectionFactoryTest {
         ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentRequest("html"));
 
         Assert.assertFalse(toolCollection.getToolMap().containsKey("multimodalagent_tool"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("code_interpreter"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("code_execution"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("report_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("Agent"));
     }
