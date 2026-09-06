@@ -2806,9 +2806,8 @@ ol {
   margin-bottom: var(--space-2);
   color: var(--color-text-muted);
   font: var(--text-xs) var(--font-mono);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  word-break: break-all;
 }
 .kimi-appr-label {
   margin-bottom: var(--space-2);

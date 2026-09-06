@@ -5,6 +5,7 @@ import {
   BrainCircuitIcon,
   CheckIcon,
   ChevronDownIcon,
+  ListTodo,
   PlusIcon,
   SearchIcon,
   Type,
@@ -163,6 +164,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [thinking, setThinking] = useState(true);
   const [thinkingEffort, setThinkingEffort] = useState<ThinkingEffort>("high");
+  const [forcePlanMode, setForcePlanMode] = useState(false);
   const tempData = useRef<{ compositing?: boolean }>({});
   const inputShellRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -240,6 +242,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     !hasFailedAttachment;
   const canSubmit = canSend || canInject;
   const showDataAgentToggle = showBtn;
+  const showPlanToggle = !showBtn && !isDataAgent && visibleMode === "research";
 
   const currentModelMeta = models.find(
     (m) => m.modelId === selectedModel || m.modelName === selectedModel
@@ -290,6 +293,9 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
   const handleModeSelect = (modeKey: InputModeKey) => {
     // 普通模式统一走 ReAct，研究模式统一走 PlanSolve。
     handleSelectionChange(GENERIC_TASK_PRODUCT, modeKey === "research");
+    if (modeKey !== "research") {
+      setForcePlanMode(false);
+    }
     setModeMenuOpen(false);
   };
 
@@ -304,6 +310,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     if (busy && onInject) {
       void Promise.resolve(onInject(trimmed));
       setQuestion("");
+      setForcePlanMode(false);
       return;
     }
     if (busy) {
@@ -319,10 +326,12 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
         model: selectedModel || undefined,
         thinking: supportsThinking ? thinking : undefined,
         thinkingEffort: supportsThinking && thinking ? thinkingEffort : undefined,
+        forcePlanMode: showPlanToggle && forcePlanMode,
       })
     );
 
     setQuestion("");
+    setForcePlanMode(false);
     clearAttachmentUploads();
   };
 
@@ -441,6 +450,28 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                   <PromptInputActionAddAttachments label="上传附件" />
                 </PromptInputActionMenuContent>
               </PromptInputActionMenu>
+
+              {showPlanToggle ? (
+                <button
+                  type="button"
+                  aria-pressed={forcePlanMode}
+                  disabled={disabled || busy}
+                  className={cn(
+                    toolBtnClassName(false, disabled || busy),
+                    forcePlanMode &&
+                      "bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] hover:text-white"
+                  )}
+                  title={
+                    busy
+                      ? "任务进行中，指导不会进入计划模式"
+                      : "本轮先规划再执行，发送后复位"
+                  }
+                  onClick={() => setForcePlanMode((value) => !value)}
+                >
+                  <ListTodo className="size-3.5 shrink-0 opacity-80" />
+                  <span className="truncate">计划</span>
+                </button>
+              ) : null}
 
               {showBtn ? (
                 <>

@@ -82,6 +82,8 @@ declare global {
       thinking?: boolean;
       /** low | medium | high */
       thinkingEffort?: string;
+      /** 本轮强制进入 plan mode（PlanExecute 会话的计划按钮） */
+      forcePlanMode?: boolean;
     };
 
     export type TAbortController = {

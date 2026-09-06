@@ -10,6 +10,7 @@ import {
   planApprovalApi,
 } from "@/services/planApproval";
 import MarkdownRenderer from "@/components/ActionPanel/MarkdownRenderer";
+import { pickPlanApprovalFields } from "@/components/ChatView/planComposerModel";
 import { cn } from "@/lib/utils";
 
 type PlanApprovalCardProps = {
@@ -21,46 +22,20 @@ type PlanApprovalCardProps = {
  * 用户批准/拒绝后 POST /api/agent/plan-approval/*，唤醒后端 Agent 线程。
  */
 function pickPlanFields(tool: CHAT.Task) {
+  const fields = pickPlanApprovalFields(tool);
   const resultMap = (tool.resultMap || {}) as Record<string, unknown>;
   const nested = (resultMap.resultMap || {}) as Record<string, unknown>;
-  const toolAny = tool as unknown as Record<string, unknown>;
-  const approvalId = String(
-    nested.approvalId || resultMap.approvalId || toolAny.approvalId || tool.messageId || ""
-  );
-  const planContent = String(
-    nested.planContent || resultMap.planContent || toolAny.planContent || ""
-  );
-  const planPath = String(
-    nested.planFilePath ||
-      nested.planPath ||
-      nested.path ||
-      resultMap.planFilePath ||
-      resultMap.planPath ||
-      resultMap.path ||
-      toolAny.planFilePath ||
-      toolAny.planPath ||
-      ""
-  );
-  const status = String(
-    nested.status || resultMap.status || toolAny.status || "pending"
-  ).toLowerCase();
+  const inner = (nested.resultMap || {}) as Record<string, unknown>;
   const editedPlanContent = String(
-    nested.editedPlanContent || resultMap.editedPlanContent || ""
+    inner.editedPlanContent || nested.editedPlanContent || resultMap.editedPlanContent || ""
   );
-  const approved =
-    typeof nested.approved === "boolean"
-      ? nested.approved
-      : typeof resultMap.approved === "boolean"
-        ? resultMap.approved
-        : undefined;
   return {
     resultMap,
-    approvalId,
-    planContent,
-    planPath,
-    status,
+    approvalId: fields.approvalId,
+    planContent: fields.planContent,
+    status: fields.status,
     editedPlanContent,
-    approved,
+    approved: fields.approved,
   };
 }
 
@@ -69,7 +44,6 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
     resultMap,
     approvalId,
     planContent,
-    planPath,
     status,
     editedPlanContent,
     approved,
@@ -262,7 +236,6 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
       {!minimized ? (
         <>
           <div className="kimi-ui-card__body">
-            {planPath ? <div className="kimi-appr-path">{planPath}</div> : null}
             <div className="kimi-appr-plan">
               {submitted ? (
                 <MarkdownRenderer

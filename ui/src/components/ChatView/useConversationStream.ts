@@ -48,6 +48,7 @@ import {
   cloneWorkspaceTask,
   getLatestRenderableTask,
   hasPendingAskUserQuestion,
+  isHitlYieldEvent,
   markAskUserQuestionsAnswered,
   markPlanApprovalsDecided,
   resolveActionPanelVisibility,
@@ -874,37 +875,9 @@ export function useConversationStream(
           return;
         }
 
-        const stillRunning =
-          hydrated.loading ||
-          String(hydrated.metrics?.status || "").toUpperCase() === "RUNNING";
-
-        if (stillRunning) {
-          currentChat = {
-            ...hydrated,
-            loading: true,
-            tip: CONNECTION_LOST_HINT,
-            metrics: {
-              ...(hydrated.metrics || {}),
-              status: "RUNNING",
-            },
-          };
-          followReconnectContextsRef.current.set(requestId, {
-            conversationId,
-            sessionId,
-            requestId,
-            productType,
-            deepThink: normalizedDeepThink,
-            seedChat: { ...currentChat },
-          });
-          pendingConversation = draftController.replaceLastItem({ ...currentChat });
-          scheduleNonChatFlush(true);
-          if (streamStillActive) {
-            setLoading(true);
-          }
-          scheduleFollowReconnect(conversationId, requestId, 800);
-          return;
-        }
-
+        const hydratedStatus = String(hydrated.metrics?.status || "").toUpperCase();
+        // follow_idle 已表示进程内无 run 且 ledger 非 RUNNING。hydrate 若仍像 RUNNING，
+        // 只是回放滞后，不能再当成断线重连。
         clearFollowReconnectTimer(requestId);
         followReconnectAttemptsRef.current.delete(requestId);
         followReconnectContextsRef.current.delete(requestId);
@@ -913,6 +886,12 @@ export function useConversationStream(
           ...hydrated,
           loading: false,
           tip: "",
+          metrics: {
+            ...(hydrated.metrics || {}),
+            status: ["SUCCESS", "FAILED", "STOPPED"].includes(hydratedStatus)
+              ? hydrated.metrics?.status
+              : "SUCCESS",
+          },
         };
         const snapshot = conversationSnapshotsRef.current.get(conversationId);
         const baseList =
@@ -1045,6 +1024,29 @@ export function useConversationStream(
 
       const eventData = normalizeEventData(resultMap?.eventData);
       if (!eventData) {
+        if (finished) {
+          clearActiveRun(requestId);
+          followReconnectContextsRef.current.delete(requestId);
+          followReconnectAttemptsRef.current.delete(requestId);
+          clearFollowReconnectTimer(requestId);
+          unbindLiveStream(conversationId, abortController);
+          if (hasPendingAskUserQuestion(currentChat)) {
+            currentChat = applyWaitingUserInputState(currentChat);
+          } else {
+            currentChat.loading = false;
+            currentChat.tip = "";
+            currentChat.metrics = {
+              ...(currentChat.metrics || {}),
+              status: "SUCCESS",
+            };
+          }
+          if (streamStillActive) {
+            setLoading(false);
+          }
+          draftController.replaceLastItem({ ...currentChat });
+          pendingConversation = draftController.getSnapshot();
+          scheduleNonChatFlush(true);
+        }
         return;
       }
       const isPlanThoughtEvent = eventData.messageType === "plan_thought";
@@ -1081,12 +1083,16 @@ export function useConversationStream(
         followReconnectAttemptsRef.current.delete(requestId);
         clearFollowReconnectTimer(requestId);
         unbindLiveStream(conversationId, abortController);
-        currentChat.loading = false;
-        currentChat.tip = "";
-        currentChat.metrics = {
-          ...(currentChat.metrics || {}),
-          status: "SUCCESS",
-        };
+        if (isHitlYieldEvent(eventData) || hasPendingAskUserQuestion(currentChat)) {
+          currentChat = applyWaitingUserInputState(currentChat);
+        } else {
+          currentChat.loading = false;
+          currentChat.tip = "";
+          currentChat.metrics = {
+            ...(currentChat.metrics || {}),
+            status: "SUCCESS",
+          };
+        }
         if (streamStillActive) {
           setLoading(false);
         }
@@ -1099,6 +1105,11 @@ export function useConversationStream(
         currentChat = {
           ...currentChat,
           tip: currentChat.tip,
+        };
+      } else if (isHitlYieldEvent(eventData) || hasPendingAskUserQuestion(currentChat)) {
+        currentChat = {
+          ...currentChat,
+          tip: WAITING_USER_HELP_HINT,
         };
       } else {
         const presence = resolveRunPresence({
@@ -1157,6 +1168,18 @@ export function useConversationStream(
             return;
           }
           unbindLiveStream(conversationId, abortController);
+          if (hasPendingAskUserQuestion(currentChat)) {
+            currentChat = applyWaitingUserInputState(currentChat);
+            clearActiveRun(requestId);
+            followReconnectContextsRef.current.delete(requestId);
+            clearFollowReconnectTimer(requestId);
+            if (isActiveStream()) {
+              setLoading(false);
+            }
+            pendingConversation = draftController.replaceLastItem({ ...currentChat });
+            scheduleNonChatFlush(true);
+            return;
+          }
           currentChat = {
             ...currentChat,
             tip: CONNECTION_LOST_HINT,
@@ -1167,23 +1190,37 @@ export function useConversationStream(
         },
         handleClose: () => {
           scheduleNonChatFlush(true);
-          if (!currentChat.loading) {
-            return;
-          }
-          const live = liveStreamsRef.current.get(conversationId);
-          if (live && live.controller !== abortController) {
-            return;
-          }
-          // EOF 也可能来自代理/浏览器提前收流；只要没有收到 follow_idle，
-          // 就继续续绑，避免把仍在后台执行的 run 错误收口为失败。
-          unbindLiveStream(conversationId, abortController);
-          currentChat = {
-            ...currentChat,
-            tip: CONNECTION_LOST_HINT,
-          };
-          pendingConversation = draftController.replaceLastItem({ ...currentChat });
-          scheduleNonChatFlush(false);
-          scheduleFollowReconnect(conversationId, requestId, 300);
+          queueMicrotask(() => {
+            if (!currentChat.loading) {
+              return;
+            }
+            const live = liveStreamsRef.current.get(conversationId);
+            if (live && live.controller !== abortController) {
+              return;
+            }
+            unbindLiveStream(conversationId, abortController);
+            if (hasPendingAskUserQuestion(currentChat)) {
+              currentChat = applyWaitingUserInputState(currentChat);
+              clearActiveRun(requestId);
+              followReconnectContextsRef.current.delete(requestId);
+              clearFollowReconnectTimer(requestId);
+              if (isActiveStream()) {
+                setLoading(false);
+              }
+              pendingConversation = draftController.replaceLastItem({ ...currentChat });
+              scheduleNonChatFlush(true);
+              return;
+            }
+            // EOF 也可能来自代理/浏览器提前收流；只要没有收到 follow_idle，
+            // 就继续续绑，避免把仍在后台执行的 run 错误收口为失败。
+            currentChat = {
+              ...currentChat,
+              tip: CONNECTION_LOST_HINT,
+            };
+            pendingConversation = draftController.replaceLastItem({ ...currentChat });
+            scheduleNonChatFlush(false);
+            scheduleFollowReconnect(conversationId, requestId, 300);
+          });
         },
       },
       AGENT_RUN_FOLLOW_SSE_URL
@@ -1471,13 +1508,7 @@ export function useConversationStream(
       // 与主链路一致：任意 finished 帧都应收口，不能只认 packageType=result
       // 业务 finished 后仍可能短暂保持 SSE（后端 markAnswered 后再关流），勿重复 settle。
       if (finished) {
-        if (
-          eventData?.messageType === "ask_user_question" ||
-          eventData?.messageType === "plan_approval" ||
-          eventData?.resultMap?.messageType === "ask_user_question" ||
-          eventData?.resultMap?.messageType === "plan_approval" ||
-          hasPendingAskUserQuestion(currentChat)
-        ) {
+        if (isHitlYieldEvent(eventData) || hasPendingAskUserQuestion(currentChat)) {
           currentChat = applyWaitingUserInputState(currentChat);
           clearActiveRun(resumeRequestId);
           followReconnectContextsRef.current.delete(resumeRequestId);
@@ -1513,18 +1544,22 @@ export function useConversationStream(
         handleMessage,
         handleError: (error) => {
           console.error(`${options.errorLabel} resume SSE error`, error);
-          if (resumeSettled) {
-            return;
-          }
-          // 恢复请求断开不代表 continuation 已结束；沿用主流的 follow 观察同一个 run。
-          parkResumeStream();
+          queueMicrotask(() => {
+            if (resumeSettled) {
+              return;
+            }
+            // 恢复请求断开不代表 continuation 已结束；沿用主流的 follow 观察同一个 run。
+            parkResumeStream();
+          });
         },
         handleClose: () => {
-          if (resumeSettled) {
-            return;
-          }
-          // clean EOF 也可能发生在终态帧到达前，不能凭 loading/conclusion 猜成功。
-          parkResumeStream(300);
+          queueMicrotask(() => {
+            if (resumeSettled) {
+              return;
+            }
+            // clean EOF 也可能发生在终态帧到达前；先让同 tick 的 result 帧把 resumeSettled 置上。
+            parkResumeStream(300);
+          });
         },
       },
       options.sseUrl
@@ -1718,6 +1753,7 @@ export function useConversationStream(
       model: inputInfo.model,
       thinking: inputInfo.thinking,
       thinkingEffort: inputInfo.thinkingEffort,
+      forcePlanMode: inputInfo.forcePlanMode,
     });
     let pendingConversation: CHAT.ConversationHistory | null = null;
     let pendingTaskData: ReturnType<typeof handleTaskData> | null = null;
@@ -1899,32 +1935,34 @@ export function useConversationStream(
         return;
       }
 
-      // stream_settle 可能无 eventData，但仍带 finished=true，用于关闭后台观察流。
-      if (packageType === "result" && finished && !resultMap?.eventData) {
-        clearActiveRun(requestId);
-        followReconnectContextsRef.current.delete(requestId);
-        followReconnectAttemptsRef.current.delete(requestId);
-        clearFollowReconnectTimer(requestId);
-        unbindLiveStream(conversationId, abortController);
-        currentChat = {
-          ...currentChat,
-          loading: false,
-          tip: "",
-          metrics: {
-            ...(currentChat.metrics || {}),
-            status: "SUCCESS",
-          },
-        };
-        if (streamStillActive) {
-          setLoading(false);
-        }
-        pendingConversation = draftController.replaceLastItem({ ...currentChat });
-        scheduleNonChatFlush(true);
-        return;
-      }
-
       const eventData = normalizeEventData(resultMap?.eventData);
       if (!eventData) {
+        // stream_settle / 空 eventData 仍可能带 finished=true，必须收口 loading。
+        if (finished) {
+          clearActiveRun(requestId);
+          followReconnectContextsRef.current.delete(requestId);
+          followReconnectAttemptsRef.current.delete(requestId);
+          clearFollowReconnectTimer(requestId);
+          unbindLiveStream(conversationId, abortController);
+          if (hasPendingAskUserQuestion(currentChat)) {
+            currentChat = applyWaitingUserInputState(currentChat);
+          } else {
+            currentChat = {
+              ...currentChat,
+              loading: false,
+              tip: "",
+              metrics: {
+                ...(currentChat.metrics || {}),
+                status: "SUCCESS",
+              },
+            };
+          }
+          if (streamStillActive) {
+            setLoading(false);
+          }
+          pendingConversation = draftController.replaceLastItem({ ...currentChat });
+          scheduleNonChatFlush(true);
+        }
         return;
       }
 
@@ -1970,13 +2008,7 @@ export function useConversationStream(
         clearFollowReconnectTimer(requestId);
         unbindLiveStream(conversationId, abortController);
         // plan_approval / ask_user_question 让步后的 finished 必须进 WAITING_INPUT，不能标 SUCCESS
-        if (
-          eventData.messageType === "ask_user_question" ||
-          eventData.messageType === "plan_approval" ||
-          eventData.resultMap?.messageType === "ask_user_question" ||
-          eventData.resultMap?.messageType === "plan_approval" ||
-          hasPendingAskUserQuestion(currentChat)
-        ) {
+        if (isHitlYieldEvent(eventData) || hasPendingAskUserQuestion(currentChat)) {
           currentChat = applyWaitingUserInputState(currentChat);
         } else {
           currentChat.loading = false;
@@ -2006,13 +2038,7 @@ export function useConversationStream(
           deepThink: normalizedDeepThink,
           seedChat: { ...currentChat },
         });
-      } else if (
-        eventData.messageType === "ask_user_question" ||
-        eventData.messageType === "plan_approval" ||
-        eventData.resultMap?.messageType === "ask_user_question" ||
-        eventData.resultMap?.messageType === "plan_approval" ||
-        hasPendingAskUserQuestion(currentChat)
-      ) {
+      } else if (isHitlYieldEvent(eventData) || hasPendingAskUserQuestion(currentChat)) {
         currentChat = {
           ...currentChat,
           tip: WAITING_USER_HELP_HINT,
@@ -2127,7 +2153,7 @@ export function useConversationStream(
       }
       const streamStillActive = isActiveStream();
       unbindLiveStream(conversationId, abortController);
-      // AskUserQuestion 让步后 SSE 正常结束：进入等待回答，不要当成断线 follow
+      // AskUserQuestion / ExitPlanMode 让步后 SSE 正常结束：进入等待输入，不要当成断线 follow
       if (hasPendingAskUserQuestion(currentChat)) {
         currentChat = applyWaitingUserInputState(currentChat);
         clearActiveRun(requestId);
@@ -2161,43 +2187,46 @@ export function useConversationStream(
 
     const handleClose = () => {
       scheduleNonChatFlush(true);
-      if (!shouldKeepObserving()) {
-        return;
-      }
-      const live = liveStreamsRef.current.get(conversationId);
-      if (live && live.controller !== abortController) {
-        return;
-      }
-      const streamStillActive = isActiveStream();
-      unbindLiveStream(conversationId, abortController);
-      if (hasPendingAskUserQuestion(currentChat)) {
-        currentChat = applyWaitingUserInputState(currentChat);
-        clearActiveRun(requestId);
-        followReconnectContextsRef.current.delete(requestId);
-        clearFollowReconnectTimer(requestId);
-        if (streamStillActive) {
-          setLoading(false);
+      queueMicrotask(() => {
+        if (!shouldKeepObserving()) {
+          return;
         }
+        const live = liveStreamsRef.current.get(conversationId);
+        if (live && live.controller !== abortController) {
+          return;
+        }
+        const streamStillActive = isActiveStream();
+        unbindLiveStream(conversationId, abortController);
+        // AskUserQuestion / ExitPlanMode 让步后 SSE 正常结束：进入等待输入，不要当成断线 follow
+        if (hasPendingAskUserQuestion(currentChat)) {
+          currentChat = applyWaitingUserInputState(currentChat);
+          clearActiveRun(requestId);
+          followReconnectContextsRef.current.delete(requestId);
+          clearFollowReconnectTimer(requestId);
+          if (streamStillActive) {
+            setLoading(false);
+          }
+          pendingConversation = draftController.replaceLastItem({ ...currentChat });
+          scheduleNonChatFlush(true);
+          return;
+        }
+        // 服务端/代理可能以 EOF 结束响应但没有触发 onerror，同样切到 follow。
+        currentChat = {
+          ...currentChat,
+          tip: CONNECTION_LOST_HINT,
+        };
+        followReconnectContextsRef.current.set(requestId, {
+          conversationId,
+          sessionId: baseConversation.sessionId,
+          requestId,
+          productType: baseConversation.productType,
+          deepThink: normalizedDeepThink,
+          seedChat: { ...currentChat },
+        });
         pendingConversation = draftController.replaceLastItem({ ...currentChat });
-        scheduleNonChatFlush(true);
-        return;
-      }
-      // 服务端/代理可能以 EOF 结束响应但没有触发 onerror，同样切到 follow。
-      currentChat = {
-        ...currentChat,
-        tip: CONNECTION_LOST_HINT,
-      };
-      followReconnectContextsRef.current.set(requestId, {
-        conversationId,
-        sessionId: baseConversation.sessionId,
-        requestId,
-        productType: baseConversation.productType,
-        deepThink: normalizedDeepThink,
-        seedChat: { ...currentChat },
+        scheduleNonChatFlush(false);
+        scheduleFollowReconnect(conversationId, requestId, 300);
       });
-      pendingConversation = draftController.replaceLastItem({ ...currentChat });
-      scheduleNonChatFlush(false);
-      scheduleFollowReconnect(conversationId, requestId, 300);
     };
 
     querySSE({

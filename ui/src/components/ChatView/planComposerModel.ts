@@ -1,3 +1,5 @@
+import { pickFirstText, resolveTaskResultMap } from "@/utils/chat/toolCalls";
+
 /**
  * 从当前会话 taskList / chat 中推导「输入框上方」要展示的计划。
  * 优先 ExitPlanMode 的 planContent，其次 PlanSolve 结构化 stages。
@@ -28,12 +30,13 @@ function asRecord(value: unknown): Record<string, unknown> {
 /** 缺 status 时：已 finish/isFinal 视为 decided，避免续跑后回退审批 UI */
 function resolvePlanApprovalStatus(
   tool: CHAT.Task,
+  merged: Record<string, unknown>,
   nested: Record<string, unknown>,
   resultMap: Record<string, unknown>,
   toolAny: Record<string, unknown>
 ): string {
   const raw = String(
-    nested.status || resultMap.status || toolAny.status || ""
+    merged.status || nested.status || resultMap.status || toolAny.status || ""
   )
     .trim()
     .toLowerCase();
@@ -43,6 +46,7 @@ function resolvePlanApprovalStatus(
   if (
     tool.finish ||
     tool.isFinal ||
+    merged.isFinal === true ||
     resultMap.isFinal === true ||
     nested.isFinal === true
   ) {
@@ -54,31 +58,49 @@ function resolvePlanApprovalStatus(
 export function pickPlanApprovalFields(tool: CHAT.Task) {
   const resultMap = asRecord(tool.resultMap);
   const nested = asRecord(resultMap.resultMap);
+  const merged = asRecord(resolveTaskResultMap(tool));
   const toolAny = tool as unknown as Record<string, unknown>;
   return {
-    approvalId: String(
-      nested.approvalId || resultMap.approvalId || toolAny.approvalId || tool.messageId || ""
+    approvalId: pickFirstText(
+      merged.approvalId,
+      nested.approvalId,
+      resultMap.approvalId,
+      toolAny.approvalId,
+      tool.messageId
     ),
-    planContent: String(
-      nested.planContent || resultMap.planContent || toolAny.planContent || ""
+    planContent: pickFirstText(
+      merged.planContent,
+      nested.planContent,
+      resultMap.planContent,
+      toolAny.planContent
     ),
-    planFilePath: String(
-      nested.planFilePath ||
-        nested.planPath ||
-        nested.path ||
-        resultMap.planFilePath ||
-        resultMap.planPath ||
-        toolAny.planFilePath ||
-        ""
+    planFilePath: pickFirstText(
+      merged.planFilePath,
+      merged.planPath,
+      merged.filePath,
+      merged.path,
+      nested.planFilePath,
+      nested.planPath,
+      nested.filePath,
+      nested.path,
+      resultMap.planFilePath,
+      resultMap.planPath,
+      resultMap.filePath,
+      resultMap.path,
+      toolAny.planFilePath,
+      toolAny.planPath,
+      toolAny.filePath
     ),
-    status: resolvePlanApprovalStatus(tool, nested, resultMap, toolAny),
+    status: resolvePlanApprovalStatus(tool, merged, nested, resultMap, toolAny),
     approved:
-      typeof nested.approved === "boolean"
-        ? nested.approved
-        : typeof resultMap.approved === "boolean"
-          ? resultMap.approved
-          : undefined,
-    feedback: String(nested.feedback || resultMap.feedback || ""),
+      typeof merged.approved === "boolean"
+        ? merged.approved
+        : typeof nested.approved === "boolean"
+          ? nested.approved
+          : typeof resultMap.approved === "boolean"
+            ? resultMap.approved
+            : undefined,
+    feedback: pickFirstText(merged.feedback, nested.feedback, resultMap.feedback),
   };
 }
 

@@ -28,6 +28,8 @@ type BuildAgentStreamRequestInput = {
   model?: string
   thinking?: boolean
   thinkingEffort?: string
+  /** 本轮强制进入 plan mode */
+  forcePlanMode?: boolean
 }
 
 const resolvePreviewUrl = (file: CHAT.TFile) =>
@@ -71,6 +73,7 @@ export const buildAgentStreamRequest = ({
   model,
   thinking,
   thinkingEffort,
+  forcePlanMode,
 }: BuildAgentStreamRequestInput) => {
   const sessionFiles = mapSessionFiles(files)
   const modelRef = model?.trim()
@@ -86,5 +89,6 @@ export const buildAgentStreamRequest = ({
     ...(modelRef ? { model: modelRef } : {}),
     ...(thinking !== undefined ? { thinking } : {}),
     ...(thinking && effort ? { thinkingEffort: effort } : {}),
+    ...(forcePlanMode ? { forcePlanMode: true } : {}),
   }
 }

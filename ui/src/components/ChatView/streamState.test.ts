@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applyWaitingUserInputState,
+  hasPendingAskUserQuestion,
+  isHitlYieldEvent,
   isStructuredDataOnlyTask,
   isTimelineToolActive,
   isWorkspaceAttentionTask,
@@ -8,6 +11,7 @@ import {
   resolveRunPresence,
   resolveWorkspaceCaption,
   shouldRefreshWorkspaceTask,
+  WAITING_USER_HELP_HINT,
 } from "./streamState";
 
 describe("streamState presence & attention", () => {
@@ -336,5 +340,59 @@ describe("streamState presence & attention", () => {
     expect(presence.phase).toBe("crafting");
     expect(presence.attention).toBe("workspace");
     expect(resolveWorkspaceCaption(task, true)).toContain("正在产出");
+  });
+});
+
+describe("HITL yield parking", () => {
+  it("识别 plan_approval / ask_user_question 让步帧", () => {
+    expect(
+      isHitlYieldEvent({
+        messageType: "plan_approval",
+      } as MESSAGE.EventData)
+    ).toBe(true);
+    expect(
+      isHitlYieldEvent({
+        messageType: "task",
+        resultMap: { messageType: "plan_approval" },
+      } as MESSAGE.EventData)
+    ).toBe(true);
+    expect(
+      isHitlYieldEvent({
+        messageType: "task",
+        resultMap: { messageType: "ask_user_question" },
+      } as MESSAGE.EventData)
+    ).toBe(true);
+    expect(
+      isHitlYieldEvent({
+        messageType: "task",
+        resultMap: { messageType: "tool_result" },
+      } as MESSAGE.EventData)
+    ).toBe(false);
+  });
+
+  it("pending plan_approval 视为等待用户输入", () => {
+    const chat = {
+      loading: true,
+      metrics: { status: "RUNNING" },
+      multiAgent: {
+        tasks: [
+          [
+            {
+              messageType: "plan_approval",
+              resultMap: {
+                messageType: "plan_approval",
+                resultMap: { status: "pending", approvalId: "pa_1" },
+              },
+            },
+          ],
+        ],
+      },
+    } as unknown as CHAT.ChatItem;
+
+    expect(hasPendingAskUserQuestion(chat)).toBe(true);
+    const parked = applyWaitingUserInputState(chat);
+    expect(parked.loading).toBe(false);
+    expect(parked.metrics?.status).toBe("WAITING_INPUT");
+    expect(parked.tip).toBe(WAITING_USER_HELP_HINT);
   });
 });

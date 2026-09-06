@@ -22,8 +22,35 @@ describe("planComposerModel", () => {
     expect(pickPlanApprovalFields(task)).toMatchObject({
       approvalId: "a1",
       planContent: "## Steps\n1. A",
+      planFilePath: ".reactor/plan.md",
       status: "pending",
     });
+  });
+
+  it("reads absolute planFilePath through live SSE extra resultMap wrapping", () => {
+    const planFilePath =
+      "D:\\Java Code\\ai-agent\\Reactor-agent\\reactor-tool\\skilloutput\\session-1788672643180-455\\.reactor\\plan.md";
+    const task = {
+      messageType: "plan_approval",
+      resultMap: {
+        agentType: 5,
+        messageType: "plan_approval",
+        resultMap: {
+          messageType: "plan_approval",
+          approvalId: "pa_live",
+          planContent: "## Plan",
+          planFilePath,
+          status: "pending",
+        },
+      },
+    } as unknown as CHAT.Task;
+
+    expect(pickPlanApprovalFields(task).planFilePath).toBe(planFilePath);
+    expect(
+      buildComposerPlanModel({
+        taskList: [task],
+      })?.planFilePath
+    ).toBe(planFilePath);
   });
 
   it("prefers latest plan_approval with body for composer", () => {

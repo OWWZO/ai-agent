@@ -204,11 +204,6 @@ const PlanComposerBarInner: FC<{
         {!minimized ? (
           <>
             <div className="kimi-ui-card__body">
-              {model.planFilePath ? (
-                <div className="kimi-appr-path" title={model.planFilePath}>
-                  {model.planFilePath}
-                </div>
-              ) : null}
               <div className="kimi-appr-plan">
                 {showActions ? (
                   <>

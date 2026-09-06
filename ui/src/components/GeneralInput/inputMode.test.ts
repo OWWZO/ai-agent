@@ -24,6 +24,29 @@ describe("inputMode", () => {
     ).not.toHaveProperty("outputStyle");
   });
 
+  it("本轮计划开关只在显式打开时透传 forcePlanMode", () => {
+    expect(
+      buildSubmitPayload({
+        question: "重新规划",
+        visibleMode: "research",
+        isDataAgent: false,
+        uploadedFiles: [],
+        forcePlanMode: true,
+      })
+    ).toMatchObject({
+      deepThink: true,
+      forcePlanMode: true,
+    });
+    expect(
+      buildSubmitPayload({
+        question: "继续执行",
+        visibleMode: "research",
+        isDataAgent: false,
+        uploadedFiles: [],
+      })
+    ).not.toHaveProperty("forcePlanMode");
+  });
+
   it("标准任务不透传 outputStyle", () => {
     expect(
       buildSubmitPayload({

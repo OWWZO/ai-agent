@@ -601,6 +601,18 @@ function readAskUserStatus(
   return String(nested.status || resultMap.status || "").trim().toLowerCase();
 }
 
+/** SSE 帧是否为 AskUserQuestion / ExitPlanMode 让步卡片 */
+export function isHitlYieldEvent(eventData?: MESSAGE.EventData | null): boolean {
+  const type = eventData?.messageType;
+  const nestedType = eventData?.resultMap?.messageType;
+  return (
+    type === "ask_user_question" ||
+    type === "plan_approval" ||
+    nestedType === "ask_user_question" ||
+    nestedType === "plan_approval"
+  );
+}
+
 /** 会话是否仍有未决 HITL（AskUserQuestion / PlanApproval） */
 export function hasPendingAskUserQuestion(chat?: CHAT.ChatItem | null): boolean {
   if (!chat) {

@@ -66,4 +66,19 @@ describe("agentRequest", () => {
     });
     expect(request).not.toHaveProperty("aiAgentId");
   });
+
+  it("forcePlanMode 为真时写入请求体", () => {
+    const request = buildAgentStreamRequest({
+      sessionId: "session-2",
+      requestId: "req-2",
+      message: "重新规划",
+      deepThink: true,
+      forcePlanMode: true,
+    });
+
+    expect(request).toMatchObject({
+      deepThink: 1,
+      forcePlanMode: true,
+    });
+  });
 });

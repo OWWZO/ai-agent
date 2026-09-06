@@ -12,6 +12,7 @@ export function buildSubmitPayload(params: {
   model?: string;
   thinking?: boolean;
   thinkingEffort?: string | null;
+  forcePlanMode?: boolean;
 }) {
   const model = params.model?.trim() || undefined;
   const thinking = params.thinking;
@@ -38,5 +39,6 @@ export function buildSubmitPayload(params: {
     model,
     thinking,
     thinkingEffort,
+    ...(params.forcePlanMode ? { forcePlanMode: true } : {}),
   };
 }
