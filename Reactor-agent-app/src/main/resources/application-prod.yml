@@ -210,3 +210,13 @@ spring:
   config:
     activate:
       on-profile: prod
+
+server:
+  forward-headers-strategy: framework
+
+autobots:
+  execution:
+    visitor-cookie:
+      secure: true
+      allowed-origins:
+        - ${PUBLIC_ORIGIN:http://localhost:3000}
