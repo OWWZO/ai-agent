@@ -32,8 +32,8 @@ public final class PlanModePromptInjector {
 
             ## Hard constraints
             - NO business code/config/data edits. NO report/image/script side effects.
-             - Read-only tools OK: workspace_read/list/glob/grep, deep_search, WebFetch, skill_tool (read), and read-only Agent subagents.
-             - In plan mode, all Agent subagents are filtered to read-only tools. Do not expect them to write business files.
+              - Read-only tools OK: workspace_read/list/glob/grep, skill_tool (read).
+              - Plan mode constrains only the main agent. Agent subagents keep their own tool pool and may search or write files.
             - Clarify with AskUserQuestion when needed. NEVER use AskUserQuestion to ask "is the plan OK?" — that is ExitPlanMode's job.
             - When the plan is ready, call ExitPlanMode (optionally pass plan text). The system will WAIT for user approval; you cannot self-approve.
 
@@ -81,7 +81,7 @@ public final class PlanModePromptInjector {
     }
 
     public static void applyIfPlanMode(AgentContext context, BaseAgent agent) {
-        if (context == null || agent == null) {
+        if (context == null || agent == null || context.isSubAgent()) {
             return;
         }
         PlanModeState state = context.getPlanModeState();
@@ -99,6 +99,9 @@ public final class PlanModePromptInjector {
             return;
         }
         AgentContext context = agent.getContext();
+        if (context.isSubAgent()) {
+            return;
+        }
         PlanModeState state = context.getPlanModeState();
         if (state == null) {
             return;

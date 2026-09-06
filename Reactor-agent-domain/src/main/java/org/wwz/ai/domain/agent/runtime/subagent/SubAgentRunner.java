@@ -180,13 +180,10 @@ public class SubAgentRunner {
                                        boolean resume,
                                        RunCancellation cancellationOverride,
                                        String explicitParentToolUseId) {
-        boolean parentInPlanMode = parentContext.getPlanModeState() != null
-                && parentContext.getPlanModeState().isPlanMode();
         ToolCollection parentToolCollection = parentContext.getSubAgentToolCollection() != null
                 ? parentContext.getSubAgentToolCollection()
                 : parentContext.getToolCollection();
-        ToolCollection childTools = SubAgentToolFilter.filter(
-                parentToolCollection, definition, parentInPlanMode);
+        ToolCollection childTools = SubAgentToolFilter.filter(parentToolCollection, definition);
         String parentToolUseId = StringUtils.isNotBlank(explicitParentToolUseId)
                 ? explicitParentToolUseId.trim()
                 : resolveParentToolUseId(parentContext);

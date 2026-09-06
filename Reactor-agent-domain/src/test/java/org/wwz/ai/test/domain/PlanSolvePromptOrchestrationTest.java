@@ -10,13 +10,14 @@ import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRegistry;
 public class PlanSolvePromptOrchestrationTest {
 
     @Test
-    public void ensureOrchestrationIsIdempotentAndUsesV4() {
+    public void ensureOrchestrationIsIdempotentAndUsesV5() {
         String once = PlanSolvePrompt.ensureOrchestration("");
         String twice = PlanSolvePrompt.ensureOrchestration(once);
         Assert.assertEquals(once, twice);
         Assert.assertTrue(once.contains(PlanSolvePrompt.ORCHESTRATION_MARKER));
         Assert.assertTrue(once.contains("规模门控"));
-        Assert.assertFalse(once.contains("## 8. Plan Mode"));
+        Assert.assertTrue(once.contains("## 7. Plan Mode"));
+        Assert.assertTrue(once.contains("EnterPlanMode"));
         Assert.assertEquals(1, once.split(PlanSolvePrompt.ORCHESTRATION_MARKER, -1).length - 1);
     }
 

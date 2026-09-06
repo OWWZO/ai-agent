@@ -24,28 +24,21 @@ public final class SubAgentToolFilter {
     private SubAgentToolFilter() {
     }
 
-    private static final Set<String> PLAN_MODE_MUTATING = Set.of(
-            "workspace_write",
-            "workspace_edit",
-            "code_interpreter",
-            "image_generation",
-            "data_analysis",
-            "multimodalagent_tool"
-    );
-
     /**
      * 从父工具池筛选出子 Agent 可用工具。
      * 此处先共享引用；调用方必须 {@link ContextScopedTool#bindAll} /
      * {@link org.wwz.ai.domain.agent.runtime.tool.ToolIsolation#bindAll}，
      * 将工具隔离为子 Agent 独占实例（优先）或共享锁 rebind（兜底）。
+     * <p>plan mode 只约束主 Agent，不再按父状态剥离写工具。
      */
     public static ToolCollection filter(ToolCollection parentTools, SubAgentDefinition definition) {
         return filter(parentTools, definition, false);
     }
 
     /**
-     * @param parentInPlanMode 父会话处于 plan mode 时，额外剥离写工具
+     * @param parentInPlanMode 保留参数以兼容旧调用；plan mode 不再剥离子 Agent 写工具
      */
+    @SuppressWarnings("unused")
     public static ToolCollection filter(ToolCollection parentTools,
                                         SubAgentDefinition definition,
                                         boolean parentInPlanMode) {
@@ -71,9 +64,6 @@ public final class SubAgentToolFilter {
         disallowed.add(SessionSearchTool.TOOL_NAME);
         if (definition.getDisallowedTools() != null) {
             disallowed.addAll(definition.getDisallowedTools());
-        }
-        if (parentInPlanMode) {
-            disallowed.addAll(PLAN_MODE_MUTATING);
         }
 
         boolean allowAll = definition.allowsAllTools();

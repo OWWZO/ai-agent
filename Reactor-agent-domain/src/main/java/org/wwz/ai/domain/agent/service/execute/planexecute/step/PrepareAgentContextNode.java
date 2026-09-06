@@ -19,12 +19,14 @@ import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceSessionFileMateri
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadStateStore;
 import org.wwz.ai.domain.agent.runtime.util.DateUtil;
 import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
+import org.wwz.ai.domain.agent.ledger.IExecutionLedgerReadRepository;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.ledger.AgentExecutionRecorder;
 import org.wwz.ai.domain.agent.memory.ltm.LtmRuntimeBootstrap;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.planmode.PlanModeEntryPolicy;
 import org.wwz.ai.domain.agent.service.execute.planexecute.step.factory.DefaultPlanSolveAgentExecuteStrategyFactory;
 
 import java.util.ArrayList;
@@ -68,6 +70,9 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
     @Resource
     private org.wwz.ai.domain.agent.runtime.capability.SessionCapabilityService sessionCapabilityService;
 
+    @Resource
+    private IExecutionLedgerReadRepository executionLedgerReadRepository;
+
     @Override
     protected String doApply(AgentRequest request, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("PlanSolve Prepare: SOP recall and context for requestId: {}", request.getRequestId());
@@ -105,6 +110,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
         boolean resumedApprovedPlan = restoreResumePlanMode(agentContext, request);
         LtmRuntimeBootstrap.bootstrap(agentContext, request);
 
+        boolean hasPriorPlanSolve = hasPriorPlanSolveUserTurn(request);
         // Execution Ledger 保存本轮事实；SOP、工作区读取状态和工作记忆分别服务当前执行或下一轮上下文。
         // 先初始化 run，再装配工具，保证后续工具调用从一开始就能关联到同一个 ledger run。
         ExecutionLedgerRunSupport.initializeRun(
@@ -119,11 +125,8 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
         if (activeAgentRunRegistry != null) {
             activeAgentRunRegistry.bindContext(agentContext.getRequestId(), agentContext);
         }
-        // 这条状态约束在工具层执行，节点只负责建立初始状态和把计划文件提示发给前端。
-        boolean continuation = StringUtils.isNotBlank(request.getResumeQuestionId())
-                || StringUtils.isNotBlank(request.getResumeApprovalId());
-        if (!resumedApprovedPlan && !continuation) {
-            enterPlanModeForPlanSolve(agentContext);
+        if (PlanModeEntryPolicy.shouldAutoEnter(request, resumedApprovedPlan, hasPriorPlanSolve)) {
+            enterPlanModeForPlanSolve(agentContext, Boolean.TRUE.equals(request.getForcePlanMode()));
         }
 
         dynamicContext.setAgentContext(agentContext);
@@ -131,9 +134,9 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
     }
 
     /**
-     * 进入 plan 后才有硬只读；PlanSolve 链路默认每请求自动进入。
+     * 进入 plan 后才有硬只读。仅首轮 PlanSolve 或本轮 forcePlanMode 自动进入。
      */
-    private void enterPlanModeForPlanSolve(AgentContext agentContext) {
+    private void enterPlanModeForPlanSolve(AgentContext agentContext, boolean forced) {
         if (agentContext == null) {
             return;
         }
@@ -160,11 +163,26 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
             payload.put("mode", PlanModeState.MODE_PLAN);
             payload.put("planFilePath", planPathHint);
             payload.put("autoEntered", true);
-            payload.put("reason", "PLAN_SOLVE_ENTRY");
+            payload.put("reason", forced ? "FORCE_PLAN_MODE" : "PLAN_SOLVE_FIRST_TURN");
             agentContext.getPrinter().send("plan_mode_entered", payload);
         }
-        log.info("{} PlanSolve auto-entered plan mode, planFile={}",
-                agentContext.getRequestId(), planPathHint);
+        log.info("{} PlanSolve auto-entered plan mode forced={} planFile={}",
+                agentContext.getRequestId(), forced, planPathHint);
+    }
+
+    private boolean hasPriorPlanSolveUserTurn(AgentRequest request) {
+        if (executionLedgerReadRepository == null || request == null
+                || StringUtils.isBlank(request.getSessionId())) {
+            return false;
+        }
+        try {
+            return PlanModeEntryPolicy.hasPriorPlanSolveUserTurn(
+                    executionLedgerReadRepository.queryRunsBySessionId(request.getSessionId()),
+                    request.getRequestId());
+        } catch (Exception e) {
+            log.warn("query prior plan_solve runs failed, sessionId={}", request.getSessionId(), e);
+            return false;
+        }
     }
 
 

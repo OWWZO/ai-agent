@@ -70,6 +70,11 @@ public class AgentRequest {
     private String resumeApprovalId;
     /** 续跑瘦快照 JSON（PlanMode / agent 配置），Prepare 时恢复 */
     private String resumeContextJson;
+    /**
+     * 本轮强制进入 plan mode（前端 Plan 按钮）。
+     * 与 deepThink/PlanSolve 内核无关；续跑忽略。
+     */
+    private Boolean forcePlanMode;
 
     @Data
     @Builder

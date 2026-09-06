@@ -36,4 +36,8 @@ public class GptQueryReq {
      * 当前轮上传附件元数据，供 ReAct / PlanSolve 链路桥接到会话上下文。
      */
     private List<FileInformation> sessionFiles;
+    /**
+     * 本轮强制进入 plan mode（前端 Plan 按钮）。
+     */
+    private Boolean forcePlanMode;
 }

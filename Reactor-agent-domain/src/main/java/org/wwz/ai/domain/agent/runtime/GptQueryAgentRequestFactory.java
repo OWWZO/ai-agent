@@ -57,6 +57,7 @@ public class GptQueryAgentRequestFactory {
         request.setModel(StringUtils.trimToNull(req.getModel()));
         request.setThinking(req.getThinking());
         request.setThinkingEffort(StringUtils.trimToNull(req.getThinkingEffort()));
+        request.setForcePlanMode(Boolean.TRUE.equals(req.getForcePlanMode()));
 
         if (req.getDeepThink() != null && req.getDeepThink() != 0) {
             request.setAgentType(AgentType.PLAN_SOLVE.getValue());

@@ -80,8 +80,8 @@ public class PlanModeToolsTest {
         String prompt = PlanSolvePrompt.ensureApprovedExecution("base prompt");
 
         Assert.assertTrue(prompt.contains(PlanSolvePrompt.EXECUTION_MARKER));
-        Assert.assertTrue(prompt.contains("Plan mode is no longer active"));
-        Assert.assertTrue(prompt.contains("Execute the approved plan"));
+        Assert.assertTrue(prompt.contains("Plan mode is not active this turn"));
+        Assert.assertTrue(prompt.contains("Call EnterPlanMode"));
     }
 
     @Test

@@ -431,6 +431,10 @@ public class AgentContext {
         return planModeState;
     }
 
+    public boolean isSubAgent() {
+        return subAgentId != null && !subAgentId.isBlank();
+    }
+
     public void markTurnClosed() {
         if (turnClosed == null) {
             turnClosed = new AtomicBoolean(true);

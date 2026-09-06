@@ -117,6 +117,22 @@ public class SubAgentParentToolUseIdTest {
         Assert.assertNull(parent.getCurrentToolArtifactSource());
     }
 
+    @Test
+    public void childContextDoesNotShareParentPlanModeState() {
+        AgentContext parent = parentContext();
+        parent.requirePlanModeState().enterPlanMode();
+        Assert.assertTrue(parent.requirePlanModeState().isPlanMode());
+
+        AgentContext child = SubAgentContextFactory.create(
+                parent, "scan controllers", "explore", new ToolCollection(),
+                "agent-1", SubAgentRegistry.TYPE_GENERAL_PURPOSE, "agent-call-1");
+
+        Assert.assertFalse(child.requirePlanModeState().isPlanMode());
+        Assert.assertNotSame(parent.requirePlanModeState(), child.requirePlanModeState());
+        child.requirePlanModeState().tickStep();
+        Assert.assertEquals(0, parent.requirePlanModeState().getStepsSincePlanAttachment());
+    }
+
     private static AgentContext parentContext() {
         return parentContext(new RecordingPrinter());
     }

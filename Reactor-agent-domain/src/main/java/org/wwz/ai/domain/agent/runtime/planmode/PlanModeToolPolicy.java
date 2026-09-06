@@ -76,7 +76,7 @@ public final class PlanModeToolPolicy {
      * @return null 表示放行；非 null 为拒绝原因（给模型看）
      */
     public static String denyReason(AgentContext context, String toolName, Object args) {
-        if (context == null) {
+        if (context == null || context.isSubAgent()) {
             return null;
         }
         return denyReason(context.getPlanModeState(), toolName, args);
@@ -126,7 +126,8 @@ public final class PlanModeToolPolicy {
      * 构造发给 LLM 的 plan-mode 工具视图，避免模型看到被禁止的外部检索工具。
      */
     public static ToolCollection filterTools(AgentContext context, ToolCollection tools) {
-        if (context == null || tools == null || !context.requirePlanModeState().isPlanMode()) {
+        if (context == null || tools == null || context.isSubAgent()
+                || !context.requirePlanModeState().isPlanMode()) {
             return tools;
         }
         ToolCollection filtered = new ToolCollection();

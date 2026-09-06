@@ -3,6 +3,7 @@ package org.wwz.ai.domain.agent.runtime.subagent;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
+import org.wwz.ai.domain.agent.runtime.planmode.PlanModeState;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 
@@ -62,10 +63,10 @@ public final class SubAgentContextFactory {
                 .executionRecorder(parent.getExecutionRecorder())
                 .agentRunState(parent.getAgentRunState())
                 .toolArtifactRegistry(parent.getToolArtifactRegistry())
-                // 与主 Agent 共享 todo 列表 / plan mode / 后台任务注册表
+                // 与主 Agent 共享 todo 列表 / 后台任务注册表；plan mode 只约束主 Agent
                 .sessionTaskList(parent.requireSessionTaskList())
                 .backgroundTasks(parent.requireBackgroundTasks())
-                .planModeState(parent.requirePlanModeState())
+                .planModeState(PlanModeState.builder().build())
                 .workspaceRoot(parent.getWorkspaceRoot())
                 // 子 Agent 必须自己读取文件，不能复用主 Agent 的 unchanged 判定。
                 .workspaceReadStateByPath(new ConcurrentHashMap<>())

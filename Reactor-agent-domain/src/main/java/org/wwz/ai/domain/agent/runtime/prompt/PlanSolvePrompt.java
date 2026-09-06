@@ -6,8 +6,8 @@ package org.wwz.ai.domain.agent.runtime.prompt;
  */
 public final class PlanSolvePrompt {
 
-    public static final String ORCHESTRATION_MARKER = "PLAN_SOLVE_ORCHESTRATION_V4";
-    public static final String EXECUTION_MARKER = "PLAN_SOLVE_EXECUTION_V1";
+    public static final String ORCHESTRATION_MARKER = "PLAN_SOLVE_ORCHESTRATION_V5";
+    public static final String EXECUTION_MARKER = "PLAN_SOLVE_EXECUTION_V2";
 
     public static final String ORCHESTRATION = """
             # Plan-Execute 主代理职责 (%s)
@@ -65,7 +65,13 @@ public final class PlanSolvePrompt {
 
             继续 vs 新建：上下文重叠高 → resume；研究很宽、创作很窄 → 新 Worker + 综合规格；审阅用新视角；无关任务新开。
 
-            ## 7. 对用户沟通
+             ## 7. Plan Mode
+            - 会话第一次 PlanExecute 请求可能由系统自动进入 plan mode（只读规划，写 .reactor/plan.md，ExitPlanMode 等人批）。
+            - 之后默认不在 plan mode。复杂新任务、多方案、需求不清时调用 EnterPlanMode；简单追问、改一处、看结果不要进。
+            - 用户可通过前端「计划」为本轮强制进入 plan mode。
+            - plan mode 只约束你自己；派出去的 Worker 可检索、写文件。
+
+            ## 8. 对用户沟通
             - 先结论；禁止套话开场/收尾
             - 已有完整交付物：气泡只写短摘要，请打开附件
             - 遵守 USER_FACING_REPLY_CONTRACT；默认中文
@@ -97,10 +103,11 @@ public final class PlanSolvePrompt {
         }
         String block = ("""
                 # Plan-Execute implementation phase (%s)
-                - The user has approved the plan through ExitPlanMode.
-                - Plan mode is no longer active. Execute the approved plan now.
-                - Use TaskCreate / TodoWrite when a task list is useful, then use the available execution tools.
-                - Do not call ExitPlanMode again for the same approved plan unless the user explicitly asks for a new plan.
+                - Plan mode is not active this turn. You may use tools and implement.
+                - If a plan was already approved, continue executing it unless the user asks for a new plan.
+                - Call EnterPlanMode for complex new work, multiple approaches, or unclear requirements.
+                - Do not enter plan mode for simple follow-ups, small edits, or inspecting previous results.
+                - Do not call ExitPlanMode unless you are currently in plan mode.
                 """).formatted(EXECUTION_MARKER).trim();
         if (base.isBlank()) {
             return block + "\n";
@@ -113,9 +120,10 @@ public final class PlanSolvePrompt {
             return "";
         }
         for (String legacy : new String[]{
-                "PLAN_SOLVE_ORCHESTRATION_V1",
-                "PLAN_SOLVE_ORCHESTRATION_V2",
-                "PLAN_SOLVE_ORCHESTRATION_V3"
+                 "PLAN_SOLVE_ORCHESTRATION_V1",
+                 "PLAN_SOLVE_ORCHESTRATION_V2",
+                 "PLAN_SOLVE_ORCHESTRATION_V3",
+                 "PLAN_SOLVE_ORCHESTRATION_V4"
         }) {
             if (!base.contains(legacy)) {
                 continue;

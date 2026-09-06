@@ -31,9 +31,28 @@ public class AgentQueryServiceVisitorPropagationTest {
             AgentRequest agentRequest = factory.build(request);
             Assert.assertNotNull(agentRequest);
             Assert.assertEquals("visitor-001", agentRequest.getVisitorId());
+            Assert.assertFalse(Boolean.TRUE.equals(agentRequest.getForcePlanMode()));
         } finally {
             VisitorRequestContext.clear();
         }
+    }
+
+    @Test
+    public void shouldPropagateForcePlanMode() {
+        GptQueryAgentRequestFactory factory = new GptQueryAgentRequestFactory(buildReactorConfig());
+        GptQueryReq request = GptQueryReq.builder()
+                .traceId("trace-plan-001")
+                .sessionId("session-plan-001")
+                .requestId("req-plan-001")
+                .query("重新规划")
+                .deepThink(1)
+                .forcePlanMode(true)
+                .user("reactor")
+                .build();
+
+        AgentRequest agentRequest = factory.build(request);
+        Assert.assertTrue(Boolean.TRUE.equals(agentRequest.getForcePlanMode()));
+        Assert.assertEquals(Integer.valueOf(3), agentRequest.getAgentType());
     }
 
     private ReactorConfig buildReactorConfig() {

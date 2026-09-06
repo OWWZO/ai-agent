@@ -86,6 +86,19 @@ public class SkipMemoryGuardTest {
     }
 
     @Test
+    public void planModeDoesNotStripWriteToolsFromChild() {
+        ToolCollection parent = new ToolCollection();
+        parent.addTool(new StubTool("workspace_read"));
+        parent.addTool(new StubTool("workspace_write"));
+        parent.addTool(new StubTool("deep_search"));
+
+        ToolCollection child = SubAgentToolFilter.filter(parent, defWithAllowAll(), true);
+        Assert.assertNotNull(child.getToolMap().get("workspace_write"));
+        Assert.assertNotNull(child.getToolMap().get("deep_search"));
+        Assert.assertNotNull(child.getToolMap().get("workspace_read"));
+    }
+
+    @Test
     public void turnSyncSkipsAllLongTermMemorySideEffectsWhenSkipped() {
         LtmManager manager = mock(LtmManager.class);
         BackgroundReviewService review = mock(BackgroundReviewService.class);
