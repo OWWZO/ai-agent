@@ -34,6 +34,16 @@ Example request: `用 gpt-image-2-style-library 技能生成城市生命系统�
    - constraints and negative details
 6. Include the selected template name and any useful example case IDs.
 
+## Reference-image character poster workflow
+
+For a user-uploaded character image intended for a poster:
+
+1. Inspect the image first and extract identity anchors: face shape, hairstyle, eye color/shape, costume silhouette, palette, props, pose, line/rendering style, and emotional tone.
+2. Treat the uploaded image as the primary source for appearance consistency. Use web/reference research only to supplement character background, symbolism, mood, and exact copy; do not override visible traits with conflicting fan-wiki descriptions.
+3. If the user asks for a plan first, do not generate an image. Return the extracted anchors, proposed template, composition, palette, text hierarchy, aspect ratio, and consistency/negative constraints for approval.
+4. For known fictional characters, verify the meaning and provenance of requested taglines. Distinguish chapter titles, fan slogans, and canonical quotations instead of presenting uncertain wording as canon.
+5. After approval, build the prompt with explicit identity anchors and limit poster copy to the exact requested title/subtitle to reduce text artifacts.
+
 ## Output Defaults
 
 - Provide a copyable prompt first.
