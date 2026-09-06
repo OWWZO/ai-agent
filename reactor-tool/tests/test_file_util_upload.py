@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from reactor_tool.util.file_util import upload_file
+from reactor_tool.util.file_util import _get_file_storage_target, upload_file
 
 
 class _FakeResponse:
@@ -38,6 +38,20 @@ class _FakeSession:
 
 
 class FileUtilUploadTest(unittest.IsolatedAsyncioTestCase):
+    async def test_should_prefer_internal_file_server_for_container_uploads(self):
+        with patch.dict(
+            os.environ,
+            {
+                "FILE_SERVER_URL": "https://public.example/tool/v1/file_tool",
+                "FILE_SERVER_INTERNAL_URL": "http://reactor-tool:1601/v1/file_tool",
+            },
+            clear=False,
+        ):
+            self.assertEqual(
+                _get_file_storage_target(),
+                "http://reactor-tool:1601/v1/file_tool",
+            )
+
     async def test_should_write_utf8_long_file_name_to_local_storage(self):
         with tempfile.TemporaryDirectory(prefix="file-util-upload-") as storage_root:
             with patch.dict(os.environ, {"FILE_SERVER_URL": storage_root}, clear=False):

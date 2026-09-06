@@ -19,8 +19,8 @@ from reactor_tool.tool.python_sandbox_executor import (
     PythonSandboxExecutionResult,
 )
 from reactor_tool.tool.sandbox_backend_config import (
-    apply_e2b_no_proxy,
     get_e2b_sandbox_timeout_seconds,
+    get_e2b_proxy,
     get_e2b_template,
     get_e2b_workdir,
     require_e2b_api_key,
@@ -188,12 +188,14 @@ class E2BPythonSandboxExecutor:
         template = get_e2b_template()
         if template:
             create_kwargs["template"] = template
+        proxy = get_e2b_proxy()
+        if proxy:
+            create_kwargs["proxy"] = proxy
 
         factory = self._sandbox_factory
         if factory is None:
             from e2b_code_interpreter import Sandbox
 
-            apply_e2b_no_proxy()
             create_kwargs["api_key"] = require_e2b_api_key()
             factory = Sandbox.create
         else:

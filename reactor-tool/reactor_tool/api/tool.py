@@ -98,10 +98,13 @@ async def post_code_interpreter(
 
     # 相对文件名补全为文件服务预览 URL
     if body.file_names:
+        file_server_url = (
+            os.getenv("FILE_SERVER_INTERNAL_URL") or os.getenv("FILE_SERVER_URL") or ""
+        ).rstrip("/")
         for idx, f_name in enumerate(body.file_names):
             if not f_name.startswith("/") and not f_name.startswith("http"):
                 body.file_names[idx] = (
-                    f"{os.getenv('FILE_SERVER_URL')}/preview/{body.request_id}/{f_name}"
+                    f"{file_server_url}/preview/{body.request_id}/{f_name}"
                 )
 
     async def _stream():

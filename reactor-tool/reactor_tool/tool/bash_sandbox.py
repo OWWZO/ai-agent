@@ -27,8 +27,8 @@ from loguru import logger
 from reactor_tool.model.protocal import BashSandboxRequest, BashSandboxResponse
 from reactor_tool.util.file_util import upload_file_by_path
 from reactor_tool.tool.sandbox_backend_config import (
-    apply_e2b_no_proxy,
     get_e2b_sandbox_timeout_seconds,
+    get_e2b_proxy,
     get_e2b_template,
     get_e2b_workdir,
     get_sandbox_backend,
@@ -498,7 +498,6 @@ def _release_session_use(entry: _SessionSandbox) -> None:
 def _create_e2b_sandbox(timeout_sec: int) -> Any:
     from e2b_code_interpreter import Sandbox
 
-    apply_e2b_no_proxy()
     idle = _idle_ttl_sec()
     # 沙箱云端 lifetime 必须盖住空闲 TTL，否则未到我们的 reap 就被 E2B 杀掉
     lifetime = max(
@@ -512,6 +511,9 @@ def _create_e2b_sandbox(timeout_sec: int) -> Any:
     template = get_e2b_template()
     if template:
         create_kwargs["template"] = template
+    proxy = get_e2b_proxy()
+    if proxy:
+        create_kwargs["proxy"] = proxy
     return Sandbox.create(**create_kwargs)
 
 
@@ -620,7 +622,6 @@ def _create_ephemeral_e2b_sandbox(timeout_sec: int) -> Any:
     """一次性沙箱：lifetime 只盖住本次命令，不按 idle TTL 拉长。"""
     from e2b_code_interpreter import Sandbox
 
-    apply_e2b_no_proxy()
     create_kwargs: dict[str, Any] = {
         "api_key": require_e2b_api_key(),
         "timeout": get_e2b_sandbox_timeout_seconds(float(timeout_sec)),
@@ -628,6 +629,9 @@ def _create_ephemeral_e2b_sandbox(timeout_sec: int) -> Any:
     template = get_e2b_template()
     if template:
         create_kwargs["template"] = template
+    proxy = get_e2b_proxy()
+    if proxy:
+        create_kwargs["proxy"] = proxy
     return Sandbox.create(**create_kwargs)
 
 

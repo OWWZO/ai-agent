@@ -48,24 +48,14 @@ def get_e2b_sandbox_timeout_seconds(exec_timeout_seconds: float) -> int:
     return max(300, int(exec_timeout_seconds) + 120)
 
 
-_E2B_NO_PROXY_HOSTS = ("e2b.app", ".e2b.app", "e2b.dev", ".e2b.dev")
+def get_e2b_proxy() -> str | None:
+    """返回 E2B SDK 专用代理地址。
 
-
-def apply_e2b_no_proxy() -> None:
-    """让 E2B API / sandbox 主机绕过 HTTP(S)_PROXY。
-
-    e2b SDK 的 httpx 默认 trust_env=True；只设 proxy=None 仍会走环境代理。
-    往 NO_PROXY 追加 e2b 域名是进程级、可并发安全的（只排除这些主机）。
+    E2B_PROXY 优先；未单独配置时兼容复用现有网页抓取代理。
+    返回值会直接传给 Sandbox/Template SDK，不修改进程级 HTTP_PROXY。
     """
-    for key in ("NO_PROXY", "no_proxy"):
-        current = os.environ.get(key, "")
-        parts = [p.strip() for p in current.split(",") if p.strip()]
-        existing = set(parts)
-        changed = key not in os.environ
-        for host in _E2B_NO_PROXY_HOSTS:
-            if host not in existing:
-                parts.append(host)
-                existing.add(host)
-                changed = True
-        if changed:
-            os.environ[key] = ",".join(parts)
+    raw = os.getenv("E2B_PROXY")
+    if raw is None:
+        raw = os.getenv("REACTOR_WEB_FETCH_PROXY")
+    value = (raw or "").strip()
+    return value or None

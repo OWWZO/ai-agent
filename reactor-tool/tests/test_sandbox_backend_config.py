@@ -2,17 +2,17 @@
 import os
 import unittest
 
-from reactor_tool.tool.sandbox_backend_config import apply_e2b_no_proxy
+from reactor_tool.tool.sandbox_backend_config import get_e2b_proxy
 
 
-class ApplyE2BNoProxyTest(unittest.TestCase):
+class GetE2BProxyTest(unittest.TestCase):
     def setUp(self):
-        self._prev_no = os.environ.get("NO_PROXY")
-        self._prev_low = os.environ.get("no_proxy")
+        self._prev_e2b = os.environ.get("E2B_PROXY")
+        self._prev_web_fetch = os.environ.get("REACTOR_WEB_FETCH_PROXY")
 
     def tearDown(self):
-        self._restore("NO_PROXY", self._prev_no)
-        self._restore("no_proxy", self._prev_low)
+        self._restore("E2B_PROXY", self._prev_e2b)
+        self._restore("REACTOR_WEB_FETCH_PROXY", self._prev_web_fetch)
 
     @staticmethod
     def _restore(key, value):
@@ -21,30 +21,20 @@ class ApplyE2BNoProxyTest(unittest.TestCase):
         else:
             os.environ[key] = value
 
-    @staticmethod
-    def _tokens(value):
-        return [p.strip() for p in (value or "").split(",") if p.strip()]
+    def test_prefers_e2b_proxy(self):
+        os.environ["E2B_PROXY"] = " http://e2b-proxy:8080 "
+        os.environ["REACTOR_WEB_FETCH_PROXY"] = "http://fallback:8080"
+        self.assertEqual("http://e2b-proxy:8080", get_e2b_proxy())
 
-    def test_appends_e2b_hosts_and_keeps_existing(self):
-        os.environ["NO_PROXY"] = "127.0.0.1,localhost"
-        os.environ["no_proxy"] = "127.0.0.1,localhost"
-        apply_e2b_no_proxy()
-        tokens = self._tokens(os.environ["NO_PROXY"])
-        self.assertIn("127.0.0.1", tokens)
-        self.assertIn("e2b.app", tokens)
-        self.assertIn(".e2b.app", tokens)
-        self.assertEqual(tokens.count("e2b.app"), 1)
-        self.assertIn("e2b.app", self._tokens(os.environ["no_proxy"]))
+    def test_falls_back_to_web_fetch_proxy(self):
+        os.environ.pop("E2B_PROXY", None)
+        os.environ["REACTOR_WEB_FETCH_PROXY"] = "http://fallback:8080"
+        self.assertEqual("http://fallback:8080", get_e2b_proxy())
 
-    def test_is_idempotent(self):
-        os.environ.pop("NO_PROXY", None)
-        os.environ.pop("no_proxy", None)
-        apply_e2b_no_proxy()
-        first = os.environ["NO_PROXY"]
-        apply_e2b_no_proxy()
-        self.assertEqual(first, os.environ["NO_PROXY"])
-        self.assertEqual(self._tokens(first).count("e2b.app"), 1)
-        self.assertEqual(self._tokens(first).count(".e2b.app"), 1)
+    def test_explicit_empty_e2b_proxy_disables_fallback(self):
+        os.environ["E2B_PROXY"] = ""
+        os.environ["REACTOR_WEB_FETCH_PROXY"] = "http://fallback:8080"
+        self.assertIsNone(get_e2b_proxy())
 
 
 if __name__ == "__main__":

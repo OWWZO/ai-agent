@@ -337,8 +337,10 @@ async def download_all_files_in_path(
 
 
 def _get_file_storage_target() -> str:
-    """读取文件存储目标，既支持 HTTP 文件服务，也支持本地目录。"""
-    storage_target = (os.getenv("FILE_SERVER_URL") or "").strip()
+    """读取文件上传目标，优先使用容器内可达的文件服务地址。"""
+    storage_target = (
+        os.getenv("FILE_SERVER_INTERNAL_URL") or os.getenv("FILE_SERVER_URL") or ""
+    ).strip()
     if not storage_target:
         raise ValueError("FILE_SERVER_URL is not configured")
     return storage_target

@@ -8,7 +8,10 @@ from types import SimpleNamespace
 
 from reactor_tool.tool.code_interpreter_policy import build_permission_policy
 from reactor_tool.tool.e2b_sandbox_backend import E2BPythonSandboxExecutor
-from reactor_tool.tool.python_sandbox_executor import PythonSandboxExecutionError, PythonSandboxExecutor
+from reactor_tool.tool.python_sandbox_executor import (
+    PythonSandboxExecutionError,
+    PythonSandboxExecutor,
+)
 
 _REMOTE_ROOT = "/home/user/workspace"
 
@@ -51,7 +54,11 @@ class _FakeSandbox:
                 if not norm.startswith(prefix):
                     continue
                 rel = norm[len(prefix) :]
-                if not rel or rel.startswith("input/") or any(part.startswith(".") for part in rel.split("/")):
+                if (
+                    not rel
+                    or rel.startswith("input/")
+                    or any(part.startswith(".") for part in rel.split("/"))
+                ):
                     continue
                 if Path(rel).name.startswith("__last_source__"):
                     continue
@@ -135,21 +142,31 @@ class _FakeSandbox:
         stdout_buf = io.StringIO()
         stderr_buf = io.StringIO()
         try:
-            with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stderr_buf):
+            with (
+                contextlib.redirect_stdout(stdout_buf),
+                contextlib.redirect_stderr(stderr_buf),
+            ):
                 exec(code, local_ns, local_ns)
             self._kernel = local_ns
             for rel, content in dict(local_ns.get("__remote_writes__") or {}).items():
                 self.files.write(f"{_REMOTE_ROOT}/{rel}", content)
             return SimpleNamespace(
-                logs=SimpleNamespace(stdout=[stdout_buf.getvalue()], stderr=[stderr_buf.getvalue()]),
+                logs=SimpleNamespace(
+                    stdout=[stdout_buf.getvalue()], stderr=[stderr_buf.getvalue()]
+                ),
                 error=None,
                 results=[],
                 text=None,
             )
         except Exception as exc:
             return SimpleNamespace(
-                logs=SimpleNamespace(stdout=[stdout_buf.getvalue()], stderr=[stderr_buf.getvalue(), str(exc)]),
-                error=SimpleNamespace(name=type(exc).__name__, value=str(exc), traceback=""),
+                logs=SimpleNamespace(
+                    stdout=[stdout_buf.getvalue()],
+                    stderr=[stderr_buf.getvalue(), str(exc)],
+                ),
+                error=SimpleNamespace(
+                    name=type(exc).__name__, value=str(exc), traceback=""
+                ),
                 results=[],
                 text=None,
             )
@@ -164,6 +181,46 @@ class _FakeSandbox:
 
 
 class E2BSandboxBackendTest(unittest.TestCase):
+    def test_executor_passes_configured_proxy_to_sandbox_factory(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            workspace_root = Path(workspace)
+            output_dir = workspace_root / "output"
+            output_dir.mkdir()
+            policy = build_permission_policy(
+                profile="analysis",
+                workspace_root=str(workspace_root),
+                output_dir=str(output_dir),
+                input_files=[],
+            )
+            captured: dict[str, object] = {}
+
+            def factory(**kwargs):
+                captured.update(kwargs)
+                return _FakeSandbox()
+
+            previous_e2b_proxy = os.environ.get("E2B_PROXY")
+            previous_web_fetch_proxy = os.environ.get("REACTOR_WEB_FETCH_PROXY")
+            os.environ["E2B_PROXY"] = "http://e2b-proxy.test:7890"
+            os.environ.pop("REACTOR_WEB_FETCH_PROXY", None)
+            executor = E2BPythonSandboxExecutor(
+                policy,
+                timeout_seconds=15,
+                sandbox_factory=factory,
+            )
+            try:
+                executor.execute("print('done')")
+                self.assertEqual("http://e2b-proxy.test:7890", captured["proxy"])
+            finally:
+                executor.close()
+                if previous_e2b_proxy is None:
+                    os.environ.pop("E2B_PROXY", None)
+                else:
+                    os.environ["E2B_PROXY"] = previous_e2b_proxy
+                if previous_web_fetch_proxy is None:
+                    os.environ.pop("REACTOR_WEB_FETCH_PROXY", None)
+                else:
+                    os.environ["REACTOR_WEB_FETCH_PROXY"] = previous_web_fetch_proxy
+
     def test_executor_facade_routes_to_e2b_and_downloads_outputs(self):
         with tempfile.TemporaryDirectory() as workspace:
             workspace_root = Path(workspace)
@@ -192,8 +249,12 @@ class E2BSandboxBackendTest(unittest.TestCase):
                 self.assertEqual(0, result.returncode)
                 self.assertIn("done", result.stdout)
                 self.assertTrue((output_dir / "hello.txt").is_file())
-                self.assertEqual("hi", (output_dir / "hello.txt").read_text(encoding="utf-8"))
-                self.assertEqual(["hello.txt"], [item["name"] for item in result.produced_files])
+                self.assertEqual(
+                    "hi", (output_dir / "hello.txt").read_text(encoding="utf-8")
+                )
+                self.assertEqual(
+                    ["hello.txt"], [item["name"] for item in result.produced_files]
+                )
             finally:
                 executor.close()
             self.assertTrue(fake.killed)
@@ -324,7 +385,9 @@ class E2BSandboxBackendTest(unittest.TestCase):
                     "print(text.strip())\n"
                 )
                 self.assertIn("a,1", result.stdout)
-                self.assertEqual("a,1\n", (output_dir / "out.txt").read_text(encoding="utf-8"))
+                self.assertEqual(
+                    "a,1\n", (output_dir / "out.txt").read_text(encoding="utf-8")
+                )
                 remote_seed = fake.files.store.get(f"{_REMOTE_ROOT}/input/seed.csv")
                 self.assertEqual(b"a,1\n", remote_seed)
             finally:
