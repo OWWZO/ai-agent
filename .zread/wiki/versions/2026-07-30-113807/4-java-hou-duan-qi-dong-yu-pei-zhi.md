@@ -232,9 +232,9 @@ Sources: [DataSourceConfig.java](Reactor-agent-app/src/main/java/org/wwz/ai/conf
 
 ## 生产启动提示
 
-生产 profile 启用 `forward-headers-strategy: framework` 以配合 Nginx，Cookie 设为 `secure: true`，并收紧 `allowed-origins`。仓库提供 `docs/dev-ops/ubuntu/` 下的 systemd 与 `application-prod.yml` 模板，以及 `Reactor-agent-app/build.sh` 的 Docker 镜像构建入口；完整部署编排不属于本页范围，可结合运维目录自行扩展。
+生产 profile 启用 `forward-headers-strategy: framework` 以配合 Nginx，Cookie 设为 `secure: true`，并通过 `PUBLIC_ORIGIN` 收紧 `allowed-origins`。仓库以根目录 `Dockerfile`、`docker-compose.yml` 和 `docker/nginx.conf` 作为统一容器部署入口，`Reactor-agent-app/build.sh` 仅负责调用 Compose 构建镜像。
 
-Sources: [application-prod.yml](Reactor-agent-app/src/main/resources/application-prod.yml#L1-L40), [build.sh](Reactor-agent-app/build.sh#L1-L5)
+Sources: [application-prod.yml](Reactor-agent-app/src/main/resources/application-prod.yml#L1-L40), [docker-compose.yml](docker-compose.yml#L1-L114), [build.sh](Reactor-agent-app/build.sh#L1-L15)
 
 ## 下一步阅读
 

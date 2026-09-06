@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.infrastructure.dao.reactor.IFeaturedConversationDao">
+
+    <resultMap id="featuredConversationResultMap" type="org.wwz.ai.infrastructure.dao.po.FeaturedConversationPO">
+        <id property="id" column="id"/>
+        <result property="featuredId" column="featured_id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="title" column="title"/>
+        <result property="summary" column="summary"/>
+        <result property="coverResourceKey" column="cover_resource_key"/>
+        <result property="coverUrl" column="cover_url"/>
+        <result property="tagsJson" column="tags_json"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="status" column="status"/>
+        <result property="publishedBy" column="published_by"/>
+        <result property="publishedAt" column="published_at"/>
+        <result property="updatedBy" column="updated_by"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="deleted" column="deleted"/>
+    </resultMap>
+
+    <sql id="featuredConversationColumns">
+        id, featured_id, session_id, title, summary, cover_resource_key, cover_url, tags_json,
+        sort_order, status, published_by, published_at, updated_by, updated_at, create_time, update_time, deleted
+    </sql>
+
+    <insert id="upsert">
+        INSERT INTO ai_agent_featured_conversation (
+            featured_id, session_id, title, summary, cover_resource_key, cover_url,
+            tags_json, sort_order, status, published_by, published_at, updated_by, updated_at, deleted
+        ) VALUES (
+            #{featuredId}, #{sessionId}, #{title}, #{summary}, #{coverResourceKey}, #{coverUrl},
+            #{tagsJson}, #{sortOrder}, #{status}, #{publishedBy}, #{publishedAt}, #{updatedBy}, #{updatedAt}, 0
+        )
+        ON DUPLICATE KEY UPDATE
+            title = VALUES(title),
+            summary = VALUES(summary),
+            cover_resource_key = VALUES(cover_resource_key),
+            cover_url = VALUES(cover_url),
+            tags_json = VALUES(tags_json),
+            sort_order = VALUES(sort_order),
+            updated_by = VALUES(updated_by),
+            updated_at = VALUES(updated_at),
+            deleted = 0
+    </insert>
+
+    <select id="queryByFeaturedId" resultMap="featuredConversationResultMap">
+        SELECT <include refid="featuredConversationColumns"/>
+        FROM ai_agent_featured_conversation
+        WHERE featured_id = #{featuredId}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="queryBySessionId" resultMap="featuredConversationResultMap">
+        SELECT <include refid="featuredConversationColumns"/>
+        FROM ai_agent_featured_conversation
+        WHERE session_id = #{sessionId}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="queryOnlineList" resultMap="featuredConversationResultMap">
+        SELECT <include refid="featuredConversationColumns"/>
+        FROM ai_agent_featured_conversation
+        WHERE status = 'ONLINE'
+          AND deleted = 0
+        ORDER BY sort_order DESC, id DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countOnline" resultType="java.lang.Integer">
+        SELECT COUNT(1)
+        FROM ai_agent_featured_conversation
+        WHERE status = 'ONLINE'
+          AND deleted = 0
+    </select>
+
+    <update id="updateStatus">
+        UPDATE ai_agent_featured_conversation
+        SET status = #{status},
+            published_at = #{publishedAt},
+            updated_by = #{updatedBy},
+            updated_at = #{updatedAt},
+            deleted = 0
+        WHERE featured_id = #{featuredId}
+          AND deleted = 0
+    </update>
+
+    <select id="queryAdminList" resultMap="featuredConversationResultMap">
+        SELECT <include refid="featuredConversationColumns"/>
+        FROM ai_agent_featured_conversation
+        <trim prefix="WHERE" prefixOverrides="AND|OR">
+            deleted = 0
+            <if test="status != null and status != ''">
+                AND status = #{status}
+            </if>
+            <if test="sessionId != null and sessionId != ''">
+                AND session_id = #{sessionId}
+            </if>
+            <if test="title != null and title != ''">
+                AND title LIKE CONCAT('%', #{title}, '%')
+            </if>
+        </trim>
+        ORDER BY sort_order DESC, id DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countAdminList" resultType="java.lang.Integer">
+        SELECT COUNT(1)
+        FROM ai_agent_featured_conversation
+        <trim prefix="WHERE" prefixOverrides="AND|OR">
+            deleted = 0
+            <if test="status != null and status != ''">
+                AND status = #{status}
+            </if>
+            <if test="sessionId != null and sessionId != ''">
+                AND session_id = #{sessionId}
+            </if>
+            <if test="title != null and title != ''">
+                AND title LIKE CONCAT('%', #{title}, '%')
+            </if>
+        </trim>
+    </select>
+</mapper>

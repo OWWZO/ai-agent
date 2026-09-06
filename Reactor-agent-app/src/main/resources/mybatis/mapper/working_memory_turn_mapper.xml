@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.infrastructure.dao.reactor.IWorkingMemoryTurnDao">
+
+    <resultMap id="WorkingMemoryTurnMap" type="org.wwz.ai.domain.agent.memory.WorkingMemoryTurn">
+        <id column="id" property="id"/>
+        <result column="session_id" property="sessionId"/>
+        <result column="memory_scope" property="memoryScope"/>
+        <result column="request_id" property="requestId"/>
+        <result column="run_id" property="runId"/>
+        <result column="turn_seq" property="turnSeq"/>
+        <result column="entry_agent" property="entryAgent"/>
+        <result column="status" property="status"/>
+        <result column="schema_version" property="schemaVersion"/>
+        <result column="message_count" property="messageCount"/>
+        <result column="token_estimate" property="tokenEstimate"/>
+        <result column="started_at" property="startedAt"/>
+        <result column="finished_at" property="finishedAt"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <insert id="insertTurn" parameterType="org.wwz.ai.domain.agent.memory.WorkingMemoryTurn" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_agent_working_memory_turn (
+            session_id, memory_scope, request_id, run_id, turn_seq, entry_agent, status, schema_version,
+            message_count, token_estimate, started_at, finished_at, create_time, update_time, deleted
+        ) VALUES (
+            #{sessionId}, #{memoryScope}, #{requestId}, #{runId}, #{turnSeq}, #{entryAgent}, #{status}, #{schemaVersion},
+            #{messageCount}, #{tokenEstimate}, #{startedAt}, #{finishedAt}, NOW(), NOW(), 0
+        )
+    </insert>
+
+    <select id="selectMaxTurnSeq" resultType="java.lang.Integer">
+        SELECT MAX(turn_seq)
+        FROM ai_agent_working_memory_turn
+        WHERE session_id = #{sessionId}
+          AND memory_scope = #{memoryScope}
+          AND deleted = 0
+    </select>
+
+    <select id="selectByRequestId" resultMap="WorkingMemoryTurnMap">
+        SELECT *
+        FROM ai_agent_working_memory_turn
+        WHERE request_id = #{requestId}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="selectReadyBySessionIdAndScope" resultMap="WorkingMemoryTurnMap">
+        SELECT *
+        FROM ai_agent_working_memory_turn
+        WHERE session_id = #{sessionId}
+          AND memory_scope = #{memoryScope}
+          AND status = 1
+          AND deleted = 0
+        ORDER BY turn_seq ASC
+    </select>
+
+    <update id="markReadyInvalidBySessionIdAndScope">
+        UPDATE ai_agent_working_memory_turn
+        SET status = 2,
+            update_time = NOW()
+        WHERE session_id = #{sessionId}
+          AND memory_scope = #{memoryScope}
+          AND status = 1
+          AND deleted = 0
+    </update>
+</mapper>

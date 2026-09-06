@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.infrastructure.dao.reactor.IPlanApprovalDao">
+
+    <resultMap id="PlanApprovalMap" type="org.wwz.ai.infrastructure.dao.reactor.po.PlanApprovalPO">
+        <id column="id" property="id"/>
+        <result column="approval_id" property="approvalId"/>
+        <result column="visitor_id" property="visitorId"/>
+        <result column="session_id" property="sessionId"/>
+        <result column="source_run_id" property="sourceRunId"/>
+        <result column="source_request_id" property="sourceRequestId"/>
+        <result column="tool_invocation_id" property="toolInvocationId"/>
+        <result column="tool_call_id" property="toolCallId"/>
+        <result column="plan_content" property="planContent"/>
+        <result column="plan_file_path" property="planFilePath"/>
+        <result column="decision_json" property="decisionJson"/>
+        <result column="status" property="status"/>
+        <result column="expires_at" property="expiresAt"/>
+        <result column="resume_request_id" property="resumeRequestId"/>
+        <result column="resume_context_json" property="resumeContextJson"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="org.wwz.ai.infrastructure.dao.reactor.po.PlanApprovalPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_agent_plan_approval (
+            approval_id, visitor_id, session_id, source_run_id, source_request_id,
+            tool_invocation_id, tool_call_id, plan_content, plan_file_path, decision_json, status,
+            expires_at, resume_request_id, resume_context_json, create_time, update_time, deleted
+        ) VALUES (
+            #{approvalId}, #{visitorId}, #{sessionId}, #{sourceRunId}, #{sourceRequestId},
+            #{toolInvocationId}, #{toolCallId}, #{planContent}, #{planFilePath}, #{decisionJson}, #{status},
+            #{expiresAt}, #{resumeRequestId}, #{resumeContextJson}, NOW(), NOW(), 0
+        )
+    </insert>
+
+    <select id="selectByApprovalId" resultMap="PlanApprovalMap">
+        SELECT *
+        FROM ai_agent_plan_approval
+        WHERE approval_id = #{approvalId}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="selectByResumeRequestId" resultMap="PlanApprovalMap">
+        SELECT *
+        FROM ai_agent_plan_approval
+        WHERE resume_request_id = #{resumeRequestId}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="selectOpenBySessionId" resultMap="PlanApprovalMap">
+        SELECT *
+        FROM ai_agent_plan_approval
+        WHERE session_id = #{sessionId}
+          AND deleted = 0
+          AND status IN ('PENDING', 'RESUME_PENDING', 'RESUMING', 'ANSWERED')
+        ORDER BY create_time DESC, id DESC
+    </select>
+
+    <select id="countOpenBySessionId" resultType="int">
+        SELECT COUNT(1)
+        FROM ai_agent_plan_approval
+        WHERE session_id = #{sessionId}
+          AND deleted = 0
+          AND status IN ('PENDING', 'RESUME_PENDING', 'RESUMING')
+    </select>
+
+    <update id="casDecidePending">
+        UPDATE ai_agent_plan_approval
+        SET status = 'RESUME_PENDING',
+            decision_json = #{decisionJson},
+            resume_request_id = #{resumeRequestId},
+            update_time = NOW()
+        WHERE approval_id = #{approvalId}
+          AND deleted = 0
+          AND status = 'PENDING'
+          <if test="visitorId != null and visitorId != ''">
+              AND (visitor_id IS NULL OR visitor_id = #{visitorId})
+          </if>
+    </update>
+
+    <update id="casClaimResume">
+        UPDATE ai_agent_plan_approval
+        SET status = 'RESUMING',
+            update_time = NOW()
+        WHERE resume_request_id = #{resumeRequestId}
+          AND deleted = 0
+          AND status = 'RESUME_PENDING'
+          <if test="visitorId != null and visitorId != ''">
+              AND (visitor_id IS NULL OR visitor_id = #{visitorId})
+          </if>
+    </update>
+
+    <update id="markAnswered">
+        UPDATE ai_agent_plan_approval
+        SET status = 'ANSWERED',
+            update_time = NOW()
+        WHERE approval_id = #{approvalId}
+          AND deleted = 0
+          AND status = 'RESUMING'
+    </update>
+
+    <update id="markFailed">
+        UPDATE ai_agent_plan_approval
+        SET status = #{status},
+            update_time = NOW()
+        WHERE approval_id = #{approvalId}
+          AND deleted = 0
+    </update>
+
+    <update id="casCancel">
+        UPDATE ai_agent_plan_approval
+        SET status = 'CANCELLED',
+            update_time = NOW()
+        WHERE approval_id = #{approvalId}
+          AND deleted = 0
+          AND status IN
+          <foreach collection="fromStatuses" item="st" open="(" separator="," close=")">
+              #{st}
+          </foreach>
+          <if test="visitorId != null and visitorId != ''">
+              AND (visitor_id IS NULL OR visitor_id = #{visitorId})
+          </if>
+    </update>
+
+    <update id="cancelBySourceRequestId">
+        UPDATE ai_agent_plan_approval
+        SET status = 'CANCELLED',
+            update_time = NOW()
+        WHERE source_request_id = #{sourceRequestId}
+          AND deleted = 0
+          AND status IN
+          <foreach collection="fromStatuses" item="st" open="(" separator="," close=")">
+              #{st}
+          </foreach>
+    </update>
+</mapper>

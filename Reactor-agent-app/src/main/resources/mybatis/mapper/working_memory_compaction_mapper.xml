@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.infrastructure.dao.reactor.IWorkingMemoryCompactionDao">
+
+    <insert id="insertEvent" parameterType="org.wwz.ai.domain.agent.memory.WorkingMemoryCompactionEvent"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_agent_working_memory_compaction (
+            session_id, trigger_request_id, compact_request_id, strategy, status,
+            before_tokens, after_tokens, before_message_count, after_message_count, threshold_tokens,
+            summary_text, before_messages_json, after_messages_json, error_message,
+            create_time, update_time, deleted
+        ) VALUES (
+            #{sessionId}, #{triggerRequestId}, #{compactRequestId}, #{strategy}, #{status},
+            #{beforeTokens}, #{afterTokens}, #{beforeMessageCount}, #{afterMessageCount}, #{thresholdTokens},
+            #{summaryText}, #{beforeMessagesJson}, #{afterMessagesJson}, #{errorMessage},
+            NOW(), NOW(), 0
+        )
+    </insert>
+</mapper>

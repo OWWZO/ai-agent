@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.infrastructure.dao.reactor.ISessionTodoDao">
+
+    <resultMap id="SessionTodoMap" type="org.wwz.ai.infrastructure.dao.reactor.po.SessionTodoPO">
+        <id column="id" property="id"/>
+        <result column="session_id" property="sessionId"/>
+        <result column="task_id" property="taskId"/>
+        <result column="subject" property="subject"/>
+        <result column="description" property="description"/>
+        <result column="active_form" property="activeForm"/>
+        <result column="owner" property="owner"/>
+        <result column="status" property="status"/>
+        <result column="blocks_json" property="blocksJson"/>
+        <result column="blocked_by_json" property="blockedByJson"/>
+        <result column="metadata_json" property="metadataJson"/>
+        <result column="seq_no" property="seqNo"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <select id="selectBySessionId" resultMap="SessionTodoMap">
+        SELECT *
+        FROM ai_agent_session_todo
+        WHERE session_id = #{sessionId}
+          AND deleted = 0
+        ORDER BY seq_no ASC, id ASC
+    </select>
+
+    <select id="selectMaxSeqNo" resultType="java.lang.Integer">
+        SELECT MAX(seq_no)
+        FROM ai_agent_session_todo
+        WHERE session_id = #{sessionId}
+          AND deleted = 0
+    </select>
+
+    <insert id="upsert" parameterType="org.wwz.ai.infrastructure.dao.reactor.po.SessionTodoPO">
+        INSERT INTO ai_agent_session_todo (
+            session_id, task_id, subject, description, active_form, owner, status,
+            blocks_json, blocked_by_json, metadata_json, seq_no, create_time, update_time, deleted
+        ) VALUES (
+            #{sessionId}, #{taskId}, #{subject}, #{description}, #{activeForm}, #{owner}, #{status},
+            #{blocksJson}, #{blockedByJson}, #{metadataJson}, #{seqNo}, NOW(), NOW(), 0
+        )
+        ON DUPLICATE KEY UPDATE
+            subject = VALUES(subject),
+            description = VALUES(description),
+            active_form = VALUES(active_form),
+            owner = VALUES(owner),
+            status = VALUES(status),
+            blocks_json = VALUES(blocks_json),
+            blocked_by_json = VALUES(blocked_by_json),
+            metadata_json = VALUES(metadata_json),
+            seq_no = VALUES(seq_no),
+            deleted = 0,
+            update_time = NOW()
+    </insert>
+
+    <update id="softDelete">
+        UPDATE ai_agent_session_todo
+        SET deleted = 1, update_time = NOW()
+        WHERE session_id = #{sessionId}
+          AND task_id = #{taskId}
+          AND deleted = 0
+    </update>
+
+    <update id="softDeleteAllBySessionId">
+        UPDATE ai_agent_session_todo
+        SET deleted = 1, update_time = NOW()
+        WHERE session_id = #{sessionId}
+          AND deleted = 0
+    </update>
+</mapper>

@@ -75,17 +75,20 @@ Thumbs.db
 
 # 敏感配置与本地运行文件不纳入版本控制
 /mcp-server-csdn/
-/Reactor-agent-app/src/main/resources/
+/Reactor-agent-app/src/main/resources/*
 /Reactor-agent-app/src/main/resources/application-dev.yml
 /Reactor-agent-app/src/main/resources/application-test.yml
-# Active tool-output mapper XMLs are application resources, not local secrets.
+/Reactor-agent-app/src/main/resources/application-prod.yml.local
+
+# Java runtime resources are required for a reproducible build.
 !/Reactor-agent-app/src/main/resources/
-/Reactor-agent-app/src/main/resources/*
+!/Reactor-agent-app/src/main/resources/application.yml
+!/Reactor-agent-app/src/main/resources/application-prod.yml
+!/Reactor-agent-app/src/main/resources/logback-spring.xml
+!/Reactor-agent-app/src/main/resources/db/
+!/Reactor-agent-app/src/main/resources/db/**
 !/Reactor-agent-app/src/main/resources/mybatis/
-/Reactor-agent-app/src/main/resources/mybatis/*
-!/Reactor-agent-app/src/main/resources/mybatis/mapper/
-/Reactor-agent-app/src/main/resources/mybatis/mapper/*
-!/Reactor-agent-app/src/main/resources/mybatis/mapper/tool_output_*.xml
+!/Reactor-agent-app/src/main/resources/mybatis/**
 /mcp-server-csdn/mcp-server-csdn/src/main/resources/application.yml
 /mcp-server-csdn/data/log/
 /reactor-tool/cookies.json

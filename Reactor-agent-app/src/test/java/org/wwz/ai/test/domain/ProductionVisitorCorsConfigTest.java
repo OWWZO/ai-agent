@@ -21,38 +21,25 @@ public class ProductionVisitorCorsConfigTest {
         );
 
         Assert.assertTrue("生产配置必须启用 forwarded headers 识别", content.contains("forward-headers-strategy: framework"));
-        Assert.assertTrue("生产配置必须允许 www 域名跨域携带凭证", content.contains("- https://www.owwzo.top"));
-        Assert.assertTrue("生产配置必须允许根域名跨域携带凭证", content.contains("- https://owwzo.top"));
+        Assert.assertTrue("生产配置必须通过环境变量注入允许来源", content.contains("${PUBLIC_ORIGIN:http://localhost:3000}"));
     }
 
     @Test
-    public void shouldKeepDeploymentTemplateInSyncForVisitorCorsAndForwardHeaders() throws Exception {
+    public void shouldKeepDockerComposeAsTheDeploymentEntryPoint() throws Exception {
         String content = Files.readString(
-                resolveRepoFile("docs/dev-ops/ubuntu/server-bundle/templates/application-prod.yml.tmpl"),
+                resolveRepoFile("docker-compose.yml"),
                 StandardCharsets.UTF_8
         );
 
-        Assert.assertTrue("部署模板必须启用 forwarded headers 识别", content.contains("forward-headers-strategy: framework"));
-        Assert.assertTrue("部署模板必须允许 www 域名跨域携带凭证", content.contains("- https://www.owwzo.top"));
-        Assert.assertTrue("部署模板必须允许根域名跨域携带凭证", content.contains("- https://owwzo.top"));
+        Assert.assertTrue("Compose 必须编排 Java Backend", content.contains("reactor-backend:"));
+        Assert.assertTrue("Compose 必须编排 reactor-tool API", content.contains("reactor-tool:"));
+        Assert.assertTrue("Compose 必须编排 sandbox 进程", content.contains("reactor-sandbox:"));
+        Assert.assertTrue("Compose 必须编排前端反代", content.contains("frontend:"));
     }
 
     @Test
-    public void shouldKeepProductionEnvExampleInSyncForVisitorCorsAndForwardHeaders() throws Exception {
-        String content = Files.readString(
-                resolveRepoFile("docs/dev-ops/ubuntu/env/reactor-agent-prod.yml.example"),
-                StandardCharsets.UTF_8
-        );
-
-        Assert.assertTrue("生产环境示例必须启用 forwarded headers 识别", content.contains("forward-headers-strategy: framework"));
-        Assert.assertTrue("生产环境示例必须允许 www 域名跨域携带凭证", content.contains("- https://www.owwzo.top"));
-        Assert.assertTrue("生产环境示例必须允许根域名跨域携带凭证", content.contains("- https://owwzo.top"));
-    }
-
-    @Test
-    public void shouldForwardHostAndPortInNginxConfigs() throws Exception {
-        assertNginxConfigContainsForwardHeaders("docs/dev-ops/ubuntu/nginx/reactor-agent.conf");
-        assertNginxConfigContainsForwardHeaders("docs/dev-ops/ubuntu/server-bundle/templates/reactor-agent.conf.tmpl");
+    public void shouldForwardHostAndPortInDockerNginxConfig() throws Exception {
+        assertNginxConfigContainsForwardHeaders("docker/nginx.conf");
     }
 
     private void assertNginxConfigContainsForwardHeaders(String path) throws Exception {

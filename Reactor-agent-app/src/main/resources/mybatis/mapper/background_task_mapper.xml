@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.infrastructure.dao.reactor.IBackgroundTaskDao">
+
+    <resultMap id="BackgroundTaskMap" type="org.wwz.ai.infrastructure.dao.reactor.po.BackgroundTaskPO">
+        <id column="id" property="id"/>
+        <result column="session_id" property="sessionId"/>
+        <result column="task_id" property="taskId"/>
+        <result column="type" property="type"/>
+        <result column="status" property="status"/>
+        <result column="description" property="description"/>
+        <result column="command" property="command"/>
+        <result column="agent_id" property="agentId"/>
+        <result column="agent_type" property="agentType"/>
+        <result column="prompt" property="prompt"/>
+        <result column="output" property="output"/>
+        <result column="error_msg" property="errorMsg"/>
+        <result column="total_tool_use_count" property="totalToolUseCount"/>
+        <result column="total_duration_ms" property="totalDurationMs"/>
+        <result column="started_at_ms" property="startedAtMs"/>
+        <result column="ended_at_ms" property="endedAtMs"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <select id="selectBySessionId" resultMap="BackgroundTaskMap">
+        SELECT *
+        FROM ai_agent_background_task
+        WHERE session_id = #{sessionId}
+          AND deleted = 0
+        ORDER BY id ASC
+    </select>
+
+    <select id="selectBySessionAndTaskId" resultMap="BackgroundTaskMap">
+        SELECT *
+        FROM ai_agent_background_task
+        WHERE session_id = #{sessionId}
+          AND task_id = #{taskId}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <insert id="upsert" parameterType="org.wwz.ai.infrastructure.dao.reactor.po.BackgroundTaskPO">
+        INSERT INTO ai_agent_background_task (
+            session_id, task_id, type, status, description, command,
+            agent_id, agent_type, prompt, output, error_msg,
+            total_tool_use_count, total_duration_ms, started_at_ms, ended_at_ms,
+            create_time, update_time, deleted
+        ) VALUES (
+            #{sessionId}, #{taskId}, #{type}, #{status}, #{description}, #{command},
+            #{agentId}, #{agentType}, #{prompt}, #{output}, #{errorMsg},
+            #{totalToolUseCount}, #{totalDurationMs}, #{startedAtMs}, #{endedAtMs},
+            NOW(), NOW(), 0
+        )
+        ON DUPLICATE KEY UPDATE
+            type = VALUES(type),
+            status = VALUES(status),
+            description = VALUES(description),
+            command = VALUES(command),
+            agent_id = VALUES(agent_id),
+            agent_type = VALUES(agent_type),
+            prompt = VALUES(prompt),
+            output = VALUES(output),
+            error_msg = VALUES(error_msg),
+            total_tool_use_count = VALUES(total_tool_use_count),
+            total_duration_ms = VALUES(total_duration_ms),
+            started_at_ms = VALUES(started_at_ms),
+            ended_at_ms = VALUES(ended_at_ms),
+            deleted = 0,
+            update_time = NOW()
+    </insert>
+</mapper>

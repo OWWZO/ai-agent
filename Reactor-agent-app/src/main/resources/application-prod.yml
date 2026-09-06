@@ -1,0 +1,212 @@
+server:
+  port: 8100
+
+#长期记忆 策展有界、单外部 Provider、无 curated 向量
+memory:
+  ltm:
+    enabled: true
+    provider: none   # none | holographic | openviking
+    openviking-endpoint: ""
+    prefetch-timeout-ms: 8000
+    #6
+    flush-min-turns: 5
+    flush:
+      enabled: true
+      timeout-seconds: 45
+      material-max-messages: 40
+      material-max-chars-per-msg: 1200
+    curated:
+      char-limit: 2200
+      user-char-limit: 1375
+    background-review:
+      enabled: true
+      #10
+      nudge-interval: 5
+      timeout-seconds: 90
+      material-max-chars: 1200
+
+# 线程池配置
+thread:
+  pool:
+    executor:
+      config:
+        core-pool-size: 20
+        max-pool-size: 50
+        keep-alive-time: 5000
+        block-queue-size: 5000
+        policy: CallerRunsPolicy
+
+spring:
+  datasource:
+    mysql:
+      username: root
+      password: ""
+      url: jdbc:mysql://127.0.0.1:3306/ai-agent-station?useUnicode=true&characterEncoding=utf8&autoReconnect=true&zeroDateTimeBehavior=convertToNull&serverTimezone=Asia/Shanghai&useSSL=true
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      hikari:
+        minimum-idle: 15 #最小空闲连接数量
+        idle-timeout: 180000 #空闲连接存活最大时间，默认150000（10分钟）
+        maximum-pool-size: 25 #连接池最大连接数，默认是10
+        max-lifetime: 1800000 #此属性控制池中连接的最长生命周期，值0表示无限生命周期，默认1800000即30分钟
+        connection-timeout: 30000 #数据库连接超时时间,默认30秒，即30000
+    query:
+      # 智能问数专用数据源，独立于业务库 mysqlDataSource
+      type: mysql
+      host: 127.0.0.1
+      port: 3306
+      schema: ai-agent-station
+      username: root
+      password: ""
+      url: jdbc:mysql://127.0.0.1:3306/ai-agent-station?useUnicode=true&characterEncoding=utf8&autoReconnect=true&zeroDateTimeBehavior=convertToNull&serverTimezone=Asia/Shanghai&useSSL=true
+# 日志
+logging:
+  level:
+    root: info
+  config: classpath:logback-spring.xml
+
+autobots.autoagent.web_search.mode: exa   # auto|gpt|grok|exa|tavily|brave|disabled
+# 可选；不配则用当前 Agent 的 MySQL 模型配置（模型名含 grok 或 base_url 含 x.ai 时启用）
+autobots.autoagent.web_search.grok_api_key: ""
+autobots.autoagent.web_search.grok_base_url:
+autobots.autoagent.web_search.grok_model: grok-4.5
+autobots.autoagent.web_search.grok_interface_url: /chat/completions
+
+  # OpenAI Responses API 原生 web search；mode=gpt 强制使用，mode=auto 时排在 Grok 后
+  # 凭证已清除；启用该提供方时直接在此处填写
+autobots.autoagent.web_search.gpt_api_key: ""
+autobots.autoagent.web_search.gpt_base_url:
+autobots.autoagent.web_search.gpt_model: grok-4.5
+autobots.autoagent.web_search.gpt_interface_url: /chat/completions
+
+# Exa：与 reactor-tool EXA_* 对齐；mode=exa 或 auto 且配置了 key 时启用
+autobots.autoagent.web_search.exa_api_key: ""
+autobots.autoagent.web_search.exa_search_url: https://api.exa.ai/search
+
+autobots.autoagent.web_search.tavily_api_key: ""
+autobots.autoagent.web_search.brave_api_key: ""
+
+autobots:
+  http:
+    max-requests: 384
+    max-requests-per-host: 96
+  execution:
+    virtual-threads-enabled: true
+    # 全局最多同时运行 30 个同步子 Agent
+    max-concurrent-sub-agents: 32
+    # 高并发时给排队的子 Agent 更长的许可等待时间
+    sub-agent-acquire-timeout-seconds: 240
+    # Agent 派发使用 task 池，扩容到 30 以支持真正并行执行
+    task:
+      core-pool-size: 30
+      max-pool-size: 50
+      queue-capacity: 30
+      max-concurrency: 32
+      virtual-threads-enabled: true
+    # 子 Agent 内部普通工具调用使用 tool 池
+    tool:
+      core-pool-size: 30
+      max-pool-size: 50
+      queue-capacity: 100
+      max-concurrency: 128
+      virtual-threads-enabled: true
+    llm:
+      virtual-threads-enabled: true
+      max-concurrency: 64
+    dispatch:
+      virtual-threads-enabled: true
+      max-concurrency: 32
+
+  autoagent:
+    planner:
+      max_steps: 150
+    executor:
+      max_steps: 150
+      max_observe: 10000
+    tool:
+      deep_search:
+        page_count: 5
+        file_desc:
+          truncate_len: 1500
+      clear_tool_message: 1
+    task:
+      tool_list: '{"default":"search,web_fetch,web_search,twitter,reddit,xueqiu,code_execution,docgen,docread,dataprep,canvas,image_generation,data_analysis"}'
+      # PlanSolve 主 Agent 只负责编排；完整 tool_list 仍作为子 Agent 的工具来源
+    plan-solve-main-tool-list: "Agent,TaskCreate,TaskGet,TaskUpdate,TaskList,TodoWrite,TaskStop,EnterPlanMode,ExitPlanMode,AskUserQuestion,workspace_read,workspace_list,workspace_glob,workspace_grep,workspace_write,workspace_edit,skill_tool,memory,session_search,emit_ui_patch,emit_ui_tree,list_ui_components,get_genui_guide,image_ocr,canvas_publish,pdf_reader,pdf_structure,word_reader,text_processor,markdown_processor,html_processor,excel_reader,csv_processor"
+    code_interpreter_url: "http://127.0.0.1:1601"
+    deep_search_url: "http://127.0.0.1:1601"
+    multimodalagent_url: "http://127.0.0.1:1601"
+    web_fetch_proxy: "http://127.0.0.1:7890"
+    image_generation:
+      base_url: ""
+      api_key: ""
+      model: "gpt-image-2"
+
+      grok_base_url: ""
+      grok_api_key: ""
+      grok_model: "grok-imagine-image-lite"
+
+    knowledge_url: "http://127.0.0.1:1601"
+    data_analysis_url: "http://127.0.0.1:1601"
+
+    sensitive_patterns: '{}'
+    message_interval: '{"knowledge":"1,4"}'
+    skill:
+      enabled: true
+
+  data-agent:
+    agent-url: http://127.0.0.1:1601
+    force-refresh: false
+    es-config:
+      enable: true
+      host: my-elasticsearch-project-a93f93.es.us-central1.gcp.elastic.cloud:443
+      scheme: https
+      user:
+      password:
+      apiKey: ""
+    qdrantConfig:
+      enable: true
+      url: https://76e0e681-8e45-4d6c-a22c-c7c4718e6f97.eu-central-1-0.aws.cloud.qdrant.io
+      embeddingUrl: http://127.0.0.1:1601/v1/tool/embedding/text
+      host:
+      port: 6334
+      apiKey: ""
+      preferGrpc: true
+    db-config:
+      # 问数链路通过独立 db-config 连接问数库，不复用业务库 mysqlDataSource
+      type: ${spring.datasource.query.type}
+      url: ${spring.datasource.query.url}
+      host: ${spring.datasource.query.host}
+      port: ${spring.datasource.query.port}
+      schema: ${spring.datasource.query.schema}
+      username: ${spring.datasource.query.username}
+      password: ${spring.datasource.query.password}
+      key: reactor-query-datasource
+    model-list:
+      - name: 超市销售明细数据
+        id: t_qtpbgamccmrctthlurauclckq
+        type: table
+        content: sales_data
+        remark: 超市销售明细数据
+        ignore-fields:
+        default-recall-fields:
+        analyze-suggest-fields:
+        analyze-forbid-fields: row_id
+        sync-value-fields: customer_name,product_name
+        column-alias-map: '{"order_date":"销售日期,下单日期"}'
+      - name: 商品采购信息
+        id: t_uegarulwipfivhutcvyawaoex
+        type: sql
+        content: select  `order_date` as `采购日期`,product_id as `商品ID`,product_name as `商品名称`,category as `商品类型`,sub_category as `商品子类型` , quantity as `采购量` , sales as `采购总价格` from sales_data
+        remark: 包含商品采购日期，商品类型，商品子类型，采购数量量以及采购总价格等信息
+        ignore-fields:
+        default-recall-fields:
+        analyze-suggest-fields:
+        analyze-forbid-fields:
+        sync-value-fields: 商品名称
+        column-alias-map: ''
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod

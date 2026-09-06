@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.infrastructure.dao.reactor.ILtmForkExecutionDao">
+
+    <insert id="insertEvent" parameterType="org.wwz.ai.domain.agent.memory.ltm.LtmForkExecutionEvent"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_agent_ltm_fork_execution (
+            session_id, trigger_request_id, fork_request_id, fork_kind, status, skip_reason,
+            owner_type, owner_id, user_turns, snapshot_message_count, max_steps, timeout_seconds,
+            duration_ms, entries_before, entries_after, applied_count, error_message, detail_json,
+            create_time, update_time, deleted
+        ) VALUES (
+            #{sessionId}, #{triggerRequestId}, #{forkRequestId}, #{forkKind}, #{status}, #{skipReason},
+            #{ownerType}, #{ownerId}, #{userTurns}, #{snapshotMessageCount}, #{maxSteps}, #{timeoutSeconds},
+            #{durationMs}, #{entriesBefore}, #{entriesAfter}, #{appliedCount}, #{errorMessage}, #{detailJson},
+            NOW(), NOW(), 0
+        )
+    </insert>
+</mapper>

@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.infrastructure.dao.reactor.IWorkingMemoryMessageDao">
+
+    <resultMap id="WorkingMemoryMessageMap" type="org.wwz.ai.domain.agent.memory.WorkingMemoryMessage">
+        <id column="id" property="id"/>
+        <result column="session_id" property="sessionId"/>
+        <result column="memory_scope" property="memoryScope"/>
+        <result column="turn_id" property="turnId"/>
+        <result column="request_id" property="requestId"/>
+        <result column="origin_message_key" property="originMessageKey"/>
+        <result column="run_id" property="runId"/>
+        <result column="seq_no" property="seqNo"/>
+        <result column="role" property="role"/>
+        <result column="content" property="content"/>
+        <result column="reasoning_content" property="reasoningContent"/>
+        <result column="tool_call_id" property="toolCallId"/>
+        <result column="tool_calls_json" property="toolCallsJson"/>
+        <result column="base64_image" property="base64Image"/>
+        <result column="message_kind" property="messageKind"/>
+        <result column="visibility" property="visibility"/>
+        <result column="token_estimate" property="tokenEstimate"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <resultMap id="WorkingMemorySearchMessageMap" type="org.wwz.ai.domain.agent.memory.WorkingMemorySearchMessage">
+        <id column="id" property="id"/>
+        <result column="session_id" property="sessionId"/>
+        <result column="memory_scope" property="memoryScope"/>
+        <result column="turn_id" property="turnId"/>
+        <result column="request_id" property="requestId"/>
+        <result column="origin_message_key" property="originMessageKey"/>
+        <result column="run_id" property="runId"/>
+        <result column="turn_seq" property="turnSeq"/>
+        <result column="seq_no" property="seqNo"/>
+        <result column="role" property="role"/>
+        <result column="content" property="content"/>
+        <result column="reasoning_content" property="reasoningContent"/>
+        <result column="tool_call_id" property="toolCallId"/>
+        <result column="tool_calls_json" property="toolCallsJson"/>
+        <result column="message_kind" property="messageKind"/>
+        <result column="turn_status" property="turnStatus"/>
+        <result column="search_score" property="searchScore"/>
+    </resultMap>
+
+    <insert id="batchInsertMessages">
+        INSERT INTO ai_agent_working_memory_message (
+            session_id, memory_scope, turn_id, request_id, origin_message_key, run_id, seq_no, role, content, reasoning_content,
+            tool_call_id, tool_calls_json, base64_image, message_kind, visibility,
+            token_estimate, create_time, update_time, deleted
+        ) VALUES
+        <foreach collection="records" item="record" separator=",">
+            (
+                #{record.sessionId}, #{record.memoryScope}, #{record.turnId}, #{record.requestId}, #{record.originMessageKey}, #{record.runId}, #{record.seqNo},
+                #{record.role}, #{record.content}, #{record.reasoningContent}, #{record.toolCallId}, #{record.toolCallsJson},
+                #{record.base64Image}, #{record.messageKind}, #{record.visibility},
+                #{record.tokenEstimate}, NOW(), NOW(), 0
+            )
+        </foreach>
+    </insert>
+
+    <select id="selectBySessionIdOrdered" resultMap="WorkingMemoryMessageMap">
+        SELECT m.*
+        FROM ai_agent_working_memory_message m
+        INNER JOIN ai_agent_working_memory_turn t ON m.turn_id = t.id AND t.deleted = 0 AND t.status = 1
+        WHERE m.session_id = #{sessionId}
+          AND m.deleted = 0
+        ORDER BY t.turn_seq ASC, m.seq_no ASC
+    </select>
+
+    <select id="selectByTurnIds" resultMap="WorkingMemoryMessageMap">
+        SELECT *
+        FROM ai_agent_working_memory_message
+        WHERE deleted = 0
+          AND turn_id IN
+          <foreach collection="turnIds" item="id" open="(" separator="," close=")">
+              #{id}
+          </foreach>
+        ORDER BY turn_id ASC, seq_no ASC
+    </select>
+
+    <sql id="searchColumns">
+        m.id, m.session_id, m.memory_scope, m.turn_id, m.request_id, m.origin_message_key, m.run_id,
+        t.turn_seq, m.seq_no, m.role, m.content, m.reasoning_content,
+        m.tool_call_id, m.tool_calls_json, m.message_kind, t.status AS turn_status
+    </sql>
+
+    <sql id="roleFilter">
+        <if test="roles != null and roles.size() &gt; 0">
+            AND m.role IN
+            <foreach collection="roles" item="role" open="(" separator="," close=")">
+                #{role}
+            </foreach>
+        </if>
+    </sql>
+
+    <!-- Search every non-deleted projection, including INVALID turns. INVALID means
+         no longer used for the next prompt, not that the historical message vanished. -->
+    <select id="searchFullTextBySession" resultMap="WorkingMemorySearchMessageMap">
+        SELECT <include refid="searchColumns"/>,
+               MATCH(m.content) AGAINST (#{query} IN NATURAL LANGUAGE MODE) AS search_score
+        FROM ai_agent_working_memory_message m
+        INNER JOIN ai_agent_working_memory_turn t ON m.turn_id = t.id
+        WHERE m.session_id = #{sessionId}
+          AND m.memory_scope = 'main'
+          AND m.deleted = 0
+          AND t.deleted = 0
+          <include refid="roleFilter"/>
+          AND MATCH(m.content) AGAINST (#{query} IN NATURAL LANGUAGE MODE)
+        ORDER BY search_score DESC, t.turn_seq DESC, m.seq_no DESC, m.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="searchFullTextByVisitor" resultMap="WorkingMemorySearchMessageMap">
+        SELECT <include refid="searchColumns"/>,
+               MATCH(m.content) AGAINST (#{query} IN NATURAL LANGUAGE MODE) AS search_score
+        FROM ai_agent_working_memory_message m
+        INNER JOIN ai_agent_working_memory_turn t ON m.turn_id = t.id
+        INNER JOIN ai_agent_dialogue_session s ON s.session_id = m.session_id AND s.deleted = 0
+        WHERE s.visitor_id = #{visitorId}
+          AND m.memory_scope = 'main'
+          AND m.deleted = 0
+          AND t.deleted = 0
+          <include refid="roleFilter"/>
+          AND MATCH(m.content) AGAINST (#{query} IN NATURAL LANGUAGE MODE)
+        ORDER BY search_score DESC, t.create_time DESC, t.turn_seq DESC, m.seq_no DESC, m.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="scanBySession" resultMap="WorkingMemorySearchMessageMap">
+        SELECT <include refid="searchColumns"/>
+        FROM ai_agent_working_memory_message m
+        INNER JOIN ai_agent_working_memory_turn t ON m.turn_id = t.id
+        WHERE m.session_id = #{sessionId}
+          AND m.memory_scope = 'main'
+          AND m.deleted = 0
+          AND t.deleted = 0
+          <include refid="roleFilter"/>
+          AND (LOWER(CONVERT(COALESCE(m.content, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci)
+                   LIKE LOWER(CONVERT(CONCAT('%', #{query}, '%') USING utf8mb4) COLLATE utf8mb4_unicode_ci)
+               OR LOWER(CONVERT(COALESCE(m.tool_calls_json, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci)
+                   LIKE LOWER(CONVERT(CONCAT('%', #{query}, '%') USING utf8mb4) COLLATE utf8mb4_unicode_ci))
+        ORDER BY t.turn_seq DESC, m.seq_no DESC, m.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="scanByVisitor" resultMap="WorkingMemorySearchMessageMap">
+        SELECT <include refid="searchColumns"/>
+        FROM ai_agent_working_memory_message m
+        INNER JOIN ai_agent_working_memory_turn t ON m.turn_id = t.id
+        INNER JOIN ai_agent_dialogue_session s ON s.session_id = m.session_id AND s.deleted = 0
+        WHERE s.visitor_id = #{visitorId}
+          AND m.memory_scope = 'main'
+          AND m.deleted = 0
+          AND t.deleted = 0
+          <include refid="roleFilter"/>
+          AND (LOWER(CONVERT(COALESCE(m.content, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci)
+                   LIKE LOWER(CONVERT(CONCAT('%', #{query}, '%') USING utf8mb4) COLLATE utf8mb4_unicode_ci)
+               OR LOWER(CONVERT(COALESCE(m.tool_calls_json, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci)
+                   LIKE LOWER(CONVERT(CONCAT('%', #{query}, '%') USING utf8mb4) COLLATE utf8mb4_unicode_ci))
+        ORDER BY t.create_time DESC, t.turn_seq DESC, m.seq_no DESC, m.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectHistoryBySession" resultMap="WorkingMemorySearchMessageMap">
+        SELECT <include refid="searchColumns"/>
+        FROM ai_agent_working_memory_message m
+        INNER JOIN ai_agent_working_memory_turn t ON m.turn_id = t.id
+        WHERE m.session_id = #{sessionId}
+          AND m.memory_scope = 'main'
+          AND m.deleted = 0
+        AND t.deleted = 0
+        ORDER BY t.turn_seq ASC, m.seq_no ASC, m.id ASC
+    </select>
+
+    <select id="selectRecentSessions" resultType="map">
+        SELECT session_id AS sessionId,
+               visitor_id AS visitorId,
+               title AS title,
+               latest_query_text AS latestQueryText,
+               latest_summary_text AS latestSummaryText,
+               started_at AS startedAt,
+               last_active_at AS lastActiveAt,
+               (SELECT COUNT(*)
+                  FROM ai_agent_working_memory_message wm
+                  INNER JOIN ai_agent_working_memory_turn wt ON wt.id = wm.turn_id
+                 WHERE wm.session_id = s.session_id
+                   AND wm.memory_scope = 'main'
+                   AND wm.deleted = 0
+                   AND wt.deleted = 0) AS messageCount
+        FROM ai_agent_dialogue_session s
+        WHERE deleted = 0
+          AND (#{visitorId} IS NULL OR visitor_id = #{visitorId})
+          AND EXISTS (
+              SELECT 1
+              FROM ai_agent_working_memory_message wm
+              INNER JOIN ai_agent_working_memory_turn wt ON wt.id = wm.turn_id
+              WHERE wm.session_id = s.session_id
+                AND wm.memory_scope = 'main'
+                AND wm.deleted = 0
+                AND wt.deleted = 0
+          )
+        ORDER BY COALESCE(last_active_at, create_time) DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectSessionSummary" resultType="map">
+        SELECT session_id AS sessionId,
+               visitor_id AS visitorId,
+               title AS title,
+               started_at AS startedAt,
+               last_active_at AS lastActiveAt
+        FROM ai_agent_dialogue_session
+        WHERE session_id = #{sessionId}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+</mapper>

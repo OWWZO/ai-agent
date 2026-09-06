@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.infrastructure.dao.reactor.ILtmCuratedEntryDao">
+
+    <resultMap id="CuratedMemoryEntryMap" type="org.wwz.ai.domain.agent.memory.ltm.CuratedMemoryEntry">
+        <id column="id" property="id"/>
+        <result column="stream_id" property="streamId"/>
+        <result column="owner_type" property="ownerType"
+                typeHandler="org.apache.ibatis.type.EnumTypeHandler"/>
+        <result column="owner_id" property="ownerId"/>
+        <result column="scope" property="scope"
+                javaType="org.wwz.ai.domain.agent.memory.ltm.CuratedMemoryScope"
+                typeHandler="org.wwz.ai.infrastructure.memory.CuratedMemoryScopeTypeHandler"/>
+        <result column="content" property="content"/>
+        <result column="status" property="status"/>
+        <result column="source_session_id" property="sourceSessionId"/>
+        <result column="source_request_id" property="sourceRequestId"/>
+        <result column="write_origin" property="writeOrigin"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="org.wwz.ai.domain.agent.memory.ltm.CuratedMemoryEntry"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_agent_ltm_curated_entry (
+            stream_id, owner_type, owner_id, scope, content, status,
+            source_session_id, source_request_id, write_origin, create_time, update_time, deleted
+        ) VALUES (
+            #{streamId},
+            #{ownerType, typeHandler=org.apache.ibatis.type.EnumTypeHandler},
+            #{ownerId},
+            #{scope, typeHandler=org.wwz.ai.infrastructure.memory.CuratedMemoryScopeTypeHandler},
+            #{content},
+            #{status},
+            #{sourceSessionId},
+            #{sourceRequestId},
+            #{writeOrigin},
+            NOW(), NOW(), 0
+        )
+    </insert>
+
+    <update id="softDeleteById">
+        UPDATE ai_agent_ltm_curated_entry
+        SET deleted = 1,
+            status = 'DELETED',
+            update_time = NOW()
+        WHERE id = #{id}
+          AND deleted = 0
+    </update>
+
+    <update id="updateContent">
+        UPDATE ai_agent_ltm_curated_entry
+        SET content = #{content},
+            source_session_id = #{sourceSessionId},
+            source_request_id = #{sourceRequestId},
+            write_origin = #{writeOrigin},
+            update_time = NOW()
+        WHERE id = #{id}
+          AND deleted = 0
+    </update>
+
+    <select id="selectActive" resultMap="CuratedMemoryEntryMap">
+        SELECT id, stream_id, owner_type, owner_id, scope, content, status,
+               source_session_id, source_request_id, write_origin, create_time, update_time
+        FROM ai_agent_ltm_curated_entry
+        WHERE owner_type = #{ownerType}
+          AND owner_id = #{ownerId}
+          AND scope = #{scope}
+          AND deleted = 0
+          AND status = 'ACTIVE'
+        ORDER BY id ASC
+    </select>
+</mapper>

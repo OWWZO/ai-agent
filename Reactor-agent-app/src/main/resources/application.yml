@@ -1,0 +1,142 @@
+﻿spring:
+  config:
+    name: ai-agent-station-study-app
+  profiles:
+    default: dev
+  ai:
+    model:
+      # 主链路按 LLMSettings 手工装配模型，不依赖 Spring AI 默认 OpenAI 自动配置；
+      # 全部置 none，避免缺 spring.ai.openai.api-key 时启动失败。
+      chat: none
+      embedding: none
+      image: none
+      moderation: none
+      audio:
+        speech: none
+        transcription: none
+  threads:
+    # Spring Boot 全局虚拟线程保持关闭，Agent 执行器单独灰度。
+    virtual:
+      enabled: false
+
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 200MB
+      max-request-size: 300MB
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+autobots:
+  http:
+    # 所有同步 HTTP、SSE、文件和图片客户端共享连接池；虚拟线程不能突破下游连接上限。
+    max-requests: 128
+    max-requests-per-host: 32
+    max-idle-connections: 32
+    keep-alive-minutes: 5
+  execution:
+    # 虚拟线程默认关闭；可在部署环境按执行器灰度开启
+    virtual-threads-enabled: false
+    dispatch:
+      max-concurrency: 32
+      virtual-threads-enabled: false
+    llm:
+      max-concurrency: 32
+      virtual-threads-enabled: false
+    task:
+      max-concurrency: 16
+      virtual-threads-enabled: false
+    tool:
+      max-concurrency: 16
+      virtual-threads-enabled: false
+    # 工具批次最长等待 1.5 小时；超时后会取消尚未完成的工具任务
+    tool-batch-timeout-seconds: 5400
+    visitor-cookie:
+      name: ai_agent_visitor_token
+      http-only: true
+      secure: false
+      same-site: Lax
+      path: /
+      max-age-days: 365
+      allowed-origins:
+        - http://localhost:3000
+        - http://127.0.0.1:3000
+  autoagent:
+
+    # 兼容旧字段；实际上游凭证见 image_generation.*
+    image_generation_url: ""
+    image_generation:
+      base_url: ""
+      api_key: ""
+      model: "gpt-image-2"
+      grok_base_url: ""
+      grok_api_key: ""
+      grok_model: "grok-imagine-image-lite"
+
+    web_fetch_url: "http://127.0.0.1:1601"
+    workspace:
+      enabled: true
+      # 会话 cwd：固定 monorepo 内 reactor-tool/skilloutput/{sessionId}
+      # 勿写 ${user.dir}：Spring 会在加载时展开成错误的启动 cwd
+      root-template: "{repoRoot}/reactor-tool/skilloutput/{sessionId}"
+      # 整页 HTML/CSS/JS 常 >12k；截断会让模型误判文件损坏并重写
+      max-read-chars: 96000
+      max-list-entries: 200
+      max-glob-results: 100
+      max-grep-matches: 100
+      max-write-chars: 200000
+    skill:
+      enabled: true
+      # 默认 monorepo runtime/skills；SkillDirectoryResolver 会解析/回退
+      directories:
+        - ${user.dir}/runtime/skills
+      react-enabled: true
+      plan-solve-enabled: true
+      max-read-chars: 12000
+      max-list-entries: 200
+      max-glob-results: 100
+      max-grep-matches: 100
+      # 会话工作区 materialize + bash 执行 skill 脚本（需 workspace.enabled=true）
+      sandbox-bash-enabled: true
+      runtime-python: python
+      bash-timeout-sec: 120
+      bash-max-timeout-sec: 600
+      bash-output-max-chars: 64000
+    # threshold = window * percent；整包估计 sys + tools + messages
+    # <512k 至少 75%；64k 地板顶出窗口时改 85%
+    compaction:
+      enabled: true
+      llm-enabled: true
+      micro-enabled: false
+      session-memory-enabled: false
+      threshold-percent: 0.50
+      keep-min-tokens: 10000
+      keep-min-text-messages: 5
+      keep-max-tokens: 40000
+      # full-compact window / serialization
+      summary-target-ratio: 0.20
+      protect-first-n: 3
+      protect-last-n: 8
+      content-max-chars: 6000
+      content-head-chars: 4000
+      content-tail-chars: 1500
+      summary-input-max-chars: 160000
+      summarizer-timeout-seconds: 120
+      max-consecutive-failures: 3
+      temperature: 0.2
+      message-content-char-limit: 4000
+      micro-keep-recent-tool-results: 5
+      micro-tool-result-max-chars: 8000
+      persist-projection: true
+      audit-enabled: true
+      audit-store-messages: true
+      mid-run-enabled: true
+
+# DB 模型目录缓存（LlmModelCatalog）；管理台写 API/模型后主动 invalidate
+agent:
+  llm:
+    model-cache-ms: 60000

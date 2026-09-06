@@ -1,5 +1,15 @@
-# 普通镜像构建，随系统版本构建 amd/arm
-docker build --load -t fuzhengwei/ai-agent-station-study-app:1.1 -f ./Dockerfile .
+#!/usr/bin/env bash
+set -euo pipefail
 
-# 兼容 amd、arm 构建镜像
-# docker buildx build --l oad --platform liunx/amd64,linux/arm64 -t /xfg-frame-archetype-app:1.0 -f ./Dockerfile . --push
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="${COMPOSE_ENV_FILE:-${ROOT_DIR}/reactor-tool/.env}"
+
+if [[ ! -f "${ENV_FILE}" ]]; then
+  echo "Missing ${ENV_FILE}. Copy reactor-tool/.env_template to reactor-tool/.env and fill in the deployment values." >&2
+  exit 1
+fi
+
+docker compose \
+  --env-file "${ENV_FILE}" \
+  --file "${ROOT_DIR}/docker-compose.yml" \
+  build "$@"

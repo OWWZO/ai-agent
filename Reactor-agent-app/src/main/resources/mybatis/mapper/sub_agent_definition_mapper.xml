@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.infrastructure.dao.ISubAgentDefinitionDao">
+
+    <resultMap id="SubAgentDefinitionMap" type="org.wwz.ai.infrastructure.dao.po.SubAgentDefinitionPO">
+        <id column="id" property="id"/>
+        <result column="agent_key" property="agentKey"/>
+        <result column="display_name" property="displayName"/>
+        <result column="when_to_use" property="whenToUse"/>
+        <result column="system_prompt" property="systemPrompt"/>
+        <result column="allowed_tools_json" property="allowedToolsJson"/>
+        <result column="disallowed_tools_json" property="disallowedToolsJson"/>
+        <result column="max_steps" property="maxSteps"/>
+        <result column="status" property="status"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <sql id="columns">
+        id, agent_key, display_name, when_to_use, system_prompt,
+        allowed_tools_json, disallowed_tools_json, max_steps, status,
+        create_time, update_time, deleted
+    </sql>
+
+    <select id="queryEnabled" resultMap="SubAgentDefinitionMap">
+        SELECT
+        <include refid="columns"/>
+        FROM ai_agent_sub_agent_definition
+        WHERE deleted = 0 AND status = 1
+        ORDER BY update_time DESC, id DESC
+    </select>
+
+    <select id="queryAll" resultMap="SubAgentDefinitionMap">
+        SELECT
+        <include refid="columns"/>
+        FROM ai_agent_sub_agent_definition
+        WHERE deleted = 0
+        ORDER BY update_time DESC, id DESC
+    </select>
+
+    <select id="queryByAgentKey" resultMap="SubAgentDefinitionMap">
+        SELECT
+        <include refid="columns"/>
+        FROM ai_agent_sub_agent_definition
+        WHERE deleted = 0 AND agent_key = #{agentKey}
+        LIMIT 1
+    </select>
+
+    <insert id="insert" parameterType="org.wwz.ai.infrastructure.dao.po.SubAgentDefinitionPO"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_agent_sub_agent_definition (
+            agent_key, display_name, when_to_use, system_prompt,
+            allowed_tools_json, disallowed_tools_json, max_steps, status, deleted
+        ) VALUES (
+            #{agentKey}, #{displayName}, #{whenToUse}, #{systemPrompt},
+            #{allowedToolsJson}, #{disallowedToolsJson}, #{maxSteps}, #{status}, 0
+        )
+    </insert>
+
+    <update id="updateByAgentKey" parameterType="org.wwz.ai.infrastructure.dao.po.SubAgentDefinitionPO">
+        UPDATE ai_agent_sub_agent_definition SET
+            display_name = #{displayName},
+            when_to_use = #{whenToUse},
+            system_prompt = #{systemPrompt},
+            allowed_tools_json = #{allowedToolsJson},
+            disallowed_tools_json = #{disallowedToolsJson},
+            max_steps = #{maxSteps},
+            status = #{status},
+            deleted = 0,
+            update_time = NOW()
+        WHERE agent_key = #{agentKey} AND deleted = 0
+    </update>
+
+    <update id="softDeleteByAgentKey">
+        UPDATE ai_agent_sub_agent_definition SET
+            deleted = 1,
+            update_time = NOW()
+        WHERE agent_key = #{agentKey} AND deleted = 0
+    </update>
+
+</mapper>

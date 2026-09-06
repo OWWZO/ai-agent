@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.infrastructure.dao.IAiAgentSessionCapabilityDao">
+
+    <resultMap id="CapMap" type="org.wwz.ai.infrastructure.dao.po.AiAgentSessionCapability">
+        <id column="id" property="id"/>
+        <result column="session_id" property="sessionId"/>
+        <result column="kind" property="kind"/>
+        <result column="ref_id" property="refId"/>
+        <result column="enabled" property="enabled"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <select id="listBySessionId" resultMap="CapMap">
+        SELECT id, session_id, kind, ref_id, enabled, update_time
+        FROM ai_agent_session_capability
+        WHERE session_id = #{sessionId}
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO ai_agent_session_capability (session_id, kind, ref_id, enabled, update_time)
+        VALUES (#{sessionId}, #{kind}, #{refId}, #{enabled}, NOW())
+        ON DUPLICATE KEY UPDATE
+            enabled = VALUES(enabled),
+            update_time = NOW()
+    </insert>
+</mapper>
