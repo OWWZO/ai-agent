@@ -164,7 +164,10 @@ export function projectAgentMember(task: CHAT.Task): AgentMember | null {
     toolCallId: toolCallId || undefined,
     name: display.description || display.subagentType || "Agent",
     subagentType: display.subagentType,
-    phase: mapAgentPhase(display.status, task.resultMap),
+    phase: mapAgentPhase(
+      display.status,
+      task.resultMap as unknown as MESSAGE.ResultMap
+    ),
     status,
     prompt: display.prompt || undefined,
     summary: display.description || undefined,

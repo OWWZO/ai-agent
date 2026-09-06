@@ -61,7 +61,7 @@ describe("agentRuntimeProjector", () => {
                 messageType: "llm_reasoning",
                 toolThought: "先分析需求",
                 resultMap: { isFinal: true },
-              } as CHAT.Task,
+              } as unknown as CHAT.Task,
               {
                 id: "tool-1",
                 messageId: "tool-1",
@@ -79,7 +79,7 @@ describe("agentRuntimeProjector", () => {
                   isFinal: true,
                   input: { command: "ls" },
                 },
-              } as CHAT.Task,
+               } as unknown as CHAT.Task,
               {
                 id: "text-1",
                 messageId: "text-1",
@@ -139,7 +139,7 @@ describe("agentRuntimeProjector", () => {
     expect(member?.outputLines?.[0]).toContain("Explore");
 
     const chat = emptyChat({
-      multiAgent: { tasks: [[agentTask]] },
+      multiAgent: { tasks: [[agentTask as unknown as MESSAGE.Task]] },
       tasks: [
         [
           {

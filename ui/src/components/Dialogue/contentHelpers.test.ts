@@ -46,7 +46,7 @@ const conclusionTask = (
         relativePath: item.relativePath,
       })),
     },
-  }) as CHAT.Task;
+  }) as unknown as CHAT.Task;
 
 describe("contentHelpers delivery files", () => {
   it("strips $$$ protocol from summary text and keeps artifact keys", () => {
@@ -157,7 +157,7 @@ describe("contentHelpers delivery files", () => {
       result: "页面已生成。",
       taskSummary: "页面已生成。",
       artifactKeys: ["simple-showcase.html"],
-    } as CHAT.Task;
+    } as unknown as CHAT.Task;
 
     expect(resolveTaskSummaryArtifactKeys(task)).toEqual(["simple-showcase.html"]);
     expect(pickFeaturedDeliveryFiles(task, [html]).map((item) => item.name)).toEqual([
@@ -170,7 +170,7 @@ describe("contentHelpers delivery files", () => {
     const task = {
       result: "页面已生成。$$$ simple-showcase.html",
       resultMap: { taskSummary: "页面已生成。" },
-    } as CHAT.Task;
+    } as unknown as CHAT.Task;
 
     expect(resolveTaskSummaryText(task)).toBe("页面已生成。");
     expect(resolveTaskSummaryArtifactKeys(task)).toEqual(["simple-showcase.html"]);
@@ -201,7 +201,7 @@ describe("contentHelpers delivery files", () => {
       result: "已生成。",
       taskSummary: "已生成。",
       artifactKeys: ["simple-showcase.html"],
-    } as CHAT.Task;
+    } as unknown as CHAT.Task;
 
     expect(files[0]?.relativePath).toBe("simple-showcase.html");
     expect(pickFeaturedDeliveryFiles(task, files).map((item) => item.name)).toEqual([

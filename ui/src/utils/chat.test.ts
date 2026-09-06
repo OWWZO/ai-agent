@@ -935,7 +935,7 @@ describe("chat deep_search progress", () => {
           },
         },
       },
-    } as MESSAGE.Task);
+    } as unknown as MESSAGE.Task);
 
     const { taskList } = handleTaskData(currentChat, false, currentChat.multiAgent);
     expect(taskList).toHaveLength(2);
@@ -979,7 +979,7 @@ describe("chat deep_search progress", () => {
           ],
         },
       },
-    } as MESSAGE.Task);
+      } as unknown as MESSAGE.Task);
 
     const { taskList } = handleTaskData(currentChat, false, currentChat.multiAgent);
 
@@ -1023,12 +1023,12 @@ describe("chat deep_search progress", () => {
       messageId: "msg-1",
       resultMap: {
         messageType: "search",
-        searchResult: {
-          query: ["子问题一", "子问题二"],
-          docs: [[createDoc("https://example.com/a", "结果A", "内容A")], []],
+          searchResult: {
+            query: ["子问题一", "子问题二"],
+            docs: [[createDoc("https://example.com/a", "结果A", "内容A")], []],
+          },
         },
-      },
-    } as MESSAGE.Task);
+      } as unknown as MESSAGE.Task);
 
     const { currentChat: renderedChat } = handleTaskData(
       currentChat,
@@ -1053,12 +1053,12 @@ describe("chat deep_search progress", () => {
       messageId: "msg-1",
       resultMap: {
         messageType: "search",
-        searchResult: {
-          query: [],
-          docs: [],
+          searchResult: {
+            query: [],
+            docs: [],
+          },
         },
-      },
-    } as MESSAGE.Task);
+      } as unknown as MESSAGE.Task);
 
     const { taskList } = handleTaskData(currentChat, false, currentChat.multiAgent);
     expect(taskList).toHaveLength(1);
@@ -2428,8 +2428,9 @@ describe("chat file task title", () => {
       currentChat.multiAgent
     );
     expect(taskList).toHaveLength(1);
+    const resultMap = taskList[0].resultMap as Record<string, unknown>;
     const observation = String(
-      taskList[0].toolResult?.toolResult || taskList[0].resultMap?.toolResult || ""
+      taskList[0].toolResult?.toolResult || resultMap.toolResult || ""
     );
     expect(observation).toContain("completed");
     expect(observation).not.toContain("\"status\":\"running\"");

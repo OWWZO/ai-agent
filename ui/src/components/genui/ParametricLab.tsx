@@ -218,7 +218,6 @@ function SceneSvg({
   scope,
   outputs,
   customSvg,
-  height,
   accent,
 }: {
   scene: SceneKind;

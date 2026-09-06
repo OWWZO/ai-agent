@@ -12,7 +12,7 @@ function num(v: unknown, fallback: number): number {
 function parseMarks(raw: unknown, axis: "x" | "xy"): Mark[] {
   if (!Array.isArray(raw)) return [];
   return raw
-    .map((item) => {
+    .map((item): Mark | null => {
       if (typeof item === "number") return axis === "x" ? { x: item } : { x: item, y: 0 };
       if (!item || typeof item !== "object") return null;
       const o = item as Record<string, unknown>;
@@ -22,7 +22,7 @@ function parseMarks(raw: unknown, axis: "x" | "xy"): Mark[] {
         label: o.label != null ? String(o.label) : undefined,
       };
     })
-    .filter((m): m is Mark => Boolean(m && Number.isFinite(m.x)));
+    .filter((m): m is Mark => m !== null && Number.isFinite(m.x));
 }
 
 export const NumberLine: FC<{

@@ -65,7 +65,7 @@ function asDuration(v: unknown, fallback: number): number {
 export function normalizeConceptSteps(raw: unknown, defaultMs = 2200): ConceptStep[] {
   if (!Array.isArray(raw) || !raw.length) return [];
   return raw
-    .map((item, i) => {
+    .map((item, i): ConceptStep | null => {
       if (typeof item === "string") {
         return {
           id: `step-${i}`,
@@ -97,13 +97,13 @@ export function normalizeConceptSteps(raw: unknown, defaultMs = 2200): ConceptSt
         data,
       } satisfies ConceptStep;
     })
-    .filter((s): s is ConceptStep => Boolean(s));
+    .filter((s): s is ConceptStep => s !== null);
 }
 
 export function normalizeConceptNodes(raw: unknown): ConceptNode[] {
   if (!Array.isArray(raw)) return [];
   return raw
-    .map((item, i) => {
+    .map((item, i): ConceptNode | null => {
       if (typeof item === "string") {
         return { id: `n${i}`, label: item };
       }
@@ -117,13 +117,13 @@ export function normalizeConceptNodes(raw: unknown): ConceptNode[] {
         sublabel: o.sublabel != null ? asString(o.sublabel) : o.desc != null ? asString(o.desc) : undefined,
       };
     })
-    .filter((n): n is ConceptNode => Boolean(n));
+    .filter((n): n is ConceptNode => n !== null);
 }
 
 export function normalizeConceptEdges(raw: unknown): ConceptEdge[] {
   if (!Array.isArray(raw)) return [];
   return raw
-    .map((item, i) => {
+    .map((item, i): ConceptEdge | null => {
       if (!item || typeof item !== "object") return null;
       const o = item as Record<string, unknown>;
       const from = asString(o.from || o.source || o.src);
@@ -136,7 +136,7 @@ export function normalizeConceptEdges(raw: unknown): ConceptEdge[] {
         label: o.label != null ? asString(o.label) : undefined,
       };
     })
-    .filter((e): e is ConceptEdge => Boolean(e));
+    .filter((e): e is ConceptEdge => e !== null);
 }
 
 export type FlowNodeBox = {
