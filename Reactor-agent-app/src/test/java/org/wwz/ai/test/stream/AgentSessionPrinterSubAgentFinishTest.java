@@ -48,6 +48,44 @@ public class AgentSessionPrinterSubAgentFinishTest {
     }
 
     @Test
+    public void planApprovalYieldFinishesEnvelopeWithoutClosingStream() throws Exception {
+        CapturingStream stream = new CapturingStream();
+        AgentRequest request = new AgentRequest();
+        request.setRequestId("req-plan-approval-finish");
+        AgentSessionPrinter printer = new AgentSessionPrinter(stream, request, 1);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("status", "pending");
+        payload.put("approvalId", "pa_1");
+        printer.send("pa_1", "plan_approval", payload, false);
+
+        Assert.assertEquals(1, stream.payloads.size());
+        AgentResponse response = (AgentResponse) stream.payloads.get(0);
+        Assert.assertEquals("plan_approval", response.getMessageType());
+        Assert.assertTrue(Boolean.TRUE.equals(response.getFinish()));
+        Assert.assertFalse(stream.completed.get());
+    }
+
+    @Test
+    public void askUserQuestionYieldFinishesEnvelopeWithoutClosingStream() throws Exception {
+        CapturingStream stream = new CapturingStream();
+        AgentRequest request = new AgentRequest();
+        request.setRequestId("req-ask-user-finish");
+        AgentSessionPrinter printer = new AgentSessionPrinter(stream, request, 1);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("status", "pending");
+        payload.put("questionId", "uq_1");
+        printer.send("uq_1", "ask_user_question", payload, false);
+
+        Assert.assertEquals(1, stream.payloads.size());
+        AgentResponse response = (AgentResponse) stream.payloads.get(0);
+        Assert.assertEquals("ask_user_question", response.getMessageType());
+        Assert.assertTrue(Boolean.TRUE.equals(response.getFinish()));
+        Assert.assertFalse(stream.completed.get());
+    }
+
+    @Test
     public void rootResultStillFinishesMainStream() throws Exception {
         CapturingStream stream = new CapturingStream();
         AgentRequest request = new AgentRequest();

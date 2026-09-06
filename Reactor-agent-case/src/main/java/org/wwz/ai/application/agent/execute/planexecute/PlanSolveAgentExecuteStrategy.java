@@ -19,7 +19,6 @@ import org.wwz.ai.application.agent.planmode.PlanApprovalResumeApplicationServic
 import org.wwz.ai.domain.agent.runtime.askuser.IUserQuestionRepository;
 import org.wwz.ai.domain.agent.runtime.planmode.IPlanApprovalRepository;
 import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
-import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
 
 import org.wwz.ai.domain.agent.service.execute.planexecute.step.factory.DefaultPlanSolveAgentExecuteStrategyFactory;
 import org.apache.commons.lang3.StringUtils;
@@ -98,13 +97,6 @@ public class PlanSolveAgentExecuteStrategy implements IExecuteStrategy {
                 );
             }
             throw e;
-        } finally {
-            if (!SessionBackgroundTaskHub.hasRunning(request.getSessionId())) {
-                activeAgentRunRegistry.end(request.getRequestId());
-            } else {
-                log.info("{} defer ActiveAgentRunRegistry.end: background tasks still running",
-                        request.getRequestId());
-            }
         }
     }
 

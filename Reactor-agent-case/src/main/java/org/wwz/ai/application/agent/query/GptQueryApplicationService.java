@@ -14,6 +14,7 @@ import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicat
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
 import org.wwz.ai.domain.agent.runtime.GptQueryAgentRequestFactory;
+import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.runtime.handler.AgentResponseHandler;
@@ -56,6 +57,9 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
     @Resource
     @Qualifier(AgentExecutorNames.DISPATCH_EXECUTOR)
     private Executor dispatchExecutor;
+
+    @Resource
+    private ActiveAgentRunRegistry activeAgentRunRegistry;
 
     @Override
     public void queryAgentStreamIncr(GptQueryReq params, AgentSessionStream stream) {
@@ -112,17 +116,19 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
             // 由这里统一 complete，避免策略自己关闭流造成重复完成或遗漏尾事件。
             // 若仍有 run_in_background 子任务，必须保持投影流，等待后台 tool_result / stream_settle。
             agentDispatchService.dispatch(agentRequest, projectingStream);
-            completeProjectionUnlessBackgroundRunning(agentRequest, projectingStream);
+            completeProjectionUnlessBackgroundRunning(agentRequest, projectingStream, activeAgentRunRegistry);
         } catch (Exception e) {
             // 浏览器主动断开属于下游终止，不再把它包装成服务端失败；其它异常才发 error，
             // 这样前端能区分用户取消与 Agent 执行错误。
             if (projectingStream.isAborted() || stream.isAborted()) {
                 log.info("{} dispatch error occurred after downstream abort", agentRequest.getRequestId());
                 projectingStream.complete();
+                endRunUnlessBackground(agentRequest, activeAgentRunRegistry);
                 return;
             }
             log.error("{} direct dispatch error", agentRequest.getRequestId(), e);
             projectingStream.completeWithError(e);
+            endRunUnlessBackground(agentRequest, activeAgentRunRegistry);
         } finally {
             log.info("{}, agent.query.web.singleRequest end, requestId: {}",
                     params.getRequestId(), JSON.toJSONString(params));
@@ -139,20 +145,44 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
     }
 
     /**
-     * 主 Agent 返回后：无后台任务则关流；有后台任务则留给 stream_settle 关流。
+     * 主 Agent 返回后：无后台任务则关流并释放 ActiveRun；有后台任务则留给 stream_settle。
+     * ActiveRun 必须在 complete 之后再 end，否则客户端错过终态帧去 follow 时 registry 已空。
      */
     public static void completeProjectionUnlessBackgroundRunning(AgentRequest agentRequest,
                                                                  AgentResponseProjectionStream projectingStream) {
-        if (projectingStream == null) {
-            return;
-        }
-        String sessionId = agentRequest == null ? null : agentRequest.getSessionId();
-        if (SessionBackgroundTaskHub.hasRunning(
-                SessionBackgroundTaskHub.keyFor(sessionId, agentRequest.getRequestId()))) {
+        completeProjectionUnlessBackgroundRunning(agentRequest, projectingStream, null);
+    }
+
+    public static void completeProjectionUnlessBackgroundRunning(AgentRequest agentRequest,
+                                                                 AgentResponseProjectionStream projectingStream,
+                                                                 ActiveAgentRunRegistry runRegistry) {
+        if (shouldDeferProjectionComplete(agentRequest)) {
             log.info("{} defer projection complete: background tasks still running sessionId={}",
-                    agentRequest == null ? "-" : agentRequest.getRequestId(), sessionId);
+                    agentRequest == null ? "-" : agentRequest.getRequestId(),
+                    agentRequest == null ? null : agentRequest.getSessionId());
             return;
         }
-        projectingStream.complete();
+        if (projectingStream != null) {
+            projectingStream.complete();
+        }
+        endRunUnlessBackground(agentRequest, runRegistry);
+    }
+
+    public static boolean shouldDeferProjectionComplete(AgentRequest agentRequest) {
+        if (agentRequest == null) {
+            return false;
+        }
+        return SessionBackgroundTaskHub.hasRunning(
+                SessionBackgroundTaskHub.keyFor(agentRequest.getSessionId(), agentRequest.getRequestId()));
+    }
+
+    public static void endRunUnlessBackground(AgentRequest agentRequest, ActiveAgentRunRegistry runRegistry) {
+        if (runRegistry == null || agentRequest == null || StringUtils.isBlank(agentRequest.getRequestId())) {
+            return;
+        }
+        if (shouldDeferProjectionComplete(agentRequest)) {
+            return;
+        }
+        runRegistry.end(agentRequest.getRequestId());
     }
 }

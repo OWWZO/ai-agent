@@ -9,6 +9,7 @@ import org.wwz.ai.application.agent.stream.AgentSessionStream;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.runtime.tasklist.RuntimeBackgroundTask;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
 import org.wwz.ai.domain.agent.runtime.tool.common.AgentDispatchTool;
@@ -172,6 +173,57 @@ public class BackgroundStreamSettleTest {
             SessionBackgroundTaskHub.getOrCreate(sessionId, null).complete(task.getId(), null);
             GptQueryApplicationService.completeProjectionUnlessBackgroundRunning(request, projecting);
             Assert.assertTrue("后台结束后应关闭投影流", downstream.completed.get());
+        } finally {
+            SessionBackgroundTaskHub.evict(sessionId);
+        }
+    }
+
+    @Test
+    public void completeProjectionEndsActiveRunAfterStreamClose() {
+        String sessionId = "sess-end-run-" + System.nanoTime();
+        SessionBackgroundTaskHub.evict(sessionId);
+        ActiveAgentRunRegistry registry = new ActiveAgentRunRegistry();
+        try {
+            registry.begin("req-end-run", sessionId, null);
+            CapturingStream downstream = new CapturingStream();
+            AgentRequest request = new AgentRequest();
+            request.setRequestId("req-end-run");
+            request.setSessionId(sessionId);
+            AgentResponseProjectionStream projecting =
+                    new AgentResponseProjectionStream(downstream, request, Map.of());
+
+            GptQueryApplicationService.completeProjectionUnlessBackgroundRunning(
+                    request, projecting, registry);
+
+            Assert.assertTrue(downstream.completed.get());
+            Assert.assertFalse("关流后才释放 ActiveRun", registry.find("req-end-run").isPresent());
+        } finally {
+            SessionBackgroundTaskHub.evict(sessionId);
+        }
+    }
+
+    @Test
+    public void completeProjectionKeepsActiveRunWhileBackgroundRunning() {
+        String sessionId = "sess-keep-run-" + System.nanoTime();
+        SessionBackgroundTaskHub.evict(sessionId);
+        ActiveAgentRunRegistry registry = new ActiveAgentRunRegistry();
+        try {
+            registry.begin("req-keep-run", sessionId, null);
+            RuntimeBackgroundTask task = SessionBackgroundTaskHub.getOrCreate(sessionId, null)
+                    .registerLocalAgent("后台探查", "general-purpose", "scan");
+            CapturingStream downstream = new CapturingStream();
+            AgentRequest request = new AgentRequest();
+            request.setRequestId("req-keep-run");
+            request.setSessionId(sessionId);
+            AgentResponseProjectionStream projecting =
+                    new AgentResponseProjectionStream(downstream, request, Map.of());
+
+            GptQueryApplicationService.completeProjectionUnlessBackgroundRunning(
+                    request, projecting, registry);
+
+            Assert.assertFalse(downstream.completed.get());
+            Assert.assertTrue("后台未结束时保留 ActiveRun 供 follow", registry.find("req-keep-run").isPresent());
+            SessionBackgroundTaskHub.getOrCreate(sessionId, null).complete(task.getId(), null);
         } finally {
             SessionBackgroundTaskHub.evict(sessionId);
         }

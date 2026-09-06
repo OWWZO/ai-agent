@@ -6,6 +6,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.application.agent.dispatch.IAgentDispatchService;
+import org.wwz.ai.application.agent.query.GptQueryApplicationService;
 import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
 import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
@@ -16,10 +17,10 @@ import org.wwz.ai.domain.agent.runtime.askuser.UserQuestionRecord;
 import org.wwz.ai.domain.agent.runtime.askuser.UserQuestionResumeContext;
 import org.wwz.ai.domain.agent.runtime.askuser.UserQuestionStatuses;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
+import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.runtime.handler.AgentResponseHandler;
-import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
 import org.wwz.ai.types.agent.exception.AgentExecutorBusyException;
 import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
@@ -41,6 +42,7 @@ public class AskUserResumeApplicationService {
     private final IUserQuestionRepository userQuestionRepository;
     private final IAgentDispatchService agentDispatchService;
     private final ConversationSessionOwnershipApplicationService conversationSessionOwnershipApplicationService;
+    private final ActiveAgentRunRegistry activeAgentRunRegistry;
 
     @Resource
     private Map<AgentType, AgentResponseHandler> handlerMap;
@@ -123,21 +125,19 @@ public class AskUserResumeApplicationService {
         try {
             agentDispatchService.dispatch(agentRequest, projectingStream);
             userQuestionRepository.markAnswered(record.getQuestionId());
-            if (!SessionBackgroundTaskHub.hasRunning(agentRequest.getSessionId())) {
-                projectingStream.complete();
-            } else {
-                log.info("{} defer projection complete after ask-user resume: background running",
-                        agentRequest.getRequestId());
-            }
+            GptQueryApplicationService.completeProjectionUnlessBackgroundRunning(
+                    agentRequest, projectingStream, activeAgentRunRegistry);
         } catch (Exception e) {
             log.error("{} ask-user resume failed questionId={}",
                     agentRequest.getRequestId(), record.getQuestionId(), e);
             userQuestionRepository.markStatus(record.getQuestionId(), UserQuestionStatuses.FAILED);
             if (projectingStream.isAborted()) {
                 projectingStream.complete();
+                GptQueryApplicationService.endRunUnlessBackground(agentRequest, activeAgentRunRegistry);
                 return;
             }
             projectingStream.completeWithError(e);
+            GptQueryApplicationService.endRunUnlessBackground(agentRequest, activeAgentRunRegistry);
         }
     }
 

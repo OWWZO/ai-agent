@@ -110,12 +110,15 @@ public class AgentSessionPrinter implements Printer {
             // 子 Agent 终答也走 messageType=result，但带 parentToolUseId/subAgentId；
             // 不得把主会话投影流标成 finished，否则主 Agent 仍在跑时 SSE 会被提前关闭。
             // 后台 run_in_background 任务未完成时同样不能 finished，否则后续子事件全部丢失。
+            // plan_approval / ask_user_question 是 HITL 让步终态：信封必须 finished，
+            // 否则前端会把随后的 SSE complete 误当成断线 follow。
             boolean nestedSubAgent = isNestedSubAgentEvent(message, extraResultMap);
             boolean backgroundRunning = SessionBackgroundTaskHub.hasRunning(
                     request == null ? null : request.getSessionId(),
                     request == null ? null : request.getRequestId());
             boolean finish = ("result".equals(messageType) && !nestedSubAgent && !backgroundRunning)
-                    || "stream_settle".equals(messageType);
+                    || "stream_settle".equals(messageType)
+                    || isHitlYieldMessageType(messageType);
             Map<String, Object> resultMap = new HashMap<>();
             resultMap.put("agentType", agentType);
 
@@ -299,6 +302,10 @@ public class AgentSessionPrinter implements Printer {
     @Override
     public void updateAgentType(AgentType agentType) {
         this.agentType = agentType.getValue();
+    }
+
+    static boolean isHitlYieldMessageType(String messageType) {
+        return "ask_user_question".equals(messageType) || "plan_approval".equals(messageType);
     }
 
     /**

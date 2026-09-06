@@ -6,16 +6,17 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.application.agent.dispatch.IAgentDispatchService;
+import org.wwz.ai.application.agent.query.GptQueryApplicationService;
 import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
 import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
+import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.runtime.handler.AgentResponseHandler;
 import org.wwz.ai.domain.agent.runtime.planmode.IPlanApprovalRepository;
-import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalObservationSupport;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalRecord;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalResumeContext;
@@ -41,6 +42,7 @@ public class PlanApprovalResumeApplicationService {
     private final IPlanApprovalRepository planApprovalRepository;
     private final IAgentDispatchService agentDispatchService;
     private final ConversationSessionOwnershipApplicationService conversationSessionOwnershipApplicationService;
+    private final ActiveAgentRunRegistry activeAgentRunRegistry;
 
     @Resource
     private Map<AgentType, AgentResponseHandler> handlerMap;
@@ -120,21 +122,19 @@ public class PlanApprovalResumeApplicationService {
         try {
             agentDispatchService.dispatch(agentRequest, projectingStream);
             planApprovalRepository.markAnswered(record.getApprovalId());
-            if (!SessionBackgroundTaskHub.hasRunning(agentRequest.getSessionId())) {
-                projectingStream.complete();
-            } else {
-                log.info("{} defer projection complete after plan-approval resume: background running",
-                        agentRequest.getRequestId());
-            }
+            GptQueryApplicationService.completeProjectionUnlessBackgroundRunning(
+                    agentRequest, projectingStream, activeAgentRunRegistry);
         } catch (Exception e) {
             log.error("{} plan-approval resume failed approvalId={}",
                     agentRequest.getRequestId(), record.getApprovalId(), e);
             planApprovalRepository.markStatus(record.getApprovalId(), PlanApprovalStatuses.FAILED);
             if (projectingStream.isAborted()) {
                 projectingStream.complete();
+                GptQueryApplicationService.endRunUnlessBackground(agentRequest, activeAgentRunRegistry);
                 return;
             }
             projectingStream.completeWithError(e);
+            GptQueryApplicationService.endRunUnlessBackground(agentRequest, activeAgentRunRegistry);
         }
     }
 
