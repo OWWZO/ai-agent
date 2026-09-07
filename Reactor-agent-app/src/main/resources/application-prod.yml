@@ -117,6 +117,9 @@ autobots:
       max-concurrency: 32
 
   autoagent:
+    workspace:
+      # Backend 与 reactor-tool 通过 Compose 共享同一份持久化工作区。
+      root-template: "${WORKSPACE_ROOT:/data/skilloutput}/{sessionId}"
     planner:
       max_steps: 150
     executor:
@@ -135,7 +138,7 @@ autobots:
     code_interpreter_url: "http://127.0.0.1:1601"
     deep_search_url: "http://127.0.0.1:1601"
     multimodalagent_url: "http://127.0.0.1:1601"
-    web_fetch_proxy: "http://127.0.0.1:7890"
+    web_fetch_proxy: "${REACTOR_WEB_FETCH_PROXY:http://127.0.0.1:7890}"
     image_generation:
       base_url: ""
       api_key: ""

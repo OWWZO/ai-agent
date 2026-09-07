@@ -124,7 +124,7 @@ def test_upload_tree_skips_skills_dir(tmp_path=None):
     written: list[str] = []
 
     class FakeFiles:
-        def write_files(self, files):
+        def write_files(self, files, **kwargs):
             for item in files:
                 written.append(item["path"])
 
@@ -173,7 +173,7 @@ def test_session_sandbox_reuses_and_incremental_push():
     written: list[str] = []
 
     class FakeFiles:
-        def write_files(self, files):
+        def write_files(self, files, **kwargs):
             for item in files:
                 written.append(item["path"])
 
@@ -296,7 +296,7 @@ def test_e2b_ephemeral_skips_skills_and_kills():
     written: list[str] = []
 
     class FakeFiles:
-        def write_files(self, files):
+        def write_files(self, files, **kwargs):
             for item in files:
                 written.append(item["path"])
 
@@ -364,7 +364,7 @@ def test_e2b_skill_mode_sticky_upgrades_session():
     written: list[str] = []
 
     class FakeFiles:
-        def write_files(self, files):
+        def write_files(self, files, **kwargs):
             for item in files:
                 written.append(item["path"])
 
@@ -486,7 +486,7 @@ def test_incremental_push_helpers_unit():
     written: list[str] = []
 
     class FakeFiles:
-        def write_files(self, files):
+        def write_files(self, files, **kwargs):
             for item in files:
                 written.append(item["path"])
 
@@ -531,7 +531,7 @@ def test_e2b_skips_task_description_as_filename():
     written: list[str] = []
 
     class FakeFiles:
-        def write_files(self, files):
+        def write_files(self, files, **kwargs):
             for item in files:
                 written.append(item["path"])
 
@@ -566,7 +566,7 @@ def test_e2b_file_upload_retries_transient_transport_errors():
             def __init__(self):
                 self.calls = 0
 
-            def write_files(self, files):
+            def write_files(self, files, **kwargs):
                 self.calls += 1
                 if self.calls < 3:
                     raise error
@@ -593,7 +593,7 @@ def test_e2b_file_upload_does_not_retry_non_transient_errors():
         def __init__(self):
             self.calls = 0
 
-        def write_files(self, files):
+        def write_files(self, files, **kwargs):
             self.calls += 1
             raise ValueError("invalid file path")
 
@@ -616,6 +616,72 @@ def test_e2b_file_upload_does_not_retry_non_transient_errors():
 
     assert files_api.calls == 1
     sleep.assert_not_called()
+
+
+def test_e2b_file_upload_passes_request_timeout():
+    from reactor_tool.tool import e2b_file_upload
+
+    captured: dict[str, object] = {}
+
+    class FakeFiles:
+        def write_files(self, files, **kwargs):
+            captured["files"] = files
+            captured.update(kwargs)
+
+    e2b_file_upload.write_e2b_files(
+        FakeFiles(),
+        [{"path": "/home/user/workspace/a.txt", "data": b"a"}],
+        label="bash_sandbox",
+    )
+    assert captured["request_timeout"] == 300.0
+
+
+def test_e2b_file_upload_splits_by_payload_bytes():
+    from reactor_tool.tool import e2b_file_upload
+
+    calls: list[list[str]] = []
+
+    class FakeFiles:
+        def write_files(self, files, **kwargs):
+            calls.append([item["path"] for item in files])
+
+    items = [
+        {"path": "/a", "data": b"x" * 200_000},
+        {"path": "/b", "data": b"y" * 200_000},
+        {"path": "/c", "data": b"z" * 200_000},
+        {"path": "/big", "data": b"w" * 600_000},
+    ]
+    with patch.dict(os.environ, {"E2B_FILE_UPLOAD_MAX_BYTES": "512000"}, clear=False):
+        e2b_file_upload.write_e2b_files(FakeFiles(), items, label="bash_sandbox")
+    assert calls == [["/a", "/b"], ["/c"], ["/big"]]
+
+
+def test_e2b_file_upload_retries_only_failed_chunk():
+    import httpx
+    from reactor_tool.tool import e2b_file_upload
+
+    class FakeFiles:
+        def __init__(self):
+            self.calls: list[list[str]] = []
+
+        def write_files(self, files, **kwargs):
+            names = [item["path"] for item in files]
+            self.calls.append(names)
+            if names == ["/b"] and self.calls.count(["/b"]) < 3:
+                raise httpx.RemoteProtocolError("peer closed connection")
+
+    files_api = FakeFiles()
+    items = [
+        {"path": "/a", "data": b"x" * 200_000},
+        {"path": "/b", "data": b"y" * 200_000},
+    ]
+    with (
+        patch.dict(os.environ, {"E2B_FILE_UPLOAD_MAX_BYTES": "200000"}, clear=False),
+        patch.object(e2b_file_upload.random, "uniform", return_value=0.0),
+        patch.object(e2b_file_upload.time, "sleep"),
+    ):
+        e2b_file_upload.write_e2b_files(files_api, items, label="bash_sandbox")
+    assert files_api.calls == [["/a"], ["/b"], ["/b"], ["/b"]]
 
 
 def test_idle_ttl_skips_in_use_session():
@@ -695,6 +761,9 @@ if __name__ == "__main__":
     test_e2b_skips_task_description_as_filename()
     test_e2b_file_upload_retries_transient_transport_errors()
     test_e2b_file_upload_does_not_retry_non_transient_errors()
+    test_e2b_file_upload_passes_request_timeout()
+    test_e2b_file_upload_splits_by_payload_bytes()
+    test_e2b_file_upload_retries_only_failed_chunk()
     test_idle_ttl_skips_in_use_session()
     test_idle_ttl_reaps_session()
     print("OK")

@@ -20,14 +20,14 @@ class _FakeFiles:
     def __init__(self, store: dict[str, bytes]):
         self.store = store
 
-    def write(self, path: str, data):
+    def write(self, path: str, data, **kwargs):
         if hasattr(data, "read"):
             data = data.read()
         if isinstance(data, str):
             data = data.encode("utf-8")
         self.store[str(path).replace("\\", "/")] = bytes(data)
 
-    def write_files(self, files):
+    def write_files(self, files, **kwargs):
         for item in files:
             self.write(item["path"], item["data"])
 

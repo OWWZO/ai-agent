@@ -15,7 +15,7 @@ import json
 import os
 from loguru import logger
 from abc import ABC, abstractmethod
-from typing import List
+from typing import Any, List
 from urllib.parse import quote
 import aiohttp
 from bs4 import BeautifulSoup
@@ -35,6 +35,20 @@ def _search_url_ok(url) -> bool:
         return False
     s = str(url).strip()
     return s.startswith(("http://", "https://"))
+
+
+def _configured_proxy() -> str | None:
+    """读取 DeepSearch/WebFetch 共用的网页出站代理。"""
+    proxy = os.getenv("REACTOR_WEB_FETCH_PROXY", "").strip()
+    return proxy or None
+
+
+def _request_kwargs(**kwargs):
+    """为 aiohttp 请求补充显式代理，避免依赖进程级代理环境变量。"""
+    proxy = _configured_proxy()
+    if proxy:
+        kwargs["proxy"] = proxy
+    return kwargs
 
 
 class SearchBase(ABC):
@@ -72,9 +86,11 @@ class SearchBase(ABC):
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     "https://r.jina.ai/",
-                    json={"url": source_url},
-                    headers=headers,
-                    timeout=client_timeout,
+                    **_request_kwargs(
+                        json={"url": source_url},
+                        headers=headers,
+                        timeout=client_timeout,
+                    ),
                 ) as response:
                     if response.status != 200:
                         logger.debug(f"jina reader skipped: status={response.status}")
@@ -93,7 +109,10 @@ class SearchBase(ABC):
         client_timeout = aiohttp.ClientTimeout(connect=5, total=timeout)
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(source_url, timeout=client_timeout) as response:
+                async with session.get(
+                    source_url,
+                    **_request_kwargs(timeout=client_timeout),
+                ) as response:
                     content_type = (response.content_type or "").lower()
                     if content_type not in [
                         "text/html",
@@ -210,7 +229,11 @@ class DDGSearch(SearchBase):
             return []
 
         def _run_text_search() -> List[dict]:
-            client = DDGS(timeout=self._timeout)
+            client_kwargs: dict[str, Any] = {"timeout": self._timeout}
+            proxy = _configured_proxy()
+            if proxy:
+                client_kwargs["proxy"] = proxy
+            client = DDGS(**client_kwargs)
             results = client.text(
                 query,
                 region=self._region,
@@ -274,7 +297,12 @@ class BingSearch(SearchBase):
         body = self.construct_body(query, request_id)
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                self._url, json=body, headers=self.headers, timeout=self._timeout
+                self._url,
+                **_request_kwargs(
+                    json=body,
+                    headers=self.headers,
+                    timeout=self._timeout,
+                ),
             ) as response:
                 result = json.loads(await response.text())
                 return [
@@ -312,7 +340,12 @@ class JinaSearch(BingSearch):
             body = self.construct_body(query, request_id)
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    self._url, json=body, headers=self.headers, timeout=self._timeout
+                    self._url,
+                    **_request_kwargs(
+                        json=body,
+                        headers=self.headers,
+                        timeout=self._timeout,
+                    ),
                 ) as response:
                     result = json.loads(await response.text())
                     return [
@@ -333,7 +366,8 @@ class JinaSearch(BingSearch):
             search_url = self._build_search_url(query)
             async with aiohttp.ClientSession() as session:
                 async with session.get(
-                    search_url, headers=headers, timeout=self._timeout
+                    search_url,
+                    **_request_kwargs(headers=headers, timeout=self._timeout),
                 ) as response:
                     if response.status != 200:
                         logger.error(
@@ -389,7 +423,12 @@ class SerperSearch(JinaSearch):
         body = self.construct_body(query, request_id)
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                self._url, json=body, headers=self.headers, timeout=self._timeout
+                self._url,
+                **_request_kwargs(
+                    json=body,
+                    headers=self.headers,
+                    timeout=self._timeout,
+                ),
             ) as response:
                 result = json.loads(await response.text())
                 return [
@@ -435,7 +474,12 @@ class ExaSearch(SearchBase):
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    self._url, json=body, headers=self.headers, timeout=self._timeout
+                    self._url,
+                    **_request_kwargs(
+                        json=body,
+                        headers=self.headers,
+                        timeout=self._timeout,
+                    ),
                 ) as response:
                     if response.status != 200:
                         logger.error(f"Exa search failed: status={response.status}")

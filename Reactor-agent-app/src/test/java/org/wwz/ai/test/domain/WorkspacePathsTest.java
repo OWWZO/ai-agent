@@ -40,6 +40,25 @@ public class WorkspacePathsTest {
     }
 
     @Test
+    public void shouldKeepExplicitSharedVolumeWorkspaceRoot() {
+        Path sharedRoot = Path.of("/data/skilloutput").toAbsolutePath().normalize();
+        WorkspaceService service = new WorkspaceService(
+                WorkspaceRuntimeOptions.builder()
+                        .enabled(true)
+                        .rootTemplate(sharedRoot + "/{sessionId}")
+                        .build(),
+                null,
+                null,
+                null
+        );
+
+        Assert.assertEquals(
+                sharedRoot.resolve("session-shared-volume").normalize(),
+                service.resolveRoot("session-shared-volume").normalize()
+        );
+    }
+
+    @Test
     public void shouldPreferMonorepoWhenParentAlsoHasReactorTool() {
         String previous = System.getProperty("user.dir");
         try {

@@ -9,11 +9,7 @@
 </p>
 
 <p align="center">
-  一个面向持续研究与复杂任务执行的可回放 Agent 工作站：发现信号，形成证据，执行分析，发布成果。
-</p>
-
-<p align="center">
-  A world-aware, tool-using Agent workstation for research, analysis, and interactive delivery.
+  一个面向全网研究和复杂数据分析的云端智能体：发现信号，形成证据，执行分析，发布成果。
 </p>
 
 <p align="center">
@@ -35,27 +31,12 @@
 </p>
 
 <p align="center">
-  <img src="assets/readme/ReAct链路.png" alt="ReAct 研究任务与报告产物" width="960">
+  <img src="assets/readme/主页.png" alt="ReAct 研究任务与报告产物" width="960">
 </p>
-
-> **项目状态**：Reactor 仍在持续演进。基础 Agent 执行链路可以独立运行；搜索、向量检索、图像生成、代码沙箱和长期记忆等能力需要根据部署环境配置对应的模型或外部服务。README 中的“持续关注”指可组合的定时任务、后台 Agent 和跨轮记忆能力，不代表所有部署默认开启无人值守监控。
 
 ## 定位
 
 Reactor 是一个让 Agent 持续关注世界、理解变化并交付结果的开源 Agent 应用底座，由 Java Agent Runtime、React 工作台和 Python Tool Runtime 组成。
-
-它把一次请求视为一条可以观察、干预、持久化和回放的执行记录，而不是一段临时对话：
-
-```text
-世界信号 / 用户目标
-  -> 多源搜索与知识检索
-  -> 任务规划与多 Agent 协作
-  -> 代码、数据与工具执行
-  -> 结构化产物与可交互展示
-  -> 记忆沉淀、执行审计与历史回放
-```
-
-Reactor 适合构建深度研究、世界动态追踪、知识库问答、数据分析、内容生产和内部自动化等需要多步执行的 AI 应用。
 
 ## 核心闭环
 
@@ -68,26 +49,13 @@ flowchart LR
     Remember --> Observe
 ```
 
-这个闭环对应三个主要产品动作：
 
 1. **关注世界**：从公开互联网、用户授权的社交来源、私有知识库和业务数据库中发现变化。
 2. **理解世界**：通过多 Agent、RAG、NL2SQL 和受控代码执行，把资料转成可检查的证据和分析结果。
 3. **表达世界**：把结果发布成 GenUI、图表、HTML、PDF、Word、PPT 或可交互的 3D 场景，并保留来源和执行记录。
 
-## 为什么是 Reactor
 
-普通聊天应用把重点放在生成一段答案，Reactor 把重点放在完成一项可交付的工作：来源可以追踪，过程可以观察，关键节点可以由人决定，结果可以继续被工具和下一轮任务消费。
-
-| 关注点 | Reactor 的做法 | 带来的结果 |
-| --- | --- | --- |
-| 世界感知 | DeepSearch、多引擎搜索、公开来源、授权社媒、私有知识库和业务数据库 | 信息采集不局限于单一网页或单一知识库 |
-| 执行能力 | ReAct、Plan-Solve、Workflow、工具循环和并发调度 | 复杂目标可以拆解、执行和收口 |
-| 分析能力 | MRAG、NL2SQL、Python 数据分析和受控代码执行 | 结构化与非结构化资料可以联合推理 |
-| 交付能力 | GenUI、图表、HTML、PDF、Word、PPT、图片和 3D 场景 | 答案可以直接成为工作成果 |
-| 控制能力 | 计划审批、用户追问、停止、恢复、断线续观和运行中注入指导 | 人可以在关键步骤接管 Agent |
-| 可追踪性 | Execution Ledger 记录 Run、LLM、Tool、Artifact 和结构化输出 | 任务过程可以审计、回放和复盘 |
-
-## 能力地图
+## 核心亮点
 
 ### 1. Observe：搜索、媒体与 RAG
 
@@ -331,6 +299,8 @@ docker compose --env-file reactor-tool/.env up -d
 启动后访问 [http://localhost:3000](http://localhost:3000)，探活接口为 [http://localhost:3000/web/health](http://localhost:3000/web/health)。也可以从 `Reactor-agent-app` 目录执行 `./build.sh` 构建全部镜像。
 
 Java 生产配置模板是 [`application-prod.yml`](Reactor-agent-app/src/main/resources/application-prod.yml)，以静态配置为主，已清除真实密钥和密码；部署者需要按实际环境填写空缺凭证和地址。MySQL 初始化脚本只会在首次创建 `mysql-data` 卷时执行；修改 `schema.sql` 或 `data.sql` 后需要按实际情况迁移已有数据库。
+
+Compose 部署时，`WORKSPACE_ROOT` 应保持为 `/data/skilloutput`，Backend 与 `reactor-tool` 会通过 `reactor-data` 卷共享会话工作区和文件产物。
 
 `reactor-data` 卷保存 Python 文件服务的 `autobots.db`、MRAG SQLite 元数据和文件产物。普通 `docker compose down` 不会删除该卷；如果执行 `docker compose down -v` 或手动删除 `reactor-data`，下次部署需要重新执行 SQLite 初始化命令。
 
