@@ -34,9 +34,76 @@
   <img src="assets/readme/主页.png" alt="ReAct 研究任务与报告产物" width="960">
 </p>
 
-## 定位
+## 项目定位
 
 Reactor 是一个让 Agent 持续关注世界、理解变化并交付结果的开源 Agent 应用底座，由 Java Agent Runtime、React 工作台和 Python Tool Runtime 组成。
+
+## 落地案例展示
+
+面向业务库的数据分析：Text2SQL智能取数->CodeAct数据分析Agent(归因分析)->Canvas画布展示
+https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788425650341-3137/api-log-analysis/index.html
+<p align="center">
+  <img src="assets/readme/大模型调用数据分析图.png" alt="" width="49%">
+</p>
+
+<p align="center">
+  <img src="assets/readme/结构化数据分析.png" alt="" width="49%">
+</p>
+
+商业分析：尽调上市公司，交叉验证财报、竞品与新闻，产出一份投研报告，含风险清单与估值框架。
+https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788509972407-7432/tesla%E6%8A%95%E7%A0%94%E6%8A%A5%E5%91%8A_2026-09-04.html
+<p align="center">
+  <img src="assets/readme/特斯拉投研报告.png" alt="" width="49%">
+</p>
+
+https://www.owwzo.cloud/tool/v1/file_tool/download/session-1788785646953-112/index.html
+竞品分析
+<p align="center">
+  <img src="assets/readme/笔记软件竞品分析.png" alt="" width="49%">
+</p>
+
+交易分析
+预览url：https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788784594786-3975/index_23_embedded.html
+<p align="center">
+  <img src="assets/readme/双均线择时策略的回测.png" alt="" width="49%">
+</p>
+
+日常/技术调研
+<p align="center">
+url:https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788785646953-112/xiamen-couple-map.html
+  <img src="assets/readme/旅游规划.png" alt="数据分析与图表产物" width="49%">
+
+  <img src="assets/readme/codegraph技术调研.png" alt="" width="49%">
+</p>
+
+设计与创意
+<p align="center">
+  <img src="assets/readme/艺术设计.png" alt="CodeGraph 项目研究报告" width="49%">
+  <img src="assets/readme/猫猫艺术.png" alt="旅游规划报告产物" width="49%">
+</p>
+
+科研学术
+<p align="center">
+  <img src="assets/readme/全球糖尿病患病率的变化趋势.png" alt="CodeGraph 项目研究报告" width="49%">
+</p>
+
+
+GenUi交互式界面
+<p align="center">
+  <img src="assets/readme/GenUI可视化勾股定理.png" alt="" width="49%">
+  <img src="assets/readme/熊二.png" alt="" width="49%">
+  <img src="assets/readme/GenUi.png" alt="" width="49%">
+</p>
+
+
+Text2SQL 智能问数界面
+<p align="center">
+  <img src="assets/readme/TextToSql饼图.png" alt="销售报表与结构化分析" width="49%">
+</p>
+<p align="center">
+  <img src="assets/readme/TextToSql折线图.png" alt="销售报表与结构化分析" width="49%">
+</p>
+
 
 ## 核心闭环
 
@@ -158,27 +225,7 @@ Reactor 将长期能力组织成三种记忆，便于理解不同信息应该如
 | 内容生产 | 主题研究 → 结构化内容 → 选择主题 → PDF/Word/PPT/网页交付 | Skill、Document、Slides、Artifact |
 | 交互式展示 | 生成 UI Tree → 增量 Patch → HTML/Three.js/Model3D → 发布与回放 | GenUI、Canvas、Three.js |
 
-## 运行展示
 
-<p align="center">
-  <img src="assets/readme/ReAct链路.png" alt="ReAct 模式执行过程" width="49%">
-  <img src="assets/readme/planexecute模式.png" alt="Plan-Solve 模式执行过程" width="49%">
-</p>
-
-<p align="center">
-  <img src="assets/readme/数据分析.png" alt="数据分析与图表产物" width="49%">
-  <img src="assets/readme/旅游规划.png" alt="旅游规划报告产物" width="49%">
-</p>
-
-<p align="center">
-  <img src="assets/readme/RAG市场研究.png" alt="RAG 市场研究报告" width="49%">
-  <img src="assets/readme/codegraph展示.png" alt="CodeGraph 项目研究报告" width="49%">
-</p>
-
-<p align="center">
-  <img src="assets/readme/算法可视化.png" alt="算法与交互式可视化" width="49%">
-  <img src="assets/readme/销售报表.png" alt="销售报表与结构化分析" width="49%">
-</p>
 
 ### 一条完整任务链
 
