@@ -135,6 +135,11 @@ public class SubAgentDispatchTest {
         Assert.assertTrue(((java.util.List<?>) params.get("required")).contains("description"));
         Assert.assertTrue(((java.util.List<?>) params.get("required")).contains("prompt"));
         Assert.assertTrue(tool.getDescription().contains(SubAgentRegistry.TYPE_GENERAL_PURPOSE));
+        Assert.assertTrue(tool.getDescription().contains("SendMessage"));
+        Assert.assertTrue(tool.getDescription().contains("禁止用本工具+resume_agent_id"));
+        Assert.assertTrue(String.valueOf(
+                ((java.util.Map<?, ?>) ((java.util.Map<?, ?>) params.get("properties")).get("resume_agent_id"))
+                        .get("description")).contains("运行中请用 SendMessage"));
         Assert.assertTrue(String.valueOf(
                 ((java.util.Map<?, ?>) ((java.util.Map<?, ?>) params.get("properties")).get("subagent_type"))
                         .get("description")).contains(SubAgentRegistry.TYPE_GENERAL_PURPOSE));

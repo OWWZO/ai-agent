@@ -35,7 +35,8 @@ public class TaskOutputTool implements BaseTool {
     public String getDescription() {
         return "获取后台任务（Agent run_in_background / shell 等）的输出。"
                 + "block=true（默认）时等待完成或超时；timeout 为毫秒，默认 30000，最大 600000。"
-                + "task_id 来自 Agent 后台派发返回值。";
+                + "task_id 来自 Agent 后台派发返回值。"
+                + "等待或查看子 Agent 结果必须用本工具，不要用 workspace_list 轮询文件。";
     }
 
     @Override

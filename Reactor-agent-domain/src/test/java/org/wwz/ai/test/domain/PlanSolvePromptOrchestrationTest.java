@@ -10,7 +10,7 @@ import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRegistry;
 public class PlanSolvePromptOrchestrationTest {
 
     @Test
-    public void ensureOrchestrationIsIdempotentAndUsesV5() {
+    public void ensureOrchestrationIsIdempotentAndUsesV6() {
         String once = PlanSolvePrompt.ensureOrchestration("");
         String twice = PlanSolvePrompt.ensureOrchestration(once);
         Assert.assertEquals(once, twice);
@@ -18,6 +18,10 @@ public class PlanSolvePromptOrchestrationTest {
         Assert.assertTrue(once.contains("规模门控"));
         Assert.assertTrue(once.contains("## 7. Plan Mode"));
         Assert.assertTrue(once.contains("EnterPlanMode"));
+        Assert.assertTrue(once.contains("运行中禁止 Agent(resume_agent_id)"));
+        Assert.assertTrue(once.contains("禁止用 workspace_list 轮询子 Agent 是否完成"));
+        Assert.assertTrue(once.contains("已结束/失败才 resume；运行中用 SendMessage"));
+        Assert.assertTrue(once.contains("先 TaskOutput 等完成"));
         Assert.assertEquals(1, once.split(PlanSolvePrompt.ORCHESTRATION_MARKER, -1).length - 1);
     }
 
@@ -28,6 +32,15 @@ public class PlanSolvePromptOrchestrationTest {
         Assert.assertTrue(upgraded.contains(PlanSolvePrompt.ORCHESTRATION_MARKER));
         Assert.assertFalse(upgraded.contains("PLAN_SOLVE_ORCHESTRATION_V3"));
         Assert.assertTrue(upgraded.contains("协调者"));
+    }
+
+    @Test
+    public void ensureOrchestrationReplacesLegacyV5Block() {
+        String legacy = "# Plan-Execute 主代理职责 (PLAN_SOLVE_ORCHESTRATION_V5)\n- 续跑用 resume_agent_id / SendMessage\n";
+        String upgraded = PlanSolvePrompt.ensureOrchestration(legacy);
+        Assert.assertTrue(upgraded.contains(PlanSolvePrompt.ORCHESTRATION_MARKER));
+        Assert.assertFalse(upgraded.contains("PLAN_SOLVE_ORCHESTRATION_V5"));
+        Assert.assertTrue(upgraded.contains("运行中禁止 Agent(resume_agent_id)"));
     }
 
     @Test

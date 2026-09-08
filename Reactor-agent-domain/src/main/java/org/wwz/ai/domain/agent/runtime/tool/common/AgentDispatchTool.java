@@ -84,11 +84,12 @@ public class AgentDispatchTool implements BaseTool {
     public String getDescription() {
         StringBuilder sb = new StringBuilder();
         sb.append("派发一个子 Agent 执行独立任务。")
-                .append("默认阻塞等待完成后返回精简报告；run_in_background=true 时立即返回 task_id 与 agentId，")
-                .append("用 TaskOutput 取结果、TaskStop 取消、SendMessage 中途发消息指导，不要用当前工具在后台任务还没结束时发消息指导。")
+                .append("默认阻塞等待完成后返回精简报告；run_in_background=true 时立即返回 task_id 与 agentId。")
+                .append("后台运行中：用 TaskOutput 取结果、TaskStop 取消、SendMessage 中途指导。")
+                .append("禁止用本工具+resume_agent_id 给还在跑的子 Agent 发指导。")
                 .append("新任务：子 Agent 从零上下文开始，请在 prompt 中写全背景与交付要求。")
-                .append("续跑：传入上次结果中的 resume_agent_id（即 agentId），可带着上次工作记忆继续任务。")
-                .append("若子 Agent 返回 Terminated: LLM think failed，请用同一 resume_agent_id 再派发续跑。")
+                .append("续跑：仅当该子 Agent 已结束或失败时，传入上次结果中的 resume_agent_id（即 agentId），带着上次工作记忆继续。")
+                .append("若子 Agent 返回 Terminated: LLM think failed，等其结束后用同一 resume_agent_id 再派发续跑。")
                 .append("可用 subagent_type：");
         List<String> lines = new ArrayList<>();
         if (subAgentRegistry != null) {
@@ -127,12 +128,12 @@ public class AgentDispatchTool implements BaseTool {
         Map<String, Object> resumeAgentId = new LinkedHashMap<>();
         resumeAgentId.put("type", "string");
         resumeAgentId.put("description",
-                "可选。上次 Agent 工具返回的 agentId。传入后唤醒该子 Agent 并保留其工作记忆，而不是新开实例");
+                "可选。仅用于已结束/失败的子 Agent。传入上次返回的 agentId 以唤醒并保留工作记忆。运行中请用 SendMessage，不要填本参数");
 
         Map<String, Object> runInBackground = new LinkedHashMap<>();
         runInBackground.put("type", "boolean");
         runInBackground.put("description",
-                "设为 true 时后台运行：立即返回 task_id，用 TaskOutput 等待/读取结果，TaskStop 可取消");
+                "设为 true 时后台运行：立即返回 task_id。用 TaskOutput 等待/读取结果，SendMessage 中途指导，TaskStop 取消");
 
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("description", description);

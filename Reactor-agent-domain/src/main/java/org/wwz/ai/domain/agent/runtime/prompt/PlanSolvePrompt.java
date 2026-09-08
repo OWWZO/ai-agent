@@ -6,7 +6,7 @@ package org.wwz.ai.domain.agent.runtime.prompt;
  */
 public final class PlanSolvePrompt {
 
-    public static final String ORCHESTRATION_MARKER = "PLAN_SOLVE_ORCHESTRATION_V5";
+    public static final String ORCHESTRATION_MARKER = "PLAN_SOLVE_ORCHESTRATION_V6";
     public static final String EXECUTION_MARKER = "PLAN_SOLVE_EXECUTION_V2";
 
     public static final String ORCHESTRATION = """
@@ -28,9 +28,11 @@ public final class PlanSolvePrompt {
             不要用 Worker 做简单复述或单次无关紧要查询。
 
             ## 3. 编排工具
-            - Agent：新任务 prompt 必须自包含；续跑用 resume_agent_id / SendMessage
-            - TaskStop / TaskOutput：停止与取后台结果（以实际工具名为准）
-            - workspace_*：发现并阅读工作区报告后再派下一棒
+            - Agent：只用于启动新 Worker，或对**已结束/失败**的实例用 resume_agent_id 续跑。运行中禁止 Agent(resume_agent_id)
+            - SendMessage：运行中途指导，to 填 agentId 或 task_id
+            - TaskOutput：查看或阻塞等待后台结果（默认 block=true）。禁止用 workspace_list 轮询子 Agent 是否完成
+            - TaskStop：取消后台任务
+            - workspace_*：派下一棒前确认报告真实路径并写入新 prompt；不是等待后台任务的手段
             - 启动 Agent 后短告知用户启动了什么，然后结束本轮；绝不要编造未返回的结果
             - 不要让一个 worker 去检查另一个 worker
             - 同一轮可并行多个相互独立的只读调研/分析 Worker
@@ -54,8 +56,8 @@ public final class PlanSolvePrompt {
             调研：拆主题 → 并行 research workers → glob → 综合 → writer → 用户摘要。
             分析：定问题与数据源 → analysis workers → glob → 综合 →（可选）writer → 用户摘要。
 
-            并发：只读可并行；写同一交付物或强依赖上游报告时等路径就绪再派。
-            失败：优先 resume/SendMessage；方向错则 TaskStop 后换规格；相同失败入参不盲重试。
+            并发：只读可并行；写同一交付物或强依赖上游报告时先 TaskOutput 等完成，再 workspace_glob 确认路径后派下一棒。
+            失败：已结束/失败才 resume；运行中用 SendMessage。方向错则 TaskStop 后换规格；相同失败入参不盲重试。
 
             ## 6. 编写 Worker Prompt
             Worker 看不到你与用户的对话。每个 prompt 必须自包含：目标、范围、已有路径、交付格式、完成定义，并加一句目的说明。
@@ -63,7 +65,7 @@ public final class PlanSolvePrompt {
             反例：`根据你的发现写报告` / `继续上次调研并生成 HTML`
             正例：明确列出 `research/ev-policy-2024.md` 等路径、输出格式与完成标准。
 
-            继续 vs 新建：上下文重叠高 → resume；研究很宽、创作很窄 → 新 Worker + 综合规格；审阅用新视角；无关任务新开。
+            继续 vs 新建：已结束且上下文重叠高 → resume；运行中指导 → SendMessage；研究很宽、创作很窄 → 新 Worker + 综合规格；审阅用新视角；无关任务新开。
 
              ## 7. Plan Mode
             - 会话第一次 PlanExecute 请求可能由系统自动进入 plan mode（只读规划，写 .reactor/plan.md，ExitPlanMode 等人批）。
@@ -123,7 +125,8 @@ public final class PlanSolvePrompt {
                  "PLAN_SOLVE_ORCHESTRATION_V1",
                  "PLAN_SOLVE_ORCHESTRATION_V2",
                  "PLAN_SOLVE_ORCHESTRATION_V3",
-                 "PLAN_SOLVE_ORCHESTRATION_V4"
+                 "PLAN_SOLVE_ORCHESTRATION_V4",
+                 "PLAN_SOLVE_ORCHESTRATION_V5"
         }) {
             if (!base.contains(legacy)) {
                 continue;

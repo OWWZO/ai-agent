@@ -30,6 +30,7 @@ import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -300,6 +301,20 @@ public class AgentToolCollectionFactoryTest {
         Assert.assertTrue(main.getToolMap().containsKey("TaskCreate"));
         Assert.assertFalse(main.getToolMap().containsKey("deep_search"));
         Assert.assertFalse(main.getToolMap().containsKey("web_search"));
+    }
+
+    @Test
+    public void deployedPlanSolveMainToolListIncludesTaskOutputAndSendMessage() throws Exception {
+        for (String profile : List.of("application-dev.yml", "application-prod.yml")) {
+            String yaml = new String(new ClassPathResource(profile).getInputStream().readAllBytes(),
+                    StandardCharsets.UTF_8);
+            int idx = yaml.indexOf("plan-solve-main-tool-list:");
+            Assert.assertTrue(profile + " missing plan-solve-main-tool-list", idx >= 0);
+            int end = yaml.indexOf('\n', idx);
+            String line = end < 0 ? yaml.substring(idx) : yaml.substring(idx, end);
+            Assert.assertTrue(profile + " missing TaskOutput", line.contains("TaskOutput"));
+            Assert.assertTrue(profile + " missing SendMessage", line.contains("SendMessage"));
+        }
     }
 
     @Test

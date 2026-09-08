@@ -134,7 +134,7 @@ autobots:
     task:
       tool_list: '{"default":"search,web_fetch,web_search,twitter,reddit,xueqiu,code_execution,docgen,docread,dataprep,canvas,image_generation,data_analysis"}'
       # PlanSolve 主 Agent 只负责编排；完整 tool_list 仍作为子 Agent 的工具来源
-    plan-solve-main-tool-list: "Agent,TaskCreate,TaskGet,TaskUpdate,TaskList,TodoWrite,TaskStop,EnterPlanMode,ExitPlanMode,AskUserQuestion,workspace_read,workspace_list,workspace_glob,workspace_grep,workspace_write,workspace_edit,skill_tool,memory,session_search,emit_ui_patch,emit_ui_tree,list_ui_components,get_genui_guide,image_ocr,canvas_publish,pdf_reader,pdf_structure,word_reader,text_processor,markdown_processor,html_processor,excel_reader,csv_processor"
+    plan-solve-main-tool-list: "Agent,TaskCreate,TaskGet,TaskUpdate,TaskList,TodoWrite,TaskStop,TaskOutput,SendMessage,EnterPlanMode,ExitPlanMode,AskUserQuestion,workspace_read,workspace_list,workspace_glob,workspace_grep,workspace_write,workspace_edit,skill_tool,memory,session_search,emit_ui_patch,emit_ui_tree,list_ui_components,get_genui_guide,image_ocr,canvas_publish,pdf_reader,pdf_structure,word_reader,text_processor,markdown_processor,html_processor,excel_reader,csv_processor"
     code_interpreter_url: "http://127.0.0.1:1601"
     deep_search_url: "http://127.0.0.1:1601"
     multimodalagent_url: "http://127.0.0.1:1601"
