@@ -271,12 +271,17 @@ public class LLM {
             }
 
             // 流式调用的完成与失败都由 whenComplete 收口，避免网络异常时留下 RUNNING 的孤立 invocation。
-            return streamResponseHandler.handleStringStreamWithUsage(
-                    context,
-                    LlmRequestRetry.stream(retryLabel, () -> chatModel.stream(prompt), retryNotifier(context)),
-                    null,
-                    false,
-                    pushToClient
+            // callAsync：整次 handler 失败后丢弃半截累积并新开流，覆盖首 chunk 前与中途断流。
+            return LlmRequestRetry.callAsync(
+                    retryLabel,
+                    () -> streamResponseHandler.handleStringStreamWithUsage(
+                            context,
+                            chatModel.stream(prompt),
+                            null,
+                            false,
+                            pushToClient
+                    ),
+                    retryNotifier(context)
             )
                     .whenComplete((result, throwable) -> {
                         if (throwable == null) {
@@ -419,12 +424,16 @@ public class LLM {
                 });
             }
 
-            CompletableFuture<ToolCallResponse> streamFuture = streamResponseHandler.handleToolCallStream(
-                    context,
-                    LlmRequestRetry.stream(retryLabel, () -> chatModel.stream(prompt), retryNotifier(context)),
-                    startTime,
-                    pushToClient,
-                    timeout
+            CompletableFuture<ToolCallResponse> streamFuture = LlmRequestRetry.callAsync(
+                    retryLabel,
+                    () -> streamResponseHandler.handleToolCallStream(
+                            context,
+                            chatModel.stream(prompt),
+                            startTime,
+                            pushToClient,
+                            timeout
+                    ),
+                    retryNotifier(context)
             );
 
             // 空流通常是兼容网关的瞬态响应：只对“明确为空流”的情况重试一次，避免普通错误被掩盖。
@@ -529,13 +538,17 @@ public class LLM {
                     TimeUnit.SECONDS);
         }
 
-        return streamResponseHandler.handleStringStreamWithUsage(
-                        context,
-                        LlmRequestRetry.stream(retryLabel, () -> chatModel.stream(prompt), retryNotifier(context)),
-                        STRUCT_PARSE_JSON_MARKER,
-                        true,
-                        true,
-                        timeout
+        return LlmRequestRetry.callAsync(
+                        retryLabel,
+                        () -> streamResponseHandler.handleStringStreamWithUsage(
+                                context,
+                                chatModel.stream(prompt),
+                                STRUCT_PARSE_JSON_MARKER,
+                                true,
+                                true,
+                                timeout
+                        ),
+                        retryNotifier(context)
                 )
                 .thenApply(result -> {
                     ToolCallResponse toolCallResponse = buildStructParseToolCallResponse(

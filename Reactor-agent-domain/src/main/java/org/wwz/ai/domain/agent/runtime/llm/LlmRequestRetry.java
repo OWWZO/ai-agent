@@ -10,6 +10,10 @@ import java.net.SocketTimeoutException;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
@@ -18,7 +22,9 @@ import java.util.logging.Logger;
 
 /**
  * Java 主链路 LLM 请求的统一瞬态错误重试。
- * 默认最多额外重试 5 次；流式仅在尚未产出任何 chunk 前允许重开。
+ * 默认最多额外重试 5 次。
+ * {@link #stream(String, Supplier)} 同一订阅者只在尚未产出 chunk 前重开，避免把半截流拼进同一累积器。
+ * {@link #callAsync(String, Supplier)} 在整次操作失败后丢弃半截结果并新开请求，覆盖首 chunk 前与中途失败。
  */
 public final class LlmRequestRetry {
 
@@ -225,6 +231,83 @@ public final class LlmRequestRetry {
             }
         }
         throw lastError != null ? lastError : new IllegalStateException("LLM retry exhausted without error");
+    }
+
+    public static <T> CompletableFuture<T> callAsync(String label, Supplier<CompletableFuture<T>> supplier) {
+        return callAsync(label, supplier, null);
+    }
+
+    /**
+     * 对整次异步 LLM 调用重试：每次失败都丢弃本次 Future/流累积，再开一次新请求。
+     * 与 {@link #stream(String, Supplier)} 不同，中途已产出 chunk 仍可重试。
+     */
+    public static <T> CompletableFuture<T> callAsync(String label,
+                                                     Supplier<CompletableFuture<T>> supplier,
+                                                     RetryListener listener) {
+        return callAsyncAttempt(label, supplier, listener, 0, maxRetries());
+    }
+
+    private static <T> CompletableFuture<T> callAsyncAttempt(String label,
+                                                             Supplier<CompletableFuture<T>> supplier,
+                                                             RetryListener listener,
+                                                             int attempt,
+                                                             int retries) {
+        int maxAttempts = retries + 1;
+        CompletableFuture<T> started;
+        try {
+            started = supplier.get();
+        } catch (RuntimeException ex) {
+            return retryAsyncOrFail(label, supplier, listener, attempt, retries, maxAttempts, ex);
+        } catch (Exception ex) {
+            return retryAsyncOrFail(label, supplier, listener, attempt, retries, maxAttempts, new RuntimeException(ex));
+        }
+        if (started == null) {
+            return CompletableFuture.failedFuture(new IllegalStateException("LLM async supplier returned null"));
+        }
+        return started.handle((value, error) -> {
+            if (error == null) {
+                return CompletableFuture.completedFuture(value);
+            }
+            Throwable root = unwrapAsyncError(error);
+            RuntimeException asRuntime = root instanceof RuntimeException
+                    ? (RuntimeException) root
+                    : new RuntimeException(root);
+            return retryAsyncOrFail(label, supplier, listener, attempt, retries, maxAttempts, asRuntime);
+        }).thenCompose(future -> future);
+    }
+
+    private static <T> CompletableFuture<T> retryAsyncOrFail(String label,
+                                                             Supplier<CompletableFuture<T>> supplier,
+                                                             RetryListener listener,
+                                                             int attempt,
+                                                             int retries,
+                                                             int maxAttempts,
+                                                             RuntimeException error) {
+        if (attempt >= retries || !isTransient(error)) {
+            CompletableFuture<T> failed = new CompletableFuture<>();
+            failed.completeExceptionally(error);
+            return failed;
+        }
+        long sleepMs = computeDelayMs(attempt);
+        int nextAttempt = attempt + 2;
+        LOG.log(Level.WARNING, String.format(
+                "[%s] transient failure (attempt %d/%d): %s; retry in %dms",
+                label, attempt + 1, maxAttempts, error.getMessage(), sleepMs));
+        notifyRetry(listener, label, nextAttempt, maxAttempts, error, sleepMs);
+        return CompletableFuture.supplyAsync(
+                        () -> null,
+                        CompletableFuture.delayedExecutor(sleepMs, TimeUnit.MILLISECONDS))
+                .thenCompose(ignored -> callAsyncAttempt(label, supplier, listener, attempt + 1, retries));
+    }
+
+    private static Throwable unwrapAsyncError(Throwable error) {
+        Throwable current = error;
+        while ((current instanceof CompletionException || current instanceof ExecutionException)
+                && current.getCause() != null
+                && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current;
     }
 
     public static Flux<ChatResponse> stream(String label, Supplier<Flux<ChatResponse>> openStream) {

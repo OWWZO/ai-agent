@@ -8,6 +8,8 @@ import reactor.core.publisher.Flux;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class LlmRequestRetryTest {
@@ -140,6 +142,35 @@ public class LlmRequestRetryTest {
         Assert.assertNotNull(responses);
         Assert.assertEquals(1, responses.size());
         Assert.assertEquals(2, attempts.get());
+    }
+
+    @Test
+    public void shouldRetryCallAsyncAfterMidStreamTransientFailure() {
+        AtomicInteger attempts = new AtomicInteger();
+        String result = LlmRequestRetry.callAsync("test-call-async", () -> {
+            int n = attempts.incrementAndGet();
+            if (n < 3) {
+                return CompletableFuture.failedFuture(new IOException("Connection reset after chunks"));
+            }
+            return CompletableFuture.completedFuture("ok");
+        }).join();
+        Assert.assertEquals("ok", result);
+        Assert.assertEquals(3, attempts.get());
+    }
+
+    @Test
+    public void shouldNotRetryCallAsyncForNonTransientErrors() {
+        AtomicInteger attempts = new AtomicInteger();
+        try {
+            LlmRequestRetry.callAsync("test-call-async", () -> {
+                attempts.incrementAndGet();
+                return CompletableFuture.failedFuture(new IllegalArgumentException("bad request"));
+            }).join();
+            Assert.fail("expected CompletionException");
+        } catch (CompletionException expected) {
+            Assert.assertTrue(expected.getCause() instanceof IllegalArgumentException);
+            Assert.assertEquals(1, attempts.get());
+        }
     }
 
     @Test
