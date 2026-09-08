@@ -159,6 +159,7 @@ const IMAGE_FILE_EXTENSIONS = new Set([
 ]);
 
 const PDF_FILE_EXTENSIONS = new Set(["pdf"]);
+const MODEL_3D_FILE_EXTENSIONS = new Set(["glb", "gltf"]);
 
 /** 可客户端转 HTML 预览的 Word（OOXML） */
 const DOCX_FILE_EXTENSIONS = new Set(["docx"]);
@@ -337,6 +338,22 @@ export const isImageFileLike = (
 };
 
 /**
+ * GLB/GLTF：工作区走 Model3D 预览，禁止当文本打开。
+ */
+export const isModel3DFileLike = (
+  fileLike?: Pick<CHAT.TFile, "type" | "name" | "mimeType"> | null
+) => {
+  if (!fileLike) {
+    return false;
+  }
+  const mime = fileLike.mimeType?.toLowerCase() || "";
+  if (mime.includes("gltf") || mime.includes("model/gltf")) {
+    return true;
+  }
+  return MODEL_3D_FILE_EXTENSIONS.has(resolveFileExtension(fileLike));
+};
+
+/**
  * PDF：工作区走 pdf.js 预览，不要进文本 FileRenderer。
  */
 export const isPdfFileLike = (
@@ -436,6 +453,8 @@ const ARCHIVE_MEDIA_EXTENSIONS = new Set([
   "apk",
   "wasm",
   "bin",
+  "glb",
+  "gltf",
 ]);
 
 export const isPptFileLike = (
@@ -461,7 +480,8 @@ export const isBinaryPreviewFileLike = (
     isPdfFileLike(fileLike) ||
     isWordFileLike(fileLike) ||
     isExcelFileLike(fileLike) ||
-    isPptFileLike(fileLike)
+    isPptFileLike(fileLike) ||
+    isModel3DFileLike(fileLike)
   ) {
     return true;
   }

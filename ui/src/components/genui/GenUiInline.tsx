@@ -14,11 +14,12 @@ type Props = {
   className?: string;
   patchCount?: number;
   sessionId?: string;
+  requestId?: string;
   messageId?: string;
 };
 
 const GenUiInline: FC<Props> = memo(
-  ({ tree, patches, className, patchCount, sessionId, messageId }) => {
+  ({ tree, patches, className, patchCount, sessionId, requestId, messageId }) => {
     const [immersive, setImmersive] = useState(false);
     const [patchFlash, setPatchFlash] = useState(false);
     const reduceMotion = useReducedMotion();
@@ -63,7 +64,13 @@ const GenUiInline: FC<Props> = memo(
     if (!root) return null;
 
     const body = (
-      <GenUiRenderProvider value={{ sessionId, messageId }}>
+      <GenUiRenderProvider
+        value={{
+          sessionId,
+          requestId,
+          messageId,
+        }}
+      >
         <motion.div
           className={classNames(
             "genui-root",

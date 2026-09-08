@@ -20,7 +20,7 @@ describe("prompt-input attachment helpers", () => {
     expect(result.error?.code).toBe("accept");
   });
 
-  it("扩展名 accept 支持 pptx/json/py/html", () => {
+  it("扩展名 accept 支持 pptx/json/py/html/glb", () => {
     const files = [
       new File(["{}"], "a.json", { type: "application/json" }),
       new File(["print(1)"], "b.py", { type: "text/x-python" }),
@@ -28,14 +28,15 @@ describe("prompt-input attachment helpers", () => {
       new File(["deck"], "d.pptx", {
         type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       }),
+      new File(["glTF"], "bear 3d model.glb", { type: "" }),
     ];
 
     const result = validatePromptInputFiles(files, {
       accept:
-        "image/*,application/pdf,.txt,.md,.csv,.xlsx,.docx,.pptx,.json,.py,.html",
+        "image/*,application/pdf,.txt,.md,.csv,.xlsx,.docx,.pptx,.json,.py,.html,.glb,.gltf,model/gltf-binary,model/gltf+json",
     });
 
-    expect(result.accepted).toHaveLength(4);
+    expect(result.accepted).toHaveLength(5);
     expect(result.error).toBeUndefined();
   });
 

@@ -21,9 +21,11 @@ import {
   isDocxFileLike,
   isImageFileLike,
   isLegacyDocFileLike,
+  isModel3DFileLike,
   isPdfFileLike,
   isTextCopyableFileLike,
 } from "@/utils/taskArtifacts";
+import GenUiModel3D from "@/components/genui/GenUiModel3D";
 import {
   FileText,
   Download,
@@ -191,6 +193,20 @@ const FileList: React.FC<{
       );
     }
 
+    if (isModel3DFileLike(fileItem) && !forceSource) {
+      return (
+        <div className="flex h-full min-h-[360px] items-stretch bg-[#0f172a] p-3">
+          <div className="min-h-[360px] w-full">
+            <GenUiModel3D
+              src={fileItem.url}
+              caption={fileItem.name}
+              height={520}
+            />
+          </div>
+        </div>
+      );
+    }
+
     if (isPdfFileLike(fileItem)) {
       return (
         <PdfRenderer
@@ -288,6 +304,7 @@ const FileList: React.FC<{
     const isMedia =
       isImageFile ||
       isPdfFileLike(fileItem) ||
+      isModel3DFileLike(fileItem) ||
       isSpreadsheet ||
       isDownloadOnly ||
       ["html", "htm"].includes(ext);

@@ -18,6 +18,7 @@ import {
   PromptInputActionMenu,
   PromptInputActionMenuContent,
   PromptInputActionMenuTrigger,
+  type PromptInputAttachmentError,
   type PromptInputAttachmentItem,
   PromptInputAttachments,
   PromptInputBody,
@@ -34,6 +35,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { showMessage } from "@/utils";
 import {
   GENERIC_TASK_PRODUCT,
   defaultProduct,
@@ -105,9 +107,9 @@ const MODE_OPTIONS: Array<{
 
 const VISIBLE_MODE_OPTIONS = MODE_OPTIONS;
 
-/** 输入框附件 accept：图片 + 常见文档/代码/表格 */
+/** 输入框附件 accept：图片 + 常见文档/代码/表格 + GLB/GLTF */
 export const ATTACHMENT_ACCEPT =
-  "image/*,application/pdf,.txt,.md,.csv,.xlsx,.docx,.pptx,.json,.py,.html";
+  "image/*,application/pdf,.txt,.md,.csv,.xlsx,.docx,.pptx,.json,.py,.html,.glb,.gltf,model/gltf-binary,model/gltf+json";
 
 /** 单条 query 最大字符数（前端硬限制） */
 export const MAX_QUERY_CHARS = 8000;
@@ -267,6 +269,20 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     });
   }, [draftMessage, onDraftConsumed]);
 
+  const handleAttachmentError = useCallback((error: PromptInputAttachmentError) => {
+    if (error.code === "accept") {
+      showMessage()?.warning("不支持该文件类型，图片、文档、代码和 GLB/GLTF 3D 模型可上传");
+      return;
+    }
+    if (error.code === "max_file_size") {
+      showMessage()?.warning("文件过大，请压缩后再试");
+      return;
+    }
+    if (error.code === "max_files") {
+      showMessage()?.warning("一次添加的文件过多，部分未加入");
+    }
+  }, []);
+
   const handleAttachmentsAdded = useCallback(
     (attachments: PromptInputAttachmentItem[]) => {
       const nextAttachments = attachments.filter(
@@ -377,6 +393,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
           convertBlobUrlsOnSubmit={false}
           multiple
           onAttachmentsAdded={handleAttachmentsAdded}
+          onError={handleAttachmentError}
           onSubmit={handleSubmit}
         >
           <PromptInputBody>

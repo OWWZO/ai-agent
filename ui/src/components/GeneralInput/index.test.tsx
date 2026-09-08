@@ -9,6 +9,8 @@ describe("GeneralInput", () => {
     expect(ATTACHMENT_ACCEPT).toContain(".json");
     expect(ATTACHMENT_ACCEPT).toContain(".py");
     expect(ATTACHMENT_ACCEPT).toContain(".html");
+    expect(ATTACHMENT_ACCEPT).toContain(".glb");
+    expect(ATTACHMENT_ACCEPT).toContain(".gltf");
     expect(MAX_QUERY_CHARS).toBe(8000);
   });
 

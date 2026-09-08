@@ -44,6 +44,7 @@ export type GenUiAction =
 
 export type GenUiActionContext = {
   sessionId?: string;
+  requestId?: string;
   messageId?: string;
   actionId?: string;
   toggled?: boolean;

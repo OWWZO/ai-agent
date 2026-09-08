@@ -3,11 +3,14 @@ import { FC, memo, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import {
   WORKSPACE_RESIZE_END_EVENT,
   WORKSPACE_RESIZE_START_EVENT,
   isWorkspaceResizeEventFor,
 } from "@/utils/workspaceResize";
+import { resolveGenUiAssetUrl } from "./assetUrl";
+import { useGenUiRenderContext } from "./GenUiRenderContext";
 
 type Props = {
   src?: string;
@@ -49,8 +52,12 @@ function parseNumber(value: unknown, fallback: number, min: number, max: number)
 const GenUiModel3D: FC<Props> = memo(
   ({ src, height, background, autoRotate, rotateSpeed, wireframe, caption }) => {
     const hostRef = useRef<HTMLDivElement | null>(null);
+    const { requestId } = useGenUiRenderContext();
     const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
-    const modelUrl = typeof src === "string" ? src.trim() : "";
+    const modelUrl = resolveGenUiAssetUrl(
+      typeof src === "string" ? src : "",
+      requestId
+    );
 
     const options = useMemo(
       () => ({
@@ -81,10 +88,17 @@ const GenUiModel3D: FC<Props> = memo(
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1;
       renderer.domElement.style.display = "block";
       renderer.domElement.style.width = "100%";
       renderer.domElement.style.height = "100%";
       host.appendChild(renderer.domElement);
+
+      const pmremGenerator = new THREE.PMREMGenerator(renderer);
+      const environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+      scene.environment = environment;
+      pmremGenerator.dispose();
 
       const controls = new OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
@@ -92,11 +106,12 @@ const GenUiModel3D: FC<Props> = memo(
       controls.autoRotate = options.autoRotate;
       controls.autoRotateSpeed = options.rotateSpeed * 2;
 
-      scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-      const key = new THREE.DirectionalLight(0xffffff, 1.6);
+      scene.add(new THREE.AmbientLight(0xffffff, 0.85));
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x334155, 0.7));
+      const key = new THREE.DirectionalLight(0xffffff, 1.8);
       key.position.set(4, 6, 5);
       scene.add(key);
-      const rim = new THREE.DirectionalLight(0x88aaff, 0.6);
+      const rim = new THREE.DirectionalLight(0x88aaff, 0.7);
       rim.position.set(-5, -2, -4);
       scene.add(rim);
 
@@ -233,6 +248,7 @@ const GenUiModel3D: FC<Props> = memo(
             else mat?.dispose?.();
           });
         }
+        environment.dispose();
         if (renderer.domElement.parentNode === host) host.removeChild(renderer.domElement);
         renderer.dispose();
       };

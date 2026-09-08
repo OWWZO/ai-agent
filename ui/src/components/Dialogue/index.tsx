@@ -301,6 +301,7 @@ const DialogueComponent: FC<Props> = (props) => {
             tree={featuredGenUi.tree}
             patchCount={featuredGenUi.patchCount}
             sessionId={chat.sessionId}
+            requestId={chat.requestId}
             messageId={chat.requestId}
             className="w-full max-w-none"
           />

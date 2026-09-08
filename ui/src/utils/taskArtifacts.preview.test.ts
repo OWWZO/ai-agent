@@ -4,6 +4,7 @@ import {
   isBinaryPreviewFileLike,
   isDocxFileLike,
   isLegacyDocFileLike,
+  isModel3DFileLike,
   isPdfFileLike,
   isTextCopyableFileLike,
   normalizeTaskFile,
@@ -15,6 +16,19 @@ afterEach(() => {
 });
 
 describe("taskArtifacts document type helpers", () => {
+  it("detects glb/gltf as 3d models", () => {
+    expect(isModel3DFileLike({ name: "bear 3d model.glb", type: "glb" })).toBe(
+      true
+    );
+    expect(
+      isModel3DFileLike({ name: "mesh.gltf", type: "", mimeType: "model/gltf+json" })
+    ).toBe(true);
+    expect(isModel3DFileLike({ name: "a.md", type: "md" })).toBe(false);
+    expect(isBinaryPreviewFileLike({ name: "bear 3d model.glb", type: "glb" })).toBe(
+      true
+    );
+  });
+
   it("detects pdf by extension and mime", () => {
     expect(isPdfFileLike({ name: "a.PDF", type: "pdf" })).toBe(true);
     expect(

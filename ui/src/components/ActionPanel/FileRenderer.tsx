@@ -8,6 +8,7 @@ import HTMLRenderer from "./HTMLRenderer";
 import ImageRenderer from "./ImageRenderer";
 import DocumentFallback from "./DocumentFallback";
 import Loading from "./Loading";
+import GenUiModel3D from "@/components/genui/GenUiModel3D";
 import { highlightCode } from "@/components/ai-elements/code-block";
 import { cn } from "@/lib/utils";
 
@@ -83,6 +84,7 @@ const IMAGE_PREVIEW_EXTS = new Set([
   "svg",
   "avif",
 ]);
+const MODEL_3D_EXTS = new Set(["glb", "gltf"]);
 
 const LANG_ALIAS: Record<string, string> = {
   py: "python",
@@ -181,13 +183,14 @@ const FileRenderer: ReactorType.FC<FileRendererProps> = React.memo((props) => {
     forceSource = false,
   } = props;
 
-  const ext = useMemo(() => getFileExtension(fileName), [fileName]);
+  const ext = useMemo(() => getFileExtension(fileName || fileUrl), [fileName, fileUrl]);
   const language = useMemo(() => resolveLanguage(ext), [ext]);
   const isMarkdown = MARKDOWN_EXTS.has(ext);
   const isHtml = HTML_EXTS.has(ext) || ext === "html" || ext === "htm";
   const isImage = IMAGE_PREVIEW_EXTS.has(ext);
+  const isModel3D = MODEL_3D_EXTS.has(ext);
   const useIframe = isHtml && !forceSource;
-  const isBinaryDownload = BINARY_DOWNLOAD_EXTS.has(ext) && !forceSource;
+  const isBinaryDownload = BINARY_DOWNLOAD_EXTS.has(ext) && !forceSource && !isModel3D;
   const resolvedDownload = downloadUrl || fileUrl;
 
   const { data, loading, error } = useRequest(
@@ -206,8 +209,8 @@ const FileRenderer: ReactorType.FC<FileRendererProps> = React.memo((props) => {
     },
     {
       refreshDeps: [fileUrl, missingReason, forceSource],
-      // 图片 / HTML / 二进制均不按文本拉取
-      ready: !useIframe && !isBinaryDownload && !isImage,
+      // 图片 / HTML / 二进制 / 3D 均不按文本拉取
+      ready: !useIframe && !isBinaryDownload && !isImage && !isModel3D,
     }
   );
 
@@ -219,6 +222,29 @@ const FileRenderer: ReactorType.FC<FileRendererProps> = React.memo((props) => {
         missingReason={missingReason}
         className={className}
       />
+    );
+  }
+
+  if (isModel3D && !forceSource) {
+    if (missingReason || !fileUrl) {
+      return (
+        <DocumentFallback
+          label={ext ? ext.toUpperCase() : "GLB"}
+          title="3D 模型不可读取"
+          description={missingReason || "引用资源不存在或已失效"}
+          fileName={fileName}
+          downloadUrl={resolvedDownload}
+          className={className}
+          type="info"
+        />
+      );
+    }
+    return (
+      <div className={cn("flex h-full min-h-[360px] items-stretch bg-[#0f172a] p-3", className)}>
+        <div className="min-h-[360px] w-full">
+          <GenUiModel3D src={fileUrl} caption={fileName} height={520} />
+        </div>
+      </div>
     );
   }
 
