@@ -33,6 +33,9 @@ from reactor_tool.db.file_table_op import (
 
 router = APIRouter(route_class=RequestHandlerRoute)
 
+mimetypes.add_type("model/gltf-binary", ".glb")
+mimetypes.add_type("model/gltf+json", ".gltf")
+
 _THREE_JS_URL = "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"
 _THREE_JS_TAG = f'<script src="{_THREE_JS_URL}"></script>\n'
 _THREE_SCRIPT_HINT = re.compile(
@@ -262,8 +265,13 @@ async def preview_file(file_id: str, file_name: str):
 
     # 可识别类型以内联方式交给浏览器；未知类型改为附件，避免浏览器误把任意二进制当页面执行。
     disposition = "inline"
-    if file_name.endswith(".md"):
+    lower_name = file_name.lower()
+    if lower_name.endswith(".md"):
         content_type = "text/markdown"
+    elif lower_name.endswith(".glb"):
+        content_type = "model/gltf-binary"
+    elif lower_name.endswith(".gltf"):
+        content_type = "model/gltf+json"
     else:
         content_type, _ = mimetypes.guess_type(file_name)
     if not content_type:

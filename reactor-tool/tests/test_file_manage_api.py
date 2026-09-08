@@ -134,6 +134,35 @@ class FileManageApiTest(unittest.TestCase):
             if os.path.exists(file_path):
                 os.remove(file_path)
 
+    def test_should_preview_glb_as_inline_gltf_binary(self):
+        with tempfile.NamedTemporaryFile(
+            "wb", suffix=".glb", delete=False
+        ) as temp_file:
+            temp_file.write(b"glTF")
+            file_path = temp_file.name
+
+        try:
+            file_info = SimpleNamespace(file_path=file_path)
+            with patch(
+                "reactor_tool.api.file_manage.FileInfoOp.get_by_file_id",
+                new=AsyncMock(side_effect=[file_info]),
+            ):
+                response = self.client.get(
+                    "/v1/file_tool/preview/session-005/bear%203d%20model.glb"
+                )
+
+            self.assertEqual(200, response.status_code)
+            self.assertTrue(
+                response.headers["content-type"].startswith("model/gltf-binary")
+            )
+            self.assertTrue(
+                response.headers["content-disposition"].startswith("inline")
+            )
+            self.assertEqual(b"glTF", response.content)
+        finally:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
     def test_should_store_binary_upload_under_session_directory(self):
         with tempfile.TemporaryDirectory(prefix="file-manage-local-") as temp_dir:
             original_work_dir = FileDB._work_dir
