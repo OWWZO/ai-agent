@@ -43,89 +43,139 @@
 ##### 全网调研，自动成稿
 Reactor 是一个让 Agent 持续关注世界、理解变化并交付结果的开源 Agent 应用底座，由 Java Agent Runtime、React 工作台和 Python Tool Runtime 组成。
 
-## 落地案例展示
+Reddit 点赞、X 点赞、YouTube 字幕、小红书互动量、由真金白银和内幕信息支撑的 Polymarket赔率。每天有数百万人用自己的注意力和钱包投票。Reactor会派发多个Agent并行检索这些数据，并结合E2b沙箱的代码执行能力和专门的数据分析Agent。
 
-自媒体 / 内容运营领域的策略研究：账号拆解、爆款内容分析（选题 / 标题 / 封面 / 钩子 / 结构）、数据复盘、口碑与评论区观察
-[查看小红书策略研究报告](https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788509972407-7432/tesla%E6%8A%95%E7%A0%94%E6%8A%A5%E5%91%8A_2026-09-04.html)
+
+## 落地案例展示 
+###### (使用模型：gpt5.6-luna-high)
+### 一. 全网研究
+
+
+#### 1：社媒内容调研
+账号拆解、爆款内容分析、数据复盘和评论区观察
+[查看小红书策略研究报告](https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788916247308-7652/%E5%A6%82%E4%BD%95%E5%9C%A8%E5%B0%8F%E7%BA%A2%E4%B9%A6%E5%81%9AAI%E7%9B%B8%E5%85%B3%E7%88%86%E6%AC%BE%E8%87%AA%E5%AA%92%E4%BD%93%E8%B4%A6%E5%8F%B7%E7%A0%94%E7%A9%B6%E6%8A%A5%E5%91%8A.html)
+
 <p align="center">
-  <img src="assets/readme/小红书调研.png" alt="" width="49%">
+  <img src="assets/readme/小红书调研.png" alt="小红书自媒体策略研究报告预览" width="860">
 </p>
 
-面向业务库的数据分析：Text2SQL智能取数->CodeAct数据分析Agent(归因分析)->Canvas画布展示 
+#### 2:热点舆论事件分析
+结合推特、YouTube、Reddit、BiliBili、小红书、微博等多方信源交叉核实、事实分档（有证据 / 单方说法 / 谣言）、时间线还原、舆论情绪分析
+[查看火海中的49秒的报告](https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788931844041-1436/chinagt-shanghai-fire-report/index.html)
+<p align="center">
+  <img src="assets/readme/火海49秒.png" alt="小红书自媒体策略研究报告预览" width="860">
+</p>
+
+
+
+#### 3:竞品研究
+功能拆解、用户口碑采集和多维度竞品对比。
+[查看笔记软件竞品分析报告](https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788852138190-6315/index.html)
+
+<p align="center">
+  <img src="assets/readme/笔记软件竞品分析.png" alt="笔记软件竞品分析报告预览" width="860">
+</p>
+
+#### 4:自媒体平台内容聚合
+收集多个平台的旅游攻略，整理旅游路线和踩坑点
+[查看厦门旅游规划](https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788785646953-112/xiamen-couple-map.html)
+<p align="center">
+  <img src="assets/readme/旅游规划.png" alt="" width="79%">
+
+</p>
+
+### 二. 数据分析
+
+#### 1：结构化数据分析
+
+Text2SQL 智能取数 → CodeAct 数据分析 Agent→ Canvas 画布展示。
+
 [查看大模型调用数据分析报告](https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788425650341-3137/api-log-analysis/index.html)
 
 <p align="center">
-  <img src="assets/readme/大模型调用数据分析图.png" alt="" width="49%">
+  <img src="assets/readme/大模型调用数据分析图.png" alt="大模型调用数据分析图" width="49%">
+  <img src="assets/readme/结构化数据分析.png" alt="结构化数据分析结果" width="49%">
 </p>
+
+#### 2：量化实证研究
+
+数据获取、清洗、分区域对比、统计检验和可视化。
 
 <p align="center">
-  <img src="assets/readme/结构化数据分析.png" alt="" width="49%">
+  <img src="assets/readme/全球糖尿病患病率的变化趋势.png" alt="全球糖尿病患病率变化趋势图" width="860">
 </p>
 
-投研分析（金融情报调研）：财报解读、行业格局梳理、竞品对标、多源信息综合。
+#### 3：投研分析（金融情报调研）
+财报解读、行业格局梳理、竞品对标、多源信息综合
 [查看特斯拉投研报告](https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788509972407-7432/tesla%E6%8A%95%E7%A0%94%E6%8A%A5%E5%91%8A_2026-09-04.html)
 
 <p align="center">
-  <img src="assets/readme/特斯拉投研报告.png" alt="" width="49%">
+  <img src="assets/readme/特斯拉投研报告.png" alt="" width="79%">
 </p>
 
-竞品调研（产品竞争情报）：功能拆解、用户口碑采集、维度对比（功能 / 口碑等）
-[查看笔记软件竞品分析报告](https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788852138190-6315/index.html)
-<p align="center">
-  <img src="assets/readme/笔记软件竞品分析.png" alt="" width="49%">
-</p>
-
-量化回测 / 策略研究场景：策略建模 → 历史数据回测 → 参数敏感性分析）→ 风险指标计算
+#### 4：量化回测
+策略建模 → 历史数据回测 → 参数敏感性分析→ 风险指标计算
 [查看双均线择时策略回测报告](https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788784594786-3975/index_23_embedded.html)
 <p align="center">
-  <img src="assets/readme/双均线择时策略的回测.png" alt="" width="49%">
+  <img src="assets/readme/双均线择时策略的回测.png" alt="" width="79%">
 </p>
 
-
-日常信息检索
-[查看厦门旅游规划](https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788785646953-112/xiamen-couple-map.html)
-<p align="center">
-  <img src="assets/readme/旅游规划.png" alt="" width="49%">
-  <img src="assets/readme/codegraph技术调研.png" alt="" width="49%">
-</p>
-
-设计与创意
+### 三.设计与创意
 <p align="center">
   <img src="assets/readme/艺术设计.png" alt="" width="49%">
+</p>
+<p align="center">
   <img src="assets/readme/猫猫艺术.png" alt="" width="49%">
 </p>
 
-
-数据分析（量化实证研究）：数据获取→清洗→分区域对比→统计检验→可视化
-<p align="center">
-  <img src="assets/readme/全球糖尿病患病率的变化趋势.png" alt="" width="49%">
-</p>
-
-GenUi交互式界面
+### 四.功能展示
+#### 一：GenUi交互式界面
 <p align="center">
   <img src="assets/readme/GenUI可视化勾股定理.png" alt="" width="49%">
   <img src="assets/readme/熊二.png" alt="" width="49%">
   <img src="assets/readme/GenUi.png" alt="" width="49%">
 </p>
 
-human in the loop
+#### 二：Human In The Loop
 <p align="center">
   <img src="assets/readme/human_in_the_loop.png" alt="" width="49%">
-</p>
-<p align="center">
-  <img src="assets/readme/ask_user.png" alt="" width="49%">
+    <img src="assets/readme/ask_user.png" alt="" width="49%">
 </p>
 
-Text2SQL 智能问数界面
+#### 三：深度研究/Agentic RAG
+<p align="center">
+  <img src="assets/readme/deepsearch.png" alt="" width="49%">
+    <img src="assets/readme/RAG.png" alt="" width="49%">
+</p>
+
+#### 四：Text2SQL 智能问数界面
 <p align="center">
   <img src="assets/readme/TextToSql饼图.png" alt="" width="49%">
-</p>
-<p align="center">
   <img src="assets/readme/TextToSql折线图.png" alt="" width="49%">
 </p>
 
 
-## 核心闭环
+### ❤️赞助商
+<details open>
+<summary>点击折叠</summary>
+
+<table>
+  <tbody>
+    <tr>
+      <td align="center" valign="middle" width="22%">
+        <img src="assets/readme/anysearch.png" alt="AnySearch" width="75%">
+      </td>
+      <td valign="middle">
+        <a href="https://anysearch.com">AnySearch</a> 是面向 AI Agent 的搜索基础设施，支持通用网络、垂直领域、并行批量搜索与整页内容提取，可通过 Skill 或 CLI 接入多种智能体平台，帮助 Agent 高效获取网页信息。
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+</details>
+
+
+## 项目核心抽象
 
 ```mermaid
 flowchart LR
@@ -136,46 +186,36 @@ flowchart LR
     Remember --> Observe
 ```
 
-
 1. **关注世界**：从公开互联网、用户授权的社交来源、私有知识库和业务数据库中发现变化。
 2. **理解世界**：通过多 Agent、RAG、NL2SQL 和受控代码执行，把资料转成可检查的证据和分析结果。
 3. **表达世界**：把结果发布成 GenUI、图表、HTML、PDF、Word、PPT 或可交互的 3D 场景，并保留来源和执行记录。
+4. **记忆沉淀**：把用户偏好、重要事实、可复用流程沉淀为长期记忆，让下一次任务从已有积累继续，而不是从头开始。
 
 
 ## 核心亮点
 
-### 1. Observe：搜索、媒体与 RAG
+### 1. Observe：搜索、NL2SQL与 RAG
 
 Reactor 将“搜索”视为一个可以继续执行的研究过程，而不是一次关键词查询。
 
-- **DeepSearch**：查询拆解、多轮 `extend/search/report` 阶段、并发检索、正文抓取、去重、摘要和 SSE 流式进度。
-- **多搜索引擎**：支持 DuckDuckGo、Exa、Tavily、Brave、Grok/OpenAI-compatible 等搜索后端
-- **公域来源**：网页、RSS、GitHub、Reddit RSS、Hacker News、Stack Exchange、V2EX、 公开频道等
-- **授权私域媒体**：Twitter/X、Reddit、Telegram、YouTube、B站、雪球
-- **可溯源结果**：保留原始 URL、标题、作者、时间、文档、chunk、页面和图片元数据；这让检索证据和后续产物能够关联起来。
+- **DeepResearch公域信息检索**：查询拆解、多轮 `extend/search/report` 阶段、并发检索、正文抓取、去重、摘要和 SSE 流式进度，支持 DuckDuckGo、Exa、Tavily、Brave、Grok/OpenAI-compatible 等搜索引擎。
+- **私域媒体检索**：RSS、GitHub、Reddit、Hacker News、Stack Exchange、V2EX、Twitter、Telegram、YouTube、B站、小红书、微博、雪球
+- **可溯源多模态RAG**：支持 PDF、Word、PowerPoint、Markdown、文本和图片解析，结合 OCR、caption、文本向量、图片向量、BM25、页面检索和重排序。
 
 ### 2. Analyze：数据、代码与安全执行
 
-同一个任务可以同时处理网页、PDF、Word、图片、表格、数据库和生成的中间文件。
 
-- **可溯源多模态 RAG / MRAG**：支持 PDF、Word、PowerPoint、Markdown、文本和图片解析，结合 OCR、caption、文本向量、图片向量、BM25、页面检索和重排序。
-- **结构化数据分析**：Table RAG、schema/列值召回、Text-to-SQL（NL2SQL）、SQL 执行、数据预览和模型元数据检索。
+- **结构化数据分析**：Table RAG、schema/列值召回、Text-to-SQL（NL2SQL）、SQL 执行、数据预览和模型元数据检索。- **CodeAct 风格执行**：Agent 通过“生成代码 → 执行 → 观察结果 → 修正计划”的循环完成清洗、统计、计算和可视化，代码与执行结果也可以作为产物交付。
 - **非结构化数据分析**：文档切分、跨文档召回、图片候选、检索 trace 和带上下文生成。
-- **CodeAct 风格执行**：Agent 通过“生成代码 → 执行 → 观察结果 → 修正计划”的循环完成清洗、统计、计算和可视化，代码与执行结果也可以作为产物交付。
-- **E2B 沙箱**：支持 E2B 云沙箱、持久 kernel、工作区上传、文件 diff、产物下载和沙箱销毁；本地执行后端适合可信开发环境，生产环境应使用隔离沙箱和显式权限策略。
-- **会话工作区**：每个会话拥有受控 workspace，工具通过路径守卫读写文件，后续 Agent 可以继续消费前序工具产物。
-
+- **E2B 沙箱**：支持 E2B 云沙箱、持久 kernel、工作区上传、文件 diff、产物下载和沙箱销毁
 ### 3. Compose：GenUI、画布与文档产物
 
-Reactor 不要求所有结果都停留在 Markdown 中。Agent 可以输出结构化 UI 和内容数据，由稳定的 Renderer 负责呈现。
-
 - **GenUI**：模型生成受控的 UI Tree，使用增量 JSON Patch 演进画布状态，并由 React 按白名单组件渲染。
-- **画布发布**：支持 `emit_ui_tree`、`emit_ui_patch` 和 `canvas_publish`，可将 HTML 产物预览、下载并进入历史回放。
 - **可视化组件**：图表、表格、卡片、流程、时间线、表单、HTML、图片、视频和交互式内容。
 - **3D 展示**：内置 Three.js 场景和 `Model3D` 组件，可展示参数化几何、GLB/GLTF 模型和可交互的 3D 结果。
-- **无限画布方向**：当前核心是受控 GenUI Tree、Patch 和 Canvas Preview，数据模型为更大的空间画布演进保留了基础；真正的无限平移、缩放和多区域编排取决于前端画布实现。
-- **文档生成**：支持 PDF、DOCX、PPTX、HTML、Markdown、Excel 和图表等产物，文件统一进入 Artifact 管理。
-- **主题与内容解耦**：PDF/Word/PPT/HTML 渲染器共享命名主题和自定义主题配置。推荐让 Agent 输出内容 JSON，让 Renderer 根据预配置主题负责字体、颜色、布局和格式转换。
+- **文档生成**：支持 PDF、DOCX、PPTX、HTML、Markdown、Excel 和图表等产物。
+- **支持主题模板导入**：PDF/Word/PPT/HTML 渲染器共享命名主题和自定义主题配置。Agent 只负责输出内容 JSON，让 Renderer 根据预配置主题负责字体、颜色、布局和格式转换。
+- **画布发布**：可将 HTML、PDF、Word、PPT等产物发布，用户可预览、下载。
 
 ### Tool Fabric：工具、Skill 与 MCP
 
@@ -230,20 +270,6 @@ Reactor 将长期能力组织成三种记忆，便于理解不同信息应该如
 - 支持 LLM 摘要、局部压缩、失败回退和 mid-run 压缩。
 - 压缩前可以触发长期记忆 flush，压缩事件和输入输出快照可审计。
 - 工作记忆用于下一轮上下文，历史回放仍以 Execution Ledger 为事实来源。
-
-## 典型任务
-
-| 场景 | 执行链路 | 主要能力 |
-| --- | --- | --- |
-| 世界动态追踪 | 主题订阅 → 多源搜索 → 社媒信号 → 趋势摘要与来源报告 | DeepSearch、Public Sources、授权社媒 |
-| 财报与竞品研究 | 问题拆解 → 网页/视频/社区检索 → 证据整理 → HTML/Canvas 报告 | DeepSearch、MCP、GenUI |
-| 数据分析 | 读取数据库或文件 → NL2SQL → Python 清洗与统计 → 图表和报告 | Table RAG、CodeAct、E2B、Chart |
-| 知识库问答 | 文档解析 → 文本/图片多路召回 → 重排序 → 带上下文回答 | MRAG、Qdrant、BM25、OCR |
-| 内容生产 | 主题研究 → 结构化内容 → 选择主题 → PDF/Word/PPT/网页交付 | Skill、Document、Slides、Artifact |
-| 交互式展示 | 生成 UI Tree → 增量 Patch → HTML/Three.js/Model3D → 发布与回放 | GenUI、Canvas、Three.js |
-
-
-
 
 ## 系统架构
 
