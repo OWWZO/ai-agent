@@ -647,7 +647,7 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
 
       {/* mcp form */}
       <Dialog open={mcpOpen} onOpenChange={setMcpOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg overflow-hidden">
           <DialogHeader>
             <DialogTitle>
               {mcps.some((m) => m.mcpId === mcpForm.mcpId)
@@ -655,7 +655,7 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
                 : "添加 MCP"}
             </DialogTitle>
           </DialogHeader>
-          <div className="grid gap-3 py-2">
+          <div className="grid min-w-0 gap-3 py-2">
             <label className="text-[13px]">
               mcpId
               <Input
@@ -700,10 +700,10 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
                 <option value="stdio">stdio</option>
               </select>
             </label>
-            <label className="text-[13px]">
+            <label className="min-w-0 text-[13px]">
               transportConfig（JSON）
               <Textarea
-                className="mt-1 min-h-[100px] font-mono text-[12px]"
+                className="mt-1 min-h-[100px] min-w-0 w-full field-sizing-fixed break-all font-mono text-[12px]"
                 value={mcpForm.transportConfig || ""}
                 onChange={(e) =>
                   setMcpForm((f) => ({

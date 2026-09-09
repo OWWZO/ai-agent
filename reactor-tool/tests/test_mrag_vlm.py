@@ -21,10 +21,14 @@ class _FakeOpenAIClient:
 
     def _create(self, **kwargs):
         self.requests.append(kwargs)
-        return types.SimpleNamespace(
-            choices=[
+        return iter(
+            [
                 types.SimpleNamespace(
-                    message=types.SimpleNamespace(content="fake-vlm-response")
+                    choices=[
+                        types.SimpleNamespace(
+                            delta=types.SimpleNamespace(content="fake-vlm-response")
+                        )
+                    ]
                 )
             ]
         )
@@ -98,7 +102,7 @@ class VLMClientConfigTest(unittest.TestCase):
         request = captured["client"].requests[0]
         self.assertEqual("gpt-5.2", request["model"])
         self.assertEqual(500, request["max_tokens"])
-        self.assertFalse(request["stream"])
+        self.assertTrue(request["stream"])
         self.assertEqual(
             "描述图片的内容，不要超过100个字",
             request["messages"][0]["content"][0]["text"],

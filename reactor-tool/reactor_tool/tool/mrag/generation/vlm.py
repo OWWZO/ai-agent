@@ -9,10 +9,14 @@ from pathlib import Path
 
 from openai import DefaultHttpxClient, OpenAI
 
-from .llm import _build_openai_compatible_headers, _normalize_openai_compatible_base_url
+from .llm import (
+    _aggregate_chat_completion_stream,
+    _build_openai_compatible_headers,
+    _normalize_openai_compatible_base_url,
+)
 from reactor_tool.tool.mrag.utils import download_utils
 from reactor_tool.tool.mrag.utils.logger_utils import logger
-from reactor_tool.tool.mrag.utils.retry_utils import call_with_retry, stream_with_retry
+from reactor_tool.tool.mrag.utils.retry_utils import stream_with_retry
 
 
 class VLLMClient:
@@ -103,7 +107,7 @@ class VLLMClient:
             "model": self.model_name,
             "messages": messages,
             "temperature": temperature,
-            "stream": stream,
+            "stream": True,
             "max_tokens": max_tokens,
         }
         extra_body = self._build_extra_body()
@@ -111,17 +115,13 @@ class VLLMClient:
             request_kwargs["extra_body"] = extra_body
 
         label = f"mrag-vlm:{self.model_name or 'unknown'}"
-        if stream:
-            return stream_with_retry(
-                lambda: self.client.chat.completions.create(**request_kwargs),
-                label=label,
-            )
-
-        completion = call_with_retry(
+        stream_iter = stream_with_retry(
             lambda: self.client.chat.completions.create(**request_kwargs),
             label=label,
         )
-        return completion.choices[0].message.content
+        if stream:
+            return stream_iter
+        return _aggregate_chat_completion_stream(stream_iter)
 
     def chat(self, prompt, image_url):
         messages = self.convert_messages(prompt, image_url)

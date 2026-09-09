@@ -221,14 +221,14 @@ def chat_completion_with_tools(
     model: str,
     api_base: str,
     api_key: str,
-    timeout: float = 600.0,
+    timeout: float | int | str = 600.0,
 ) -> Dict[str, Any]:
-    """调用 OpenAI 兼容接口，并保留外层 FC 的 ``tool_calls`` 结构。"""
+    """流式调用 OpenAI 兼容接口，并聚合外层 FC 的 ``tool_calls`` 结构。"""
     url = _build_chat_completions_url(_normalize_openai_compat_api_base(api_base))
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        "Accept": "application/json",
+        "Accept": "text/event-stream",
     }
     payload = {
         "model": model,
@@ -236,16 +236,146 @@ def chat_completion_with_tools(
         "tools": tools,
         "tool_choice": "auto",
         "temperature": 0,
-        "stream": False,
+        "stream": True,
     }
     timeout_s = _timeout_to_seconds(timeout)
     with DefaultHttpxClient(timeout=timeout_s, trust_env=False) as client:
-        resp = client.post(url, headers=headers, json=payload)
-        if resp.status_code >= 400:
-            raise RuntimeError(
-                f"analysis FC LLM error status={resp.status_code}, body={resp.text[:500]}"
+        with client.stream("POST", url, headers=headers, json=payload) as resp:
+            if resp.status_code >= 400:
+                body = resp.read().decode("utf-8", errors="ignore")
+                raise RuntimeError(
+                    f"analysis FC LLM error status={resp.status_code}, body={body[:500]}"
+                )
+            return _merge_chat_completion_stream(resp.iter_lines())
+
+
+def _merge_chat_completion_stream(lines: Any) -> Dict[str, Any]:
+    """把 Chat Completions SSE 分片还原为下游现有的 message 结构。"""
+    content_parts: List[str] = []
+    tool_calls: Dict[int, Dict[str, Any]] = {}
+    metadata: Dict[str, Any] = {}
+    role = "assistant"
+    finish_reason = None
+    saw_chunk = False
+
+    for line in lines:
+        if not line:
+            continue
+        raw_data = line[5:].strip() if line.startswith("data:") else line.strip()
+        if not raw_data:
+            continue
+        if raw_data == "[DONE]":
+            break
+        try:
+            chunk = json.loads(raw_data)
+        except (TypeError, json.JSONDecodeError):
+            # 忽略 SSE 注释或供应商附带的非 JSON 行。
+            continue
+        if not isinstance(chunk, dict):
+            continue
+
+        saw_chunk = True
+        for key in ("id", "model", "created", "system_fingerprint", "usage"):
+            if key in chunk:
+                metadata[key] = chunk[key]
+
+        choices = chunk.get("choices") or []
+        if not isinstance(choices, list) or not choices:
+            continue
+        choice = choices[0] or {}
+        if not isinstance(choice, dict):
+            continue
+
+        finish_reason = (
+            choice.get("finish_reason")
+            if choice.get("finish_reason") is not None
+            else finish_reason
+        )
+        delta = choice.get("delta") or {}
+        message = choice.get("message") or {}
+        if not isinstance(delta, dict):
+            delta = {}
+        if not isinstance(message, dict):
+            message = {}
+
+        role = delta.get("role") or message.get("role") or role
+        content = delta.get("content")
+        if content is None:
+            content = message.get("content")
+        if isinstance(content, str):
+            content_parts.append(content)
+
+        current_tool_calls = delta.get("tool_calls") or message.get("tool_calls") or []
+        if isinstance(current_tool_calls, list):
+            for position, call in enumerate(current_tool_calls):
+                if not isinstance(call, dict):
+                    continue
+                index = call.get("index", position)
+                try:
+                    index = int(index)
+                except (TypeError, ValueError):
+                    index = position
+                merged = tool_calls.setdefault(
+                    index,
+                    {
+                        "index": index,
+                        "id": "",
+                        "type": "function",
+                        "function": {"name": "", "arguments": ""},
+                    },
+                )
+                if call.get("id"):
+                    merged["id"] = call["id"]
+                if call.get("type"):
+                    merged["type"] = call["type"]
+                function = call.get("function") or {}
+                if not isinstance(function, dict):
+                    continue
+                if function.get("name") and not merged["function"]["name"]:
+                    merged["function"]["name"] = function["name"]
+                arguments = function.get("arguments")
+                if isinstance(arguments, str):
+                    merged["function"]["arguments"] += arguments
+
+        # 兼容仍返回旧版 function_call 增量的 OpenAI 兼容网关。
+        function_call = delta.get("function_call") or message.get("function_call")
+        if isinstance(function_call, dict):
+            merged = tool_calls.setdefault(
+                0,
+                {
+                    "index": 0,
+                    "id": "",
+                    "type": "function",
+                    "function": {"name": "", "arguments": ""},
+                },
             )
-        return resp.json()
+            if function_call.get("name") and not merged["function"]["name"]:
+                merged["function"]["name"] = function_call["name"]
+            arguments = function_call.get("arguments")
+            if isinstance(arguments, str):
+                merged["function"]["arguments"] += arguments
+
+    if not saw_chunk:
+        raise RuntimeError("analysis FC LLM returned an empty streaming response")
+
+    message: Dict[str, Any] = {
+        "role": role,
+        "content": "".join(content_parts),
+    }
+    if tool_calls:
+        message["tool_calls"] = [tool_calls[index] for index in sorted(tool_calls)]
+    result: Dict[str, Any] = {
+        **metadata,
+        "object": "chat.completion",
+        "choices": [
+            {
+                "index": 0,
+                "message": message,
+                "finish_reason": finish_reason,
+            }
+        ],
+    }
+    return result
 
 
 class AnalysisFCCodeAgent:

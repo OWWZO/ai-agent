@@ -119,26 +119,35 @@ class LLMClientRetryTest(unittest.TestCase):
     def test_llm_completions_should_retry_transient_errors(self):
         from reactor_tool.tool.mrag.generation.llm import LLMClient
 
-        attempts = {"count": 0}
+        attempts = {"count": 0, "kwargs": {}}
 
         class _FakeCompletions:
             def create(self, **kwargs):
                 attempts["count"] += 1
+                attempts["kwargs"] = kwargs
                 if attempts["count"] < 2:
                     raise RuntimeError("Upstream request failed")
-                return type(
-                    "Resp",
-                    (),
-                    {
-                        "choices": [
-                            type(
-                                "Choice",
-                                (),
-                                {"message": type("Msg", (), {"content": "ok"})()},
-                            )()
-                        ]
-                    },
-                )()
+                return iter(
+                    [
+                        type(
+                            "Chunk",
+                            (),
+                            {
+                                "choices": [
+                                    type(
+                                        "Choice",
+                                        (),
+                                        {
+                                            "delta": type(
+                                                "Delta", (), {"content": "ok"}
+                                            )()
+                                        },
+                                    )()
+                                ]
+                            },
+                        )()
+                    ]
+                )
 
         class _FakeClient:
             def __init__(self):
@@ -166,6 +175,7 @@ class LLMClientRetryTest(unittest.TestCase):
 
         self.assertEqual("ok", result)
         self.assertEqual(2, attempts["count"])
+        self.assertTrue(attempts["kwargs"]["stream"])
         self.assertFalse(openai_factory.call_args.kwargs["http_client"]._trust_env)
 
 

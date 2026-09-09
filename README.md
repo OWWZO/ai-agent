@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  一个面向全网研究和复杂数据分析的云端智能体：发现信号，形成证据，执行分析，发布成果。
+  一个面向全网研究和复杂数据分析的云端智能体
 </p>
 
 <p align="center">
@@ -31,17 +31,29 @@
 </p>
 
 <p align="center">
-  <img src="assets/readme/主页.png" alt="ReAct 研究任务与报告产物" width="960">
+  <img src="assets/readme/主页.png" alt="" width="960">
 </p>
 
-## 项目定位
 
+<p align="center">
+  <img src="assets/readme/multi_agent.png" alt="" width="960">
+</p>
+
+## 项目定位:
+##### 全网调研，自动成稿
 Reactor 是一个让 Agent 持续关注世界、理解变化并交付结果的开源 Agent 应用底座，由 Java Agent Runtime、React 工作台和 Python Tool Runtime 组成。
 
 ## 落地案例展示
 
-面向业务库的数据分析：Text2SQL智能取数->CodeAct数据分析Agent(归因分析)->Canvas画布展示
-https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788425650341-3137/api-log-analysis/index.html
+自媒体 / 内容运营领域的策略研究：账号拆解、爆款内容分析（选题 / 标题 / 封面 / 钩子 / 结构）、数据复盘、口碑与评论区观察
+[查看小红书策略研究报告](https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788509972407-7432/tesla%E6%8A%95%E7%A0%94%E6%8A%A5%E5%91%8A_2026-09-04.html)
+<p align="center">
+  <img src="assets/readme/小红书调研.png" alt="" width="49%">
+</p>
+
+面向业务库的数据分析：Text2SQL智能取数->CodeAct数据分析Agent(归因分析)->Canvas画布展示 
+[查看大模型调用数据分析报告](https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788425650341-3137/api-log-analysis/index.html)
+
 <p align="center">
   <img src="assets/readme/大模型调用数据分析图.png" alt="" width="49%">
 </p>
@@ -50,43 +62,44 @@ https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788425650341-3137/api
   <img src="assets/readme/结构化数据分析.png" alt="" width="49%">
 </p>
 
-商业分析：尽调上市公司，交叉验证财报、竞品与新闻，产出一份投研报告，含风险清单与估值框架。
-https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788509972407-7432/tesla%E6%8A%95%E7%A0%94%E6%8A%A5%E5%91%8A_2026-09-04.html
+投研分析（金融情报调研）：财报解读、行业格局梳理、竞品对标、多源信息综合。
+[查看特斯拉投研报告](https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788509972407-7432/tesla%E6%8A%95%E7%A0%94%E6%8A%A5%E5%91%8A_2026-09-04.html)
+
 <p align="center">
   <img src="assets/readme/特斯拉投研报告.png" alt="" width="49%">
 </p>
 
-https://www.owwzo.cloud/tool/v1/file_tool/download/session-1788785646953-112/index.html
-竞品分析
+竞品调研（产品竞争情报）：功能拆解、用户口碑采集、维度对比（功能 / 口碑等）
+[查看笔记软件竞品分析报告](https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788852138190-6315/index.html)
 <p align="center">
   <img src="assets/readme/笔记软件竞品分析.png" alt="" width="49%">
 </p>
 
-交易分析
-预览url：https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788784594786-3975/index_23_embedded.html
+量化回测 / 策略研究场景：策略建模 → 历史数据回测 → 参数敏感性分析）→ 风险指标计算
+[查看双均线择时策略回测报告](https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788784594786-3975/index_23_embedded.html)
 <p align="center">
   <img src="assets/readme/双均线择时策略的回测.png" alt="" width="49%">
 </p>
 
-日常/技术调研
-<p align="center">
-url:https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788785646953-112/xiamen-couple-map.html
-  <img src="assets/readme/旅游规划.png" alt="数据分析与图表产物" width="49%">
 
+日常信息检索
+[查看厦门旅游规划](https://www.owwzo.cloud/tool/v1/file_tool/preview/session-1788785646953-112/xiamen-couple-map.html)
+<p align="center">
+  <img src="assets/readme/旅游规划.png" alt="" width="49%">
   <img src="assets/readme/codegraph技术调研.png" alt="" width="49%">
 </p>
 
 设计与创意
 <p align="center">
-  <img src="assets/readme/艺术设计.png" alt="CodeGraph 项目研究报告" width="49%">
-  <img src="assets/readme/猫猫艺术.png" alt="旅游规划报告产物" width="49%">
+  <img src="assets/readme/艺术设计.png" alt="" width="49%">
+  <img src="assets/readme/猫猫艺术.png" alt="" width="49%">
 </p>
 
-科研学术
+
+数据分析（量化实证研究）：数据获取→清洗→分区域对比→统计检验→可视化
 <p align="center">
-  <img src="assets/readme/全球糖尿病患病率的变化趋势.png" alt="CodeGraph 项目研究报告" width="49%">
+  <img src="assets/readme/全球糖尿病患病率的变化趋势.png" alt="" width="49%">
 </p>
-
 
 GenUi交互式界面
 <p align="center">
@@ -95,13 +108,20 @@ GenUi交互式界面
   <img src="assets/readme/GenUi.png" alt="" width="49%">
 </p>
 
+human in the loop
+<p align="center">
+  <img src="assets/readme/human_in_the_loop.png" alt="" width="49%">
+</p>
+<p align="center">
+  <img src="assets/readme/ask_user.png" alt="" width="49%">
+</p>
 
 Text2SQL 智能问数界面
 <p align="center">
-  <img src="assets/readme/TextToSql饼图.png" alt="销售报表与结构化分析" width="49%">
+  <img src="assets/readme/TextToSql饼图.png" alt="" width="49%">
 </p>
 <p align="center">
-  <img src="assets/readme/TextToSql折线图.png" alt="销售报表与结构化分析" width="49%">
+  <img src="assets/readme/TextToSql折线图.png" alt="" width="49%">
 </p>
 
 
@@ -129,11 +149,10 @@ flowchart LR
 Reactor 将“搜索”视为一个可以继续执行的研究过程，而不是一次关键词查询。
 
 - **DeepSearch**：查询拆解、多轮 `extend/search/report` 阶段、并发检索、正文抓取、去重、摘要和 SSE 流式进度。
-- **多搜索引擎**：按配置接入 DuckDuckGo、Exa、Tavily、Brave、Grok/OpenAI-compatible 等搜索后端；默认部署可选择轻量搜索引擎。
-- **公域来源**：网页、RSS、YouTube、B站、GitHub、Reddit RSS、Hacker News、Stack Exchange、V2EX、Telegram 公开频道等，主要通过 `Skill Runtime` 和 Python Tool Runtime 接入。
-- **授权私域媒体**：Twitter/X、Reddit、雪球提供只读工具，认证信息只从服务端环境变量读取，不读取浏览器 Cookie，也不执行发帖、点赞、交易等写操作。
-- **可扩展来源**：其他社交平台可以通过浏览器自动化、MCP 或 Skill 接入。小红书/XHS 在当前版本中应视为待接入的浏览器扩展能力，不作为内置适配器承诺。
-- **可溯源结果**：保留原始 URL、标题、作者、时间、文档、chunk、页面和图片元数据；这让检索证据和后续产物能够关联起来，但不等同于模型答案天然正确。
+- **多搜索引擎**：支持 DuckDuckGo、Exa、Tavily、Brave、Grok/OpenAI-compatible 等搜索后端
+- **公域来源**：网页、RSS、GitHub、Reddit RSS、Hacker News、Stack Exchange、V2EX、 公开频道等
+- **授权私域媒体**：Twitter/X、Reddit、Telegram、YouTube、B站、雪球
+- **可溯源结果**：保留原始 URL、标题、作者、时间、文档、chunk、页面和图片元数据；这让检索证据和后续产物能够关联起来。
 
 ### 2. Analyze：数据、代码与安全执行
 
@@ -175,7 +194,7 @@ Reactor 支持把一个复杂目标拆给多个职责明确的 Agent，并让主
 - **异步后台 Agent**：设置 `run_in_background=true` 后，长任务在后台运行，主对话可以继续处理其他工作。
 - **任务控制**：支持查询后台任务结果、停止任务、恢复观察和向运行中的 Agent 注入指导。
 - **上下文隔离**：子 Agent 可以拥有独立的工具集合、memory scope 和会话工作区，避免无关工具和上下文相互污染。
-- **协作通信**：父子 Agent 通过 session 级 mailbox 传递消息；当前实现是进程内协作机制，不等同于跨进程可靠消息队列。
+- **协作通信**：父子 Agent 通过 session 级 mailbox 传递消息
 
 ### Human-in-the-loop
 
@@ -202,8 +221,6 @@ Reactor 将长期能力组织成三种记忆，便于理解不同信息应该如
 | **情景记忆** | 过去的会话、任务、工具调用、文件和分析结果 | Execution Ledger、工作记忆投影、历史回放 |
 | **程序性记忆** | 如何完成一类任务的 Skill、SOP、脚本和执行经验 | `runtime/skills/`、SOP 召回和工具流程 |
 
-当前版本的“语义 / 情景 / 程序性”是产品层的组织模型，底层仍由不同的 Provider、Ledger 和 Skill 机制分别承载；长期记忆 Provider 默认是可选的。
-
 ### 上下文压缩
 
 长任务和长会话会自动进入上下文治理流程：
@@ -218,8 +235,8 @@ Reactor 将长期能力组织成三种记忆，便于理解不同信息应该如
 
 | 场景 | 执行链路 | 主要能力 |
 | --- | --- | --- |
-| 世界动态追踪 | 主题订阅 → 多源搜索 → 社媒信号 → 趋势摘要与来源报告 | DeepSearch、Public Sources、授权社媒、SOP |
-| 财报与竞品研究 | 问题拆解 → 网页/视频/社区检索 → 证据整理 → HTML/Canvas 报告 | Plan-Solve、DeepSearch、MCP、GenUI |
+| 世界动态追踪 | 主题订阅 → 多源搜索 → 社媒信号 → 趋势摘要与来源报告 | DeepSearch、Public Sources、授权社媒 |
+| 财报与竞品研究 | 问题拆解 → 网页/视频/社区检索 → 证据整理 → HTML/Canvas 报告 | DeepSearch、MCP、GenUI |
 | 数据分析 | 读取数据库或文件 → NL2SQL → Python 清洗与统计 → 图表和报告 | Table RAG、CodeAct、E2B、Chart |
 | 知识库问答 | 文档解析 → 文本/图片多路召回 → 重排序 → 带上下文回答 | MRAG、Qdrant、BM25、OCR |
 | 内容生产 | 主题研究 → 结构化内容 → 选择主题 → PDF/Word/PPT/网页交付 | Skill、Document、Slides、Artifact |
@@ -227,16 +244,48 @@ Reactor 将长期能力组织成三种记忆，便于理解不同信息应该如
 
 
 
-### 一条完整任务链
 
-例如，用户提出“梳理某公司最近四个季度财报、社区讨论和竞品动态，做成一份可交互投研报告”：
+## 系统架构
 
-1. `Plan-Solve` 拆分检索、验证、分析和交付步骤。
-2. `DeepSearch` 从多搜索引擎、网页、视频和授权社媒读取候选信息。
-3. `MRAG` 对上传的财报、图片和历史资料进行多模态召回。
-4. Python Tool Runtime 在受控工作区中完成表格清洗、指标计算和图表生成。
-5. Agent 输出报告内容和 GenUI 结构化数据，Renderer 应用主题并生成 HTML、PDF、Word 或 PPT。
-6. 每个 Run、工具调用、来源和产物进入 Execution Ledger，用户可以继续观察或回放任务。
+### 异构多服务
+
+Reactor 把实时 Agent 编排和重型工具执行拆开：Java 负责运行时、策略、会话、HITL 和执行账本；Python 负责搜索、RAG、数据处理、文档生成和代码沙箱；React 负责流式工作台、产物预览和 GenUI 渲染。三者通过 HTTP、SSE、MCP 和文件服务协作。
+
+```mermaid
+flowchart LR
+    User["用户"] --> UI["React UI<br/>SSE / History Replay"]
+    UI --> Trigger["Trigger<br/>HTTP / SSE / File"]
+    Trigger --> Case["Case<br/>Dispatch / Run Control"]
+    Case --> Domain["Domain Runtime<br/>ReAct / Plan-Solve"]
+    Domain --> Ports["Domain Ports"]
+    Ports --> Infra["Infrastructure<br/>DAO / Remote / Artifact"]
+
+    Domain --> LLM["LLM<br/>Spring AI / OpenAI-compatible"]
+    Domain --> MCP["MCP<br/>SSE / STDIO / HTTP"]
+    Domain --> Tools["reactor-tool<br/>FastAPI Tool Runtime"]
+
+    Infra --> Ledger[("MySQL<br/>Execution Ledger")]
+    Infra --> Files[("Artifact / File Store")]
+    Tools --> Files
+    Tools --> Vector[("Qdrant / Elasticsearch<br/>optional")]
+
+    Trigger -->|stream events| UI
+```
+
+### 服务职责
+
+| 服务 / 层 | 主要职责 | 典型能力 |
+| --- | --- | --- |
+| React Workbench | 实时交互与结果呈现 | SSE、对话、计划、后台任务、文件预览、GenUI、3D |
+| Java Agent Runtime | Agent 生命周期和任务编排 | ReAct、Plan-Solve、Workflow、Memory、HITL、Ledger |
+| Python Tool Runtime | 重型工具和数据计算 | DeepSearch、MRAG、NL2SQL、CodeAct、文档生成 |
+| E2B / Sandbox | 代码执行隔离边界 | 持久 kernel、工作区同步、超时、权限和产物采集 |
+| MySQL / Artifact Store | 执行事实与文件引用 | Run、LLM、Tool、Artifact、结构化工具输出 |
+| Qdrant / Elasticsearch | 可选检索基础设施 | 向量召回、表结构检索、列值召回和重排序 |
+
+
+
+
 
 ## 快速开始
 
@@ -266,8 +315,6 @@ mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS \`ai-agent-station\` CHARACTE
 mysql -u root -p ai-agent-station < Reactor-agent-app/src/main/resources/db/schema.sql
 mysql -u root -p ai-agent-station < Reactor-agent-app/src/main/resources/db/data.sql
 ```
-
-运行时模型目录至少需要一条启用的 `ai_client_api` 与 `ai_client_model` 配置，填写 OpenAI-compatible API 的 `base_url`、`api_key` 和 `model_name`。问数示例数据由 `data.sql` 提供。
 
 ### 3. 启动 Python Tool Runtime
 
@@ -349,7 +396,7 @@ Java 生产配置模板是 [`application-prod.yml`](Reactor-agent-app/src/main/r
 
 Compose 部署时，`WORKSPACE_ROOT` 应保持为 `/data/skilloutput`，Backend 与 `reactor-tool` 会通过 `reactor-data` 卷共享会话工作区和文件产物。
 
-`reactor-data` 卷保存 Python 文件服务的 `autobots.db`、MRAG SQLite 元数据和文件产物。普通 `docker compose down` 不会删除该卷；如果执行 `docker compose down -v` 或手动删除 `reactor-data`，下次部署需要重新执行 SQLite 初始化命令。
+`reactor-data` 卷保存 Python 文件服务的 `autobots.db`、MRAG SQLite 元数据和文件产物。
 
 ### 给 Coding Agent 的部署 Prompt
 
@@ -357,196 +404,5 @@ Compose 部署时，`WORKSPACE_ROOT` 应保持为 `/data/skilloutput`，Backend 
 你是本仓库的部署代理。请先阅读 README.md、CLAUDE.md 以及相关模块说明，默认使用源码部署，不要默认使用 Docker Compose；只有用户明确要求容器部署时才切换到 Docker。开始前检查 JDK 21、Maven 3.8+、MySQL 8、Python 3.11+、uv、Node.js 18+ 和 pnpm，检查 Git 工作区并保留用户已有改动，禁止 reset、checkout 或覆盖未提交文件。按照 README 的顺序配置并启动 MySQL、reactor-tool、Reactor-agent-app 和 ui：没有 reactor-tool/.env 时从 reactor-tool/.env_template 创建，但不要覆盖已有 .env；首次启动执行 `uv run python -m reactor_tool.db.db_engine` 初始化 autobots.db；创建或确认 MySQL 数据库后导入 db/schema.sql 和 db/data.sql；使用 application-prod.yml 作为无真实凭证的部署配置，保留源码部署所需的 127.0.0.1 服务地址，不要把 application-dev.yml 中的真实密钥复制到生产配置。只使用用户明确提供的 LLM、搜索、E2B、Qdrant、ES、OCR、对象存储和登录态凭证，绝不能猜测、生成或输出这些凭证；如果缺少 MySQL 密码、LLM_BASE_URL/OPENAI_BASE_URL、OPENAI_API_KEY、模型名或其他必需配置，停止启动并列出变量名、用途和示例格式。先启动 reactor-tool，再用 `mvn -pl Reactor-agent-app -am package '-Dmaven.test.skip=true'` 构建并启动 Java Backend，最后在 ui 执行 `pnpm install` 和 `pnpm dev`。启动后检查 reactor-tool、`http://127.0.0.1:8100/web/health` 和 `http://localhost:3000`，失败时读取日志并修复配置后重试。只有健康检查通过、SQLite 初始化完成且没有把敏感信息写入 README、日志或 Git 跟踪文件时，才报告部署成功；最后列出实际执行命令、访问地址、数据库和 SQLite 文件位置、仍未配置的可选能力以及需要用户后续处理的事项。不要修改业务代码或删除数据，除非用户明确授权。
 ```
 
-## 系统架构
 
-### 异构多服务
-
-Reactor 把实时 Agent 编排和重型工具执行拆开：Java 负责运行时、策略、会话、HITL 和执行账本；Python 负责搜索、RAG、数据处理、文档生成和代码沙箱；React 负责流式工作台、产物预览和 GenUI 渲染。三者通过 HTTP、SSE、MCP 和文件服务协作。
-
-```mermaid
-flowchart LR
-    User["用户"] --> UI["React UI<br/>SSE / History Replay"]
-    UI --> Trigger["Trigger<br/>HTTP / SSE / File"]
-    Trigger --> Case["Case<br/>Dispatch / Run Control"]
-    Case --> Domain["Domain Runtime<br/>ReAct / Plan-Solve"]
-    Domain --> Ports["Domain Ports"]
-    Ports --> Infra["Infrastructure<br/>DAO / Remote / Artifact"]
-
-    Domain --> LLM["LLM<br/>Spring AI / OpenAI-compatible"]
-    Domain --> MCP["MCP<br/>SSE / STDIO / HTTP"]
-    Domain --> Tools["reactor-tool<br/>FastAPI Tool Runtime"]
-
-    Infra --> Ledger[("MySQL<br/>Execution Ledger")]
-    Infra --> Files[("Artifact / File Store")]
-    Tools --> Files
-    Tools --> Vector[("Qdrant / Elasticsearch<br/>optional")]
-
-    Trigger -->|stream events| UI
-```
-
-### 请求生命周期
-
-1. `trigger` 接收 HTTP 请求，建立访客、会话和 SSE 输出上下文。
-2. `case` 根据 `AgentType` 选择 `ReAct`、`Plan-Solve` 或 `Workflow` 执行策略。
-3. `domain runtime` 组装 Agent Context、Memory、Skill、MCP 和工具集合，并按需创建同步或后台子 Agent。
-4. LLM 产生文本或 Tool Call；Python Tool Runtime 执行搜索、RAG、代码、数据和文档工具。
-5. 工具结果、观察信息和产物回写到运行上下文，关键步骤可以进入 HITL 等待状态。
-6. `infrastructure` 将 Run、LLM Invocation、Tool Invocation、Artifact 和结构化输出写入账本。
-7. SSE 将过程实时投影到 UI；历史页面从 Execution Ledger 重新投影展示结果，不重新执行原任务。
-
-### 服务职责
-
-| 服务 / 层 | 主要职责 | 典型能力 |
-| --- | --- | --- |
-| React Workbench | 实时交互与结果呈现 | SSE、对话、计划、后台任务、文件预览、GenUI、3D |
-| Java Agent Runtime | Agent 生命周期和任务编排 | ReAct、Plan-Solve、Workflow、Memory、HITL、Ledger |
-| Python Tool Runtime | 重型工具和数据计算 | DeepSearch、MRAG、NL2SQL、CodeAct、文档生成 |
-| E2B / Sandbox | 代码执行隔离边界 | 持久 kernel、工作区同步、超时、权限和产物采集 |
-| MySQL / Artifact Store | 执行事实与文件引用 | Run、LLM、Tool、Artifact、结构化工具输出 |
-| Qdrant / Elasticsearch | 可选检索基础设施 | 向量召回、表结构检索、列值召回和重排序 |
-
-### DDD 模块边界
-
-| 模块 | 职责 |
-| --- | --- |
-| `Reactor-agent-types` | 常量、枚举、异常和通用类型 |
-| `Reactor-agent-api` | DTO 与应用服务契约 |
-| `Reactor-agent-trigger` | HTTP、SSE、文件、会话和运行控制入口 |
-| `Reactor-agent-case` | Agent 分发、执行策略、会话流与应用编排 |
-| `Reactor-agent-domain` | Runtime、Memory、RAG、Role、Ledger 与领域 Port |
-| `Reactor-agent-infrastructure` | MyBatis、远程 HTTP/SSE、文件、数据查询和外部服务适配 |
-| `Reactor-agent-app` | Spring Boot 启动、配置和运行时装配 |
-| `ui` | React 工作台、流式对话、计划和产物展示 |
-| `reactor-tool` | FastAPI 工具运行时、文件服务、搜索、沙箱和 RAG 能力 |
-
-## Execution Ledger
-
-Execution Ledger 是 Reactor 运行时的唯一执行事实主路径。它让“模型说了什么、工具做了什么、产出了什么、任务如何结束”都拥有稳定的持久化边界。
-
-它不是一张简单的聊天消息表，而是一组围绕执行过程组织的事实记录：一次用户请求对应一个 Run，一个 Run 可以包含多次 LLM 调用、工具调用、子 Agent 调用和文件产物。
-
-| 表 | 语义 |
-| --- | --- |
-| `ai_agent_dialogue_session` | 会话头、标题、统计和最近活跃时间 |
-| `ai_agent_dialogue_run` | 一次用户请求对应的一次执行 Run |
-| `ai_agent_llm_invocation` | 每次模型调用及其用量、状态和响应信息 |
-| `ai_agent_tool_invocation` | 每次工具调用、参数、状态和父子关系 |
-| `ai_agent_tool_output_*` | 按工具类型拆分的结构化输出 |
-| `ai_agent_artifact` | 上传文件、生成文件和稳定产物引用 |
-| `ai_agent_working_memory_*` | 面向下一轮 LLM 上下文的工作记忆投影 |
-
-历史回放读取账本并生成展示投影；工作记忆只服务跨轮上下文 hydrate，不作为 UI 历史回放的第二套事实源。回放是重新投影历史事实，不会重新执行原任务。当前表结构以 live MySQL 为准，项目内同步快照见 [`schema.sql`](Reactor-agent-app/src/main/resources/db/schema.sql)。
-
-## API 入口
-
-| 方法 | 路径 | 用途 |
-| --- | --- | --- |
-| `GET` | `/web/health` | 服务探活 |
-| `POST` | `/web/api/v1/gpt/queryAgentStreamIncr` | 主 Agent SSE 流式执行 |
-| `GET` | `/api/agent/conversation/sessions` | 查询当前访客的会话列表 |
-| `GET` | `/api/agent/conversation/sessions/{sessionId}` | 从账本回放会话详情 |
-| `POST` | `/api/agent/run/stop` | 停止正在执行的 Run |
-| `POST` | `/api/agent/run/follow` | 重新连接正在执行的 Run |
-| `POST` | `/api/agent/file/upload` | 上传会话附件 |
-| `POST` | `/api/agent/plan-approval/*` | 计划审批与恢复 |
-| `POST` | `/api/agent/ask-user/*` | 用户确认与执行恢复 |
-
-## 配置索引
-
-| 文件 | 作用 |
-| --- | --- |
-| [`application.yml`](Reactor-agent-app/src/main/resources/application.yml) | 默认 profile、全局 Agent Runtime 配置 |
-| [`application-dev.yml`](Reactor-agent-app/src/main/resources/application-dev.yml) | 本地端口、数据库、工具 URL、模型与 Skill 配置 |
-| [`application-prod.yml`](Reactor-agent-app/src/main/resources/application-prod.yml) | Docker/生产环境 Java 静态配置模板，敏感值已清除 |
-| [`Dockerfile`](Dockerfile) | Java、Python、前端的多阶段镜像构建 |
-| [`docker-compose.yml`](docker-compose.yml) | MySQL、Backend、Tool、sandbox 与前端反代编排 |
-| [`ui/.env`](ui/.env) | React 开发环境的 Backend 地址 |
-| [`reactor-tool/.env_template`](reactor-tool/.env_template) | Python 工具、搜索、模型、RAG 与沙箱配置模板 |
-| [`schema.sql`](Reactor-agent-app/src/main/resources/db/schema.sql) | 从 live MySQL 同步的数据库结构快照与初始化参考 |
-| [`data.sql`](Reactor-agent-app/src/main/resources/db/data.sql) | 问数示例数据 |
-
-密钥只应通过环境变量、Secret Manager 或部署系统注入。不要把真实的模型、搜索、向量库或 Cookie 凭证提交到 YAML、`.env`、日志、Prompt 或执行事件中。
-
-## 安全边界
-
-Reactor 可以发起外部请求、写入文件、运行代码并生成高成本模型调用。生产部署前至少完成以下检查：
-
-- 不要把未鉴权的 Backend 或 `reactor-tool` 直接暴露到公网。
-- 对 MCP Server、Skill、文件写入和代码沙箱配置做显式白名单控制。
-- 本地 `CODE_SANDBOX_BACKEND=local` 只适合可信开发环境；生产环境应使用 E2B 或其他隔离沙箱，并限制网络和文件权限。
-- E2B 提供执行隔离和资源边界，但任何代码执行环境都不应被描述为“绝对安全”；仍需配置密钥隔离、网络策略、超时、资源上限和产物检查。
-- 为反向代理配置正确的 HTTPS、Cookie、CORS 和来源校验策略。
-- 生产配置关闭不必要的调试能力，并定期轮换模型、搜索和存储凭证。
-
-### 能力边界
-
-- 公域平台、授权社媒和私有知识库是三类不同来源，是否可用取决于平台接口、登录态和部署配置。
-- YouTube、B站等来源主要通过公开来源 Skill 接入；Twitter/X、Reddit、雪球是独立的只读授权工具。
-- 小红书/XHS 当前没有仓库内置适配器，可以通过浏览器自动化、MCP 或 Skill 扩展。
-- GenUI 当前以受控 UI Tree、JSON Patch 和 Canvas Preview 为核心；真正的无限平移、缩放和多区域画布仍属于前端演进方向。
-- 长期记忆 Provider、Qdrant、Elasticsearch、图像模型和 E2B 都是可选依赖，未配置时相应能力不会自动可用。
-
-## 演进方向
-
-- 世界动态订阅、定时研究和增量更新，让“持续关注”从一次任务扩展为长期工作流。
-- 真正的无限空间画布、多区域编排和跨任务成果连接。
-- 更细粒度的语义、情景和程序性记忆检索与用户控制。
-- 可恢复的分布式后台 Agent 调度和跨进程消息投递。
-- 更完整的来源级证据绑定、评测、成本统计和质量反馈闭环。
-
-## 测试与开发
-
-```bash
-# Java 应用回归
-mvn test -pl Reactor-agent-app -DskipTests=false
-
-# Domain 及上游模块回归
-mvn test -pl Reactor-agent-domain -am -DskipTests=false
-
-# 前端构建、检查和测试
-cd ui
-pnpm lint
-pnpm test
-pnpm build
-```
-
-默认 Maven 测试会排除依赖真实模型、MCP 或独立服务的集成用例；需要运行这些用例时，使用对应的 `-Dtest=...` 显式指定。
-
-## 开发者入口
-
-- [整体架构与持久化约束](CLAUDE.md)
-- [前端开发说明](ui/README.md)
-- [Python Tool Runtime 说明](reactor-tool/README.md)
-- [前端贡献指南](ui/CONTRIBUTING.md)
-- [数据库结构快照 SQL](Reactor-agent-app/src/main/resources/db/schema.sql)
-- [GitHub Issues](https://github.com/OWWZO/ai-agent/issues)
-
-### 常见扩展方式
-
-| 目标 | 入口 |
-| --- | --- |
-| 新增执行策略 | 在 `Reactor-agent-case` 实现 `IExecuteStrategy`，并在 `AgentType` 与装配边界中注册 |
-| 新增 Skill | 在 `runtime/skills/<skill-name>/` 放置 `SKILL.md` 与需要的脚本 |
-| 新增远程工具 | 在 `reactor-tool` 暴露工具端点，再通过 Runtime 的工具注册配置接入 |
-| 接入 MCP | 配置 MCP Server Descriptor，由 `McpRegistry` 发现工具并交给执行器调用 |
-| 新增结构化产物 | 定义工具输出模型、账本写入规则和历史回放 projector |
-
-## 项目结构
-
-```text
-Reactor-agent/
-├── Reactor-agent-types/           # 基础类型
-├── Reactor-agent-api/             # DTO 与服务契约
-├── Reactor-agent-trigger/         # HTTP / SSE / 文件 / 会话入口
-├── Reactor-agent-case/            # 应用编排与执行策略
-├── Reactor-agent-domain/          # Agent Runtime / Ledger / Memory / RAG
-├── Reactor-agent-infrastructure/  # DAO、远程适配和文件产物
-├── Reactor-agent-app/             # Spring Boot 启动与装配
-├── reactor-tool/                  # FastAPI 工具运行时
-├── mcp-server-csdn/               # 独立 MCP Server 示例
-├── ui/                            # React 工作台
-├── runtime/skills/                # 可加载 Skill 目录
-├── assets/readme/                 # README 展示素材
-├── docs/                          # 设计、计划与运维文档
-└── CLAUDE.md                     # 详细架构与协作约束
 ```

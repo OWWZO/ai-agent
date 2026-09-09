@@ -40,6 +40,26 @@ describe("prompt-input attachment helpers", () => {
     expect(result.error).toBeUndefined();
   });
 
+  it("空 accept 允许旧版 Office/音视频/压缩包/代码/其它文档", () => {
+    const files = [
+      new File(["doc"], "a.doc", { type: "application/msword" }),
+      new File(["xls"], "b.xls", { type: "application/vnd.ms-excel" }),
+      new File(["ppt"], "c.ppt", { type: "application/vnd.ms-powerpoint" }),
+      new File(["mp4"], "d.mp4", { type: "video/mp4" }),
+      new File(["wav"], "e.wav", { type: "audio/wav" }),
+      new File(["zip"], "f.zip", { type: "application/zip" }),
+      new File(["js"], "g.js", { type: "text/javascript" }),
+      new File(["java"], "h.java", { type: "text/x-java-source" }),
+      new File(["rtf"], "i.rtf", { type: "application/rtf" }),
+      new File(["epub"], "j.epub", { type: "application/epub+zip" }),
+    ];
+
+    const result = validatePromptInputFiles(files, { accept: "" });
+
+    expect(result.accepted).toHaveLength(10);
+    expect(result.error).toBeUndefined();
+  });
+
   it("超过 maxFiles 时会截断并返回 max_files 错误", () => {
     const files = [
       new File(["1"], "a.png", { type: "image/png" }),

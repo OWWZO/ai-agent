@@ -413,7 +413,7 @@ export type PromptInputProps = Omit<
 export const PromptInput = ({
   className,
   accept,
-  multiple,
+  multiple = true,
   globalDrop,
   syncHiddenInput,
   maxFiles,
@@ -779,6 +779,32 @@ export const PromptInputButton = ({
       variant={variant}
       {...props}
     />
+  );
+};
+
+export type PromptInputAddAttachmentsButtonProps = PromptInputButtonProps & {
+  label?: string;
+};
+
+export const PromptInputAddAttachmentsButton = ({
+  label = "上传附件，可一次多选",
+  className,
+  disabled,
+  ...props
+}: PromptInputAddAttachmentsButtonProps) => {
+  const attachments = usePromptInputAttachments();
+
+  return (
+    <PromptInputButton
+      aria-label={label}
+      className={className}
+      disabled={disabled}
+      title={label}
+      onClick={() => attachments.openFileDialog()}
+      {...props}
+    >
+      <PlusIcon className="size-4" />
+    </PromptInputButton>
   );
 };
 

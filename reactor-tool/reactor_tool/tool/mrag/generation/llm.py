@@ -5,7 +5,7 @@ import os
 
 import dotenv
 from openai import DefaultHttpxClient, OpenAI
-from reactor_tool.tool.mrag.utils.retry_utils import call_with_retry, stream_with_retry
+from reactor_tool.tool.mrag.utils.retry_utils import stream_with_retry
 from reactor_tool.util.log_util import logger
 
 dotenv.load_dotenv()
@@ -44,6 +44,30 @@ def _normalize_openai_compatible_base_url(base_url: str | None) -> str | None:
     if not lowered.endswith("/v1"):
         normalized = f"{normalized}/v1"
     return normalized
+
+
+def _extract_stream_delta_text(chunk) -> str:
+    """从 OpenAI 兼容流式 chunk 中取出文本增量。"""
+    choices = getattr(chunk, "choices", None) or []
+    if not choices:
+        return ""
+    choice = choices[0]
+    delta = getattr(choice, "delta", None)
+    content = getattr(delta, "content", None) if delta is not None else None
+    if content is None:
+        message = getattr(choice, "message", None)
+        content = getattr(message, "content", None) if message is not None else None
+    return content if isinstance(content, str) else ""
+
+
+def _aggregate_chat_completion_stream(stream) -> str:
+    """把 SSE 分片拼回完整文本，供调用方继续按非流式字符串消费。"""
+    parts: list[str] = []
+    for chunk in stream:
+        text = _extract_stream_delta_text(chunk)
+        if text:
+            parts.append(text)
+    return "".join(parts)
 
 
 def _build_openai_compatible_headers() -> dict[str, str]:
@@ -93,11 +117,12 @@ class LLMClient:
 
     def completions(self, messages, max_tokens=8192, temperature=0, stream=False):
         logger.info(f"chat completion\n{self.model_name}, {messages}")
+        # HTTP 始终走 SSE：调用方 stream=False 时再把分片聚合成字符串，避开 Cloudflare 524。
         request_kwargs = {
             "model": self.model_name,
             "messages": messages,
             "temperature": temperature,
-            "stream": stream,
+            "stream": True,
             "max_tokens": max_tokens,
         }
         extra_body = self._build_extra_body()
@@ -105,17 +130,13 @@ class LLMClient:
             request_kwargs["extra_body"] = extra_body
 
         label = f"mrag-llm:{self.model_name or 'unknown'}"
-        if stream:
-            return stream_with_retry(
-                lambda: self.client.chat.completions.create(**request_kwargs),
-                label=label,
-            )
-
-        completion = call_with_retry(
+        stream_iter = stream_with_retry(
             lambda: self.client.chat.completions.create(**request_kwargs),
             label=label,
         )
-        return completion.choices[0].message.content
+        if stream:
+            return stream_iter
+        return _aggregate_chat_completion_stream(stream_iter)
 
     def chat(self, prompt, image_url):
         messages = self.convert_messages(prompt)

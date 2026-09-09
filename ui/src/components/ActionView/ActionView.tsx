@@ -231,6 +231,8 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
   }, [files, selectedKey]);
 
   const showFileBrowser = panelMode === "file" && files.length > 0;
+  const previewUrl =
+    selectedFile?.previewUrl || selectedFile?.url || "";
   const downloadUrl =
     selectedFile?.downloadUrl || selectedFile?.url || "";
   const selectedExt = (
@@ -251,8 +253,8 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
   });
 
   const handleOpenExternal = useMemoizedFn(() => {
-    if (!downloadUrl) return;
-    window.open(downloadUrl, "_blank", "noopener,noreferrer");
+    if (!previewUrl) return;
+    window.open(previewUrl, "_blank", "noopener,noreferrer");
   });
 
   const handleCopyLink = useMemoizedFn(() => {
@@ -382,7 +384,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                 )}
               </button>
             ) : null}
-            {downloadUrl ? (
+            {previewUrl ? (
               <button
                 type="button"
                 className={iconBtnClass}

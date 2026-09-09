@@ -6,7 +6,6 @@ import {
   CheckIcon,
   ChevronDownIcon,
   ListTodo,
-  PlusIcon,
   SearchIcon,
   Type,
 } from "lucide-react";
@@ -14,10 +13,7 @@ import {
 import { AI_CHAT_FLOATING_CLASS } from "@/components/ai-elements/ai-chat-surface";
 import {
   PromptInput,
-  PromptInputActionAddAttachments,
-  PromptInputActionMenu,
-  PromptInputActionMenuContent,
-  PromptInputActionMenuTrigger,
+  PromptInputAddAttachmentsButton,
   type PromptInputAttachmentError,
   type PromptInputAttachmentItem,
   PromptInputAttachments,
@@ -107,9 +103,8 @@ const MODE_OPTIONS: Array<{
 
 const VISIBLE_MODE_OPTIONS = MODE_OPTIONS;
 
-/** 输入框附件 accept：图片 + 常见文档/代码/表格 + GLB/GLTF */
-export const ATTACHMENT_ACCEPT =
-  "image/*,application/pdf,.txt,.md,.csv,.xlsx,.docx,.pptx,.json,.py,.html,.glb,.gltf,model/gltf-binary,model/gltf+json";
+/** 对话附件不按扩展名拦截；上传/登记链路对任意文件落盘。空字符串表示原生 file picker 与拖拽都接受全部类型。 */
+export const ATTACHMENT_ACCEPT = "";
 
 /** 单条 query 最大字符数（前端硬限制） */
 export const MAX_QUERY_CHARS = 8000;
@@ -271,7 +266,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
 
   const handleAttachmentError = useCallback((error: PromptInputAttachmentError) => {
     if (error.code === "accept") {
-      showMessage()?.warning("不支持该文件类型，图片、文档、代码和 GLB/GLTF 3D 模型可上传");
+      showMessage()?.warning("不支持该文件类型");
       return;
     }
     if (error.code === "max_file_size") {
@@ -391,7 +386,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
           accept={ATTACHMENT_ACCEPT}
           className="reactor-input-flat w-full"
           convertBlobUrlsOnSubmit={false}
-          multiple
+          multiple={true}
           onAttachmentsAdded={handleAttachmentsAdded}
           onError={handleAttachmentError}
           onSubmit={handleSubmit}
@@ -454,19 +449,12 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
 
           <PromptInputFooter className="reactor-composer-footer items-center justify-between gap-2 px-2.5 pb-2 pt-0.5">
             <PromptInputTools className="reactor-composer-tools reactor-composer-tools-left min-w-0 flex-1 flex-wrap items-center gap-0.5">
-              <PromptInputActionMenu>
-                <PromptInputActionMenuTrigger
-                  size="icon-sm"
-                  variant="ghost"
-                  disabled={disabled}
-                  className="reactor-composer-icon-button h-8 w-8 rounded-md border-0 bg-transparent text-[#6b6b70] shadow-none ring-0 hover:bg-black/[0.04] hover:text-[#1d1d1f] focus-visible:ring-0"
-                >
-                  <PlusIcon className="size-4" />
-                </PromptInputActionMenuTrigger>
-                <PromptInputActionMenuContent className={cn("min-w-[168px]", menuContentClassName)}>
-                  <PromptInputActionAddAttachments label="上传附件" />
-                </PromptInputActionMenuContent>
-              </PromptInputActionMenu>
+              <PromptInputAddAttachmentsButton
+                size="icon-sm"
+                variant="ghost"
+                disabled={disabled}
+                className="reactor-composer-icon-button h-8 w-8 rounded-md border-0 bg-transparent text-[#6b6b70] shadow-none ring-0 hover:bg-black/[0.04] hover:text-[#1d1d1f] focus-visible:ring-0"
+              />
 
               {showPlanToggle ? (
                 <button

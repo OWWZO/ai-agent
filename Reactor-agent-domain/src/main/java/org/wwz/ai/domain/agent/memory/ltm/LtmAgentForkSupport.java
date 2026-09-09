@@ -124,7 +124,8 @@ public final class LtmAgentForkSupport {
                     .requestId(fake.getRequestId())
                     .sessionId(sid)
                     .query(directive)
-                    .isStream(false)
+                    // 模型侧走 SSE，避免 Cloudflare 120s 整包 JSON 超时；fork 用 LogPrinter，不会推到用户会话。
+                    .isStream(true)
                     .skipMemory(false)
                     .ltmSideEffectsDisabled(true)
                     .ltmOwner(forkOwner)
