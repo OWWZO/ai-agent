@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  一个面向全网研究和复杂数据分析的云端智能体
+  一个面向全网研究与复杂数据分析的云端智能体，能在公开网络、YouTube、BiliBili、X、小红书、Hacker News上研究任何主题
 </p>
 
 <p align="center">
