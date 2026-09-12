@@ -30,20 +30,21 @@
   <a href="https://github.com/OWWZO/ai-agent">GitHub</a>
 </p>
 
+<p align="center"><em>工作台主页</em></p>
 <p align="center">
   <img src="assets/readme/主页.png" alt="Reactor 工作台主页" width="960">
 </p>
-<p align="center"><em>工作台主页</em></p>
 
+<p align="center"><em>多 Agent 协作</em></p>
 <p align="center">
   <img src="assets/readme/multi_agent.png" alt="多 Agent 协作" width="960">
 </p>
-<p align="center"><em>多 Agent 协作</em></p>
 
+<p align="center"><em>前端界面</em></p>
 <p align="center">
   <img src="assets/readme/效果.jpg" alt="研究报告与产物效果" width="960">
 </p>
-<p align="center"><em>研究报告与产物效果</em></p>
+
 
 ## 项目定位
 
