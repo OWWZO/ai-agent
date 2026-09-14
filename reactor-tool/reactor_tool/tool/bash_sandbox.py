@@ -5,7 +5,8 @@
 - local：workspace/skills 目录链接到库
 - e2b 双路径：
   - 默认（命令不含 skills/ 且 session 未升级）：一次性建→推 workspace→exec→kill（对齐 code_execution）
-  - skill 会话池：命令含 skills/ 首次升级后强粘性；复用沙箱 + workspace/skills 增量推送 + skills 回写；
+  - skill 会话池：命令含 skills/ 首次升级后强粘性；复用沙箱 + workspace 增量推送
+    + 仅推命令引用的 skills/<name> + skills 回写；
     每次访问刷新 idle TTL（默认 5min）；in_use>0 的会话不被 reaper 回收
 """
 
@@ -13,8 +14,10 @@ from __future__ import annotations
 
 import atexit
 import asyncio
+import hashlib
 import json
 import os
+import re
 import shutil
 import threading
 import time
@@ -66,11 +69,48 @@ def _idle_ttl_sec() -> int:
     return _DEFAULT_IDLE_TTL_SEC
 
 
+_SKILL_PATH_RE = re.compile(
+    r"(?:^|[^\w.-])(?:\./)?skills[/\\]+([A-Za-z0-9._-]+)",
+    re.IGNORECASE,
+)
+
+
 def _command_needs_skills(command: str) -> bool:
     """启发式：命令文本是否引用 skills/ 路径（含 Windows 反斜杠）。"""
     text = command or ""
     lowered = text.lower()
     return "skills/" in lowered or "skills\\" in lowered
+
+
+def _command_referenced_skill_names(command: str) -> List[str]:
+    """从命令解析 skills/<name>；保序去重（大小写不敏感）。"""
+    names: List[str] = []
+    seen: set[str] = set()
+    for match in _SKILL_PATH_RE.finditer(command or ""):
+        raw = match.group(1)
+        key = raw.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        names.append(raw)
+    return names
+
+
+def _resolve_skills_to_push(
+    command: str, lib_root: Path, disabled: set[str]
+) -> List[str]:
+    """命令引用 ∩ 库内启用 skill；返回库目录真实名。"""
+    enabled = _list_enabled_skill_names(lib_root, disabled)
+    enabled_map = {name.lower(): name for name in enabled}
+    resolved: List[str] = []
+    seen: set[str] = set()
+    for raw in _command_referenced_skill_names(command):
+        actual = enabled_map.get(raw.lower())
+        if actual is None or actual in seen:
+            continue
+        seen.add(actual)
+        resolved.append(actual)
+    return resolved
 
 
 async def run_bash_sandbox(body: BashSandboxRequest) -> BashSandboxResponse:
@@ -95,7 +135,7 @@ async def run_bash_sandbox(body: BashSandboxRequest) -> BashSandboxResponse:
         if backend == "e2b":
             use_skill_session = _ensure_skill_mode(body.request_id, body.command)
             if use_skill_session and lib_root is not None and lib_root.is_dir():
-                skill_names = _list_enabled_skill_names(lib_root, disabled)
+                skill_names = _resolve_skills_to_push(body.command, lib_root, disabled)
             (
                 exit_code,
                 stdout,
@@ -664,7 +704,7 @@ def _exec_e2b_ephemeral(
             sandbox, command, remote_root, timeout_sec
         )
         _e2b_download_changed_files(
-            sandbox, remote_root, workspace, before, produced_paths
+            sandbox, remote_root, workspace, before, produced_paths, uploaded
         )
         stdout, t1 = _truncate_text(stdout, max_output_chars)
         stderr, t2 = _truncate_text(stderr, max_output_chars)
@@ -708,8 +748,16 @@ def _exec_e2b_skill_session(
                 )
                 sk_up, sk_skip = (0, 0)
                 if lib_root is not None and lib_root.is_dir():
+                    only_names = set(
+                        _resolve_skills_to_push(command, lib_root, disabled)
+                    )
                     sk_up, sk_skip = _e2b_push_skills_incremental(
-                        sandbox, lib_root, remote_root, disabled, entry.uploaded
+                        sandbox,
+                        lib_root,
+                        remote_root,
+                        disabled,
+                        entry.uploaded,
+                        only_names=only_names,
                     )
                 before = _e2b_snapshot_workspace_files(sandbox, remote_root)
                 logger.info(
@@ -726,14 +774,19 @@ def _exec_e2b_skill_session(
                     sandbox, command, remote_root, timeout_sec
                 )
                 _e2b_download_changed_files(
-                    sandbox, remote_root, workspace, before, produced_paths
+                    sandbox,
+                    remote_root,
+                    workspace,
+                    before,
+                    produced_paths,
+                    entry.uploaded,
                 )
                 stdout, t1 = _truncate_text(stdout, max_output_chars)
                 stderr, t2 = _truncate_text(stderr, max_output_chars)
 
                 if lib_root is not None:
                     synced = _e2b_incremental_sync_skills(
-                        sandbox, remote_root, lib_root
+                        sandbox, remote_root, lib_root, entry.uploaded
                     )
 
                 entry.last_used_at = time.time()
@@ -772,6 +825,17 @@ def _file_sig(path: Path) -> Tuple[int, int]:
     return int(st.st_size), int(
         getattr(st, "st_mtime_ns", int(st.st_mtime * 1_000_000_000))
     )
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(65536)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _snapshot_local_workspace(workspace: Path) -> Dict[str, Tuple[int, int]]:
@@ -852,6 +916,7 @@ def _e2b_download_changed_files(
     workspace: Path,
     before: Dict[str, Tuple[int, int]],
     produced_paths: Optional[List[Path]],
+    uploaded: Optional[Dict[str, Tuple[int, int]]] = None,
 ) -> None:
     if produced_paths is None:
         return
@@ -875,6 +940,8 @@ def _e2b_download_changed_files(
             local_path.parent.mkdir(parents=True, exist_ok=True)
             local_path.write_bytes(data)
             produced_paths.append(local_path)
+            if uploaded is not None:
+                uploaded[remote_path] = _file_sig(local_path)
         except Exception as exc:
             logger.warning(
                 "[bash_sandbox] e2b download produced file {} failed: {}",
@@ -995,8 +1062,14 @@ def _e2b_push_skills_incremental(
     remote_root: str,
     disabled: set[str],
     uploaded: Dict[str, Tuple[int, int]],
+    only_names: Optional[set[str]] = None,
 ) -> Tuple[int, int]:
-    """runtime/skills → 沙箱 skills/：只推新增/变更的 skill 文件。"""
+    """runtime/skills → 沙箱 skills/：只推新增/变更的 skill 文件。
+
+    only_names 为 None 时推全部启用包；空集合不推；非空则只推这些名。
+    """
+    if only_names is not None and not only_names:
+        return 0, 0
     remote_skills = f"{remote_root}/{SKILLS_DIR}"
     batch: list[dict[str, Any]] = []
     pending_sigs: Dict[str, Tuple[int, int]] = {}
@@ -1006,6 +1079,8 @@ def _e2b_push_skills_incremental(
         if not skill_dir.is_dir() or skill_dir.name.startswith("."):
             continue
         if skill_dir.name in disabled:
+            continue
+        if only_names is not None and skill_dir.name not in only_names:
             continue
         for path in skill_dir.rglob("*"):
             if not path.is_file() or path.is_symlink():
@@ -1195,11 +1270,15 @@ except subprocess.TimeoutExpired:
 
 
 def _e2b_incremental_sync_skills(
-    sandbox: Any, remote_root: str, lib_root: Path
+    sandbox: Any,
+    remote_root: str,
+    lib_root: Path,
+    uploaded: Optional[Dict[str, Tuple[int, int]]] = None,
 ) -> List[str]:
-    """远端 skills → runtime/skills：只拉取新增/内容变更文件，直接写库。"""
+    """远端 skills → runtime/skills：按 sha256 拉取新增/内容变更文件，直接写库。"""
     remote_skills = f"{remote_root}/{SKILLS_DIR}"
     list_script = f"""
+import hashlib
 import json
 from pathlib import Path
 root = Path({remote_skills!r})
@@ -1213,8 +1292,19 @@ if root.is_dir():
                 continue
             if any(part.startswith(".") for part in Path(rel).parts):
                 continue
+            digest = hashlib.sha256()
+            with p.open("rb") as handle:
+                while True:
+                    chunk = handle.read(65536)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
             st = p.stat()
-            files.append({{"rel": rel, "size": int(st.st_size)}})
+            files.append({{
+                "rel": rel,
+                "size": int(st.st_size),
+                "sha256": digest.hexdigest(),
+            }})
 print("__SKILLS_META__" + json.dumps(files, ensure_ascii=True))
 """
     try:
@@ -1252,14 +1342,10 @@ print("__SKILLS_META__" + json.dumps(files, ensure_ascii=True))
         if not skill_name or skill_name.startswith("."):
             continue
         local_path = lib_root / rel
-        remote_size = item.get("size")
-        if local_path.is_file():
+        remote_hash = str(item.get("sha256") or "").strip().lower()
+        if remote_hash and local_path.is_file():
             try:
-                if remote_size is not None and local_path.stat().st_size == int(
-                    remote_size
-                ):
-                    # size 相同再比 hash，避免误跳过；大文件只比 size 也可，这里对同 size 再读本地 hash 前先拉远端
-                    # 为少一次网络：同 size 默认跳过（skill 脚本变更几乎都会改 size）
+                if _file_sha256(local_path) == remote_hash:
                     skipped += 1
                     continue
             except OSError:
@@ -1278,6 +1364,8 @@ print("__SKILLS_META__" + json.dumps(files, ensure_ascii=True))
             if _incremental_write_skill_file(lib_root, rel, data):
                 synced_skills.add(skill_name)
                 downloaded += 1
+                if uploaded is not None:
+                    uploaded[remote_path] = _file_sig(lib_root / rel)
             else:
                 skipped += 1
         except Exception as exc:

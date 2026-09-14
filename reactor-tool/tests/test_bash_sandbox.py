@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import asyncio
+import hashlib
 import os
 import tempfile
 import time
@@ -164,6 +165,63 @@ def test_command_needs_skills_heuristic():
     assert bash_sandbox._command_needs_skills("ls Skills/demo")
     assert not bash_sandbox._command_needs_skills("echo hi")
     assert not bash_sandbox._command_needs_skills("ls workspace")
+
+
+def test_command_referenced_skill_names():
+    assert bash_sandbox._command_referenced_skill_names(
+        "python skills/demo/scripts/run.py"
+    ) == ["demo"]
+    assert bash_sandbox._command_referenced_skill_names(
+        r"python skills\pptx\scripts\run.py"
+    ) == ["pptx"]
+    assert bash_sandbox._command_referenced_skill_names(
+        'python "./skills/web-artifacts-builder/scripts/x.py"'
+    ) == ["web-artifacts-builder"]
+    assert bash_sandbox._command_referenced_skill_names(
+        "python skills/a/x.py && python skills/b/y.py"
+    ) == ["a", "b"]
+    assert bash_sandbox._command_referenced_skill_names(
+        "python skills/demo/a.py && cat skills/demo/b.py"
+    ) == ["demo"]
+    assert bash_sandbox._command_referenced_skill_names("ls skills") == []
+    assert bash_sandbox._command_referenced_skill_names("ls skills/") == []
+    assert bash_sandbox._command_referenced_skill_names("echo hi") == []
+    assert bash_sandbox._command_referenced_skill_names(
+        "python Skills/Demo/scripts/run.py"
+    ) == ["Demo"]
+    assert bash_sandbox._command_referenced_skill_names("cat myskills/foo") == []
+
+
+def test_resolve_skills_to_push():
+    tmp = Path(tempfile.mkdtemp())
+    lib = tmp / "runtime_skills"
+    (lib / "demo").mkdir(parents=True)
+    (lib / "pptx").mkdir(parents=True)
+    (lib / "demo" / "SKILL.md").write_text("d", encoding="utf-8")
+    (lib / "pptx" / "SKILL.md").write_text("p", encoding="utf-8")
+
+    assert bash_sandbox._resolve_skills_to_push(
+        "python skills/demo/scripts/run.py && python skills/missing/x.py",
+        lib,
+        set(),
+    ) == ["demo"]
+    assert bash_sandbox._resolve_skills_to_push(
+        "python Skills/PPTX/scripts/run.py",
+        lib,
+        set(),
+    ) == ["pptx"]
+    assert (
+        bash_sandbox._resolve_skills_to_push(
+            "python skills/demo/scripts/run.py", lib, {"demo"}
+        )
+        == []
+    )
+    assert bash_sandbox._resolve_skills_to_push("ls skills/", lib, set()) == []
+    assert bash_sandbox._resolve_skills_to_push(
+        "python skills/demo/a.py && python skills/pptx/b.py",
+        lib,
+        set(),
+    ) == ["demo", "pptx"]
 
 
 def test_session_sandbox_reuses_and_incremental_push():
@@ -481,6 +539,115 @@ def test_e2b_skill_mode_sticky_upgrades_session():
             os.environ["BASH_SANDBOX_IDLE_TTL_SEC"] = prev_ttl
 
 
+def test_e2b_pushes_only_referenced_skills():
+    """命令只引用 demo 时不推 heavy；sticky echo 也不补全库。"""
+    written: list[str] = []
+
+    class FakeFiles:
+        def write_files(self, files, **kwargs):
+            for item in files:
+                written.append(item["path"])
+
+        def read(self, path, format=None):
+            return b""
+
+    class FakeSandbox:
+        def __init__(self):
+            self.files = FakeFiles()
+            self.commands = self
+
+        def run(self, command, cwd=None, timeout=None):
+            class R:
+                exit_code = 0
+                stdout = "ok\n"
+                stderr = ""
+
+            return R()
+
+        def run_code(self, script, timeout=None):
+            class Logs:
+                stdout = ["__SKILLS_META__[]\n"]
+                stderr = []
+
+            class E:
+                logs = Logs()
+                text = ""
+                error = None
+
+            return E()
+
+        def kill(self):
+            return None
+
+        def set_timeout(self, sec):
+            return None
+
+    prev_ttl = os.environ.get("BASH_SANDBOX_IDLE_TTL_SEC")
+    os.environ["BASH_SANDBOX_IDLE_TTL_SEC"] = "300"
+    bash_sandbox._shutdown_all_sessions()
+
+    originals = {
+        "_create_e2b_sandbox": bash_sandbox._create_e2b_sandbox,
+        "_e2b_mkdir": bash_sandbox._e2b_mkdir,
+        "_e2b_incremental_sync_skills": bash_sandbox._e2b_incremental_sync_skills,
+    }
+    bash_sandbox._create_e2b_sandbox = lambda timeout_sec: FakeSandbox()  # type: ignore
+    bash_sandbox._e2b_mkdir = lambda *a, **k: None  # type: ignore
+    bash_sandbox._e2b_incremental_sync_skills = lambda *a, **k: []  # type: ignore
+
+    tmp = Path(tempfile.mkdtemp())
+    lib = tmp / "runtime_skills"
+    (lib / "demo").mkdir(parents=True)
+    (lib / "demo" / "SKILL.md").write_bytes(b"d")
+    (lib / "heavy").mkdir(parents=True)
+    (lib / "heavy" / "SKILL.md").write_bytes(b"h")
+    workspace = tmp / "ws"
+    workspace.mkdir()
+    (workspace / "a.txt").write_bytes(b"1")
+
+    try:
+        r1 = bash_sandbox._exec_e2b(
+            "session-filter-1",
+            "python skills/demo/scripts/run.py",
+            workspace,
+            lib,
+            set(),
+            30,
+            64000,
+        )
+        assert r1[0] == 0
+        assert any("/skills/demo/SKILL.md" in p for p in written)
+        assert not any("/skills/heavy/" in p for p in written)
+        n_after_demo = len(written)
+
+        r2 = bash_sandbox._exec_e2b(
+            "session-filter-1", "echo after", workspace, lib, set(), 30, 64000
+        )
+        assert r2[0] == 0
+        assert len(written) == n_after_demo
+        assert not any("/skills/heavy/" in p for p in written)
+
+        r3 = bash_sandbox._exec_e2b(
+            "session-filter-1",
+            "python skills/heavy/scripts/run.py",
+            workspace,
+            lib,
+            set(),
+            30,
+            64000,
+        )
+        assert r3[0] == 0
+        assert any("/skills/heavy/SKILL.md" in p for p in written)
+    finally:
+        bash_sandbox._shutdown_all_sessions()
+        for name, fn in originals.items():
+            setattr(bash_sandbox, name, fn)
+        if prev_ttl is None:
+            os.environ.pop("BASH_SANDBOX_IDLE_TTL_SEC", None)
+        else:
+            os.environ["BASH_SANDBOX_IDLE_TTL_SEC"] = prev_ttl
+
+
 def test_incremental_push_helpers_unit():
     uploaded: dict = {}
     written: list[str] = []
@@ -518,6 +685,190 @@ def test_incremental_push_helpers_unit():
     )
     assert up3 == 1 and sk3 == 0
     assert up4 == 0 and sk4 == 1
+
+
+def test_e2b_push_skills_respects_only_names():
+    written: list[str] = []
+
+    class FakeFiles:
+        def write_files(self, files, **kwargs):
+            for item in files:
+                written.append(item["path"])
+
+    class FakeSandbox:
+        files = FakeFiles()
+
+    tmp = Path(tempfile.mkdtemp())
+    lib = tmp / "lib"
+    (lib / "demo").mkdir(parents=True)
+    (lib / "demo" / "SKILL.md").write_bytes(b"d")
+    (lib / "heavy").mkdir(parents=True)
+    (lib / "heavy" / "SKILL.md").write_bytes(b"h")
+
+    up, _ = bash_sandbox._e2b_push_skills_incremental(
+        FakeSandbox(),
+        lib,
+        "/home/user/workspace",
+        set(),
+        {},
+        only_names={"demo"},
+    )
+    assert up == 1
+    assert any("/skills/demo/" in p for p in written)
+    assert not any("/skills/heavy/" in p for p in written)
+
+    n = len(written)
+    up_empty, sk_empty = bash_sandbox._e2b_push_skills_incremental(
+        FakeSandbox(),
+        lib,
+        "/home/user/workspace",
+        set(),
+        {},
+        only_names=set(),
+    )
+    assert up_empty == 0 and sk_empty == 0
+    assert len(written) == n
+
+
+def test_e2b_skill_sync_same_size_different_hash_downloads():
+    """沙箱改 skill 且字节数不变时，仍按 sha256 回写库。"""
+    tmp = Path(tempfile.mkdtemp())
+    lib = tmp / "lib"
+    (lib / "demo").mkdir(parents=True)
+    local = lib / "demo" / "run.py"
+    local.write_bytes(b"aaaaa")
+    remote_data = b"bbbbb"
+    remote_hash = hashlib.sha256(remote_data).hexdigest()
+    reads: list[str] = []
+
+    class FakeFiles:
+        def read(self, path, format=None):
+            reads.append(path)
+            return remote_data
+
+    class FakeSandbox:
+        files = FakeFiles()
+
+        def run_code(self, script, timeout=None):
+            class Logs:
+                stdout = [
+                    '__SKILLS_META__[{"rel": "demo/run.py", "size": 5, "sha256": "'
+                    + remote_hash
+                    + '"}]\n'
+                ]
+                stderr = []
+
+            class E:
+                logs = Logs()
+                text = ""
+                error = None
+
+            return E()
+
+    uploaded: dict = {}
+    synced = bash_sandbox._e2b_incremental_sync_skills(
+        FakeSandbox(), "/home/user/workspace", lib, uploaded
+    )
+    remote = "/home/user/workspace/skills/demo/run.py"
+    assert synced == ["demo"]
+    assert local.read_bytes() == remote_data
+    assert reads == [remote]
+    assert uploaded[remote] == bash_sandbox._file_sig(local)
+
+
+def test_e2b_skill_sync_same_hash_skips_download():
+    tmp = Path(tempfile.mkdtemp())
+    lib = tmp / "lib"
+    (lib / "demo").mkdir(parents=True)
+    local = lib / "demo" / "run.py"
+    local.write_bytes(b"aaaaa")
+    remote_hash = hashlib.sha256(b"aaaaa").hexdigest()
+    reads: list[str] = []
+
+    class FakeFiles:
+        def read(self, path, format=None):
+            reads.append(path)
+            return b"aaaaa"
+
+    class FakeSandbox:
+        files = FakeFiles()
+
+        def run_code(self, script, timeout=None):
+            class Logs:
+                stdout = [
+                    '__SKILLS_META__[{"rel": "demo/run.py", "size": 5, "sha256": "'
+                    + remote_hash
+                    + '"}]\n'
+                ]
+                stderr = []
+
+            class E:
+                logs = Logs()
+                text = ""
+                error = None
+
+            return E()
+
+    synced = bash_sandbox._e2b_incremental_sync_skills(
+        FakeSandbox(), "/home/user/workspace", lib, {}
+    )
+    assert synced == []
+    assert reads == []
+    assert local.read_bytes() == b"aaaaa"
+
+
+def test_e2b_download_records_uploaded_fingerprint():
+    """沙箱产物拉回本地后写入 uploaded，下次增量推送应跳过。"""
+    written: list[str] = []
+
+    class FakeFiles:
+        def write_files(self, files, **kwargs):
+            for item in files:
+                written.append(item["path"])
+
+        def read(self, path, format=None):
+            return b"hello"
+
+    class FakeSandbox:
+        files = FakeFiles()
+
+        def run_code(self, script, timeout=None):
+            class Logs:
+                stdout = ['__BASH_WORKSPACE_SNAPSHOT__{"report.txt": [5, 1]}\n']
+                stderr = []
+
+            class E:
+                logs = Logs()
+                text = ""
+                error = None
+
+            return E()
+
+    tmp = Path(tempfile.mkdtemp())
+    workspace = tmp / "ws"
+    workspace.mkdir()
+    uploaded: dict = {}
+    produced: list[Path] = []
+
+    bash_sandbox._e2b_download_changed_files(
+        FakeSandbox(),
+        "/home/user/workspace",
+        workspace,
+        {},
+        produced,
+        uploaded,
+    )
+    local = workspace / "report.txt"
+    remote = "/home/user/workspace/report.txt"
+    assert local.read_bytes() == b"hello"
+    assert produced == [local]
+    assert uploaded[remote] == bash_sandbox._file_sig(local)
+
+    up, skip = bash_sandbox._e2b_push_workspace_incremental(
+        FakeSandbox(), workspace, "/home/user/workspace", uploaded
+    )
+    assert up == 0 and skip == 1
+    assert written == []
 
 
 def test_e2b_skips_task_description_as_filename():
@@ -754,10 +1105,17 @@ if __name__ == "__main__":
     test_upload_tree_skips_skills_dir()
     test_backend_selection_uses_config()
     test_command_needs_skills_heuristic()
+    test_command_referenced_skill_names()
+    test_resolve_skills_to_push()
     test_session_sandbox_reuses_and_incremental_push()
     test_e2b_ephemeral_skips_skills_and_kills()
     test_e2b_skill_mode_sticky_upgrades_session()
+    test_e2b_pushes_only_referenced_skills()
     test_incremental_push_helpers_unit()
+    test_e2b_push_skills_respects_only_names()
+    test_e2b_skill_sync_same_size_different_hash_downloads()
+    test_e2b_skill_sync_same_hash_skips_download()
+    test_e2b_download_records_uploaded_fingerprint()
     test_e2b_skips_task_description_as_filename()
     test_e2b_file_upload_retries_transient_transport_errors()
     test_e2b_file_upload_does_not_retry_non_transient_errors()
