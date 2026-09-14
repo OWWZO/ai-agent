@@ -41,7 +41,7 @@ function usage() {
 Options:
   --mode editable|raster     editable = text/shapes/images where practical; raster = one PNG per slide
   --preview-dir DIR          write rendered PNG previews and layout QA artifacts
-  --node-modules DIR         directory containing playwright and @oai/artifact-tool
+  --node-modules DIR         directory containing playwright and pptxgenjs
   --browser-executable PATH  optional Chrome/Chromium executable if Playwright browsers are absent
   --slide-width N            PPT canvas width in px, default 1600
   --slide-height N           PPT canvas height in px, default 900
@@ -54,31 +54,37 @@ Notes:
 }
 
 function makeRequire(nodeModules) {
-  if (nodeModules) {
-    return createRequire(path.join(path.resolve(nodeModules), "noop.js"));
+  const candidates = [];
+  if (nodeModules) candidates.push(path.join(path.resolve(nodeModules), "noop.js"));
+  candidates.push("/home/user/noop.js");
+  candidates.push(path.join(SCRIPT_DIR, "noop.js"));
+  for (const filename of candidates) {
+    try {
+      const req = createRequire(filename);
+      req.resolve("playwright");
+      return req;
+    } catch {
+      // Try the next Node resolution root.
+    }
   }
   return createRequire(import.meta.url);
 }
 
-async function loadDependencies(nodeModules) {
+function loadDependencies(nodeModules) {
   const req = makeRequire(nodeModules);
   let playwright;
-  let artifactTool;
+  let PptxGenJS;
   try {
     playwright = req("playwright");
   } catch (error) {
-    throw new Error(`Cannot resolve playwright. Pass --node-modules or set NODE_PATH to bundled node_modules. ${error.message}`);
+    throw new Error(`Cannot resolve playwright. Pass --node-modules or set NODE_PATH. ${error.message}`);
   }
   try {
-    artifactTool = await import("@oai/artifact-tool");
-  } catch {
-    try {
-      artifactTool = req("@oai/artifact-tool");
-    } catch (error) {
-      throw new Error(`Cannot resolve @oai/artifact-tool. Initialize the presentation workspace or pass --node-modules. ${error.message}`);
-    }
+    PptxGenJS = req("pptxgenjs");
+  } catch (error) {
+    throw new Error(`Cannot resolve pptxgenjs. Pass --node-modules or set NODE_PATH. ${error.message}`);
   }
-  return { chromium: playwright.chromium, ...artifactTool };
+  return { chromium: playwright.chromium, PptxGenJS };
 }
 
 async function findBrowserExecutable(explicitPath) {
@@ -103,7 +109,7 @@ async function findBrowserExecutable(explicitPath) {
   return null;
 }
 
-const ARTIFACT_TOOL_SUPPORTS_TRANSPARENT_FILL = false;
+const SLIDE_INCH_WIDTH = 13.333;
 
 function clampChannel(value) {
   return Math.max(0, Math.min(255, Math.round(value)));
@@ -156,11 +162,32 @@ function mixCssColor(foreground, backdrop) {
 function colorForPpt(value, fallback = "none", backdrop = "#ffffff") {
   const parsed = parseCssColor(value);
   if (!parsed || parsed.alpha < 0.02) return fallback;
-  if (parsed.alpha < 0.995 && ARTIFACT_TOOL_SUPPORTS_TRANSPARENT_FILL) {
-    return { color: parsed.hex, transparency: Math.round((1 - parsed.alpha) * 100) };
-  }
   const mixed = parsed.alpha < 0.995 ? mixCssColor(parsed, backdrop) : parsed;
   return mixed ? hexFromRgb(mixed) : fallback;
+}
+
+function pptHex(value, fallback = "FFFFFF", backdrop = "#ffffff") {
+  const raw = colorForPpt(value, `#${fallback}`, backdrop);
+  if (!raw || raw === "none") return null;
+  return String(raw).replace("#", "").toUpperCase();
+}
+
+function boxInches(box, slideWidth, slideHeight) {
+  const heightIn = (slideHeight / slideWidth) * SLIDE_INCH_WIDTH;
+  return {
+    x: (box.left * SLIDE_INCH_WIDTH) / slideWidth,
+    y: (box.top * heightIn) / slideHeight,
+    w: (box.width * SLIDE_INCH_WIDTH) / slideWidth,
+    h: (box.height * heightIn) / slideHeight,
+  };
+}
+
+function createPresentation(PptxGenJS, slideWidth, slideHeight) {
+  const pres = new PptxGenJS();
+  const heightIn = (slideHeight / slideWidth) * SLIDE_INCH_WIDTH;
+  pres.defineLayout({ name: "WATERFALL", width: SLIDE_INCH_WIDTH, height: heightIn });
+  pres.layout = "WATERFALL";
+  return pres;
 }
 
 function normalizePathFromUrl(src) {
@@ -371,31 +398,25 @@ async function extractDeck(chromium, htmlPath, slideWidth, slideHeight, browserE
   return slides;
 }
 
-async function writeBlob(filePath, blob) {
-  await fs.writeFile(filePath, new Uint8Array(await blob.arrayBuffer()));
-}
-
 function addText(slide, item, slideWidth, slideHeight) {
   const box = clampBox(item.box, slideWidth, slideHeight);
   if (box.width < 2 || box.height < 2) return;
-  const shape = slide.shapes.add({
-    geometry: "textbox",
-    position: box,
-    fill: "none",
-    line: { style: "solid", fill: "none", width: 0 },
-  });
-  shape.text = item.text;
-  shape.text.style = {
-    fontSize: Math.max(8, Math.round(item.fontSize)),
+  const pos = boxInches(box, slideWidth, slideHeight);
+  const color = pptHex(item.color, "1A1A1A", item.backdrop || "#ffffff");
+  slide.addText(item.text, {
+    x: pos.x,
+    y: pos.y,
+    w: pos.w,
+    h: pos.h,
+    fontSize: Math.max(8, Math.round(item.fontSize * (12 / 16))),
     bold: Number.parseInt(item.fontWeight, 10) >= 650 || item.fontWeight === "bold",
     italic: item.fontStyle === "italic",
-    color: colorForPpt(item.color, "#1a1a1a", item.backdrop || "#ffffff"),
-    alignment: ["center", "right", "justify"].includes(item.textAlign) ? item.textAlign : "left",
-    verticalAlignment: "top",
-    lineSpacing: 1.1,
-    typeface: item.fontFamily?.split(",")[0]?.replaceAll('"', "").trim(),
-    insets: { top: 0, right: 0, bottom: 0, left: 0 },
-  };
+    color: color || "1A1A1A",
+    align: ["center", "right", "justify"].includes(item.textAlign) ? item.textAlign : "left",
+    valign: "top",
+    margin: 0,
+    fontFace: item.fontFamily?.split(",")[0]?.replaceAll('"', "").trim() || "Arial",
+  });
 }
 
 function addShape(slide, item, slideWidth, slideHeight) {
@@ -404,56 +425,60 @@ function addShape(slide, item, slideWidth, slideHeight) {
   if (item.kind === "rule" && box.height < 1.5) {
     box.height = 1.5;
   }
-  slide.shapes.add({
-    geometry: "rect",
-    position: box,
-    fill: colorForPpt(item.fill, "none", item.backdrop || "#ffffff"),
-    line: {
-      style: "solid",
-      fill: colorForPpt(item.line?.fill, "none", item.backdrop || "#ffffff"),
-      width: item.line?.width ?? 0,
-    },
-  });
+  const pos = boxInches(box, slideWidth, slideHeight);
+  const fill = pptHex(item.fill, null, item.backdrop || "#ffffff");
+  const line = pptHex(item.line?.fill, null, item.backdrop || "#ffffff");
+  const options = {
+    x: pos.x,
+    y: pos.y,
+    w: pos.w,
+    h: pos.h,
+  };
+  if (fill) options.fill = { color: fill };
+  if (line && (item.line?.width ?? 0) > 0) {
+    options.line = { color: line, width: item.line.width * 0.75 };
+  } else {
+    options.line = { color: fill || "FFFFFF", width: 0 };
+  }
+  slide.addShape("rect", options);
 }
 
 async function addImage(slide, item, baseDir, slideWidth, slideHeight) {
   const box = clampBox(item.box, slideWidth, slideHeight);
   if (box.width < 2 || box.height < 2) return;
   const { bytes, contentType } = await bytesForImage(item.src, baseDir);
-  slide.images.add({
-    blob: bytes,
-    contentType,
-    alt: item.alt,
-    fit: item.fit,
-    position: box,
+  const pos = boxInches(box, slideWidth, slideHeight);
+  const mime = contentType || "image/png";
+  slide.addImage({
+    data: `${mime};base64,${Buffer.from(bytes).toString("base64")}`,
+    x: pos.x,
+    y: pos.y,
+    w: pos.w,
+    h: pos.h,
+    sizing: { type: item.fit === "cover" ? "cover" : "contain", w: pos.w, h: pos.h },
   });
 }
 
-async function exportEditable({ Presentation, PresentationFile }, slides, htmlPath, output, options) {
-  const presentation = Presentation.create({
-    slideSize: { width: options.slideWidth, height: options.slideHeight },
-  });
+async function exportEditable({ PptxGenJS }, slides, htmlPath, output, options) {
+  const presentation = createPresentation(PptxGenJS, options.slideWidth, options.slideHeight);
   const baseDir = path.dirname(path.resolve(htmlPath));
   for (const item of slides) {
-    const slide = presentation.slides.add();
-    slide.background.fill = colorForPpt(item.background, "#ffffff", "#ffffff");
+    const slide = presentation.addSlide();
+    const bg = pptHex(item.background, "FFFFFF", "#ffffff");
+    if (bg) slide.background = { color: bg };
     for (const shape of item.shapes.filter((shape) => shape.kind !== "rule")) addShape(slide, shape, options.slideWidth, options.slideHeight);
     for (const image of item.images) await addImage(slide, image, baseDir, options.slideWidth, options.slideHeight);
     for (const shape of item.shapes.filter((shape) => shape.kind === "rule")) addShape(slide, shape, options.slideWidth, options.slideHeight);
     for (const text of item.texts) addText(slide, text, options.slideWidth, options.slideHeight);
-    if (item.notes) {
-      slide.speakerNotes.textFrame.setText(item.notes);
-      slide.speakerNotes.setVisible(true);
-    }
+    if (item.notes) slide.addNotes(item.notes);
   }
   await fs.mkdir(path.dirname(path.resolve(output)), { recursive: true });
-  if (options.previewDir) await writeQa(presentation, options.previewDir);
-  const pptx = await PresentationFile.exportPptx(presentation);
-  await pptx.save(output);
-  return presentation;
+  if (options.previewDir) await writeQa(slides, options.previewDir);
+  await presentation.writeFile({ fileName: path.resolve(output) });
+  return { presentation, slideCount: slides.length, slides };
 }
 
-async function exportRaster({ Presentation, PresentationFile }, chromium, htmlPath, output, options) {
+async function exportRaster({ PptxGenJS, chromium }, htmlPath, output, options) {
   const browserExecutable = await findBrowserExecutable(options.browserExecutable);
   const browser = await chromium.launch({
     headless: true,
@@ -471,34 +496,47 @@ async function exportRaster({ Presentation, PresentationFile }, chromium, htmlPa
   await page.evaluate(() => window.dispatchEvent(new Event("resize")));
   await page.waitForTimeout(500);
   const frames = await page.locator(".slide-frame").all();
-  const presentation = Presentation.create({ slideSize: { width: options.slideWidth, height: options.slideHeight } });
+  const presentation = createPresentation(PptxGenJS, options.slideWidth, options.slideHeight);
+  const previews = [];
   for (let index = 0; index < frames.length; index += 1) {
     const bytes = await frames[index].screenshot({ type: "png" });
-    const slide = presentation.slides.add();
-    slide.images.add({
-      blob: bytes,
-      contentType: "image/png",
-      alt: `Slide ${index + 1}`,
-      fit: "cover",
-      position: { left: 0, top: 0, width: options.slideWidth, height: options.slideHeight },
+    previews.push(bytes);
+    const slide = presentation.addSlide();
+    slide.addImage({
+      data: `image/png;base64,${Buffer.from(bytes).toString("base64")}`,
+      x: 0,
+      y: 0,
+      w: SLIDE_INCH_WIDTH,
+      h: (options.slideHeight / options.slideWidth) * SLIDE_INCH_WIDTH,
     });
   }
   await browser.close();
   await fs.mkdir(path.dirname(path.resolve(output)), { recursive: true });
-  if (options.previewDir) await writeQa(presentation, options.previewDir);
-  const pptx = await PresentationFile.exportPptx(presentation);
-  await pptx.save(output);
-  return presentation;
+  if (options.previewDir) {
+    await fs.mkdir(options.previewDir, { recursive: true });
+    for (let index = 0; index < previews.length; index += 1) {
+      const stem = `slide-${String(index + 1).padStart(2, "0")}`;
+      await fs.writeFile(path.join(options.previewDir, `${stem}.png`), previews[index]);
+    }
+  }
+  await presentation.writeFile({ fileName: path.resolve(output) });
+  return { presentation, slideCount: frames.length, slides: [] };
 }
 
-async function writeQa(presentation, previewDir) {
+async function writeQa(slides, previewDir) {
   await fs.mkdir(previewDir, { recursive: true });
-  for (const [index, slide] of presentation.slides.items.entries()) {
+  for (const [index, slide] of slides.entries()) {
     const stem = `slide-${String(index + 1).padStart(2, "0")}`;
-    await writeBlob(path.join(previewDir, `${stem}.png`), await presentation.export({ slide, format: "png", scale: 1 }));
-    await fs.writeFile(path.join(previewDir, `${stem}.layout.json`), await (await slide.export({ format: "layout" })).text());
+    await fs.writeFile(
+      path.join(previewDir, `${stem}.layout.json`),
+      JSON.stringify({
+        index: slide.index,
+        texts: slide.texts?.length || 0,
+        shapes: slide.shapes?.length || 0,
+        images: slide.images?.length || 0,
+      }),
+    );
   }
-  await writeBlob(path.join(previewDir, "deck-montage.webp"), await presentation.export({ format: "webp", montage: true, scale: 0.5 }));
 }
 
 async function main() {
@@ -508,22 +546,32 @@ async function main() {
     process.exit(args.help ? 0 : 1);
   }
   if (!["editable", "raster"].includes(args.mode)) throw new Error("--mode must be editable or raster");
-  const deps = await loadDependencies(args.nodeModules);
-  let presentation;
+  const deps = loadDependencies(args.nodeModules);
+  let result;
   if (args.mode === "raster") {
-    presentation = await exportRaster(deps, deps.chromium, args.input, args.output, args);
+    result = await exportRaster(deps, args.input, args.output, args);
   } else {
     const slides = await extractDeck(deps.chromium, args.input, args.slideWidth, args.slideHeight, args.browserExecutable);
     if (!slides.length) throw new Error("No .deck-card / .slide-frame slides found.");
-    presentation = await exportEditable(deps, slides, args.input, args.output, args);
+    result = await exportEditable(deps, slides, args.input, args.output, args);
   }
   const inspectPath = `${args.output}.inspect.ndjson`;
-  const inspected = await presentation.inspect({ kind: "slide,textbox,shape,image,notes", maxChars: 20000 });
-  await fs.writeFile(inspectPath, inspected.ndjson);
+  const inspectLines = (result.slides || []).map((slide, index) => JSON.stringify({
+    kind: "slide",
+    index: index + 1,
+    notes: slide.notes || "",
+    texts: slide.texts?.length || 0,
+    shapes: slide.shapes?.length || 0,
+    images: slide.images?.length || 0,
+  }));
+  if (!inspectLines.length) {
+    inspectLines.push(JSON.stringify({ kind: "deck", slides: result.slideCount, mode: args.mode }));
+  }
+  await fs.writeFile(inspectPath, `${inspectLines.join("\n")}\n`);
   console.log(JSON.stringify({
     output: path.resolve(args.output),
     inspect: path.resolve(inspectPath),
-    slides: presentation.slides.items.length,
+    slides: result.slideCount,
     mode: args.mode,
   }, null, 2));
 }

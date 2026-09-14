@@ -53,8 +53,19 @@ Notes:
 }
 
 function makeRequire(nodeModules) {
-  if (nodeModules) {
-    return createRequire(path.join(path.resolve(nodeModules), "noop.js"));
+  const candidates = [];
+  if (nodeModules) candidates.push(path.join(path.resolve(nodeModules), "noop.js"));
+  candidates.push("/home/user/noop.js");
+  candidates.push(path.join(SCRIPT_DIR, "noop.js"));
+  for (const filename of candidates) {
+    try {
+      const req = createRequire(filename);
+      req.resolve("playwright");
+      req.resolve("pdf-lib");
+      return req;
+    } catch {
+      // Try the next Node resolution root.
+    }
   }
   return createRequire(import.meta.url);
 }
