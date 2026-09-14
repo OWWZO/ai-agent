@@ -117,6 +117,8 @@ autobots:
       max-concurrency: 32
 
   autoagent:
+    # 单次 LLM 工具调用业务超时，单位秒；10 分钟响应建议至少配置为 1200
+    llm-timeout-seconds: 1200
     workspace:
       # Backend 与 reactor-tool 通过 Compose 共享同一份持久化工作区。
       root-template: "${WORKSPACE_ROOT:/data/skilloutput}/{sessionId}"

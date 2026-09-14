@@ -76,6 +76,13 @@ public class ReactImplAgent extends ReActAgent {
         try {
             context.setStreamMessageType("tool_thought");
 
+            Integer configuredTimeout = context.getRuntimeDependencies()
+                    .requireReactorConfig()
+                    .getLlmTimeoutSeconds();
+            int llmTimeoutSeconds = configuredTimeout == null || configuredTimeout <= 0
+                    ? 1200
+                    : configuredTimeout;
+
             LLM.ToolCallResponse response = awaitFuture(
                     getLlm().askTool(
                             context,
@@ -85,7 +92,7 @@ public class ReactImplAgent extends ReActAgent {
                             ToolChoice.AUTO,
                             null,
                             context.getIsStream(),
-                            300
+                            llmTimeoutSeconds
                     )
             );
 

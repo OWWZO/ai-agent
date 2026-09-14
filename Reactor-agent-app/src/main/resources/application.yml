@@ -66,6 +66,8 @@ autobots:
         - http://localhost:3000
         - http://127.0.0.1:3000
   autoagent:
+    # 单次 LLM 工具调用业务超时，单位秒；10 分钟响应建议至少配置为 1200
+    llm-timeout-seconds: 1200
 
     # 兼容旧字段；实际上游凭证见 image_generation.*
     image_generation_url: ""

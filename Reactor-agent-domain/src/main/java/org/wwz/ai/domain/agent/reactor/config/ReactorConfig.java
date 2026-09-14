@@ -104,6 +104,12 @@ public class ReactorConfig {
     @Value("${autobots.autoagent.executor.max_observe:10000}")
     private String maxObserve;
 
+    /**
+     * 单次 LLM 工具调用的业务超时时间，单位秒；非正值由调用方回退到默认值。
+     */
+    @Value("${autobots.autoagent.llm-timeout-seconds:1200}")
+    private Integer llmTimeoutSeconds;
+
     @Value("${autobots.autoagent.code_interpreter_url:}")
     private String codeInterpreterUrl;
 
