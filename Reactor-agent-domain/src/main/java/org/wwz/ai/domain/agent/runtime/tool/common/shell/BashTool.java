@@ -53,7 +53,8 @@ public class BashTool implements BaseTool {
         int maxSec = skillRuntimeOptions == null ? 600 : skillRuntimeOptions.getBashMaxTimeoutSec();
         return "在远端沙箱执行 shell（reactor-tool /v1/tool/bash；"
                 + "与 code_execution 相同 CODE_SANDBOX_BACKEND：local 或 e2b）。"
-                + "命令含 skills/ 时才会把全局 skill 库物化到沙箱 skills/<name>/（此后本会话 bash 保持 skill 沙箱）；"
+                + "只物化命令里出现的 skills/<name>；脚本若还要用其它 skill，必须把那些路径也写进同一条 command，未引用的包沙箱里不存在。"
+                + "命令含 skills/ 时进入 skill 沙箱（此后本会话 bash 保持该沙箱）。"
                 + "命令示例：python skills/<name>/scripts/xxx.py。"
                 + "沙箱内对 skills/** 的修改会回写全局 skill 库（注册表本轮不刷新）。"
                 + "路径：无前缀=会话工作区相对路径，skills/=技能库；不要用宿主绝对路径。"
@@ -104,7 +105,8 @@ public class BashTool implements BaseTool {
             }
 
             String sessionId = StringUtils.defaultIfBlank(agentContext.getSessionId(), agentContext.getRequestId());
-            String workspaceRoot = WorkspacePaths.skillOutputSessionRoot(sessionId).toString();
+            String workspaceRoot = WorkspacePaths.resolveSandboxRoot(
+                    agentContext.getWorkspaceRoot(), sessionId).toString();
             String skillLibraryRoot = null;
             if (skillVirtualPaths != null && skillVirtualPaths.isEnabled()) {
                 try {

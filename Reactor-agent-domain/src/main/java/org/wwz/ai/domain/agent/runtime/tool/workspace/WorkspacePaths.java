@@ -47,6 +47,17 @@ public final class WorkspacePaths {
         return resolveRepoRoot().resolve(REACTOR_TOOL).resolve("skilloutput").resolve(safe).normalize();
     }
 
+    /**
+     * bash / code_execution 推沙箱用的本地根：优先会话已解析的 workspaceRoot
+     *（与 workspace_write 同一目录），未设置时回退 skilloutput/{sessionId}。
+     */
+    public static Path resolveSandboxRoot(String configuredRoot, String sessionId) {
+        if (configuredRoot != null && !configuredRoot.isBlank()) {
+            return Path.of(configuredRoot.trim()).toAbsolutePath().normalize();
+        }
+        return skillOutputSessionRoot(sessionId);
+    }
+
     private static boolean isMonorepoRoot(Path path) {
         return path != null
                 && Files.isDirectory(path)

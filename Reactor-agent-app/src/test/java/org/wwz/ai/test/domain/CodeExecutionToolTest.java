@@ -53,4 +53,46 @@ public class CodeExecutionToolTest {
                 .contains("https://file.example.com/preview/chart.png"));
         Assert.assertEquals("chart.png", context.getVisibleArtifactFiles().get(0).getFileName());
     }
+
+    @Test
+    public void shouldSendAgentContextWorkspaceRootToSandbox() {
+        java.util.concurrent.atomic.AtomicReference<String> capturedBody = new java.util.concurrent.atomic.AtomicReference<>();
+        RemoteHttpPort httpPort = request -> {
+            capturedBody.set(request.getBody());
+            return """
+                    {"status":"ok","stdout":"","stderr":"","result":null,"fileInfo":[]}
+                    """;
+        };
+        ReactorConfig config = new ReactorConfig();
+        ReflectionTestUtils.setField(config, "codeInterpreterUrl", "http://reactor-tool");
+        String workspaceRoot = java.nio.file.Path.of(
+                        System.getProperty("java.io.tmpdir"), "reactor-ws-align", "session-code-001")
+                .toAbsolutePath()
+                .normalize()
+                .toString();
+        AgentContext context = AgentContext.builder()
+                .requestId("req-code-001")
+                .sessionId("session-code-001")
+                .workspaceRoot(workspaceRoot)
+                .productFiles(new ArrayList<>())
+                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .build();
+        ToolArtifactSource artifactSource = ToolArtifactSource.builder()
+                .sessionId(context.getSessionId())
+                .requestId(context.getRequestId())
+                .toolCallId("call-code-001")
+                .toolName("code_execution")
+                .build();
+        CodeExecutionTool tool = new CodeExecutionTool();
+        tool.setAgentContext(context);
+
+        context.bindCurrentToolArtifactSource(artifactSource);
+        try {
+            tool.execute(Map.of("source", "result = 1"));
+        } finally {
+            context.clearCurrentToolArtifactSource();
+        }
+
+        Assert.assertEquals(workspaceRoot, JSON.parseObject(capturedBody.get()).getString("workspaceRoot"));
+    }
 }

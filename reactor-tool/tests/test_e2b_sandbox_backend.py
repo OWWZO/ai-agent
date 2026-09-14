@@ -393,6 +393,31 @@ class E2BSandboxBackendTest(unittest.TestCase):
             finally:
                 executor.close()
 
+    def test_workspace_profile_wrap_chdirs_to_workspace_root(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            workspace_root = Path(workspace)
+            output_dir = workspace_root / "output"
+            output_dir.mkdir()
+            policy = build_permission_policy(
+                profile="workspace",
+                workspace_root=str(workspace_root),
+                output_dir=str(output_dir),
+                input_files=[],
+            )
+            executor = E2BPythonSandboxExecutor(
+                policy,
+                timeout_seconds=15,
+                sandbox_factory=lambda **kwargs: _FakeSandbox(),
+            )
+            try:
+                wrapped = executor._wrap_user_code("print(1)", include_bootstrap=True)
+                self.assertIn(f"os.chdir({_REMOTE_ROOT!r})", wrapped)
+                self.assertNotIn(f"os.chdir({(_REMOTE_ROOT + '/output')!r})", wrapped)
+                self.assertNotIn("def build_output_path", wrapped)
+                self.assertNotIn("def resolve_input_path", wrapped)
+            finally:
+                executor.close()
+
 
 if __name__ == "__main__":
     unittest.main()

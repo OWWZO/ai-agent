@@ -3,7 +3,10 @@ import unittest
 from pathlib import Path
 
 from reactor_tool.tool.code_interpreter_policy import build_permission_policy
-from reactor_tool.tool.python_sandbox_executor import PythonSandboxExecutionError, PythonSandboxExecutor
+from reactor_tool.tool.python_sandbox_executor import (
+    PythonSandboxExecutionError,
+    PythonSandboxExecutor,
+)
 
 
 class PythonSandboxExecutorTest(unittest.TestCase):
@@ -29,10 +32,14 @@ class PythonSandboxExecutorTest(unittest.TestCase):
                 second = executor.execute("print(counter + 1)")
 
                 self.assertIn("created", first.stdout)
-                self.assertEqual(["result.txt"], [item["name"] for item in first.produced_files])
+                self.assertEqual(
+                    ["result.txt"], [item["name"] for item in first.produced_files]
+                )
                 self.assertIn("42", second.stdout)
                 self.assertTrue((output_dir / "result.txt").is_file())
-                self.assertEqual(["result.txt"], [item["name"] for item in executor.produced_files()])
+                self.assertEqual(
+                    ["result.txt"], [item["name"] for item in executor.produced_files()]
+                )
             finally:
                 executor.close()
 
@@ -49,7 +56,9 @@ class PythonSandboxExecutorTest(unittest.TestCase):
             )
             executor = PythonSandboxExecutor(policy, timeout_seconds=15)
             try:
-                with self.assertRaisesRegex(PythonSandboxExecutionError, "expected failure"):
+                with self.assertRaisesRegex(
+                    PythonSandboxExecutionError, "expected failure"
+                ):
                     executor.execute(
                         "from pathlib import Path\n"
                         "Path(build_output_path('partial.txt')).write_text('partial', encoding='utf-8')\n"
@@ -57,11 +66,44 @@ class PythonSandboxExecutorTest(unittest.TestCase):
                     )
 
                 self.assertTrue((output_dir / "partial.txt").is_file())
-                self.assertEqual(["partial.txt"], [item["name"] for item in executor.produced_files()])
+                self.assertEqual(
+                    ["partial.txt"],
+                    [item["name"] for item in executor.produced_files()],
+                )
             finally:
                 executor.close()
 
-    def test_should_use_output_dir_as_process_cwd(self):
+    def test_should_use_workspace_root_as_process_cwd_for_workspace_profile(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            workspace_root = Path(workspace)
+            output_dir = workspace_root / "output"
+            output_dir.mkdir()
+            nested = workspace_root / "chinagt-shanghai-fire-report"
+            nested.mkdir()
+            (nested / "index.html").write_text("<html>ok</html>\n", encoding="utf-8")
+            policy = build_permission_policy(
+                profile="workspace",
+                workspace_root=str(workspace_root),
+                output_dir=str(output_dir),
+                input_files=[],
+            )
+            executor = PythonSandboxExecutor(policy, timeout_seconds=15)
+            try:
+                result = executor.execute(
+                    "from pathlib import Path\n"
+                    "import os\n"
+                    "print(Path('chinagt-shanghai-fire-report/index.html').read_text(encoding='utf-8').strip())\n"
+                    "print(os.getcwd())\n"
+                )
+                self.assertIn("<html>ok</html>", result.stdout)
+                self.assertEqual(
+                    str(workspace_root.resolve()),
+                    str(Path(result.stdout.strip().splitlines()[-1]).resolve()),
+                )
+            finally:
+                executor.close()
+
+    def test_should_use_workspace_root_as_process_cwd_for_analysis_profile(self):
         with tempfile.TemporaryDirectory() as workspace:
             workspace_root = Path(workspace)
             output_dir = workspace_root / "output"
@@ -80,10 +122,12 @@ class PythonSandboxExecutorTest(unittest.TestCase):
                     "    handle.write('from-cwd')\n"
                     "print(os.getcwd())\n"
                 )
-                self.assertEqual(["cwd_result.txt"], [item["name"] for item in result.produced_files])
-                self.assertTrue((output_dir / "cwd_result.txt").is_file())
                 self.assertEqual(
-                    str(output_dir.resolve()),
+                    ["cwd_result.txt"], [item["name"] for item in result.produced_files]
+                )
+                self.assertTrue((workspace_root / "cwd_result.txt").is_file())
+                self.assertEqual(
+                    str(workspace_root.resolve()),
                     str(Path(result.stdout.strip()).resolve()),
                 )
             finally:
@@ -95,8 +139,12 @@ class PythonSandboxExecutorTest(unittest.TestCase):
             output_dir = workspace_root / "output"
             output_dir.mkdir()
             (workspace_root / "input").mkdir()
-            (workspace_root / "input" / "seed.csv").write_text("a,1\n", encoding="utf-8")
-            (workspace_root / "__last_source__.py").write_text("print(1)\n", encoding="utf-8")
+            (workspace_root / "input" / "seed.csv").write_text(
+                "a,1\n", encoding="utf-8"
+            )
+            (workspace_root / "__last_source__.py").write_text(
+                "print(1)\n", encoding="utf-8"
+            )
             policy = build_permission_policy(
                 profile="workspace",
                 workspace_root=str(workspace_root),
@@ -110,8 +158,12 @@ class PythonSandboxExecutorTest(unittest.TestCase):
                     "Path(workspace_root).joinpath('root_chart.png').write_bytes(b'png')\n"
                     "Path(workspace_root).joinpath('input', 'ignored.txt').write_text('no', encoding='utf-8')\n"
                 )
-                self.assertEqual(["root_chart.png"], [item["name"] for item in result.produced_files])
-                self.assertEqual("root_chart.png", result.produced_files[0]["relative_path"])
+                self.assertEqual(
+                    ["root_chart.png"], [item["name"] for item in result.produced_files]
+                )
+                self.assertEqual(
+                    "root_chart.png", result.produced_files[0]["relative_path"]
+                )
                 self.assertTrue((workspace_root / "root_chart.png").is_file())
             finally:
                 executor.close()
@@ -131,9 +183,7 @@ class PythonSandboxExecutorTest(unittest.TestCase):
             try:
                 # Chinese + Windows path-like backslashes inside string literals.
                 result = executor.execute(
-                    "msg = '网络分析\\\\路径'\n"
-                    "print(msg)\n"
-                    "print('完成')\n"
+                    "msg = '网络分析\\\\路径'\nprint(msg)\nprint('完成')\n"
                 )
                 self.assertIn("网络分析", result.stdout)
                 self.assertIn("完成", result.stdout)

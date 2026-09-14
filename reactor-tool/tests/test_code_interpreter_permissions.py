@@ -13,6 +13,7 @@ from reactor_tool.tool.code_interpreter_policy import (
     is_path_sandbox_enabled,
     is_pre_execution_validation_enabled,
     is_runtime_double_check_enabled,
+    lookup_input_path,
     validate_authorized_path,
     validate_code_against_policy,
 )
@@ -59,6 +60,19 @@ class CodeInterpreterPermissionPolicyTest(unittest.TestCase):
         validate_code_against_policy(
             "from pathlib import Path\n"
             "Path(build_output_path('结果.txt')).write_text('x', encoding='utf-8')",
+            policy,
+        )
+
+    def test_analysis_profile_should_allow_duckdb_pyarrow_and_bs4_imports(self):
+        policy = build_permission_policy(
+            profile="analysis",
+            workspace_root=self.workspace_root,
+            output_dir=self.output_dir,
+            input_files=self.input_files,
+        )
+
+        validate_code_against_policy(
+            "import duckdb\nimport pyarrow\nimport bs4\nimport charset_normalizer",
             policy,
         )
 
@@ -131,9 +145,7 @@ class CodeInterpreterPermissionPolicyTest(unittest.TestCase):
         )
 
         validate_code_against_policy(
-            "import pandas as pd\n"
-            "df = pd.read_csv('sales.csv')\n"
-            "df.head()",
+            "import pandas as pd\ndf = pd.read_csv('sales.csv')\ndf.head()",
             policy,
         )
 
@@ -198,12 +210,13 @@ class CodeInterpreterPermissionPolicyTest(unittest.TestCase):
 
         with self.assertRaises(CodeExecutionPermissionError) as context:
             validate_code_against_policy(
-                "from pathlib import Path\n"
-                "Path('结果.txt').unlink()",
+                "from pathlib import Path\nPath('结果.txt').unlink()",
                 policy,
             )
 
-        self.assertEqual("destructive_operation_denied", context.exception.blocked_reason)
+        self.assertEqual(
+            "destructive_operation_denied", context.exception.blocked_reason
+        )
 
     def test_runtime_helper_should_reject_path_escape(self):
         policy = build_permission_policy(
@@ -215,7 +228,7 @@ class CodeInterpreterPermissionPolicyTest(unittest.TestCase):
         helpers = build_runtime_helpers(policy)
 
         with self.assertRaises(CodeExecutionPermissionError) as context:
-            helpers["build_output_path"]("../escape.txt")
+            helpers["build_output_path"]("../../escape.txt")
 
         self.assertEqual("path_outside_allowed_roots", context.exception.blocked_reason)
 
@@ -256,6 +269,126 @@ class CodeInterpreterPermissionPolicyTest(unittest.TestCase):
                 )
 
         self.assertEqual(str(external_path.resolve()), resolved)
+
+
+class WorkspaceInputLookupTest(unittest.TestCase):
+    def test_workspace_profile_finds_nested_basename(self):
+        with tempfile.TemporaryDirectory() as root:
+            report = Path(root) / "chinagt-shanghai-fire-report"
+            report.mkdir()
+            target = report / "index.html"
+            target.write_text("<html>ok</html>", encoding="utf-8")
+            resolved = lookup_input_path(
+                "index.html",
+                workspace_root=root,
+                input_file_paths={},
+                allow_workspace_search=True,
+            )
+            self.assertEqual(str(target.resolve()), str(Path(resolved).resolve()))
+
+    def test_workspace_profile_finds_relative_path(self):
+        with tempfile.TemporaryDirectory() as root:
+            report = Path(root) / "chinagt-shanghai-fire-report"
+            report.mkdir()
+            target = report / "index.html"
+            target.write_text("<html>ok</html>", encoding="utf-8")
+            resolved = lookup_input_path(
+                "chinagt-shanghai-fire-report/index.html",
+                workspace_root=root,
+                input_file_paths={},
+                allow_workspace_search=True,
+            )
+            self.assertEqual(str(target.resolve()), str(Path(resolved).resolve()))
+
+    def test_registered_name_wins_before_search(self):
+        with tempfile.TemporaryDirectory() as root:
+            nested = Path(root) / "nested"
+            nested.mkdir()
+            (nested / "data.csv").write_text("nested", encoding="utf-8")
+            staged = Path(root) / "input"
+            staged.mkdir()
+            registered = staged / "data.csv"
+            registered.write_text("registered", encoding="utf-8")
+            resolved = lookup_input_path(
+                "data.csv",
+                workspace_root=root,
+                input_file_paths={"data.csv": str(registered.resolve())},
+                allow_workspace_search=True,
+            )
+            self.assertEqual(str(registered.resolve()), str(Path(resolved).resolve()))
+
+    def test_ambiguous_basename_requires_relative_path(self):
+        with tempfile.TemporaryDirectory() as root:
+            first = Path(root) / "a"
+            second = Path(root) / "b"
+            first.mkdir()
+            second.mkdir()
+            (first / "index.html").write_text("a", encoding="utf-8")
+            (second / "index.html").write_text("b", encoding="utf-8")
+            with self.assertRaises(CodeExecutionPermissionError) as context:
+                lookup_input_path(
+                    "index.html",
+                    workspace_root=root,
+                    input_file_paths={},
+                    allow_workspace_search=True,
+                )
+            self.assertEqual("input_file_ambiguous", context.exception.blocked_reason)
+
+    def test_lookup_without_search_still_requires_registry(self):
+        with tempfile.TemporaryDirectory() as root:
+            report = Path(root) / "chinagt-shanghai-fire-report"
+            report.mkdir()
+            (report / "index.html").write_text("x", encoding="utf-8")
+            with self.assertRaises(CodeExecutionPermissionError) as context:
+                lookup_input_path(
+                    "index.html",
+                    workspace_root=root,
+                    input_file_paths={},
+                    allow_workspace_search=False,
+                )
+            self.assertEqual("input_file_not_found", context.exception.blocked_reason)
+
+    def test_analysis_helper_searches_workspace(self):
+        with tempfile.TemporaryDirectory() as root:
+            report = Path(root) / "chinagt-shanghai-fire-report"
+            report.mkdir()
+            target = report / "index.html"
+            target.write_text("<html>ok</html>", encoding="utf-8")
+            policy = build_permission_policy(
+                profile="analysis",
+                workspace_root=root,
+                output_dir=str(Path(root) / "output"),
+                input_files=[],
+            )
+            helpers = build_runtime_helpers(policy)
+            resolved = helpers["resolve_input_path"]("index.html")
+            self.assertEqual(str(target.resolve()), str(Path(resolved).resolve()))
+
+    def test_workspace_helpers_omit_interpreter_path_helpers(self):
+        with tempfile.TemporaryDirectory() as root:
+            policy = build_permission_policy(
+                profile="workspace",
+                workspace_root=root,
+                output_dir=str(Path(root) / "output"),
+                input_files=[],
+            )
+            helpers = build_runtime_helpers(policy)
+            self.assertNotIn("resolve_input_path", helpers)
+            self.assertNotIn("build_output_path", helpers)
+            self.assertIn("build_workspace_path", helpers)
+
+    def test_analysis_profile_allows_workspace_relative_write(self):
+        policy = build_permission_policy(
+            profile="analysis",
+            workspace_root=r"D:\temp\ci-workspace",
+            output_dir=r"D:\temp\ci-workspace\output",
+            input_files=[],
+        )
+        validate_code_against_policy(
+            "from pathlib import Path\n"
+            "Path(workspace_root).joinpath('notes.txt').write_text('ok', encoding='utf-8')",
+            policy,
+        )
 
 
 class CodeInterpreterToggleDefaultsTest(unittest.TestCase):

@@ -1,4 +1,5 @@
 """Parent-side controller for the persistent code-interpreter Python runner."""
+
 from __future__ import annotations
 
 import json
@@ -34,7 +35,10 @@ class PythonSandboxExecutionError(RuntimeError):
         self.result = response.get("result")
         self.duration_ms = int(response.get("duration_ms") or 0)
         self.returncode = int(response.get("returncode") or 1)
-        super().__init__("\n".join(filter(None, [response.get("error"), self.stderr])) or "Python sandbox execution failed")
+        super().__init__(
+            "\n".join(filter(None, [response.get("error"), self.stderr]))
+            or "Python sandbox execution failed"
+        )
 
 
 class PythonSandboxExecutor:
@@ -63,11 +67,15 @@ class PythonSandboxExecutor:
             self._local: _LocalPythonSandboxExecutor | None = None
         elif backend_name == "local":
             self._impl = None
-            self._local = _LocalPythonSandboxExecutor(policy, timeout_seconds, initial_variables)
+            self._local = _LocalPythonSandboxExecutor(
+                policy, timeout_seconds, initial_variables
+            )
         else:
             raise ValueError(f"Unsupported sandbox backend: {backend_name!r}")
 
-    def execute(self, code: str, source_file: str | None = None) -> PythonSandboxExecutionResult:
+    def execute(
+        self, code: str, source_file: str | None = None
+    ) -> PythonSandboxExecutionResult:
         if self._impl is not None:
             return self._impl.execute(code, source_file=source_file)
         assert self._local is not None
@@ -103,7 +111,9 @@ class _LocalPythonSandboxExecutor:
         self._lock = threading.Lock()
         self._produced_by_path: dict[str, dict[str, Any]] = {}
 
-    def execute(self, code: str, source_file: str | None = None) -> PythonSandboxExecutionResult:
+    def execute(
+        self, code: str, source_file: str | None = None
+    ) -> PythonSandboxExecutionResult:
         with self._lock:
             # 同一个解释器会话可能保留变量和导入状态，因此请求必须串行发送，不能并发写入 JSONL 管道。
             self._ensure_started()
@@ -156,10 +166,10 @@ class _LocalPythonSandboxExecutor:
             return
         runner = Path(__file__).with_name("python_sandbox_runner.py")
         creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
-        # cwd 固定到 output/，相对路径落盘（如 savefig('a.png')）默认可被采集上传
         output_dir = Path(self._policy.output_dir).resolve()
-        # 子进程 cwd 固定为输出目录，使未显式指定目录的相对产物仍落在可控边界内。
         output_dir.mkdir(parents=True, exist_ok=True)
+        cwd_dir = Path(self._policy.workspace_root).resolve()
+        cwd_dir.mkdir(parents=True, exist_ok=True)
         self._process = subprocess.Popen(
             [sys.executable, "-I", str(runner)],
             stdin=subprocess.PIPE,
@@ -168,16 +178,18 @@ class _LocalPythonSandboxExecutor:
             text=True,
             encoding="utf-8",
             errors="replace",
-            cwd=str(output_dir),
+            cwd=str(cwd_dir),
             env=_sandbox_environment(),
             creationflags=creation_flags,
             start_new_session=os.name != "nt",
         )
-        response = self._request({
-            "type": "init",
-            "policy": _policy_payload(self._policy),
-            "initial_variables": self._initial_variables,
-        })
+        response = self._request(
+            {
+                "type": "init",
+                "policy": _policy_payload(self._policy),
+                "initial_variables": self._initial_variables,
+            }
+        )
         if response.get("type") != "ready":
             # 初始化失败不能复用半初始化进程，否则下一次 execute 会把 execute 请求发给未知状态的 runner。
             if self._process.poll() is None:
@@ -190,7 +202,9 @@ class _LocalPythonSandboxExecutor:
             self._process = None
             raise RuntimeError("Python sandbox runner failed to initialize")
 
-    def _request(self, payload: dict[str, Any], allow_closed: bool = False) -> dict[str, Any]:
+    def _request(
+        self, payload: dict[str, Any], allow_closed: bool = False
+    ) -> dict[str, Any]:
         process = self._process
         if process is None or process.stdin is None or process.stdout is None:
             raise RuntimeError("Python sandbox runner is unavailable")
@@ -215,7 +229,9 @@ class _LocalPythonSandboxExecutor:
 def _read_line_with_timeout(stream, timeout_seconds: float) -> str | None:
     # readline 本身不可取消，用守护线程等待并由父线程控制超时；超时路径由调用方负责杀进程。
     result: list[str] = []
-    reader = threading.Thread(target=lambda: result.append(stream.readline()), daemon=True)
+    reader = threading.Thread(
+        target=lambda: result.append(stream.readline()), daemon=True
+    )
     reader.start()
     reader.join(timeout_seconds)
     if reader.is_alive():
@@ -237,10 +253,28 @@ def _policy_payload(policy: CodeInterpreterPermissionPolicy) -> dict[str, Any]:
 
 
 def _sandbox_environment() -> dict[str, str]:
-    allowed = {"PATH", "PYTHONIOENCODING", "LC_ALL", "LC_CTYPE", "LANG", "HOME", "TMPDIR", "TEMP", "TMP"}
+    allowed = {
+        "PATH",
+        "PYTHONIOENCODING",
+        "LC_ALL",
+        "LC_CTYPE",
+        "LANG",
+        "HOME",
+        "TMPDIR",
+        "TEMP",
+        "TMP",
+    }
     environment = {key: value for key, value in os.environ.items() if key in allowed}
     if os.name == "nt":
-        for key in ("SYSTEMROOT", "WINDIR", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "COMSPEC", "PATHEXT"):
+        for key in (
+            "SYSTEMROOT",
+            "WINDIR",
+            "USERPROFILE",
+            "APPDATA",
+            "LOCALAPPDATA",
+            "COMSPEC",
+            "PATHEXT",
+        ):
             if os.environ.get(key):
                 environment[key] = os.environ[key]
     environment["PYTHONIOENCODING"] = "utf-8"

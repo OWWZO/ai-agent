@@ -76,7 +76,7 @@ class CodeExecutionRequest(BaseModel):
         default="extended", alias="importTier"
     )
     permission_profile: Literal["analysis", "workspace"] = Field(
-        default="analysis", alias="permissionProfile"
+        default="workspace", alias="permissionProfile"
     )
     reset_workspace: bool = Field(default=False, alias="resetWorkspace")
     workspace_file: Optional[str] = Field(default=None, alias="workspaceFile")

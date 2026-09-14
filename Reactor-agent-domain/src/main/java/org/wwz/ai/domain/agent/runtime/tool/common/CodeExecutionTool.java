@@ -30,26 +30,19 @@ public class CodeExecutionTool implements BaseTool {
 
     @Override public String getDescription() {
         return "直接在受控 Python 沙箱执行源码。用于计算、数据处理、图表及用户可下载文件生成。\n"
-                + "【产物路径硬性规则】\n"
-                + "1. 需要生成/保存文件时，必须用 build_output_path('文件名') 得到路径再写入；"
-                + "系统只采集并上传该 helper 对应目录中的新文件，前端才能预览/下载。\n"
-                + "2. 正确示例：Path(build_output_path('chart.png')).write_bytes(...)；"
-                + "plt.savefig(build_output_path('chart.png'))；"
-                + "df.to_excel(build_output_path('结果.xlsx'))。\n"
-                + "3. 禁止写死绝对路径（如 D:\\\\...\\\\skilloutput\\\\session-...\\\\xxx），"
-                + "禁止仅用相对文件名 savefig('a.png') 或随意 Path('a.png') 期望自动注册"
-                + "（未走 build_output_path 的路径可能不上传、不展示）。\n"
-                + "4. 读会话输入：fileNames 填裸文件名（优先从当前会话工作区 / input 解析），"
-                + "也可用绝对路径或 http(s) 下载 URL；源码内用 resolve_input_path('文件名') 读取。\n"
-                + "5. 沙箱已注入 build_output_path / resolve_input_path / read_text_file / write_text_file，无需 import。";
+                + "沙箱 cwd 为当前会话工作区（与 bash 相同）。用 Path / open / savefig 等相对路径读写即可，"
+                + "例如 Path('chinagt-shanghai-fire-report/index.html').read_text(encoding='utf-8')；"
+                + "plt.savefig('chart.png')；df.to_excel('结果.xlsx')。\n"
+                + "本次新增或修改的工作区文件会自动采集上传，前端可预览/下载。\n"
+                + "禁止写死宿主绝对路径。fileNames 仅用于 http(s) URL 或工作区外绝对路径。";
     }
 
     @Override public Map<String, Object> toParams() {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("source", Map.of(
                 "type", "string",
-                "description", "完整 Python 源码。生成文件时必须 Path(build_output_path('name.ext')) 或 "
-                        + "plt.savefig(build_output_path('name.ext')) 等；禁止硬编码 skilloutput/盘符绝对路径。"
+                "description", "完整 Python 源码。cwd 为会话工作区；生成文件用相对路径，例如 Path('chart.png')、"
+                        + "plt.savefig('chart.png')。禁止硬编码 skilloutput/盘符绝对路径。"
         ));
         Map<String, Object> freeformObject = new LinkedHashMap<>();
         freeformObject.put("type", "object");
@@ -62,9 +55,8 @@ public class CodeExecutionTool implements BaseTool {
         properties.put("fileNames", Map.of(
                 "type", "array",
                 "items", Map.of("type", "string"),
-                "description", "输入文件列表。优先填会话工作区裸文件名（如 run_backtest.py、data/sp500.csv），"
-                        + "系统会在 workspaceRoot 与 workspaceRoot/input 解析；也可填绝对路径或 http(s) URL。"
-                        + "不要把仅存在于工作区的文件误当成必须可下载的 URL。"
+                "description", "可选。仅填 http(s) URL 或工作区外绝对路径，系统会下载到会话工作区。"
+                        + "工作区已有文件不要填这里，源码里用相对路径 Path/open 直接读。"
         ));
         Map<String, Object> fileItem = new LinkedHashMap<>(freeformObject);
         fileItem.put("description", "工作区文件条目");
@@ -72,7 +64,6 @@ public class CodeExecutionTool implements BaseTool {
         properties.put("timeoutSeconds", Map.of("type", "integer", "minimum", 1, "maximum", 600));
         properties.put("memoryBytes", Map.of("type", "integer", "description", "可选内存上限（字节）"));
         properties.put("importTier", Map.of("type", "string", "enum", List.of("stdlib", "extended", "unrestricted")));
-        properties.put("permissionProfile", Map.of("type", "string", "enum", List.of("analysis", "workspace")));
         properties.put("resetWorkspace", Map.of("type", "boolean"));
         properties.put("workspaceFile", Map.of("type", "string", "description", "工作区内已有 Python 源码文件，提供时优先执行它"));
         return Map.of("type", "object", "properties", properties, "required", List.of("source"));
@@ -88,8 +79,9 @@ public class CodeExecutionTool implements BaseTool {
             ReactorConfig config = agentContext.getRuntimeDependencies().requireReactorConfig();
             Map<String, Object> request = new LinkedHashMap<>(params);
             request.put("requestId", agentContext.getSessionId());
-            // 与 workspace_write 同一会话目录：reactor-tool/skilloutput/{sessionId}
-            request.put("workspaceRoot", WorkspacePaths.skillOutputSessionRoot(agentContext.getSessionId()).toString());
+            request.put("workspaceRoot", WorkspacePaths.resolveSandboxRoot(
+                    agentContext.getWorkspaceRoot(), agentContext.getSessionId()).toString());
+            request.put("permissionProfile", "workspace");
             request.put("source", source);
             // 远端执行统一绑定当前会话工作区；返回文件再登记到当前 tool artifact source，形成可回放的产物链。
             String body = agentContext.getRuntimeDependencies().requireRemoteHttpPort().execute(RemoteHttpRequest.builder()

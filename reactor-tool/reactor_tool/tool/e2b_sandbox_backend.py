@@ -347,15 +347,56 @@ class E2BPythonSandboxExecutor:
         include_bootstrap: bool,
         source_file: str | None = None,
     ) -> str:
-        # Kernel is persistent: inject path helpers + variables on first execute only,
-        # then always chdir to remote output so relative writes match local behavior.
+        # Kernel is persistent: inject path helpers + variables on first execute only.
+        # cwd is always the workspace root (bash-aligned).
         remote_inputs = {
             name: self._remote_input_map.get(name, path)
             for name, path in self._policy.input_file_paths.items()
         }
         remote_source = self._resolve_remote_source_file(source_file)
+        remote_cwd = self._remote_workspace
         bootstrap = ""
         if include_bootstrap:
+            analysis_helpers = ""
+            if self._policy.profile != "workspace":
+                analysis_helpers = """
+def build_output_path(file_name: str) -> str:
+    target = Path(output_dir).joinpath(file_name)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return str(target)
+
+def resolve_input_path(file_name: str) -> str:
+    key = (file_name or "").strip().replace("\\\\", "/")
+    if not key:
+        raise FileNotFoundError("文件路径不能为空")
+    if key in input_file_paths:
+        return input_file_paths[key]
+    base = Path(key).name
+    if base in input_file_paths:
+        return input_file_paths[base]
+    root = Path(workspace_root)
+    exact = root.joinpath(key)
+    if exact.is_file():
+        return str(exact)
+    staged = root.joinpath("input", base)
+    if staged.is_file():
+        return str(staged)
+    skip = {".git", ".venv", "venv", "node_modules", "__pycache__"}
+    hits = []
+    for path in root.rglob(base):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(root)
+        if any(part in skip or part.startswith(".") for part in rel.parts[:-1]):
+            continue
+        hits.append(path)
+    if len(hits) == 1:
+        return str(hits[0])
+    if len(hits) > 1:
+        names = ", ".join(item.relative_to(root).as_posix() for item in hits)
+        raise FileNotFoundError(f"工作区内有多个同名文件：{base}；candidates: {names}")
+    raise FileNotFoundError(f"未找到输入文件：{key}")
+"""
             bootstrap = f"""
 import os
 from pathlib import Path
@@ -368,18 +409,8 @@ input_files = [{{"name": n, "path": p}} for n, p in input_file_paths.items()]
 Path(workspace_root).mkdir(parents=True, exist_ok=True)
 Path(output_dir).mkdir(parents=True, exist_ok=True)
 Path(workspace_root, "input").mkdir(parents=True, exist_ok=True)
-os.chdir(output_dir)
-
-def build_output_path(file_name: str) -> str:
-    target = Path(output_dir).joinpath(file_name)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    return str(target)
-
-def resolve_input_path(file_name: str) -> str:
-    key = (file_name or "").strip()
-    if key not in input_file_paths:
-        raise FileNotFoundError(f"未找到输入文件：{{key}}")
-    return input_file_paths[key]
+os.chdir({remote_cwd!r})
+{analysis_helpers}
 
 def read_text_file(file_path: str, encoding: str = "utf-8") -> str:
     return Path(file_path).read_text(encoding=encoding)
@@ -406,7 +437,7 @@ def build_workspace_path(relative_path: str) -> str:
                 except (TypeError, ValueError):
                     bootstrap += f"{key} = {repr(str(value))}\n"
         else:
-            bootstrap = f"import os\nos.chdir({self._remote_output!r})\n"
+            bootstrap = f"import os\nos.chdir({remote_cwd!r})\n"
 
         # Align with ``python script.py``: inject script metadata before user code.
         meta = f"__name__ = '__main__'\n__file__ = {remote_source!r}\n"

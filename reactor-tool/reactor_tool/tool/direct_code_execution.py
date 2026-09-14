@@ -56,7 +56,7 @@ async def execute_code(request: CodeExecutionRequest) -> dict:
                 {"line": exc.lineno, "column": exc.offset, "message": exc.msg}
             ],
         )
-    # 裸文件名优先落会话工作区；URL 才下载到 input/。解析结果交给权限策略供 resolve_input_path 使用。
+    # 裸文件名优先落会话工作区；URL 才下载到 input/。code_interpreter 仍用登记表；code_execution 直接读工作区。
     imported_files = await download_all_files_in_path(
         request.file_names,
         str(input_dir),

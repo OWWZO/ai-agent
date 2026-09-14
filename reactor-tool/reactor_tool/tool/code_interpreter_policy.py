@@ -2,9 +2,10 @@
 """代码解释器权限策略：档位、路径沙箱、静态 AST 校验、受控 helper。
 
 档位：
-  analysis  — 仅能读输入文件、写输出目录
-  workspace — 额外允许工作区内路径读写
+  analysis  — 可读写工作区；注入 build_output_path / resolve_input_path（code_interpreter）
+  workspace — 可读写工作区，对齐 bash；不注入上述 helper（code_execution）
 """
+
 import ast
 import os
 from dataclasses import dataclass
@@ -31,9 +32,15 @@ class CodeInterpreterPermissionPolicy:
 
     def to_prompt_context(self) -> dict[str, Any]:
         """构建 prompt 中可直接使用的上下文。"""
-        helper_names = ["build_output_path", "resolve_input_path", "read_text_file", "write_text_file"]
         if self.profile == "workspace":
-            helper_names.append("build_workspace_path")
+            helper_names = ["read_text_file", "write_text_file", "build_workspace_path"]
+        else:
+            helper_names = [
+                "build_output_path",
+                "resolve_input_path",
+                "read_text_file",
+                "write_text_file",
+            ]
         return {
             "permission_profile": self.profile,
             "available_helpers": helper_names,
@@ -106,7 +113,10 @@ def is_runtime_double_check_enabled() -> bool:
 
 _COMMON_AUTHORIZED_IMPORTS = (
     "altair",
+    "bs4",
+    "charset_normalizer",
     "csv",
+    "duckdb",
     "json",
     "matplotlib",
     "matplotlib.*",
@@ -116,6 +126,8 @@ _COMMON_AUTHORIZED_IMPORTS = (
     "pathlib",
     "plotly",
     "plotly.*",
+    "pyarrow",
+    "pyarrow.*",
     "scipy",
     "scipy.*",
     "seaborn",
@@ -199,7 +211,9 @@ _RESERVED_HELPER_NAMES = frozenset(
 class HelperPathReference:
     """标记由受控 helper 构造、运行时继续校验的路径引用。"""
 
-    helper_name: Literal["build_output_path", "build_workspace_path", "resolve_input_path"]
+    helper_name: Literal[
+        "build_output_path", "build_workspace_path", "resolve_input_path"
+    ]
 
 
 def build_permission_policy(
@@ -216,14 +230,9 @@ def build_permission_policy(
     input_file_paths = _normalize_input_files(input_files)
 
     allowed_read_paths = tuple(sorted(set(input_file_paths.values())))
-    if normalized_profile == "workspace":
-        allowed_read_roots = (workspace_path,)
-        allowed_write_roots = (workspace_path,)
-        authorized_imports = _COMMON_AUTHORIZED_IMPORTS
-    else:
-        allowed_read_roots = (output_path,)
-        allowed_write_roots = (output_path,)
-        authorized_imports = _COMMON_AUTHORIZED_IMPORTS
+    allowed_read_roots = (workspace_path,)
+    allowed_write_roots = (workspace_path,)
+    authorized_imports = _COMMON_AUTHORIZED_IMPORTS
 
     return CodeInterpreterPermissionPolicy(
         profile=normalized_profile,
@@ -244,8 +253,10 @@ def validate_authorized_path(
     access_mode: PathAccessMode,
 ) -> str:
     """按当前权限档位校验并规范化路径。"""
-    # 相对路径的解释依赖权限档位，不能直接用当前进程工作目录解析，否则 analysis 档位可能越过输出目录。
-    normalized_path = _resolve_policy_path(file_path, policy=policy, access_mode=access_mode)
+    # 相对路径落到工作区根；两档位都只能在 workspace 内读写。
+    normalized_path = _resolve_policy_path(
+        file_path, policy=policy, access_mode=access_mode
+    )
     if not is_path_sandbox_enabled():
         return normalized_path
 
@@ -280,14 +291,127 @@ def validate_authorized_path(
     )
 
 
-def build_runtime_helpers(policy: CodeInterpreterPermissionPolicy) -> dict[str, Callable]:
+_SKIP_INPUT_SEARCH_DIRS = frozenset(
+    {
+        ".git",
+        ".venv",
+        "venv",
+        "node_modules",
+        "__pycache__",
+        ".cache",
+        ".pytest_cache",
+        ".mypy_cache",
+    }
+)
+
+
+def lookup_input_path(
+    file_name: str,
+    *,
+    workspace_root: str,
+    input_file_paths: dict[str, str],
+    allow_workspace_search: bool,
+    policy: CodeInterpreterPermissionPolicy | None = None,
+) -> str:
+    """解析输入文件：先登记表，workspace 档位再搜工作区相对路径 / 唯一 basename。"""
+    raw = (file_name or "").strip().replace("\\", "/")
+    if not raw:
+        raise CodeExecutionPermissionError(
+            "empty_path",
+            "文件路径不能为空。",
+            policy=policy,
+        )
+    if raw in input_file_paths:
+        return input_file_paths[raw]
+    base = Path(raw).name
+    if base in input_file_paths:
+        return input_file_paths[base]
+    if not allow_workspace_search:
+        raise CodeExecutionPermissionError(
+            "input_file_not_found",
+            f"未找到输入文件：{raw}",
+            detail=f"allowed input files: {sorted(input_file_paths)}",
+            policy=policy,
+        )
+
+    root = Path(workspace_root).resolve()
+    if any(part == ".." for part in Path(raw).parts):
+        raise CodeExecutionPermissionError(
+            "path_outside_allowed_roots",
+            f"文件访问超出授权范围：{raw}",
+            policy=policy,
+        )
+
+    exact = (root / raw).resolve()
+    try:
+        exact.relative_to(root)
+    except ValueError as exc:
+        raise CodeExecutionPermissionError(
+            "path_outside_allowed_roots",
+            f"文件访问超出授权范围：{raw}",
+            policy=policy,
+        ) from exc
+    if exact.is_file():
+        return str(exact)
+
+    staged = (root / "input" / base).resolve()
+    try:
+        staged.relative_to(root)
+    except ValueError:
+        staged = None
+    if staged is not None and staged.is_file():
+        return str(staged)
+
+    matches: list[Path] = []
+    seen: set[Path] = set()
+    for path in root.rglob(base):
+        if not path.is_file() or path.is_symlink():
+            continue
+        try:
+            resolved = path.resolve()
+            relative = resolved.relative_to(root)
+        except ValueError:
+            continue
+        if any(
+            part in _SKIP_INPUT_SEARCH_DIRS or part.startswith(".")
+            for part in relative.parts[:-1]
+        ):
+            continue
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        matches.append(resolved)
+
+    if len(matches) == 1:
+        return str(matches[0])
+    if len(matches) > 1:
+        candidates = ", ".join(item.relative_to(root).as_posix() for item in matches)
+        raise CodeExecutionPermissionError(
+            "input_file_ambiguous",
+            f"工作区内有多个同名文件：{base}",
+            detail=f"candidates: {candidates}；请改用相对路径",
+            policy=policy,
+        )
+    raise CodeExecutionPermissionError(
+        "input_file_not_found",
+        f"未找到输入文件：{raw}",
+        detail=f"workspace_root={root}",
+        policy=policy,
+    )
+
+
+def build_runtime_helpers(
+    policy: CodeInterpreterPermissionPolicy,
+) -> dict[str, Callable]:
     """构建注入解释器的受控 helper。"""
     # helper 是用户代码接触文件系统的推荐入口；闭包捕获策略快照，避免执行期间被外部修改授权范围。
     input_name_mapping = dict(policy.input_file_paths)
 
     def build_output_path(file_name: str) -> str:
         target_path = Path(policy.output_dir).joinpath(file_name)
-        return validate_authorized_path(str(target_path), policy=policy, access_mode="write")
+        return validate_authorized_path(
+            str(target_path), policy=policy, access_mode="write"
+        )
 
     def build_workspace_path(relative_path: str) -> str:
         if policy.profile != "workspace":
@@ -297,42 +421,49 @@ def build_runtime_helpers(policy: CodeInterpreterPermissionPolicy) -> dict[str, 
                 policy=policy,
             )
         target_path = Path(policy.workspace_root).joinpath(relative_path)
-        return validate_authorized_path(str(target_path), policy=policy, access_mode="write")
+        return validate_authorized_path(
+            str(target_path), policy=policy, access_mode="write"
+        )
 
     def resolve_input_path(file_name: str) -> str:
-        normalized_name = (file_name or "").strip()
-        if normalized_name not in input_name_mapping:
-            raise CodeExecutionPermissionError(
-                "input_file_not_found",
-                f"未找到输入文件：{normalized_name}",
-                detail=f"allowed input files: {sorted(input_name_mapping)}",
-                policy=policy,
-            )
-        return input_name_mapping[normalized_name]
+        return lookup_input_path(
+            file_name,
+            workspace_root=policy.workspace_root,
+            input_file_paths=input_name_mapping,
+            allow_workspace_search=True,
+            policy=policy,
+        )
 
     def read_text_file(file_path: str, encoding: str = "utf-8") -> str:
-        normalized_path = validate_authorized_path(file_path, policy=policy, access_mode="read")
+        normalized_path = validate_authorized_path(
+            file_path, policy=policy, access_mode="read"
+        )
         return Path(normalized_path).read_text(encoding=encoding)
 
     def write_text_file(file_path: str, content: str, encoding: str = "utf-8") -> str:
-        normalized_path = validate_authorized_path(file_path, policy=policy, access_mode="write")
+        normalized_path = validate_authorized_path(
+            file_path, policy=policy, access_mode="write"
+        )
         target = Path(normalized_path)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding=encoding)
         return normalized_path
 
     helpers: dict[str, Callable] = {
-        "build_output_path": build_output_path,
-        "resolve_input_path": resolve_input_path,
         "read_text_file": read_text_file,
         "write_text_file": write_text_file,
     }
     if policy.profile == "workspace":
         helpers["build_workspace_path"] = build_workspace_path
+    else:
+        helpers["build_output_path"] = build_output_path
+        helpers["resolve_input_path"] = resolve_input_path
     return helpers
 
 
-def validate_code_against_policy(code: str, policy: CodeInterpreterPermissionPolicy) -> None:
+def validate_code_against_policy(
+    code: str, policy: CodeInterpreterPermissionPolicy
+) -> None:
     """在执行前做静态权限校验。"""
     if not is_pre_execution_validation_enabled():
         return
@@ -430,7 +561,9 @@ def _ensure_helper_names_not_overridden(
             _raise_if_reserved_helper_name(node.name, policy)
 
 
-def _raise_if_reserved_helper_name(name: str | None, policy: CodeInterpreterPermissionPolicy) -> None:
+def _raise_if_reserved_helper_name(
+    name: str | None, policy: CodeInterpreterPermissionPolicy
+) -> None:
     if not name or name not in _RESERVED_HELPER_NAMES:
         return
     raise CodeExecutionPermissionError(
@@ -441,7 +574,9 @@ def _raise_if_reserved_helper_name(name: str | None, policy: CodeInterpreterPerm
     )
 
 
-def _ensure_import_allowed(module_name: str, policy: CodeInterpreterPermissionPolicy) -> None:
+def _ensure_import_allowed(
+    module_name: str, policy: CodeInterpreterPermissionPolicy
+) -> None:
     if not module_name:
         return
     root_module = module_name.split(".")[0]
@@ -460,7 +595,9 @@ def _ensure_import_allowed(module_name: str, policy: CodeInterpreterPermissionPo
         )
 
 
-def _is_authorized_import(module_name: str, authorized_imports: tuple[str, ...]) -> bool:
+def _is_authorized_import(
+    module_name: str, authorized_imports: tuple[str, ...]
+) -> bool:
     for candidate in authorized_imports:
         if candidate.endswith(".*"):
             prefix = candidate[:-2]
@@ -472,7 +609,9 @@ def _is_authorized_import(module_name: str, authorized_imports: tuple[str, ...])
     return False
 
 
-def _ensure_call_allowed(node: ast.Call, policy: CodeInterpreterPermissionPolicy) -> None:
+def _ensure_call_allowed(
+    node: ast.Call, policy: CodeInterpreterPermissionPolicy
+) -> None:
     function_name = _extract_call_name(node)
     if function_name in _DESTRUCTIVE_CALL_NAMES:
         raise CodeExecutionPermissionError(
@@ -503,7 +642,11 @@ def _validate_path_call(
         )
         return
 
-    if function_name not in _READ_CALLS and function_name not in _WRITE_CALLS and function_name != "open":
+    if (
+        function_name not in _READ_CALLS
+        and function_name not in _WRITE_CALLS
+        and function_name != "open"
+    ):
         return
 
     # 只对已知读写 API 做路径推导；无法静态解析的动态表达式留给运行时二次守卫，避免静态检查误杀合法代码。
@@ -581,14 +724,23 @@ def _infer_access_mode(node: ast.Call, function_name: str) -> PathAccessMode:
         for keyword in node.keywords:
             if keyword.arg == "mode":
                 mode_value = _extract_constant_string(keyword.value) or mode_value
-        return "write" if any(flag in mode_value for flag in ("w", "a", "x", "+")) else "read"
+        return (
+            "write"
+            if any(flag in mode_value for flag in ("w", "a", "x", "+"))
+            else "read"
+        )
     if function_name in _READ_CALLS:
         return "read"
     return "write"
 
 
 def _extract_path_node(node: ast.Call, function_name: str) -> ast.AST | None:
-    if function_name in {"read_text", "read_bytes", "write_text", "write_bytes"} and isinstance(node.func, ast.Attribute):
+    if function_name in {
+        "read_text",
+        "read_bytes",
+        "write_text",
+        "write_bytes",
+    } and isinstance(node.func, ast.Attribute):
         return node.func.value
 
     keyword_mapping = {
@@ -641,7 +793,9 @@ def _resolve_path_expression(
                 parts.append(value.value)
                 continue
             if isinstance(value, ast.FormattedValue):
-                resolved_part = _resolve_path_expression(value.value, resolved_names, helper_functions)
+                resolved_part = _resolve_path_expression(
+                    value.value, resolved_names, helper_functions
+                )
                 if not isinstance(resolved_part, str):
                     return None
                 parts.append(resolved_part)
@@ -659,7 +813,11 @@ def _resolve_path_expression(
     if isinstance(node, ast.Call):
         helper_name = _extract_call_name(node)
         if helper_name in {"Path", "str"}:
-            return _resolve_path_expression(node.args[0], resolved_names, helper_functions) if node.args else None
+            return (
+                _resolve_path_expression(node.args[0], resolved_names, helper_functions)
+                if node.args
+                else None
+            )
         if helper_name in _PATH_HELPER_NAMES:
             helper = helper_functions.get(helper_name)
             if helper is None:
@@ -667,14 +825,18 @@ def _resolve_path_expression(
             positional_arguments: list[str] = []
             keyword_arguments: dict[str, str] = {}
             for arg in node.args:
-                resolved_arg = _resolve_helper_argument(arg, resolved_names, helper_functions)
+                resolved_arg = _resolve_helper_argument(
+                    arg, resolved_names, helper_functions
+                )
                 if resolved_arg is None:
                     return HelperPathReference(helper_name=helper_name)
                 positional_arguments.append(resolved_arg)
             for keyword in node.keywords:
                 if keyword.arg is None:
                     return HelperPathReference(helper_name=helper_name)
-                resolved_arg = _resolve_helper_argument(keyword.value, resolved_names, helper_functions)
+                resolved_arg = _resolve_helper_argument(
+                    keyword.value, resolved_names, helper_functions
+                )
                 if resolved_arg is None:
                     return HelperPathReference(helper_name=helper_name)
                 keyword_arguments[keyword.arg] = resolved_arg
@@ -745,8 +907,7 @@ def _resolve_policy_path(
         if mapped_input_path is not None:
             return mapped_input_path
 
-    base_dir = policy.workspace_root if policy.profile == "workspace" else policy.output_dir
-    return str(Path(base_dir).joinpath(candidate_path).resolve())
+    return str(Path(policy.workspace_root).joinpath(candidate_path).resolve())
 
 
 def _resolve_input_file_name(

@@ -101,6 +101,38 @@ public class ShellAndWebSearchToolTest {
     }
 
     @Test
+    public void bashShouldSendAgentContextWorkspaceRootToSandbox() {
+        java.util.concurrent.atomic.AtomicReference<String> capturedBody = new java.util.concurrent.atomic.AtomicReference<>();
+        RemoteHttpPort httpPort = request -> {
+            capturedBody.set(request.getBody());
+            return """
+                    {"exitCode":0,"stdout":"ok","stderr":"","truncated":false,"timedOut":false,"durationMs":1}
+                    """;
+        };
+        ReactorConfig config = new ReactorConfig();
+        ReflectionTestUtils.setField(config, "codeInterpreterUrl", "http://reactor-tool");
+        String workspaceRoot = java.nio.file.Path.of(
+                        System.getProperty("java.io.tmpdir"), "reactor-ws-align", "session-bash-align")
+                .toAbsolutePath()
+                .normalize()
+                .toString();
+        AgentContext context = AgentContext.builder()
+                .requestId("req-bash-align")
+                .sessionId("session-bash-align")
+                .workspaceRoot(workspaceRoot)
+                .productFiles(new ArrayList<>())
+                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .build();
+        SkillRuntimeOptions skillOptions = SkillRuntimeOptions.builder().enabled(false).build();
+        BashTool tool = new BashTool(skillOptions, new SkillVirtualPaths(skillOptions));
+        tool.setAgentContext(context);
+
+        ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of("command", "echo ok"));
+        Assert.assertFalse(Boolean.TRUE.equals(payload.getFailed()));
+        Assert.assertEquals(workspaceRoot, JSON.parseObject(capturedBody.get()).getString("workspaceRoot"));
+    }
+
+    @Test
     public void webSearchShouldFailWhenNoApiKey() {
         ReactorConfig config = new ReactorConfig();
         ReflectionTestUtils.setField(config, "webSearchMode", "auto");

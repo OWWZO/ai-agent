@@ -98,4 +98,17 @@ public class WorkspacePathsTest {
                 .resolve("session-spring-preexpand").normalize();
         Assert.assertEquals(expected, resolved.normalize());
     }
+
+    @Test
+    public void shouldPreferConfiguredSandboxRootOverSkillOutputDefault() {
+        Path configured = Path.of(System.getProperty("java.io.tmpdir"), "reactor-ws-align", "session-x")
+                .toAbsolutePath()
+                .normalize();
+        Assert.assertEquals(
+                configured,
+                WorkspacePaths.resolveSandboxRoot(configured.toString(), "other-session"));
+        Assert.assertEquals(
+                WorkspacePaths.skillOutputSessionRoot("s1"),
+                WorkspacePaths.resolveSandboxRoot("  ", "s1"));
+    }
 }

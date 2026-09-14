@@ -43,7 +43,8 @@ public class SkillTool implements BaseTool {
     public String getDescription() {
         return "按技能名加载 SKILL.md 正文与脚本摘要（来自注册表缓存；本轮创建的 skill 可能需下轮才出现在列表）。\n"
                 + "路径契约：skills/<name>/... — workspace_read/write/edit/list/glob/grep 可直接操作（映射到全局 skill 库）。\n"
-                + "执行脚本：bash 工具会在沙箱 cwd 物化 skills/，命令示例 python skills/<name>/scripts/xxx.py；"
+                + "执行脚本：bash 只物化命令里出现的 skills/<name>，示例 python skills/<name>/scripts/xxx.py；"
+                + "若脚本还依赖其它 skill，把那些路径也写进同一条 bash command，未引用的包沙箱里不存在；"
                 + "沙箱内对 skills/** 的修改会回写全局库（注册表本轮不刷新）。\n"
                 + "新建 skill：可在沙箱跑 Skill Creator 脚本，或 workspace_write skills/<new>/SKILL.md 等。\n"
                 + skillRegistry.buildSkillDescription();

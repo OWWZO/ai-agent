@@ -111,7 +111,8 @@ public class CanvasPublishTool implements BaseTool {
                 return failure(title, "canvas_publish file service URL is not configured");
             }
 
-            Path filePath = WorkspacePaths.skillOutputSessionRoot(agentContext.getSessionId())
+            Path filePath = WorkspacePaths.resolveSandboxRoot(
+                            agentContext.getWorkspaceRoot(), agentContext.getSessionId())
                     .resolve(relativePath)
                     .normalize();
             int fileSize = (int) Math.min(Files.size(filePath), Integer.MAX_VALUE);
@@ -178,7 +179,8 @@ public class CanvasPublishTool implements BaseTool {
             return null;
         }
         try {
-            Path sessionRoot = WorkspacePaths.skillOutputSessionRoot(agentContext.getSessionId())
+            Path sessionRoot = WorkspacePaths.resolveSandboxRoot(
+                            agentContext.getWorkspaceRoot(), agentContext.getSessionId())
                     .toAbsolutePath()
                     .normalize();
             Path inputPath = Path.of(normalized);
