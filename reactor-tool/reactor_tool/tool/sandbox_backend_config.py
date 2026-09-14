@@ -48,14 +48,20 @@ def get_e2b_sandbox_timeout_seconds(exec_timeout_seconds: float) -> int:
     return max(300, int(exec_timeout_seconds) + 120)
 
 
+_E2B_PROXY_DISABLED = frozenset({"", "0", "none", "off", "direct", "false"})
+
+
 def get_e2b_proxy() -> str | None:
     """返回 E2B SDK 专用代理地址。
 
     E2B_PROXY 优先；未单独配置时兼容复用现有网页抓取代理。
+    显式留空 / off / direct / none 表示直连，不回退到网页代理。
     返回值会直接传给 Sandbox/Template SDK，不修改进程级 HTTP_PROXY。
     """
-    raw = os.getenv("E2B_PROXY")
-    if raw is None:
-        raw = os.getenv("REACTOR_WEB_FETCH_PROXY")
-    value = (raw or "").strip()
-    return value or None
+    if "E2B_PROXY" in os.environ:
+        value = os.environ.get("E2B_PROXY", "").strip()
+        if value.lower() in _E2B_PROXY_DISABLED:
+            return None
+        return value
+    fallback = (os.getenv("REACTOR_WEB_FETCH_PROXY") or "").strip()
+    return fallback or None

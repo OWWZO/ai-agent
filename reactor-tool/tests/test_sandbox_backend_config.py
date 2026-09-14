@@ -36,6 +36,11 @@ class GetE2BProxyTest(unittest.TestCase):
         os.environ["REACTOR_WEB_FETCH_PROXY"] = "http://fallback:8080"
         self.assertIsNone(get_e2b_proxy())
 
+    def test_explicit_off_e2b_proxy_disables_fallback(self):
+        os.environ["E2B_PROXY"] = "off"
+        os.environ["REACTOR_WEB_FETCH_PROXY"] = "http://fallback:8080"
+        self.assertIsNone(get_e2b_proxy())
+
 
 if __name__ == "__main__":
     unittest.main()
