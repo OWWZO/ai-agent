@@ -46,10 +46,6 @@
 </p>
 
 
-## 项目定位
-
-Reactor 是一款突破信息围墙的全域情报产品，实现从原始信息到可落地结论的全链路自动化。
-
 - **全域采集**：调度多个智能体并行采集网页信息、Reddit 社区讨论、X 平台动态、YouTube 字幕内容、小红书互动数据，以及由真实资金与内幕信息定价的 Polymarket 预测赔率。
 - **私有文档证据链**：通过多模态 RAG 解析用户私有的 PDF、Word、PPT 与图片，把公域情报与内部知识放进同一条证据链。
 - **长期记忆**：沉淀偏好、关键事实与可复用流程，让下一次任务不必从头开始。
@@ -200,7 +196,7 @@ Text2SQL 智能取数 → CodeAct 数据分析 Agent → Canvas 画布展示。
 ### 三、设计与创意
 
 <p align="center">
-  <img src="assets/readme/艺术设计.png" alt="艺术设计生成效果" width="49%">
+  <img src="assets/readme/喜多川.png" alt="艺术设计生成效果" width="49%">
   <img src="assets/readme/猫猫艺术.png" alt="猫猫艺术生成效果" width="49%">
 </p>
 
@@ -342,6 +338,14 @@ Agent 不必在所有步骤上自动做决定。Reactor 在执行链路中提供
       </td>
       <td valign="middle">
         <a href="https://anysearch.com">AnySearch</a> 是面向 AI Agent 的搜索基础设施，支持通用网络、垂直领域、并行批量搜索与整页内容提取，可通过 Skill 或 CLI 接入多种智能体平台，帮助 Agent 高效获取网页信息。
+      </td>
+    </tr>
+    <tr>
+      <td align="center" valign="middle" width="22%">
+        <img src="assets/readme/adversal.png" alt="Adversal" width="75%">
+      </td>
+      <td valign="middle">
+        <a href="https://adversal.ai/">Adversal</a> 是面向 AI Agent 的视频智能基础设施，提供异步长视频分析 MCP 服务，可将本地视频或公开链接处理为 Markdown 笔记与关键帧，接入 Claude Code、OpenCode、Cursor 等智能体工作流。
       </td>
     </tr>
   </tbody>
