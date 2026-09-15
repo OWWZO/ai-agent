@@ -53,7 +53,6 @@ public class AgentImageGenerationController {
                             .maskFileNames(reqVO.getMaskFileNames())
                             .fileName(reqVO.getFileName())
                             .fileDescription(reqVO.getFileDescription())
-                            .model(reqVO.getModel())
                             .size(reqVO.getSize())
                             .n(reqVO.getN())
                             .build()

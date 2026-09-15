@@ -78,7 +78,6 @@ public class WorkspaceImageGenerationServiceImpl implements IWorkspaceImageGener
                 .maskFileNames(maskImages)
                 .fileName(resolveOutputFileName(command.getFileName()))
                 .fileDescription(resolveFileDescription(command.getFileDescription(), command.getPrompt()))
-                .model(StringUtils.trimToNull(command.getModel()))
                 .size(resolveSize(command.getSize()))
                 .n(normalizeBatchSize(command.getN()))
                 .timeoutSeconds(DEFAULT_TIMEOUT_SECONDS)

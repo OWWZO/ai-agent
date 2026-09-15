@@ -73,6 +73,7 @@ public class ImageGenerationToolTest {
 
         ImageGenerationTool tool = new ImageGenerationTool();
         tool.setAgentContext(context);
+        Assert.assertFalse(tool.toParams().containsKey("model"));
         ToolArtifactSource artifactSource = ToolArtifactSource.builder()
                 .sessionId(context.getSessionId())
                 .requestId(context.getRequestId())
@@ -84,15 +85,15 @@ public class ImageGenerationToolTest {
         context.bindCurrentToolArtifactSource(artifactSource);
         try {
             payload = (ToolResultPayload) tool.execute(JSONObject.parseObject("""
-                    {"prompt":"生成活动海报","n":2,"size":"1536x1024","model":"gpt-image-1"}
+                    {"prompt":"生成活动海报","n":2,"size":"1536x1024"}
                     """));
         } finally {
             context.clearCurrentToolArtifactSource();
         }
 
         ImageGenerationToolOutput structuredOutput = (ImageGenerationToolOutput) payload.getStructuredOutput();
-        Assert.assertTrue(payload.getToolResult().contains("poster.png"));
-        Assert.assertTrue(payload.getLlmObservation().contains("https://file.example.com/preview/poster.png"));
+        Assert.assertTrue(String.valueOf(payload.getLlmData()).contains("poster.png"));
+        Assert.assertNull(payload.getLlmObservation());
         Assert.assertNotNull(structuredOutput);
         Assert.assertFalse(payload.getFailed());
         Assert.assertEquals("生成活动海报", structuredOutput.getPrompt());
@@ -110,7 +111,7 @@ public class ImageGenerationToolTest {
 
         ImageGenerationExecuteCommand command = commandCaptor.getValue();
         Assert.assertEquals("session-image-001", command.getRequestId());
-        Assert.assertEquals("gpt-image-1", command.getModel());
+        Assert.assertNull(command.getModel());
         Assert.assertEquals(Integer.valueOf(900), command.getTimeoutSeconds());
         Assert.assertEquals(Integer.valueOf(2), command.getN());
     }
@@ -256,10 +257,9 @@ public class ImageGenerationToolTest {
 
     private ReactorConfig buildConfig() {
         ReactorConfig reactorConfig = new ReactorConfig();
-        ReflectionTestUtils.setField(reactorConfig, "imageGenerationToolDesc", "图片生成工具");
         ReflectionTestUtils.setField(reactorConfig, "imageGenerationBaseUrl", "https://www.micuapi.ai");
         ReflectionTestUtils.setField(reactorConfig, "imageGenerationApiKey", "test-key");
-        ReflectionTestUtils.setField(reactorConfig, "imageGenerationModel", "gpt-image-2");
+        ReflectionTestUtils.setField(reactorConfig, "imageGenerationModel", "gpt-image-2.5-flare");
         return reactorConfig;
     }
 

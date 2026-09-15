@@ -31,15 +31,14 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 覆盖文生图、单图编辑、多图参考；支持 gpt-image-2 与 grok 通道，
+ * 覆盖文生图、单图编辑、多图参考；支持配置的图片模型与 grok 通道，
  * 以及 2K/4K 自动切 pro、重试与 chat fallback。
  */
 @Slf4j
 public class MicuImageGenerationClient {
 
     private static final MediaType JSON_MEDIA = MediaType.parse("application/json; charset=utf-8");
-    private static final String PRO_MODEL = "gpt-image-2-pro";
-    private static final String NONPRO_MODEL = "gpt-image-2";
+    private static final String NONPRO_MODEL = "gpt-image-2.5-flare";
     private static final int HIGH_RES_EDGE = 1600;
     private static final int MAX_N = 10;
     private static final int MIN_SIZE_EDGE = 256;
@@ -108,7 +107,7 @@ public class MicuImageGenerationClient {
         String mode = resolveMode(request);
         int n = request.getN() == null || request.getN() < 1 ? 1 : Math.min(request.getN(), MAX_N);
         String size = resolveSize(request.getSize(), request.getPrompt(), mode);
-        String model = resolveModel(request.getModel(), size);
+        String model = resolveModel();
         // 先确定模式、尺寸和模型，再选择文生图、单图编辑、多图参考或 Grok 路由。
         List<String> notes = new ArrayList<>();
         notes.add("mode=" + mode);
@@ -751,17 +750,9 @@ public class MicuImageGenerationClient {
         return "1024x1024";
     }
 
-    private String resolveModel(String requestedModel, String size) {
-        String model = StringUtils.hasText(requestedModel) ? requestedModel.trim() : defaultModel;
-        if (isGrokModel(model)) {
-            return StringUtils.hasText(requestedModel) ? model : defaultGrokModel;
-        }
-        String tier = sizeTier(size);
-        // 2K/4K 默认切到 pro，避免普通模型静默接受高分辨率却返回错误或低质量结果。
-        if (("2k".equals(tier) || "4k".equals(tier)) && !model.toLowerCase(Locale.ROOT).contains("pro")) {
-            return PRO_MODEL;
-        }
-        return model;
+    private String resolveModel() {
+        // 生图模型唯一来源是后端配置，忽略请求体中的 model，包含 2K/4K 请求。
+        return isGrokModel(defaultModel) ? defaultGrokModel : defaultModel;
     }
 
     private boolean isGrokModel(String model) {

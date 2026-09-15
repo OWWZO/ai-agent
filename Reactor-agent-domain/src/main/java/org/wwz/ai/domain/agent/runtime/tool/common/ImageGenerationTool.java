@@ -31,7 +31,7 @@ public class ImageGenerationTool implements BaseTool {
 
     private static final String DESCRIPTION = "本工具用于文生图和图生图。用户要求基于当前轮上传图片修改、换风格、扩图时应优先调用它；未显式传 fileNames 时系统可自动复用当前轮上传图片，输出图片会自动保存为当前会话产物。";
     private static final String PARAMS = """
-            {"type":"object","properties":{"prompt":{"type":"string","description":"图片生成或编辑指令，需要明确主体、风格、构图、质感及修改要求。"},"mode":{"type":"string","enum":["images","edits"],"description":"生成模式，images 表示文生图，edits 表示图生图。用户明确要求忽略上传图片时传 images。"},"fileNames":{"type":"array","items":{"type":"string"},"description":"图生图参考图片列表，可来自当前会话已有图片；未显式传入时系统可自动复用当前轮上传图片。"},"maskFileNames":{"type":"array","items":{"type":"string"},"description":"可选的涂抹参考图列表，与 fileNames 一一对应。"},"size":{"type":"string","description":"输出尺寸，例如 1024x1024、1536x1024。"},"n":{"type":"integer","description":"期望生成的图片数量。"},"model":{"type":"string","description":"可选的图片模型名称，例如 gpt-image-2。"}},"required":["prompt"]}
+            {"type":"object","properties":{"prompt":{"type":"string","description":"图片生成或编辑指令，需要明确主体、风格、构图、质感及修改要求。"},"mode":{"type":"string","enum":["images","edits"],"description":"生成模式，images 表示文生图，edits 表示图生图。用户明确要求忽略上传图片时传 images。"},"fileNames":{"type":"array","items":{"type":"string"},"description":"图生图参考图片列表，可来自当前会话已有图片；未显式传入时系统可自动复用当前轮上传图片。"},"maskFileNames":{"type":"array","items":{"type":"string"},"description":"可选的涂抹参考图列表，与 fileNames 一一对应。"},"size":{"type":"string","description":"输出尺寸，例如 1024x1024、1536x1024。"},"n":{"type":"integer","description":"期望生成的图片数量。"}},"required":["prompt"]}
             """;
 
     private static final String MODE_IMAGES = "images";
@@ -88,7 +88,6 @@ public class ImageGenerationTool implements BaseTool {
                     .maskFileNames(maskFileNames)
                     .fileName(resolveOutputFileName(params.get("fileName")))
                     .fileDescription(resolveOutputDescription(params.get("fileDescription"), prompt))
-                    .model(StringUtils.trimToNull(valueAsString(params.get("model"))))
                     .size(StringUtils.trimToNull(valueAsString(params.get("size"))))
                     .n(resolveInteger(params.get("n"), 1))
                     .timeoutSeconds(DEFAULT_TIMEOUT_SECONDS)

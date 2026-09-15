@@ -100,7 +100,7 @@ public class WorkspaceImageGenerationServiceTest {
         Assert.assertEquals("1024x1024", capturedCommand.get().getSize());
         Assert.assertEquals(Integer.valueOf(3), capturedCommand.get().getN());
         Assert.assertEquals(Integer.valueOf(900), capturedCommand.get().getTimeoutSeconds());
-        Assert.assertEquals("gpt-image-2", capturedCommand.get().getModel());
+        Assert.assertNull(capturedCommand.get().getModel());
 
         Assert.assertEquals("req-100", persistedRequestId.get());
         Assert.assertNotNull(persistedResult.get());

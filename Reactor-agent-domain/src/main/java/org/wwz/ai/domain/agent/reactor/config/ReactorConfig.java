@@ -191,7 +191,7 @@ public class ReactorConfig {
     @Value("${autobots.autoagent.image_generation.api_key:}")
     private String imageGenerationApiKey;
 
-    @Value("${autobots.autoagent.image_generation.model:gpt-image-2}")
+    @Value("${autobots.autoagent.image_generation.model:gpt-image-2.5-flare}")
     private String imageGenerationModel;
 
     @Value("${autobots.autoagent.image_generation.grok_base_url:}")

@@ -144,7 +144,7 @@ autobots:
     image_generation:
       base_url: ""
       api_key: ""
-      model: "gpt-image-2"
+      model: "gpt-image-2.5-flare"
 
       grok_base_url: ""
       grok_api_key: ""

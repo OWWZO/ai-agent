@@ -57,7 +57,7 @@ public class AgentImageGenerationControllerTest {
         Assert.assertEquals(1, response.getData().getFileInfo().size());
         Assert.assertEquals("https://file.example.com/result.png", response.getData().getFileInfo().get(0).getPreviewUrl());
         Assert.assertNotNull(capturedCommand.get());
-        Assert.assertEquals("gpt-image-2", capturedCommand.get().getModel());
+        Assert.assertNull(capturedCommand.get().getModel());
     }
 
     @Test

@@ -48,6 +48,7 @@ public class ReactorImageGenerationGateway implements IReactorImageGenerationGat
             throw new IllegalArgumentException("prompt 不能为空");
         }
 
+        // 模型只从后端配置读取，忽略入口携带的 model，避免 Agent 或前端覆盖线上配置。
         // 网关屏蔽具体提供方和文件服务：先完成模型调用，再把远端/内联图片物化并上传到统一文件服务。
         MicuImageGenerationClient client = buildClient(requestDTO.getTimeoutSeconds());
         MicuImageGenerationClient.GenerationResult result = client.generate(
@@ -57,7 +58,6 @@ public class ReactorImageGenerationGateway implements IReactorImageGenerationGat
                         .mode(requestDTO.getMode())
                         .fileNames(requestDTO.getFileNames())
                         .maskFileNames(requestDTO.getMaskFileNames())
-                        .model(requestDTO.getModel())
                         .size(requestDTO.getSize())
                         .n(requestDTO.getN())
                         .build()
@@ -105,7 +105,7 @@ public class ReactorImageGenerationGateway implements IReactorImageGenerationGat
         return new MicuImageGenerationClient(MicuImageGenerationClient.ClientConfig.builder()
                 .baseUrl(baseUrl)
                 .apiKey(apiKey)
-                .defaultModel(firstText(reactorConfig.getImageGenerationModel(), "gpt-image-2"))
+                .defaultModel(firstText(reactorConfig.getImageGenerationModel(), "gpt-image-2.5-flare"))
                 .grokBaseUrl(firstText(reactorConfig.getImageGenerationGrokBaseUrl(), baseUrl))
                 .grokApiKey(firstText(reactorConfig.getImageGenerationGrokApiKey(), apiKey))
                 .defaultGrokModel(firstText(reactorConfig.getImageGenerationGrokModel(), "grok-imagine-image-lite"))
