@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 
 type BackgroundTasksDockProps = {
   chat?: CHAT.ChatItem;
+  chats?: CHAT.ChatItem[];
   onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
 };
 
@@ -114,28 +115,41 @@ function TaskRow({
  */
 const BackgroundTasksDock = memo(function BackgroundTasksDock({
   chat,
+  chats,
   onOpenAgent,
 }: BackgroundTasksDockProps) {
   const [open, setOpen] = useState(true);
-  const tasks = useMemo(
-    () => (chat ? projectDockTasks(chat) : []),
-    [chat]
-  );
+  const tasks = useMemo(() => {
+    const sourceChats = chats?.length ? chats : chat ? [chat] : [];
+    const seen = new Set<string>();
+    const items: Array<ReturnType<typeof projectDockTasks>[number] & { chat: CHAT.ChatItem }> = [];
+    for (const item of sourceChats) {
+      for (const task of projectDockTasks(item)) {
+        if (!task.id || seen.has(task.id)) {
+          continue;
+        }
+        seen.add(task.id);
+        items.push({ ...task, chat: item });
+      }
+    }
+    return items;
+  }, [chat, chats]);
 
-  if (!chat || tasks.length === 0) {
+  if (tasks.length === 0) {
     return null;
   }
 
   const handleOpen = (id: string) => {
     if (!onOpenAgent) return;
-    const tool = findAgentTaskByToolCallId(chat, id);
+    const matched = tasks.find((task) => task.id === id);
+    const host = matched?.chat || chat;
+    if (!host) return;
+    const tool = findAgentTaskByToolCallId(host, id);
     if (tool) {
-      onOpenAgent(tool, chat);
+      onOpenAgent(tool, host);
       return;
     }
-    // 兜底：用投影成员确认存在性
-    if (projectAgentMemberByToolCallId(chat, id)) {
-      // 无 task 实体时无法开面板
+    if (projectAgentMemberByToolCallId(host, id)) {
       return;
     }
   };

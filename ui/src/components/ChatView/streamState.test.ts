@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   applyWaitingUserInputState,
   hasPendingAskUserQuestion,
+  isChatItemRunning,
+  isParentLoopLive,
   isHitlYieldEvent,
   isStructuredDataOnlyTask,
   isTimelineToolActive,
@@ -15,6 +17,41 @@ import {
 } from "./streamState";
 
 describe("streamState presence & attention", () => {
+  it("主结论收口后 metrics=RUNNING 仍视为任务进行中", () => {
+    expect(
+      isChatItemRunning({
+        loading: false,
+        metrics: { status: "RUNNING" },
+      } as CHAT.ChatItem)
+    ).toBe(true);
+  });
+
+  it("主结论已出后父循环不再 live，第二句应 POST 而非 inject", () => {
+    expect(
+      isParentLoopLive({
+        loading: false,
+        conclusion: { messageType: "result" },
+        metrics: { status: "RUNNING" },
+      } as CHAT.ChatItem)
+    ).toBe(false);
+    expect(
+      isParentLoopLive({
+        loading: true,
+        metrics: { status: "RUNNING" },
+      } as CHAT.ChatItem)
+    ).toBe(true);
+  });
+
+  it("SUCCESS 且无后台任务时不再占用会话", () => {
+    expect(
+      isChatItemRunning({
+        loading: false,
+        metrics: { status: "SUCCESS" },
+      } as CHAT.ChatItem)
+    ).toBe(false);
+  });
+
+
   it("plan 单独存在时不自动打开右侧工作区", () => {
     expect(
       resolveActionPanelVisibility({

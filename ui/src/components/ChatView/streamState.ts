@@ -34,6 +34,61 @@ export type RunPresence = {
   workspaceTitle?: string;
 };
 
+export function isChatItemRunning(chat?: CHAT.ChatItem | null): boolean {
+  if (!chat) {
+    return false;
+  }
+  if (isParentLoopLive(chat)) {
+    return true;
+  }
+  if (String(chat.metrics?.status || "").toUpperCase() === "RUNNING") {
+    return true;
+  }
+  return hasRunningBackgroundTask(chat);
+}
+
+/** 父 ReAct 循环仍可 inject；根 result 后即使后台子 Agent 还在跑也返回 false。 */
+export function isParentLoopLive(chat?: CHAT.ChatItem | null): boolean {
+  if (!chat) {
+    return false;
+  }
+  if (hasPendingAskUserQuestion(chat)) {
+    return true;
+  }
+  if (chat.loading) {
+    return true;
+  }
+  const status = String(chat.metrics?.status || "").toUpperCase();
+  if (status === "WAITING_INPUT") {
+    return true;
+  }
+  if (chat.conclusion) {
+    return false;
+  }
+  return status === "RUNNING";
+}
+
+export function hasRunningBackgroundTask(chat?: CHAT.ChatItem | null): boolean {
+  return (chat?.multiAgent?.tasks || []).flat().some((task) => {
+    if (!task) {
+      return false;
+    }
+    const map = (task.resultMap || {}) as Record<string, unknown>;
+    const background =
+      map.run_in_background === true || map.runInBackground === true;
+    if (!background) {
+      return false;
+    }
+    const obs = String(
+      task.toolResult?.toolResult || map.toolResult || map.answer || ""
+    );
+    return (
+      String(map.status || "").toLowerCase() === "running" ||
+      /"status"\s*:\s*"running"/i.test(obs)
+    );
+  });
+}
+
 const WORKSPACE_HIDDEN_MESSAGE_TYPES = new Set([
   "task_summary",
   "result",

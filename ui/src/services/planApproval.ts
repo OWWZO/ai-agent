@@ -1,9 +1,10 @@
 import api from "./index";
 import { resolveServiceBaseUrl } from "@/utils/origin";
+import { submitAcceptedCommand } from "./agentRun";
 
 const customHost = resolveServiceBaseUrl(SERVICE_BASE_URL);
 
-export const PLAN_APPROVAL_RESUME_SSE_URL = `${customHost}/api/agent/plan-approval/resume`;
+export const PLAN_APPROVAL_RESUME_URL = `${customHost}/api/agent/plan-approval/resume`;
 
 export const PLAN_APPROVAL_RESUME_EVENT = "reactor-plan-approval-resume";
 
@@ -53,6 +54,10 @@ export const planApprovalApi = {
       approvalId,
     }) as unknown as Promise<Record<string, unknown>>,
 };
+
+export function submitPlanApprovalResume(resumeRequestId: string) {
+  return submitAcceptedCommand(PLAN_APPROVAL_RESUME_URL, { resumeRequestId });
+}
 
 export function dispatchPlanApprovalResume(detail: PlanApprovalResumeEventDetail) {
   if (typeof window === "undefined" || !detail?.resumeRequestId) {

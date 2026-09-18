@@ -1,9 +1,10 @@
 import api from "./index";
 import { resolveServiceBaseUrl } from "@/utils/origin";
+import { submitAcceptedCommand } from "./agentRun";
 
 const customHost = resolveServiceBaseUrl(SERVICE_BASE_URL);
 
-export const ASK_USER_RESUME_SSE_URL = `${customHost}/api/agent/ask-user/resume`;
+export const ASK_USER_RESUME_URL = `${customHost}/api/agent/ask-user/resume`;
 
 export type AskUserAnswerPayload = {
   questionId: string;
@@ -43,6 +44,10 @@ export const askUserApi = {
       questionId,
     }) as unknown as Promise<Record<string, unknown>>,
 };
+
+export function submitAskUserResume(resumeRequestId: string) {
+  return submitAcceptedCommand(ASK_USER_RESUME_URL, { resumeRequestId });
+}
 
 export function dispatchAskUserResume(detail: AskUserResumeEventDetail) {
   if (typeof window === "undefined" || !detail?.resumeRequestId) {

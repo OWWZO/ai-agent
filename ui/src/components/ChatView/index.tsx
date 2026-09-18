@@ -30,7 +30,7 @@ import {
   findLatestPendingAskUser,
   resolveHitlDockSlot,
 } from "./hitlDockModel";
-import { hasPendingAskUserQuestion } from "./streamState";
+import { hasPendingAskUserQuestion, isParentLoopLive } from "./streamState";
 import { getProductByType } from "@/utils/constants";
 import { useMemoizedFn } from "ahooks";
 import classNames from "classnames";
@@ -893,6 +893,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     ) : null;
 
   const activeChat = conversation.chatList?.[conversation.chatList.length - 1];
+  const sessionBusy = loading || isParentLoopLive(activeChat);
   const liveAgentDetail = useMemo(() => {
     if (!agentDetail) {
       return null;
@@ -979,7 +980,11 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   /** 底部 Dock：companions 常驻；pending HITL 替换 Composer */
   const renderComposerStack = (inputKey: string) => (
     <>
-      <BackgroundTasksDock chat={activeChat} onOpenAgent={openAgentPanel} />
+      <BackgroundTasksDock
+        chat={activeChat}
+        chats={conversation.chatList}
+        onOpenAgent={openAgentPanel}
+      />
       <SessionTaskComposerBar chat={activeChat} taskList={taskList} />
       {hitlDockSlot === "ask" && pendingAskTool ? (
         <div className="mb-1" data-testid="hitl-dock-ask">
@@ -1006,13 +1011,13 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             key={inputKey}
             sessionId={conversation.sessionId}
             contextUsage={activeChat?.contextUsage ?? null}
-            placeholder={loading ? "任务进行中，可发送指导…" : "希望 Reactor 为你做哪些任务呢？"}
+            placeholder={sessionBusy ? "任务进行中，可发送指导…" : "希望 Reactor 为你做哪些任务呢？"}
             showBtn={false}
             size="medium"
-            busy={loading}
+            busy={sessionBusy}
             disabled={false}
-            onStop={loading ? () => void stopActiveRun() : undefined}
-            onInject={loading ? (text) => void injectActiveRun(text) : undefined}
+            onStop={sessionBusy ? () => void stopActiveRun() : undefined}
+            onInject={sessionBusy ? (text) => void injectActiveRun(text) : undefined}
             draftMessage={composerDraft}
             onDraftConsumed={clearComposerDraft}
             product={currentProduct}
@@ -1462,7 +1467,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   return (
     <div className="flex h-full w-full justify-center">
       {!readOnly ? (
-        <GenUiActionBridge sendMessage={sendGenUiMessage} busy={loading} />
+        <GenUiActionBridge sendMessage={sendGenUiMessage} busy={sessionBusy} />
       ) : null}
       {isDataConversation ? renderDataAgent() : renderMultAgent()}
     </div>

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyGuardError,
+  createConversationDraftController,
   resolveLatestContextUsage,
 } from "./useConversationStream";
 import { resolveActionPanelVisibility } from "./streamState";
@@ -104,5 +105,77 @@ describe("useConversationStream helpers", () => {
 
     expect(result.errorMsg).toBe("");
     expect(result.resultMap.eventData).toBeDefined();
+  });
+
+  it("旧 turn 的 replace 不得覆盖后追加的新消息", () => {
+    let latest: CHAT.ConversationHistory = {
+      id: "c1",
+      sessionId: "s1",
+      chatList: [
+        { requestId: "req-old", query: "先跑后台" } as CHAT.ChatItem,
+      ],
+    } as CHAT.ConversationHistory;
+    const controller = createConversationDraftController<CHAT.ChatItem>(
+      "c1",
+      latest,
+      "chatList",
+      (_id, next) => {
+        latest = next;
+      },
+      () => latest
+    );
+
+    latest = {
+      ...latest,
+      chatList: [
+        latest.chatList[0],
+        { requestId: "req-new", query: "第二句" } as CHAT.ChatItem,
+      ],
+    };
+
+    const next = controller.replaceLastItem({
+      requestId: "req-old",
+      query: "先跑后台",
+      conclusion: { messageType: "result" },
+    } as CHAT.ChatItem);
+
+    expect(next.chatList.map((item) => item.requestId)).toEqual([
+      "req-old",
+      "req-new",
+    ]);
+    expect(next.chatList[0].conclusion?.messageType).toBe("result");
+    expect(next.chatList[1].query).toBe("第二句");
+  });
+
+  it("replace 同一 requestId 不得追加出重复 turn", () => {
+    let latest: CHAT.ConversationHistory = {
+      id: "c1",
+      sessionId: "s1",
+      chatList: [
+        { requestId: "req-old", query: "先跑后台" } as CHAT.ChatItem,
+        { requestId: "req-old", query: "重复副本" } as CHAT.ChatItem,
+        { requestId: "req-new", query: "第二句" } as CHAT.ChatItem,
+      ],
+    } as CHAT.ConversationHistory;
+    const controller = createConversationDraftController<CHAT.ChatItem>(
+      "c1",
+      latest,
+      "chatList",
+      (_id, next) => {
+        latest = next;
+      },
+      () => latest
+    );
+
+    const next = controller.replaceLastItem({
+      requestId: "req-old",
+      query: "先跑后台",
+      conclusion: { messageType: "result" },
+    } as CHAT.ChatItem);
+
+    expect(next.chatList.map((item) => item.requestId)).toEqual([
+      "req-old",
+      "req-new",
+    ]);
   });
 });

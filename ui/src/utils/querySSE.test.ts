@@ -86,6 +86,25 @@ describe("querySSE", () => {
     expect(config.handleError).not.toHaveBeenCalled();
   });
 
+  it("GET 续接不带 body，并写入 Last-Event-ID", () => {
+    const config = createConfig({
+      method: "GET",
+      lastEventId: "12",
+      body: null,
+    });
+
+    querySSE(config, "http://localhost/api/agent/session/s1/stream?lastEventSeq=12");
+
+    const [url, options] = fetchEventSourceMock.mock.calls[0] as [
+      string,
+      { method: string; body?: string; headers: Record<string, string> },
+    ];
+    expect(url).toContain("/api/agent/session/s1/stream");
+    expect(options.method).toBe("GET");
+    expect(options.body).toBeUndefined();
+    expect(options.headers["Last-Event-ID"]).toBe("12");
+  });
+
   it("主动 abort 不进入业务错误回调", async () => {
     fetchEventSourceMock.mockRejectedValueOnce(
       new DOMException("aborted", "AbortError")

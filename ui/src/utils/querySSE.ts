@@ -27,6 +27,8 @@ interface SSEConfig<TMessage = unknown> {
   body: unknown;
   method?: 'GET' | 'POST';
   signal?: AbortSignal;
+  /** GET 续接时写入标准 Last-Event-ID。 */
+  lastEventId?: string;
   /** 是否允许 fetch-event-source 在连接失败后自动重发请求。 */
   retryOnError?: boolean;
   /** 收到带 id 的业务事件时通知调用方保存游标。 */
@@ -52,7 +54,8 @@ export default <TMessage = unknown>(
     body = null,
     method = 'POST',
     signal,
-    // 当前入口使用 POST；默认不重发原始请求，避免断线后重复创建任务。
+    lastEventId,
+    // POST 发消息默认不重发原始请求，避免断线后重复创建任务；续接走 GET。
     retryOnError = false,
     handleEventId,
     handleOpen,
@@ -62,10 +65,15 @@ export default <TMessage = unknown>(
     handleClose,
   } = config;
 
+  const headers = { ...SSE_HEADERS };
+  if (lastEventId) {
+    headers['Last-Event-ID'] = lastEventId;
+  }
+
   void fetchEventSource(url, {
     method,
     credentials: 'include',
-    headers: SSE_HEADERS,
+    headers,
     signal,
     body: method === 'GET' ? undefined : JSON.stringify(body),
     openWhenHidden: true,

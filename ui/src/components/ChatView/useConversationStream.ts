@@ -8,6 +8,7 @@ import {
   clearActiveRun,
   readActiveRun,
   saveActiveRun,
+  readSessionCursor,
   updateActiveRunSeq,
   updateActiveRunEvent,
 } from "@/utils/activeRunStorage";
@@ -26,15 +27,19 @@ import { restoreHitlForSession } from "@/utils/hitlRestore";
 import querySSE from "@/utils/querySSE";
 import { parseAgentAnswer } from "@/utils/sseParsers";
 import { conversationHistoryApi } from "@/services/agentConversation";
-import { AGENT_RUN_FOLLOW_SSE_URL } from "@/services/agentRun";
+import {
+  AgentQuerySubmitError,
+  buildAgentSessionStreamUrl,
+  submitAgentQuery,
+} from "@/services/agentRun";
 import {
   ASK_USER_RESUME_EVENT,
-  ASK_USER_RESUME_SSE_URL,
+  submitAskUserResume,
   type AskUserResumeEventDetail,
 } from "@/services/askUser";
 import {
   PLAN_APPROVAL_RESUME_EVENT,
-  PLAN_APPROVAL_RESUME_SSE_URL,
+  submitPlanApprovalResume,
   type PlanApprovalResumeEventDetail,
 } from "@/services/planApproval";
 import type {
@@ -48,7 +53,10 @@ import {
   cloneWorkspaceTask,
   getLatestRenderableTask,
   hasPendingAskUserQuestion,
+  hasRunningBackgroundTask,
+  isChatItemRunning,
   isHitlYieldEvent,
+  isParentLoopLive,
   markAskUserQuestionsAnswered,
   markPlanApprovalsDecided,
   resolveActionPanelVisibility,
@@ -94,7 +102,7 @@ type UseConversationStreamResult = {
   sendMessage: (inputInfo: CHAT.TInputInfo) => void;
   stopActiveRun: () => Promise<void>;
   /** 向进行中的 run 注入用户指导（不开新 SSE） */
-  injectActiveRun: (text: string) => Promise<boolean>;
+  injectActiveRun: (text: string) => Promise<boolean | "new_run">;
   regenerateLastMessage: () => void;
   /** 撤销末轮并返回 user query；busy 时返回 null */
   undoLastUserTurn: () => string | null;
@@ -104,16 +112,6 @@ const CONNECTION_LOST_HINT = "连接暂时断开，任务仍在后台执行";
 const CONCURRENT_RUN_HINT =
   "已有任务在进行中，请等待完成或先停止后再试";
 const FOLLOW_RECONNECT_BASE_DELAY = 800;
-
-function isChatItemRunning(chat?: CHAT.ChatItem | null) {
-  if (!chat) {
-    return false;
-  }
-  if (chat.loading) {
-    return true;
-  }
-  return String(chat.metrics?.status || "").toUpperCase() === "RUNNING";
-}
 const FOLLOW_RECONNECT_MAX_DELAY = 15_000;
 /** RUNNING 期间允许持续退避；不再在 6 次后永久放弃 */
 const FOLLOW_RECONNECT_ATTEMPT_CAP = 20;
@@ -211,24 +209,50 @@ function useRafThrottle<TValue>(
   }), [cancel, flush, reset, schedule]);
 }
 
-function replaceConversationListLastItem<TItem>(
+function replaceConversationListItem<TItem extends { requestId?: string }>(
   conversation: CHAT.ConversationHistory,
   key: ConversationListKey,
   item: TItem
 ) {
-  const nextList = [...(conversation[key] as TItem[])];
-  nextList.splice(nextList.length - 1, 1, item);
+  const prevList = [...((conversation[key] as TItem[]) || [])];
+  const requestId = item?.requestId;
+  if (requestId) {
+    const nextList: TItem[] = [];
+    let replaced = false;
+    for (const candidate of prevList) {
+      if (candidate?.requestId === requestId) {
+        if (!replaced) {
+          nextList.push(item);
+          replaced = true;
+        }
+        continue;
+      }
+      nextList.push(candidate);
+    }
+    if (!replaced) {
+      return conversation;
+    }
+    return {
+      ...conversation,
+      [key]: nextList,
+    } as CHAT.ConversationHistory;
+  }
+  if (!prevList.length) {
+    return conversation;
+  }
+  prevList[prevList.length - 1] = item;
   return {
     ...conversation,
-    [key]: nextList,
+    [key]: prevList,
   } as CHAT.ConversationHistory;
 }
 
-export function createConversationDraftController<TItem>(
+export function createConversationDraftController<TItem extends { requestId?: string }>(
   conversationId: string,
   initialConversation: CHAT.ConversationHistory,
   listKey: ConversationListKey,
-  commit: (conversationId: string, nextConversation: CHAT.ConversationHistory) => void
+  commit: (conversationId: string, nextConversation: CHAT.ConversationHistory) => void,
+  getLatest?: () => CHAT.ConversationHistory | undefined
 ): ConversationDraftController<TItem> {
   let snapshot = initialConversation;
 
@@ -236,7 +260,8 @@ export function createConversationDraftController<TItem>(
     conversationId,
     getSnapshot: () => snapshot,
     replaceLastItem: (item) => {
-      snapshot = replaceConversationListLastItem(snapshot, listKey, item);
+      const base = getLatest?.() || snapshot;
+      snapshot = replaceConversationListItem(base, listKey, item);
       return snapshot;
     },
     commit: (nextConversation) => {
@@ -371,6 +396,7 @@ export function useConversationStream(
     new Map()
   );
   const lastEventSeqRef = useRef<Map<string, number>>(new Map());
+  const skipInjectRef = useRef(false);
 
   const clearFollowReconnectTimer = useMemoizedFn((requestId?: string) => {
     if (requestId) {
@@ -477,6 +503,67 @@ export function useConversationStream(
     }
   );
 
+  const patchChatByRequestId = useMemoizedFn((
+    conversationId: string,
+    targetRequestId: string,
+    data: MESSAGE.Answer
+  ) => {
+    const snapshot =
+      conversationSnapshotsRef.current.get(conversationId) ||
+      conversationRef.current;
+    const chatList = snapshot.chatList || [];
+    const index = chatList.findIndex((chat) => chat.requestId === targetRequestId);
+    if (index < 0) {
+      return;
+    }
+    let chat = chatList[index];
+    const eventData = normalizeEventData(data.resultMap?.eventData);
+    if (eventData) {
+      chat = combineData(eventData, chat);
+      chat = handleTaskData(
+        chat,
+        Boolean(snapshot.deepThink),
+        chat.multiAgent
+      ).currentChat;
+      const isRootResult =
+        eventData.resultMap?.messageType === "result" &&
+        !resolveParentToolUseId(eventData);
+      if (isRootResult) {
+        chat = {
+          ...chat,
+          conclusion: buildTaskFromEventData(eventData) as CHAT.Task,
+          loading: false,
+          tip: "",
+          metrics: {
+            ...(chat.metrics || {}),
+            status: data.finished ? "SUCCESS" : chat.metrics?.status || "RUNNING",
+          },
+        };
+      }
+    }
+    if (
+      data.finished &&
+      !hasRunningBackgroundTask(chat) &&
+      !hasPendingAskUserQuestion(chat)
+    ) {
+      chat = {
+        ...chat,
+        loading: false,
+        tip: "",
+        metrics: {
+          ...(chat.metrics || {}),
+          status: "SUCCESS",
+        },
+      };
+    }
+    commitConversation(conversationId, {
+      ...snapshot,
+      chatList: chatList.map((item, itemIndex) =>
+        itemIndex === index ? chat : item
+      ),
+    });
+  });
+
   useEffect(() => {
     conversationSnapshotsRef.current.set(conversation.id, conversation);
   }, [conversation]);
@@ -519,14 +606,14 @@ export function useConversationStream(
     const conversationId = conversation.id;
     const latestRunningChat = [...conversationRef.current.chatList]
       .reverse()
-      .find((chat) => chat.loading && chat.requestId);
+      .find((chat) => isChatItemRunning(chat) && chat.requestId);
     const live = liveStreamsRef.current.get(conversationId);
 
     if (latestRunningChat?.requestId) {
       // 刷新后由 Home 从 Ledger 恢复的 RUNNING run 仍然可以被用户显式停止，
       // 但网络断开本身不会在这里被改写成 STOPPED。
       activeRequestIdRef.current = latestRunningChat.requestId;
-      setLoading(true);
+      setLoading(Boolean(latestRunningChat.loading));
       if (
         live &&
         live.requestId === latestRunningChat.requestId &&
@@ -550,7 +637,7 @@ export function useConversationStream(
   const runningFollowKey = useMemo(() => {
     const latestRunningChat = [...conversation.chatList]
       .reverse()
-      .find((chat) => chat.loading && chat.requestId);
+      .find((chat) => isChatItemRunning(chat) && chat.requestId);
     if (!latestRunningChat?.requestId) {
       return null;
     }
@@ -636,7 +723,10 @@ export function useConversationStream(
       cached?.seedChat ||
       [...baseConversation.chatList]
         .reverse()
-        .find((chat) => chat.requestId === targetRequestId && chat.loading);
+        .find((chat) => chat.requestId === targetRequestId && isChatItemRunning(chat)) ||
+      [...baseConversation.chatList]
+        .reverse()
+        .find((chat) => chat.requestId === targetRequestId);
     if (!seedChat?.requestId) {
       return;
     }
@@ -658,10 +748,9 @@ export function useConversationStream(
       deepThink: normalizedDeepThink,
       seedChat: {
         ...seedChat,
-        loading: true,
         metrics: {
           ...(seedChat.metrics || {}),
-          status: "RUNNING",
+          status: seedChat.metrics?.status || "RUNNING",
         },
       },
     });
@@ -672,15 +761,19 @@ export function useConversationStream(
     const abortController = new AbortController();
     bindForegroundStream(conversationId, requestId, abortController);
     const storedCheckpoint = readActiveRun();
-    const initialEventSeq = storedCheckpoint?.requestId === requestId
-      ? storedCheckpoint.lastEventSeq
-      : (lastEventSeqRef.current.get(requestId) || 0);
+    const initialEventSeq = Math.max(
+      storedCheckpoint?.sessionId === sessionId ? storedCheckpoint.lastEventSeq : 0,
+      readSessionCursor(sessionId),
+      lastEventSeqRef.current.get(requestId) || 0
+    );
     lastEventSeqRef.current.set(requestId, initialEventSeq);
     if (!storedCheckpoint || storedCheckpoint.requestId !== requestId) {
       saveActiveRun(sessionId, requestId);
     }
     if (conversationRef.current.id === conversationId) {
-      setLoading(true);
+      if (seedChat.loading) {
+        setLoading(true);
+      }
       onPrepareStreamingWorkspace?.();
     }
 
@@ -691,10 +784,9 @@ export function useConversationStream(
 
     let currentChat: CHAT.ChatItem = {
       ...seedChat,
-      loading: true,
       metrics: {
         ...(seedChat.metrics || {}),
-        status: "RUNNING",
+        status: seedChat.metrics?.status || "RUNNING",
       },
     };
 
@@ -715,7 +807,8 @@ export function useConversationStream(
       conversationId,
       draftBase,
       "chatList",
-      commitConversation
+      commitConversation,
+      () => conversationSnapshotsRef.current.get(conversationId)
     );
 
     const syncRunningConversation = () => {
@@ -945,7 +1038,12 @@ export function useConversationStream(
       }
       if (eventSeq > 0) {
         lastEventSeqRef.current.set(requestId, eventSeq);
-        updateActiveRunSeq(requestId, eventSeq);
+        updateActiveRunSeq(sessionId, eventSeq);
+      }
+      const frameRequestId = String(data.reqId || "");
+      if (frameRequestId && frameRequestId !== requestId) {
+        patchChatByRequestId(conversationId, frameRequestId, data);
+        return;
       }
       // 收到任意有效帧说明观察流已经恢复，下一次断开从最短退避重新开始。
       followReconnectAttemptsRef.current.set(requestId, 0);
@@ -1148,19 +1246,17 @@ export function useConversationStream(
 
     querySSE(
       {
-        body: {
-          sessionId,
-          requestId,
-          lastEventSeq: initialEventSeq,
-        },
+        method: "GET",
+        body: null,
+        lastEventId: initialEventSeq > 0 ? String(initialEventSeq) : undefined,
         signal: abortController.signal,
         retryOnError: false,
-        handleEventId: (eventId) => updateActiveRunEvent(requestId, eventId),
+        handleEventId: (eventId) => updateActiveRunEvent(sessionId, eventId),
         parser: parseAgentAnswer,
         handleMessage,
         handleError: (error) => {
           console.error("follow SSE error", error);
-          if (!currentChat.loading) {
+          if (!isChatItemRunning(currentChat)) {
             return;
           }
           const live = liveStreamsRef.current.get(conversationId);
@@ -1191,7 +1287,7 @@ export function useConversationStream(
         handleClose: () => {
           scheduleNonChatFlush(true);
           queueMicrotask(() => {
-            if (!currentChat.loading) {
+            if (!isChatItemRunning(currentChat)) {
               return;
             }
             const live = liveStreamsRef.current.get(conversationId);
@@ -1223,7 +1319,10 @@ export function useConversationStream(
           });
         },
       },
-      AGENT_RUN_FOLLOW_SSE_URL
+      buildAgentSessionStreamUrl({
+        sessionId,
+        lastEventSeq: initialEventSeq,
+      })
     );
   });
 
@@ -1293,7 +1392,7 @@ export function useConversationStream(
   const resumeHitlRun = useMemoizedFn((
     detail: AskUserResumeEventDetail | PlanApprovalResumeEventDetail,
     options: {
-      sseUrl: string;
+      submit: (resumeRequestId: string) => Promise<unknown>;
       markDecided: (
         chat: CHAT.ChatItem,
         questionId?: string,
@@ -1361,7 +1460,8 @@ export function useConversationStream(
         ),
       },
       "chatList",
-      commitConversation
+      commitConversation,
+      () => conversationSnapshotsRef.current.get(conversationId)
     );
     draftController.commit(draftController.replaceLastItem({ ...currentChat }));
 
@@ -1437,7 +1537,12 @@ export function useConversationStream(
       }
       if (eventSeq > 0) {
         lastEventSeqRef.current.set(resumeRequestId, eventSeq);
-        updateActiveRunSeq(resumeRequestId, eventSeq);
+        updateActiveRunSeq(sessionId, eventSeq);
+      }
+      const frameRequestId = String(data.reqId || "");
+      if (frameRequestId && frameRequestId !== resumeRequestId) {
+        patchChatByRequestId(conversationId, frameRequestId, data);
+        return;
       }
       followReconnectAttemptsRef.current.set(resumeRequestId, 0);
       const { finished, resultMap, packageType } = data;
@@ -1534,41 +1639,74 @@ export function useConversationStream(
       draftController.commit(draftController.replaceLastItem({ ...currentChat }));
     };
 
-    querySSE(
-      {
-        body: { resumeRequestId },
-        signal: abortController.signal,
-        retryOnError: false,
-        handleEventId: (eventId) => updateActiveRunEvent(resumeRequestId, eventId),
-        parser: parseAgentAnswer,
-        handleMessage,
-        handleError: (error) => {
-          console.error(`${options.errorLabel} resume SSE error`, error);
-          queueMicrotask(() => {
-            if (resumeSettled) {
-              return;
-            }
-            // 恢复请求断开不代表 continuation 已结束；沿用主流的 follow 观察同一个 run。
-            parkResumeStream();
-          });
+    void (async () => {
+      try {
+        await options.submit(resumeRequestId);
+      } catch (error) {
+        const concurrent =
+          error instanceof AgentQuerySubmitError && error.concurrent;
+        const messageText = error instanceof Error ? error.message : CONCURRENT_RUN_HINT;
+        if (concurrent) {
+          antdMessage.warning(messageText || CONCURRENT_RUN_HINT);
+        }
+        const streamStillActive = isActiveStream();
+        clearActiveRun(resumeRequestId);
+        followReconnectContextsRef.current.delete(resumeRequestId);
+        clearFollowReconnectTimer(resumeRequestId);
+        unbindLiveStream(conversationId, abortController);
+        currentChat = applyGuardError(
+          currentChat,
+          concurrent ? CONCURRENT_RUN_HINT : messageText || "请求未能建立，请稍后重试"
+        );
+        if (streamStillActive) {
+          setLoading(false);
+        }
+        draftController.commit(draftController.replaceLastItem({ ...currentChat }));
+        return;
+      }
+      if (abortController.signal.aborted) {
+        return;
+      }
+      lastEventSeqRef.current.set(resumeRequestId, readSessionCursor(sessionId));
+      querySSE(
+        {
+          method: "GET",
+          body: null,
+          lastEventId: undefined,
+          signal: abortController.signal,
+          retryOnError: false,
+          handleEventId: (eventId) => updateActiveRunEvent(sessionId, eventId),
+          parser: parseAgentAnswer,
+          handleMessage,
+          handleError: (error) => {
+            console.error(`${options.errorLabel} resume SSE error`, error);
+            queueMicrotask(() => {
+              if (resumeSettled) {
+                return;
+              }
+              parkResumeStream();
+            });
+          },
+          handleClose: () => {
+            queueMicrotask(() => {
+              if (resumeSettled) {
+                return;
+              }
+              parkResumeStream(300);
+            });
+          },
         },
-        handleClose: () => {
-          queueMicrotask(() => {
-            if (resumeSettled) {
-              return;
-            }
-            // clean EOF 也可能发生在终态帧到达前；先让同 tick 的 result 帧把 resumeSettled 置上。
-            parkResumeStream(300);
-          });
-        },
-      },
-      options.sseUrl
-    );
+        buildAgentSessionStreamUrl({
+          sessionId,
+          lastEventSeq: readSessionCursor(sessionId),
+        })
+      );
+    })();
   });
 
   const resumeAskUserRun = useMemoizedFn((detail: AskUserResumeEventDetail) => {
     resumeHitlRun(detail, {
-      sseUrl: ASK_USER_RESUME_SSE_URL,
+      submit: submitAskUserResume,
       markDecided: markAskUserQuestionsAnswered,
       errorLabel: "ask-user",
     });
@@ -1576,7 +1714,7 @@ export function useConversationStream(
 
   const resumePlanApprovalRun = useMemoizedFn((detail: PlanApprovalResumeEventDetail) => {
     resumeHitlRun(detail, {
-      sseUrl: PLAN_APPROVAL_RESUME_SSE_URL,
+      submit: submitPlanApprovalResume,
       markDecided: markPlanApprovalsDecided,
       errorLabel: "plan-approval",
     });
@@ -1625,6 +1763,49 @@ export function useConversationStream(
     };
   }, [clearFollowReconnectTimer, hasLiveStream, scheduleFollowReconnect]);
 
+  const resolveActiveRequestId = useMemoizedFn((conversationId?: string) => {
+    const id = conversationId || conversationRef.current.id;
+    if (activeRequestIdRef.current) {
+      return activeRequestIdRef.current;
+    }
+    const live = liveStreamsRef.current.get(id);
+    if (live?.requestId) {
+      return live.requestId;
+    }
+    const lastRunning = [...(conversationRef.current.chatList || [])]
+      .reverse()
+      .find((chat) => isChatItemRunning(chat) && chat.requestId);
+    return lastRunning?.requestId || null;
+  });
+
+  const injectActiveRun = useMemoizedFn(async (text: string) => {
+    const activeConversation = conversationRef.current;
+    const requestId = resolveActiveRequestId(activeConversation.id);
+    const trimmed = (text || "").trim();
+    if (!requestId || !trimmed) {
+      return false;
+    }
+    try {
+      const { agentRunApi } = await import("@/services/agentRun");
+      const data = await agentRunApi.inject({
+        sessionId: activeConversation.sessionId,
+        requestId,
+        text: trimmed,
+      });
+      if (data?.mode === "new_run") {
+        return "new_run";
+      }
+      if (!data || data.accepted !== true) {
+        console.warn("inject run rejected", data);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.warn("inject run failed", error);
+      return false;
+    }
+  });
+
   const sendMessage = useMemoizedFn((inputInfo: CHAT.TInputInfo) => {
     const baseConversation = conversationRef.current;
     const conversationId = baseConversation.id;
@@ -1643,7 +1824,7 @@ export function useConversationStream(
       followReconnectContextsRef.current.forEach((ctx) => {
         if (
           ctx.conversationId !== conversationId &&
-          isChatItemRunning(ctx.seedChat)
+          isParentLoopLive(ctx.seedChat)
         ) {
           blockedByOtherRun = true;
         }
@@ -1654,7 +1835,7 @@ export function useConversationStream(
         if (otherId === conversationId) {
           return;
         }
-        if ((snapshot.chatList || []).some((chat) => isChatItemRunning(chat))) {
+        if ((snapshot.chatList || []).some((chat) => isParentLoopLive(chat))) {
           blockedByOtherRun = true;
         }
       });
@@ -1664,15 +1845,45 @@ export function useConversationStream(
       return;
     }
 
+    const lastChat = (baseConversation.chatList || [])[baseConversation.chatList.length - 1];
+    const parentLoopLive =
+      !skipInjectRef.current &&
+      (isParentLoopLive(lastChat) ||
+        [...followReconnectContextsRef.current.values()].some(
+          (ctx) =>
+            ctx.conversationId === conversationId && isParentLoopLive(ctx.seedChat)
+        ));
+    skipInjectRef.current = false;
+    if (parentLoopLive) {
+      void injectActiveRun(message).then((outcome) => {
+        if (outcome === true) {
+          return;
+        }
+        if (outcome === "new_run") {
+          skipInjectRef.current = true;
+          sendMessage(inputInfo);
+          return;
+        }
+        antdMessage.warning(CONCURRENT_RUN_HINT);
+      });
+      return;
+    }
+
     const requestId = getUniqId();
     clearFollowReconnectTimer(requestId);
     followReconnectAttemptsRef.current.delete(requestId);
     followReconnectContextsRef.current.delete(requestId);
-    // 只替换本会话旧流，不影响其他会话后台 SSE。
     const previous = liveStreamsRef.current.get(conversationId);
-    previous?.controller.abort();
-    const abortController = new AbortController();
-    bindForegroundStream(conversationId, requestId, abortController);
+    const reuseObserve = Boolean(
+      previous && !previous.controller.signal.aborted
+    );
+    const abortController = reuseObserve
+      ? previous!.controller
+      : new AbortController();
+    if (!reuseObserve) {
+      previous?.controller.abort();
+      bindForegroundStream(conversationId, requestId, abortController);
+    }
     saveActiveRun(baseConversation.sessionId, requestId);
     lastEventSeqRef.current.set(requestId, 0);
     const isActiveStream = () =>
@@ -1728,7 +1939,8 @@ export function useConversationStream(
       conversationId,
       initialConversation,
       "chatList",
-      commitConversation
+      commitConversation,
+      () => conversationSnapshotsRef.current.get(conversationId)
     );
 
     draftController.commit(initialConversation);
@@ -1845,7 +2057,12 @@ export function useConversationStream(
       }
       if (eventSeq > 0) {
         lastEventSeqRef.current.set(requestId, eventSeq);
-        updateActiveRunSeq(requestId, eventSeq);
+        updateActiveRunSeq(baseConversation.sessionId, eventSeq);
+      }
+      const frameRequestId = String(data.reqId || "");
+      if (frameRequestId && frameRequestId !== requestId) {
+        patchChatByRequestId(conversationId, frameRequestId, data);
+        return;
       }
       // 收到任意有效帧说明主观察流正常，后续断开不应沿用旧的退避次数。
       followReconnectAttemptsRef.current.set(requestId, 0);
@@ -2122,14 +2339,19 @@ export function useConversationStream(
     };
 
     let streamOpened = false;
-    const failBeforeStreamOpened = () => {
+    const failBeforeStreamOpened = (messageText?: string) => {
       const streamStillActive = isActiveStream();
       clearActiveRun(requestId);
       followReconnectContextsRef.current.delete(requestId);
       clearFollowReconnectTimer(requestId);
-      unbindLiveStream(conversationId, abortController);
-      currentChat = applyGuardError(currentChat, "请求未能建立，请稍后重试");
-      if (streamStillActive) {
+      if (!reuseObserve) {
+        unbindLiveStream(conversationId, abortController);
+      }
+      currentChat = applyGuardError(
+        currentChat,
+        messageText || "请求未能建立，请稍后重试"
+      );
+      if (streamStillActive || reuseObserve) {
         setLoading(false);
       }
       pendingConversation = draftController.replaceLastItem({ ...currentChat });
@@ -2229,24 +2451,55 @@ export function useConversationStream(
       });
     };
 
-    querySSE({
-      body: params,
-      signal: abortController.signal,
-      retryOnError: false,
-      handleOpen: () => {
-        streamOpened = true;
-      },
-      handleEventId: (eventId) => updateActiveRunEvent(requestId, eventId),
-      parser: parseAgentAnswer,
-      handleMessage,
-      handleError,
-      handleClose,
-    });
+    lastEventSeqRef.current.set(requestId, readSessionCursor(baseConversation.sessionId));
+
+    void (async () => {
+      try {
+        await submitAgentQuery(params);
+      } catch (error) {
+        const concurrent =
+          error instanceof AgentQuerySubmitError && error.concurrent;
+        const messageText = error instanceof Error ? error.message : CONCURRENT_RUN_HINT;
+        if (concurrent) {
+          antdMessage.warning(messageText || CONCURRENT_RUN_HINT);
+        }
+        failBeforeStreamOpened(
+          concurrent ? CONCURRENT_RUN_HINT : messageText || "请求未能建立，请稍后重试"
+        );
+        return;
+      }
+      streamOpened = true;
+      if (reuseObserve) {
+        return;
+      }
+      querySSE(
+        {
+          method: "GET",
+          body: null,
+          lastEventId: undefined,
+          signal: abortController.signal,
+          retryOnError: false,
+          handleOpen: () => {
+            streamOpened = true;
+          },
+          handleEventId: (eventId) =>
+            updateActiveRunEvent(baseConversation.sessionId, eventId),
+          parser: parseAgentAnswer,
+          handleMessage,
+          handleError,
+          handleClose,
+        },
+        buildAgentSessionStreamUrl({
+          sessionId: baseConversation.sessionId,
+          lastEventSeq: readSessionCursor(baseConversation.sessionId),
+        })
+      );
+    })();
   });
 
   const regenerateLastMessage = useMemoizedFn(() => {
     const last = conversation.chatList[conversation.chatList.length - 1];
-    if (!last || loading) {
+    if (!last || loading || isChatItemRunning(last)) {
       return;
     }
 
@@ -2258,7 +2511,8 @@ export function useConversationStream(
 
   /** Kimi 式 Undo：删除末轮对话，返回 user query 供回填输入框 */
   const undoLastUserTurn = useMemoizedFn((): string | null => {
-    if (loading) {
+    const lastChat = conversationRef.current.chatList?.[conversationRef.current.chatList.length - 1];
+    if (loading || isChatItemRunning(lastChat)) {
       return null;
     }
     const activeConversation = conversationRef.current;
@@ -2277,9 +2531,9 @@ export function useConversationStream(
   });
 
   const stopActiveRun = useMemoizedFn(async () => {
-    const requestId = activeRequestIdRef.current;
     const activeConversation = conversationRef.current;
-    if (!requestId || !loading) {
+    const requestId = resolveActiveRequestId(activeConversation.id);
+    if (!requestId) {
       return;
     }
     clearFollowReconnectTimer(requestId);
@@ -2318,32 +2572,6 @@ export function useConversationStream(
           updatedAt: Date.now(),
         });
       }
-    }
-  });
-
-  const injectActiveRun = useMemoizedFn(async (text: string) => {
-    const requestId = activeRequestIdRef.current;
-    const activeConversation = conversationRef.current;
-    const trimmed = (text || "").trim();
-    if (!requestId || !loading || !trimmed) {
-      return false;
-    }
-    try {
-      const { agentRunApi } = await import("@/services/agentRun");
-      const data = await agentRunApi.inject({
-        sessionId: activeConversation.sessionId,
-        requestId,
-        text: trimmed,
-      });
-      // request 拦截器已解包为 data 字段
-      if (!data || data.accepted !== true) {
-        console.warn("inject run rejected", data);
-        return false;
-      }
-      return true;
-    } catch (error) {
-      console.warn("inject run failed", error);
-      return false;
     }
   });
 
