@@ -1,6 +1,5 @@
 package org.wwz.ai.application.agent.query;
 
-import org.wwz.ai.application.agent.stream.AgentSessionStream;
 import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
 
 /**
@@ -9,5 +8,8 @@ import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
  */
 public interface IGptQueryApplicationService {
 
-    void queryAgentStreamIncr(GptQueryReq params, AgentSessionStream stream);
+    /**
+     * 提交一轮 Agent 执行。不占用 SSE；观察走 GET session stream。
+     */
+    AgentQuerySubmitResult submitAgentQuery(GptQueryReq params);
 }

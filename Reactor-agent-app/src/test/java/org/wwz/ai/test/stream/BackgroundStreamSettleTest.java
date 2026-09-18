@@ -6,6 +6,7 @@ import org.wwz.ai.application.agent.query.GptQueryApplicationService;
 import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
 import org.wwz.ai.application.agent.stream.AgentSessionPrinter;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
+import org.wwz.ai.application.agent.stream.SessionProjectionRegistry;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
@@ -222,8 +223,61 @@ public class BackgroundStreamSettleTest {
                     request, projecting, registry);
 
             Assert.assertFalse(downstream.completed.get());
-            Assert.assertTrue("后台未结束时保留 ActiveRun 供 follow", registry.find("req-keep-run").isPresent());
+            Assert.assertFalse("父循环结束后释放占用，后台投影继续", registry.find("req-keep-run").isPresent());
             SessionBackgroundTaskHub.getOrCreate(sessionId, null).complete(task.getId(), null);
+        } finally {
+            SessionBackgroundTaskHub.evict(sessionId);
+        }
+    }
+
+    @Test
+    public void occupancyReleaseAllowsNewRunWhileBackgroundRunning() {
+        String sessionId = "sess-occupy-" + System.nanoTime();
+        SessionBackgroundTaskHub.evict(sessionId);
+        ActiveAgentRunRegistry registry = new ActiveAgentRunRegistry();
+        try {
+            registry.begin("req-parent", sessionId, "visitor-1");
+            SessionBackgroundTaskHub.getOrCreate(sessionId, null)
+                    .registerLocalAgent("后台探查", "general-purpose", "scan");
+            AgentRequest request = new AgentRequest();
+            request.setRequestId("req-parent");
+            request.setSessionId(sessionId);
+            AgentResponseProjectionStream projecting =
+                    new AgentResponseProjectionStream(new CapturingStream(), request, Map.of());
+
+            GptQueryApplicationService.completeProjectionUnlessBackgroundRunning(
+                    request, projecting, registry);
+
+            Assert.assertFalse(projecting.isClosed());
+            Assert.assertFalse(registry.find("req-parent").isPresent());
+            registry.begin("req-next", sessionId, "visitor-1");
+            Assert.assertTrue(registry.find("req-next").isPresent());
+        } finally {
+            SessionBackgroundTaskHub.evict(sessionId);
+        }
+    }
+
+    @Test
+    public void liveProjectionSurvivesOccupancyRelease() {
+        String sessionId = "sess-proj-" + System.nanoTime();
+        SessionBackgroundTaskHub.evict(sessionId);
+        SessionProjectionRegistry projections = new SessionProjectionRegistry();
+        try {
+            SessionBackgroundTaskHub.getOrCreate(sessionId, null)
+                    .registerLocalAgent("后台探查", "general-purpose", "scan");
+            AgentRequest request = new AgentRequest();
+            request.setRequestId("req-proj");
+            request.setSessionId(sessionId);
+            AgentResponseProjectionStream projecting =
+                    new AgentResponseProjectionStream(new CapturingStream(), request, Map.of())
+                            .bindRegistry(projections);
+
+            GptQueryApplicationService.completeProjectionUnlessBackgroundRunning(request, projecting);
+
+            Assert.assertTrue(projections.hasLive(sessionId));
+            Assert.assertFalse(projecting.isClosed());
+            projecting.complete();
+            Assert.assertFalse(projections.hasLive(sessionId));
         } finally {
             SessionBackgroundTaskHub.evict(sessionId);
         }

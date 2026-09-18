@@ -31,6 +31,7 @@ public class ReactorMapperNamespaceBindingTest {
         Configuration configuration = sqlSessionFactory.getConfiguration();
         Assert.assertTrue(configuration.hasStatement("org.wwz.ai.infrastructure.dao.reactor.IDialogueRunLedgerDao.queryByRequestId"));
         Assert.assertTrue(configuration.hasStatement("org.wwz.ai.infrastructure.dao.reactor.IDialogueSessionLedgerDao.querySessionView"));
+        Assert.assertTrue(configuration.hasStatement("org.wwz.ai.infrastructure.dao.reactor.IDialogueSessionLedgerDao.bumpEventSeq"));
         Assert.assertTrue(configuration.hasStatement("org.wwz.ai.infrastructure.dao.reactor.ILlmInvocationLedgerDao.queryByRunId"));
         Assert.assertTrue(configuration.hasStatement("org.wwz.ai.infrastructure.dao.reactor.IToolInvocationLedgerDao.queryByRunId"));
         Assert.assertTrue(configuration.hasStatement("org.wwz.ai.infrastructure.dao.reactor.IArtifactLedgerDao.queryByRunId"));

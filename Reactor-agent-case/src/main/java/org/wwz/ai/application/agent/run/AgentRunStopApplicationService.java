@@ -11,6 +11,7 @@ import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.runtime.cancel.RunCancellation;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
+import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -25,6 +26,7 @@ import java.util.Optional;
 public class AgentRunStopApplicationService {
 
     private final ActiveAgentRunRegistry activeAgentRunRegistry;
+    private final AgentRunLaunchGate agentRunLaunchGate;
 
     public Map<String, Object> stop(String sessionId, String requestId) {
         // 停止是协作式的：先校验 request/session 归属，再向活动 run 发取消信号，
@@ -56,7 +58,11 @@ public class AgentRunStopApplicationService {
         }
 
         boolean first = activeAgentRunRegistry.cancel(requestId, RunCancellation.REASON_USER_STOP);
+        agentRunLaunchGate.cancel(requestId);
         AgentContext ctx = run.getAgentContext();
+        if (ctx == null) {
+            activeAgentRunRegistry.end(requestId);
+        }
         if (ctx != null) {
             // finishRun 只记录一次用户停止事实，Printer 通知是即时 UI 反馈，两者职责不同，
             // 不能用关闭 SSE 代替 ledger 状态迁移。
@@ -70,7 +76,9 @@ public class AgentRunStopApplicationService {
         }
 
         AgentMessageStream stream = run.getStream();
-        if (stream != null) {
+        boolean backgroundRunning = SessionBackgroundTaskHub.hasRunning(
+                SessionBackgroundTaskHub.keyFor(run.getSessionId(), requestId));
+        if (stream != null && !backgroundRunning) {
             try {
                 stream.complete();
             } catch (Exception e) {

@@ -47,12 +47,14 @@ public class AgentRunInjectApplicationService {
 
         Optional<ActiveAgentRunRegistry.ActiveRun> found = activeAgentRunRegistry.find(requestId);
         if (found.isEmpty()) {
-            result.put("accepted", false);
-            result.put("message", "未找到进行中的 run（可能已结束）");
-            return result;
+            return newRun(result, "父 run 已结束，将作为新消息发送");
         }
 
         ActiveAgentRunRegistry.ActiveRun run = found.get();
+        AgentContext ctx = run.getAgentContext();
+        if (ctx != null && ctx.isTurnClosed()) {
+            return newRun(result, "父 run 已结束，将作为新消息发送");
+        }
         if (StringUtils.isNotBlank(sessionId)
                 && StringUtils.isNotBlank(run.getSessionId())
                 && !sessionId.equals(run.getSessionId())) {
@@ -73,7 +75,6 @@ public class AgentRunInjectApplicationService {
                 .build();
         run.getPendingInjects().offer(message);
 
-        AgentContext ctx = run.getAgentContext();
         if (ctx != null) {
             // bind 后 context 与 ActiveRun 共享队列；再 offer 会重复，上面已 offer 到共享队列
             notifyInjected(ctx, body);
@@ -83,6 +84,13 @@ public class AgentRunInjectApplicationService {
         result.put("accepted", true);
         result.put("message", "已接受指导，将在下一步生效");
         result.put("queued", true);
+        return result;
+    }
+
+    private static Map<String, Object> newRun(Map<String, Object> result, String message) {
+        result.put("accepted", false);
+        result.put("mode", "new_run");
+        result.put("message", message);
         return result;
     }
 

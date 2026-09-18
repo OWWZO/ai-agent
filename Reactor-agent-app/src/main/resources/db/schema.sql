@@ -229,6 +229,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_dialogue_session (
     failed_run_count   INT            NOT NULL DEFAULT 0 COMMENT '失败/停止/超时轮次',
     started_at         DATETIME(3)    NULL COMMENT '首轮开始时间',
     last_active_at     DATETIME(3)    NULL COMMENT '最近活跃时间',
+    event_seq          BIGINT         NOT NULL DEFAULT 0 COMMENT '会话内 SSE 高水位，delta 占号但不逐帧回写',
     create_time        DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建\r\n  时间',
     update_time        DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     deleted            TINYINT(1)     NOT NULL DEFAULT 0 COMMENT '软删除',

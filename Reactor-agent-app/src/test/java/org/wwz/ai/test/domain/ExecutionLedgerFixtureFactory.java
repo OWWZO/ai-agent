@@ -531,6 +531,21 @@ public final class ExecutionLedgerFixtureFactory {
                     .map(ExecutionLedgerFixtureFactory::toSessionView)
                     .toList();
         }
+
+        @Override
+        public int bumpEventSeq(String sessionId, long eventSeq) {
+            DialogueSession session = store.sessions.values().stream()
+                    .filter(item -> item.getDeleted() == 0 && item.getSessionId().equals(sessionId))
+                    .findFirst()
+                    .orElse(null);
+            if (session == null) {
+                return 0;
+            }
+            long current = session.getEventSeq() == null ? 0L : session.getEventSeq();
+            session.setEventSeq(Math.max(current, eventSeq));
+            session.setUpdateTime(LocalDateTime.now());
+            return 1;
+        }
     }
 
     static final class InMemoryLlmInvocationLedgerDao implements ILlmInvocationLedgerDao {
@@ -892,6 +907,7 @@ public final class ExecutionLedgerFixtureFactory {
                 .failedRunCount(session.getFailedRunCount())
                 .startedAt(session.getStartedAt())
                 .lastActiveAt(session.getLastActiveAt())
+                .eventSeq(session.getEventSeq())
                 .createTime(session.getCreateTime())
                 .updateTime(session.getUpdateTime())
                 .deleted(session.getDeleted())

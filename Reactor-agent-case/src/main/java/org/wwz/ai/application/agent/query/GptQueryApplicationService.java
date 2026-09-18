@@ -8,8 +8,11 @@ import org.springframework.stereotype.Service;
 import org.wwz.ai.application.agent.askuser.AskUserQuestionApplicationService;
 import org.wwz.ai.application.agent.planmode.PlanApprovalApplicationService;
 import org.wwz.ai.application.agent.dispatch.IAgentDispatchService;
+import org.wwz.ai.application.agent.run.AgentRunLaunchGate;
 import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
-import org.wwz.ai.application.agent.stream.AgentSessionStream;
+import org.wwz.ai.application.agent.stream.AgentSessionEventBus;
+import org.wwz.ai.application.agent.stream.SessionEventClock;
+import org.wwz.ai.application.agent.stream.SessionProjectionRegistry;
 import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
@@ -29,8 +32,7 @@ import java.util.concurrent.Executor;
 
 /**
  * GPT 查询应用服务。
- * 主聊天路径在进程内直接调度执行策略，并把 {@code AgentResponse} 投影为浏览器侧结果；
- * 主聊天唯一调度入口（不再经已删除的 {@code /AutoAgent} HTTP loopback）。
+ * POST 只提交 run；SSE 由 session Hub 旁观。
  */
 @Slf4j
 @Service
@@ -61,68 +63,82 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
     @Resource
     private ActiveAgentRunRegistry activeAgentRunRegistry;
 
+    @Resource
+    private AgentSessionEventBus agentSessionEventBus;
+
+    @Resource
+    private AgentRunLaunchGate agentRunLaunchGate;
+
+    @Resource
+    private SessionEventClock sessionEventClock;
+
+    @Resource
+    private SessionProjectionRegistry sessionProjectionRegistry;
+
     @Override
-    public void queryAgentStreamIncr(GptQueryReq params, AgentSessionStream stream) {
-        // 查询入口按“规范化请求 -> visitor/session 鉴权 -> 投影流 -> 有界调度”推进；
-        // 鉴权失败不进入 Agent，准入失败也只结束当前 SSE，不泄漏半个运行上下文。
+    public AgentQuerySubmitResult submitAgentQuery(GptQueryReq params) {
         gptQueryAgentRequestFactory.normalize(params);
         AgentRequest agentRequest = gptQueryAgentRequestFactory.build(params);
         log.info("{} start handle Agent request: {}", params.getRequestId(), JSON.toJSONString(agentRequest));
 
-        try {
-            String visitorId = resolveVisitorId(agentRequest);
-            agentRequest.setVisitorId(visitorId);
-            conversationSessionOwnershipApplicationService.ensureSessionAccessible(
-                    visitorId,
-                    agentRequest.getSessionId(),
-                    agentRequest.getQuery()
-            );
-            // 普通 query 闸门：存在未决 HITL 时拒绝，避免 hydrate 到未闭合 tool call
-            if (StringUtils.isBlank(agentRequest.getResumeQuestionId())
-                    && StringUtils.isBlank(agentRequest.getResumeApprovalId())
-                    && askUserQuestionApplicationService != null
-                    && askUserQuestionApplicationService.hasOpenQuestion(agentRequest.getSessionId())) {
-                throw new IllegalStateException("当前会话有待回答的问题，请先回答或取消后再发送新消息");
-            }
-            if (StringUtils.isBlank(agentRequest.getResumeQuestionId())
-                    && StringUtils.isBlank(agentRequest.getResumeApprovalId())
-                    && planApprovalApplicationService != null
-                    && planApprovalApplicationService.hasOpenApproval(agentRequest.getSessionId())) {
-                throw new IllegalStateException("当前会话有待批准的计划，请先批准/拒绝或取消后再发送新消息");
-            }
-        } catch (Exception e) {
-            log.warn("{} reject gpt query before dispatch", agentRequest.getRequestId(), e);
-            stream.completeWithError(e);
-            return;
+        String visitorId = resolveVisitorId(agentRequest);
+        agentRequest.setVisitorId(visitorId);
+        conversationSessionOwnershipApplicationService.ensureSessionAccessible(
+                visitorId,
+                agentRequest.getSessionId(),
+                agentRequest.getQuery()
+        );
+        if (StringUtils.isBlank(agentRequest.getResumeQuestionId())
+                && StringUtils.isBlank(agentRequest.getResumeApprovalId())
+                && askUserQuestionApplicationService != null
+                && askUserQuestionApplicationService.hasOpenQuestion(agentRequest.getSessionId())) {
+            throw new IllegalStateException("当前会话有待回答的问题，请先回答或取消后再发送新消息");
+        }
+        if (StringUtils.isBlank(agentRequest.getResumeQuestionId())
+                && StringUtils.isBlank(agentRequest.getResumeApprovalId())
+                && planApprovalApplicationService != null
+                && planApprovalApplicationService.hasOpenApproval(agentRequest.getSessionId())) {
+            throw new IllegalStateException("当前会话有待批准的计划，请先批准/拒绝或取消后再发送新消息");
         }
 
+        activeAgentRunRegistry.begin(
+                agentRequest.getRequestId(),
+                agentRequest.getSessionId(),
+                visitorId);
+
         AgentResponseProjectionStream projectingStream =
-                new AgentResponseProjectionStream(stream, agentRequest, handlerMap);
-        try {
-            AgentExecutorSupport.execute(dispatchExecutor, "dispatch", agentRequest.getRequestId(),
-                    () -> dispatchOnExecutor(params, agentRequest, projectingStream, stream));
-        } catch (AgentExecutorBusyException e) {
-            log.warn("{} dispatch rejected", agentRequest.getRequestId(), e);
-            stream.completeWithError(e);
-        }
+                new AgentResponseProjectionStream(null, agentRequest, handlerMap, agentSessionEventBus, sessionEventClock)
+                        .bindRegistry(sessionProjectionRegistry);
+        agentRunLaunchGate.defer(agentRequest.getRequestId(), agentRequest.getSessionId(), () -> {
+            try {
+                AgentExecutorSupport.execute(dispatchExecutor, "dispatch", agentRequest.getRequestId(),
+                        () -> dispatchOnExecutor(params, agentRequest, projectingStream));
+            } catch (AgentExecutorBusyException e) {
+                log.warn("{} deferred dispatch busy", agentRequest.getRequestId(), e);
+                activeAgentRunRegistry.end(agentRequest.getRequestId());
+                projectingStream.completeWithError(e);
+            }
+        });
+
+        return AgentQuerySubmitResult.builder()
+                .accepted(true)
+                .sessionId(agentRequest.getSessionId())
+                .requestId(agentRequest.getRequestId())
+                .build();
     }
 
     private void dispatchOnExecutor(GptQueryReq params,
                                     AgentRequest agentRequest,
-                                    AgentResponseProjectionStream projectingStream,
-                                    AgentSessionStream stream) {
+                                    AgentResponseProjectionStream projectingStream) {
         try {
-            // dispatch 内部只产出领域响应，projection stream 负责转成前端协议；正常路径
-            // 由这里统一 complete，避免策略自己关闭流造成重复完成或遗漏尾事件。
-            // 若仍有 run_in_background 子任务，必须保持投影流，等待后台 tool_result / stream_settle。
             agentDispatchService.dispatch(agentRequest, projectingStream);
             completeProjectionUnlessBackgroundRunning(agentRequest, projectingStream, activeAgentRunRegistry);
         } catch (Exception e) {
-            // 浏览器主动断开属于下游终止，不再把它包装成服务端失败；其它异常才发 error，
-            // 这样前端能区分用户取消与 Agent 执行错误。
-            if (projectingStream.isAborted() || stream.isAborted()) {
-                log.info("{} dispatch error occurred after downstream abort", agentRequest.getRequestId());
-                projectingStream.complete();
+            if (projectingStream.isAborted()) {
+                log.info("{} dispatch error occurred after projection closed", agentRequest.getRequestId());
+                if (!shouldDeferProjectionComplete(agentRequest)) {
+                    projectingStream.complete();
+                }
                 endRunUnlessBackground(agentRequest, activeAgentRunRegistry);
                 return;
             }
@@ -144,10 +160,6 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
         return visitorId;
     }
 
-    /**
-     * 主 Agent 返回后：无后台任务则关流并释放 ActiveRun；有后台任务则留给 stream_settle。
-     * ActiveRun 必须在 complete 之后再 end，否则客户端错过终态帧去 follow 时 registry 已空。
-     */
     public static void completeProjectionUnlessBackgroundRunning(AgentRequest agentRequest,
                                                                  AgentResponseProjectionStream projectingStream) {
         completeProjectionUnlessBackgroundRunning(agentRequest, projectingStream, null);
@@ -160,12 +172,13 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
             log.info("{} defer projection complete: background tasks still running sessionId={}",
                     agentRequest == null ? "-" : agentRequest.getRequestId(),
                     agentRequest == null ? null : agentRequest.getSessionId());
+            endOccupancy(agentRequest, runRegistry);
             return;
         }
         if (projectingStream != null) {
             projectingStream.complete();
         }
-        endRunUnlessBackground(agentRequest, runRegistry);
+        endOccupancy(agentRequest, runRegistry);
     }
 
     public static boolean shouldDeferProjectionComplete(AgentRequest agentRequest) {
@@ -176,11 +189,15 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
                 SessionBackgroundTaskHub.keyFor(agentRequest.getSessionId(), agentRequest.getRequestId()));
     }
 
+    /**
+     * 父循环结束后立即释放占用槽，即使后台子 Agent 还在跑。
+     */
     public static void endRunUnlessBackground(AgentRequest agentRequest, ActiveAgentRunRegistry runRegistry) {
+        endOccupancy(agentRequest, runRegistry);
+    }
+
+    public static void endOccupancy(AgentRequest agentRequest, ActiveAgentRunRegistry runRegistry) {
         if (runRegistry == null || agentRequest == null || StringUtils.isBlank(agentRequest.getRequestId())) {
-            return;
-        }
-        if (shouldDeferProjectionComplete(agentRequest)) {
             return;
         }
         runRegistry.end(agentRequest.getRequestId());

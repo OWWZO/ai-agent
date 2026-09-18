@@ -36,10 +36,25 @@ public class SseEmitterAgentSessionStreamTest {
         Assert.assertTrue("客户端断开后应触发断开观察回调", abortTriggered.get());
     }
 
+        @Test
+    public void shouldWriteEventSeqAsSseId() throws Exception {
+        org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult payload =
+                new org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult();
+        payload.setEventSeq(17L);
+        payload.setPackageType("result");
+        SseEmitter.SseEventBuilder builder = SseEmitterAgentSessionStream.toSseEvent(payload);
+        Assert.assertNotNull(builder.build());
+    }
+
     private static class DisconnectingSseEmitter extends SseEmitter {
 
         @Override
         public void send(Object object) throws IOException {
+            throw new IOException("你的主机中的软件中止了一个已建立的连接。");
+        }
+
+        @Override
+        public void send(SseEventBuilder builder) throws IOException {
             throw new IOException("你的主机中的软件中止了一个已建立的连接。");
         }
     }

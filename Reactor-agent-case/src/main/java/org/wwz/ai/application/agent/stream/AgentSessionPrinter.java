@@ -36,8 +36,8 @@ public class AgentSessionPrinter implements Printer {
     }
 
     /**
-     * 刷新后续绑浏览器观察流。主聊天路径 stream 为 {@link AgentResponseProjectionStream}，
-     * 续绑其下游 SSE；返回应写回 ActiveAgentRunRegistry 的根流。
+     * 挂一条新的浏览器观察流。主聊天路径 stream 为 {@link AgentResponseProjectionStream}，
+     * 可同时挂 POST 发消息连接和 GET 续接/旁观；返回应写回 ActiveAgentRunRegistry 的根流。
      *
      * @return 根观察流；无法续绑时返回 null
      */

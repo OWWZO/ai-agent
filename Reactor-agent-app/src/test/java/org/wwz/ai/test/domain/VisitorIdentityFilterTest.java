@@ -90,7 +90,7 @@ public class VisitorIdentityFilterTest {
     }
 
     @Test
-    public void shouldBindVisitorForRunFollowEndpoint() throws Exception {
+    public void shouldBindVisitorForSessionStreamEndpoint() throws Exception {
         AnonymousVisitorApplicationService service = Mockito.mock(AnonymousVisitorApplicationService.class);
         Mockito.when(service.resolveOrCreate(Mockito.isNull(), Mockito.any(), Mockito.any()))
                 .thenReturn(AnonymousVisitorIdentity.builder()
@@ -99,13 +99,32 @@ public class VisitorIdentityFilterTest {
                         .newlyCreated(false)
                         .build());
         VisitorIdentityFilter filter = new VisitorIdentityFilter(service, buildCookieProperties(false, "Lax"));
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/agent/run/follow");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/agent/session/session-1/stream");
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicReference<String> visitorSeenInChain = new AtomicReference<>();
 
         filter.doFilter(request, response, captureVisitorChain(visitorSeenInChain));
 
         Assert.assertEquals("visitor-follow", visitorSeenInChain.get());
+    }
+
+    @Test
+    public void shouldBindVisitorForRunStreamEndpoint() throws Exception {
+        AnonymousVisitorApplicationService service = Mockito.mock(AnonymousVisitorApplicationService.class);
+        Mockito.when(service.resolveOrCreate(Mockito.isNull(), Mockito.any(), Mockito.any()))
+                .thenReturn(AnonymousVisitorIdentity.builder()
+                        .visitorId("visitor-stream")
+                        .rawToken("token-stream")
+                        .newlyCreated(false)
+                        .build());
+        VisitorIdentityFilter filter = new VisitorIdentityFilter(service, buildCookieProperties(false, "Lax"));
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/agent/run/stream");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicReference<String> visitorSeenInChain = new AtomicReference<>();
+
+        filter.doFilter(request, response, captureVisitorChain(visitorSeenInChain));
+
+        Assert.assertEquals("visitor-stream", visitorSeenInChain.get());
     }
 
     @Test

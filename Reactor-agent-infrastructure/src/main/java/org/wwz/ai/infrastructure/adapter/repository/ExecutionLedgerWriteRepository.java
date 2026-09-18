@@ -102,4 +102,9 @@ public class ExecutionLedgerWriteRepository implements IExecutionLedgerWriteRepo
     public int batchInsertArtifacts(List<ArtifactRecord> records) {
         return artifactLedgerDao.batchInsertArtifacts(records);
     }
+
+    @Override
+    public void bumpSessionEventSeq(String sessionId, long eventSeq) {
+        dialogueSessionLedgerDao.bumpEventSeq(sessionId, eventSeq);
+    }
 }

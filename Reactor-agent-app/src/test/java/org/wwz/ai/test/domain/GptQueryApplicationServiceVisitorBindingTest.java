@@ -6,13 +6,17 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.application.agent.dispatch.IAgentDispatchService;
+import org.wwz.ai.application.agent.query.AgentQuerySubmitResult;
 import org.wwz.ai.application.agent.query.GptQueryApplicationService;
-import org.wwz.ai.application.agent.stream.AgentSessionStream;
+import org.wwz.ai.application.agent.run.AgentRunLaunchGate;
+import org.wwz.ai.application.agent.stream.AgentSessionEventBus;
 import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
 import org.wwz.ai.domain.agent.ledger.entity.DialogueSession;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
 import org.wwz.ai.domain.agent.runtime.GptQueryAgentRequestFactory;
+import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
+import org.wwz.ai.domain.agent.runtime.cancel.RunCancellation;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.handler.AgentResponseHandler;
 import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
@@ -30,18 +34,15 @@ public class GptQueryApplicationServiceVisitorBindingTest {
 
     @Test
     public void shouldBindSessionBeforeDispatchingQuery() throws Exception {
-        GptQueryApplicationService service = new GptQueryApplicationService();
+        GptQueryApplicationService service = newService();
         GptQueryAgentRequestFactory factory = Mockito.mock(GptQueryAgentRequestFactory.class);
         IAgentDispatchService dispatchService = Mockito.mock(IAgentDispatchService.class);
         ConversationSessionOwnershipApplicationService ownershipService =
                 Mockito.mock(ConversationSessionOwnershipApplicationService.class);
-        AgentSessionStream stream = Mockito.mock(AgentSessionStream.class);
 
         ReflectionTestUtils.setField(service, "gptQueryAgentRequestFactory", factory);
         ReflectionTestUtils.setField(service, "agentDispatchService", dispatchService);
         ReflectionTestUtils.setField(service, "conversationSessionOwnershipApplicationService", ownershipService);
-        ReflectionTestUtils.setField(service, "handlerMap", Collections.<AgentType, AgentResponseHandler>emptyMap());
-        ReflectionTestUtils.setField(service, "dispatchExecutor", (Executor) Runnable::run);
 
         GptQueryReq params = new GptQueryReq();
         params.setRequestId("req-001");
@@ -65,31 +66,30 @@ public class GptQueryApplicationServiceVisitorBindingTest {
         }).when(dispatchService).dispatch(Mockito.any(AgentRequest.class), Mockito.any());
 
         VisitorRequestContext.bind("visitor-001");
+        AgentQuerySubmitResult submitted;
         try {
-            service.queryAgentStreamIncr(params, stream);
+            submitted = service.submitAgentQuery(params);
         } finally {
             VisitorRequestContext.clear();
         }
 
         Mockito.verify(ownershipService).ensureSessionAccessible("visitor-001", "session-001", "帮我总结一下这个项目");
         Assert.assertEquals("visitor-001", agentRequest.getVisitorId());
+        Assert.assertTrue(submitted.isAccepted());
         Assert.assertTrue("异步派发应已触发", latch.await(3, TimeUnit.SECONDS));
     }
 
     @Test
     public void shouldPreferServerResolvedVisitorOverCallerSuppliedValue() throws Exception {
-        GptQueryApplicationService service = new GptQueryApplicationService();
+        GptQueryApplicationService service = newService();
         GptQueryAgentRequestFactory factory = Mockito.mock(GptQueryAgentRequestFactory.class);
         IAgentDispatchService dispatchService = Mockito.mock(IAgentDispatchService.class);
         ConversationSessionOwnershipApplicationService ownershipService =
                 Mockito.mock(ConversationSessionOwnershipApplicationService.class);
-        AgentSessionStream stream = Mockito.mock(AgentSessionStream.class);
 
         ReflectionTestUtils.setField(service, "gptQueryAgentRequestFactory", factory);
         ReflectionTestUtils.setField(service, "agentDispatchService", dispatchService);
         ReflectionTestUtils.setField(service, "conversationSessionOwnershipApplicationService", ownershipService);
-        ReflectionTestUtils.setField(service, "handlerMap", Collections.<AgentType, AgentResponseHandler>emptyMap());
-        ReflectionTestUtils.setField(service, "dispatchExecutor", (Executor) Runnable::run);
 
         GptQueryReq params = new GptQueryReq();
         params.setRequestId("req-002");
@@ -109,7 +109,7 @@ public class GptQueryApplicationServiceVisitorBindingTest {
 
         VisitorRequestContext.bind("visitor-002");
         try {
-            service.queryAgentStreamIncr(params, stream);
+            service.submitAgentQuery(params);
         } finally {
             VisitorRequestContext.clear();
         }
@@ -120,5 +120,24 @@ public class GptQueryApplicationServiceVisitorBindingTest {
         ArgumentCaptor<AgentRequest> captor = ArgumentCaptor.forClass(AgentRequest.class);
         Mockito.verify(dispatchService).dispatch(captor.capture(), Mockito.any());
         Assert.assertEquals("visitor-002", captor.getValue().getVisitorId());
+    }
+
+    private static GptQueryApplicationService newService() {
+        GptQueryApplicationService service = new GptQueryApplicationService();
+        ActiveAgentRunRegistry registry = Mockito.mock(ActiveAgentRunRegistry.class);
+        Mockito.when(registry.begin(Mockito.any(), Mockito.any(), Mockito.any()))
+                .thenAnswer(invocation -> new ActiveAgentRunRegistry.ActiveRun(
+                        invocation.getArgument(0),
+                        invocation.getArgument(1),
+                        invocation.getArgument(2),
+                        new RunCancellation()));
+        ReflectionTestUtils.setField(service, "handlerMap", Collections.<AgentType, AgentResponseHandler>emptyMap());
+        ReflectionTestUtils.setField(service, "dispatchExecutor", (Executor) Runnable::run);
+        ReflectionTestUtils.setField(service, "activeAgentRunRegistry", registry);
+        ReflectionTestUtils.setField(service, "agentSessionEventBus",
+                (AgentSessionEventBus) (sessionId, frame) -> {
+                });
+        ReflectionTestUtils.setField(service, "agentRunLaunchGate", new AgentRunLaunchGate(0));
+        return service;
     }
 }

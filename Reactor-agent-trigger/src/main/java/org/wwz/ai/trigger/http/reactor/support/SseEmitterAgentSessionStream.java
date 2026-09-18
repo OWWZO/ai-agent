@@ -2,6 +2,7 @@ package org.wwz.ai.trigger.http.reactor.support;
 
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
+import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -36,7 +37,8 @@ public class SseEmitterAgentSessionStream implements AgentSessionStream {
             }
             try {
                 // 心跳与业务帧共用此锁，避免并发 emitter.send 打坏 SSE。
-                emitter.send(payload);
+                // eventSeq 写成标准 SSE id:，GET 续接用 Last-Event-ID / lastEventSeq。
+                emitter.send(toSseEvent(payload));
             } catch (Exception ex) {
                 if (SseClientDisconnectDetector.isClientDisconnected(ex)) {
                     markAborted();
@@ -114,6 +116,19 @@ public class SseEmitterAgentSessionStream implements AgentSessionStream {
             return;
         }
         markAborted();
+    }
+
+    public static SseEmitter.SseEventBuilder toSseEvent(Object payload) {
+        SseEmitter.SseEventBuilder builder = SseEmitter.event();
+        if (payload instanceof GptProcessResult result) {
+            if (result.getEventSeq() > 0) {
+                builder.id(Long.toString(result.getEventSeq()));
+            }
+            if (result.getPackageType() != null && !result.getPackageType().isBlank()) {
+                builder.name(result.getPackageType());
+            }
+        }
+        return builder.data(payload);
     }
 
     /**

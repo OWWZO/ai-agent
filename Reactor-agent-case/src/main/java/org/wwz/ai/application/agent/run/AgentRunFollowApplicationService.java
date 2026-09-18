@@ -7,6 +7,9 @@ import org.springframework.stereotype.Service;
 import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
 import org.wwz.ai.application.agent.stream.AgentSessionPrinter;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
+import org.wwz.ai.application.agent.stream.SessionProjectionRegistry;
+import org.wwz.ai.application.agent.stream.StreamFrameConsumer;
+import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
 import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
 import org.wwz.ai.application.agent.visitor.SessionOwnershipDeniedException;
 import org.wwz.ai.domain.agent.ledger.IExecutionLedgerReadRepository;
@@ -17,10 +20,13 @@ import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Optional;
 
 /**
- * 刷新后续绑本轮仍在进程内执行的 Agent run 观察流（不重跑 Agent）。
+ * 按 session 挂观察流：回放投影缓冲，不重跑 Agent。
  */
 @Slf4j
 @Service
@@ -32,55 +38,108 @@ public class AgentRunFollowApplicationService {
     private final ActiveAgentRunRegistry activeAgentRunRegistry;
     private final ConversationSessionOwnershipApplicationService conversationSessionOwnershipApplicationService;
     private final IExecutionLedgerReadRepository executionLedgerReadRepository;
+    private final AgentRunLaunchGate agentRunLaunchGate;
+    private final SessionProjectionRegistry sessionProjectionRegistry;
 
-    /**
-     * 首次 follow：校验归属后尝试续绑。PENDING 时不 complete，由入口挂住 SSE 再试。
-     */
-    public FollowAttachResult follow(String sessionId,
-                                     String requestId,
-                                     long lastEventSeq,
-                                     AgentSessionStream observer) {
-        if (observer == null) {
-            return FollowAttachResult.IDLE;
-        }
-        if (StringUtils.isBlank(requestId)) {
-            completeIdle(observer, requestId);
-            return FollowAttachResult.IDLE;
-        }
-
+    public FollowAttachResult authorizeAndAttach(String sessionId,
+                                                 long lastEventSeq,
+                                                 StreamFrameConsumer replay) {
         try {
             String visitorId = VisitorRequestContext.currentVisitorId();
             if (StringUtils.isBlank(visitorId)) {
                 throw new IllegalArgumentException("visitorId不能为空");
             }
-            if (StringUtils.isNotBlank(sessionId)) {
-                conversationSessionOwnershipApplicationService.ensureExistingSessionAccessible(
-                        visitorId, sessionId);
+            if (StringUtils.isBlank(sessionId)) {
+                throw new IllegalArgumentException("sessionId不能为空");
             }
+            conversationSessionOwnershipApplicationService.ensureExistingSessionAccessible(
+                    visitorId, sessionId);
         } catch (SessionOwnershipDeniedException | IllegalArgumentException e) {
-            log.warn("follow rejected requestId={} sessionId={}", requestId, sessionId, e);
-            completeIdle(observer, requestId);
+            log.warn("observe rejected sessionId={}", sessionId, e);
             return FollowAttachResult.IDLE;
         }
-
-        return attachAttempt(sessionId, requestId, lastEventSeq, observer);
+        return attachSession(sessionId, lastEventSeq, replay);
     }
 
-    /**
-     * 挂起后续试：不再读 visitor 线程上下文，只尝试续绑或根据 ledger 收口。
-     */
-    public FollowAttachResult retryAttach(String sessionId,
-                                          String requestId,
+    public FollowAttachResult attachSession(String sessionId,
+                                            long lastEventSeq,
+                                            StreamFrameConsumer replay) {
+        if (StringUtils.isBlank(sessionId)) {
+            return FollowAttachResult.IDLE;
+        }
+        agentRunLaunchGate.launchBySession(sessionId);
+        List<AgentResponseProjectionStream> live = sessionProjectionRegistry == null
+                ? List.of()
+                : sessionProjectionRegistry.listLive(sessionId);
+        if (!live.isEmpty()) {
+            if (!replayLiveProjections(sessionId, lastEventSeq, replay, live)) {
+                return FollowAttachResult.PENDING;
+            }
+            Optional<ActiveAgentRunRegistry.ActiveRun> found = activeAgentRunRegistry.findBySessionId(sessionId);
+            found.ifPresent(run -> activeAgentRunRegistry.bindStream(run.getRequestId(), live.get(live.size() - 1)));
+            log.info("observe attached sessionId={} liveProjections={}", sessionId, live.size());
+            return FollowAttachResult.ATTACHED;
+        }
+
+        Optional<ActiveAgentRunRegistry.ActiveRun> found = activeAgentRunRegistry.findBySessionId(sessionId);
+        if (found.isEmpty()) {
+            log.info("observe idle, no live projection sessionId={}", sessionId);
+            return FollowAttachResult.IDLE;
+        }
+
+        ActiveAgentRunRegistry.ActiveRun run = found.get();
+        AgentContext agentContext = run.getAgentContext();
+        Printer printer = agentContext == null ? null : agentContext.getPrinter();
+        if (!(printer instanceof AgentSessionPrinter sessionPrinter)) {
+            log.info("observe pending, printer not ready sessionId={} requestId={}",
+                    sessionId, run.getRequestId());
+            return FollowAttachResult.PENDING;
+        }
+
+        AgentSessionStream root = sessionPrinter.getStream();
+        if (root instanceof AgentResponseProjectionStream projection) {
+            if (replay != null) {
+                for (var frame : projection.replayAfter(lastEventSeq)) {
+                    try {
+                        replay.accept(frame);
+                    } catch (Exception e) {
+                        log.warn("replay frame failed sessionId={}", sessionId, e);
+                        return FollowAttachResult.PENDING;
+                    }
+                }
+            }
+            activeAgentRunRegistry.bindStream(run.getRequestId(), projection);
+            log.info("observe attached sessionId={} requestId={}", sessionId, run.getRequestId());
+            return FollowAttachResult.ATTACHED;
+        }
+
+        if (isLedgerRunStillRunning(run.getRequestId())) {
+            return FollowAttachResult.PENDING;
+        }
+        return FollowAttachResult.IDLE;
+    }
+
+    private boolean replayLiveProjections(String sessionId,
                                           long lastEventSeq,
-                                          AgentSessionStream observer) {
-        if (observer == null || observer.isAborted()) {
-            return FollowAttachResult.IDLE;
+                                          StreamFrameConsumer replay,
+                                          List<AgentResponseProjectionStream> live) {
+        if (replay == null) {
+            return true;
         }
-        if (StringUtils.isBlank(requestId)) {
-            completeIdle(observer, requestId);
-            return FollowAttachResult.IDLE;
+        List<GptProcessResult> frames = new ArrayList<>();
+        for (AgentResponseProjectionStream projection : live) {
+            frames.addAll(projection.replayAfter(lastEventSeq));
         }
-        return attachAttempt(sessionId, requestId, lastEventSeq, observer);
+        frames.sort(Comparator.comparingLong(GptProcessResult::getEventSeq));
+        for (GptProcessResult frame : frames) {
+            try {
+                replay.accept(frame);
+            } catch (Exception e) {
+                log.warn("replay frame failed sessionId={}", sessionId, e);
+                return false;
+            }
+        }
+        return true;
     }
 
     public void completePending(AgentSessionStream observer, String requestId) {
@@ -103,55 +162,20 @@ public class AgentRunFollowApplicationService {
         }
     }
 
-    private FollowAttachResult attachAttempt(String sessionId,
-                                             String requestId,
-                                             long lastEventSeq,
-                                             AgentSessionStream observer) {
-        Optional<ActiveAgentRunRegistry.ActiveRun> found = activeAgentRunRegistry.find(requestId);
-        if (found.isEmpty()) {
-            if (isLedgerRunStillRunning(requestId)) {
-                log.info("follow pending, no active run in registry but ledger RUNNING requestId={}",
-                        requestId);
-                return FollowAttachResult.PENDING;
-            }
-            log.info("follow idle, no active run requestId={}", requestId);
-            completeIdle(observer, requestId);
-            return FollowAttachResult.IDLE;
+    public void completeIdle(AgentSessionStream observer, String requestId) {
+        if (observer == null) {
+            return;
         }
-
-        ActiveAgentRunRegistry.ActiveRun run = found.get();
-        if (StringUtils.isNotBlank(sessionId)
-                && StringUtils.isNotBlank(run.getSessionId())
-                && !sessionId.equals(run.getSessionId())) {
-            log.warn("follow session mismatch requestId={} expected={} actual={}",
-                    requestId, sessionId, run.getSessionId());
-            completeIdle(observer, requestId);
-            return FollowAttachResult.IDLE;
+        try {
+            observer.send(AgentResponseProjectionStream.buildFollowIdle(requestId));
+        } catch (Exception e) {
+            log.debug("send follow_idle failed requestId={}", requestId, e);
         }
-
-        AgentContext agentContext = run.getAgentContext();
-        Printer printer = agentContext == null ? null : agentContext.getPrinter();
-        if (!(printer instanceof AgentSessionPrinter sessionPrinter)) {
-            log.warn("follow unavailable, printer not ready requestId={}", requestId);
-            if (isLedgerRunStillRunning(requestId)) {
-                return FollowAttachResult.PENDING;
-            }
-            completeIdle(observer, requestId);
-            return FollowAttachResult.IDLE;
+        try {
+            observer.complete();
+        } catch (Exception e) {
+            log.debug("complete follow idle failed requestId={}", requestId, e);
         }
-
-        AgentSessionStream root = sessionPrinter.attachObserver(observer, lastEventSeq);
-        if (root == null) {
-            if (isLedgerRunStillRunning(requestId)) {
-                return FollowAttachResult.PENDING;
-            }
-            completeIdle(observer, requestId);
-            return FollowAttachResult.IDLE;
-        }
-
-        activeAgentRunRegistry.bindStream(requestId, root);
-        log.info("follow attached requestId={} sessionId={}", requestId, run.getSessionId());
-        return FollowAttachResult.ATTACHED;
     }
 
     private boolean isLedgerRunStillRunning(String requestId) {
@@ -164,19 +188,6 @@ public class AgentRunFollowApplicationService {
         } catch (Exception e) {
             log.warn("query ledger run status failed requestId={}", requestId, e);
             return false;
-        }
-    }
-
-    private void completeIdle(AgentSessionStream observer, String requestId) {
-        try {
-            observer.send(AgentResponseProjectionStream.buildFollowIdle(requestId));
-        } catch (Exception e) {
-            log.debug("send follow_idle failed requestId={}", requestId, e);
-        }
-        try {
-            observer.complete();
-        } catch (Exception e) {
-            log.debug("complete follow idle failed requestId={}", requestId, e);
         }
     }
 }

@@ -6,10 +6,15 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.application.agent.dispatch.IAgentDispatchService;
+import org.wwz.ai.application.agent.query.AgentQuerySubmitResult;
 import org.wwz.ai.application.agent.query.GptQueryApplicationService;
+import org.wwz.ai.application.agent.run.AgentRunLaunchGate;
 import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
-import org.wwz.ai.application.agent.stream.AgentSessionStream;
+import org.wwz.ai.application.agent.stream.AgentSessionEventBus;
+import org.wwz.ai.application.agent.stream.SessionEventClock;
+import org.wwz.ai.application.agent.stream.SessionProjectionRegistry;
 import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
+import org.wwz.ai.application.agent.visitor.SessionOwnershipDeniedException;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.runtime.askuser.AskUserQuestionObservationSupport;
 import org.wwz.ai.domain.agent.runtime.askuser.IUserQuestionRepository;
@@ -22,6 +27,7 @@ import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.runtime.handler.AgentResponseHandler;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
+import org.wwz.ai.types.agent.exception.AgentConcurrentRunException;
 import org.wwz.ai.types.agent.exception.AgentExecutorBusyException;
 import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
 
@@ -43,6 +49,10 @@ public class AskUserResumeApplicationService {
     private final IAgentDispatchService agentDispatchService;
     private final ConversationSessionOwnershipApplicationService conversationSessionOwnershipApplicationService;
     private final ActiveAgentRunRegistry activeAgentRunRegistry;
+    private final AgentSessionEventBus agentSessionEventBus;
+    private final AgentRunLaunchGate agentRunLaunchGate;
+    private final SessionEventClock sessionEventClock;
+    private final SessionProjectionRegistry sessionProjectionRegistry;
 
     @Resource
     private Map<AgentType, AgentResponseHandler> handlerMap;
@@ -52,71 +62,81 @@ public class AskUserResumeApplicationService {
     private Executor dispatchExecutor;
 
     /**
-     * @return true 已 claim 并进入派发；false 已向 stream 结束（错误或无需续跑）
+     * CAS claim 后提交 continuation run。观察流走 GET session stream。
      */
-    public boolean resume(String resumeRequestId, AgentSessionStream stream) {
-        if (stream == null) {
-            return false;
-        }
+    public AgentQuerySubmitResult resume(String resumeRequestId) {
         if (StringUtils.isBlank(resumeRequestId)) {
-            stream.completeWithError(new IllegalArgumentException("resumeRequestId 不能为空"));
-            return false;
+            throw new IllegalArgumentException("resumeRequestId 不能为空");
         }
         String visitorId = VisitorRequestContext.currentVisitorId();
         if (StringUtils.isBlank(visitorId)) {
-            stream.completeWithError(new IllegalArgumentException("visitorId不能为空"));
-            return false;
+            throw new IllegalArgumentException("visitorId不能为空");
         }
 
         UserQuestionRecord record = userQuestionRepository.findByResumeRequestId(resumeRequestId.trim()).orElse(null);
         if (record == null) {
-            stream.completeWithError(new IllegalArgumentException("resume 记录不存在"));
-            return false;
+            throw new IllegalArgumentException("resume 记录不存在");
         }
         if (StringUtils.isNotBlank(record.getVisitorId()) && !record.getVisitorId().equals(visitorId)) {
-            stream.completeWithError(new IllegalArgumentException("无权恢复该问题"));
-            return false;
+            throw new IllegalArgumentException("无权恢复该问题");
         }
 
         try {
             conversationSessionOwnershipApplicationService.ensureExistingSessionAccessible(
                     visitorId, record.getSessionId());
-        } catch (Exception e) {
-            stream.completeWithError(e);
-            return false;
+        } catch (SessionOwnershipDeniedException e) {
+            throw new IllegalArgumentException(e.getMessage(), e);
         }
 
         if (UserQuestionStatuses.ANSWERED.equals(record.getStatus())) {
-            stream.complete();
-            return false;
+            return accepted(record);
         }
         if (UserQuestionStatuses.RESUMING.equals(record.getStatus())) {
-            stream.completeWithError(new IllegalStateException("续跑已在进行中"));
-            return false;
+            throw new AgentConcurrentRunException(
+                    "续跑已在进行中", record.getResumeRequestId(), record.getSessionId());
         }
         if (!UserQuestionStatuses.RESUME_PENDING.equals(record.getStatus())) {
-            stream.completeWithError(new IllegalStateException("问题状态不可 resume: " + record.getStatus()));
-            return false;
+            throw new IllegalStateException("问题状态不可 resume: " + record.getStatus());
         }
 
         boolean claimed = userQuestionRepository.casClaimResume(resumeRequestId.trim(), visitorId);
         if (!claimed) {
-            stream.completeWithError(new IllegalStateException("claim 失败或续跑已被认领"));
-            return false;
+            throw new AgentConcurrentRunException(
+                    "claim 失败或续跑已被认领", record.getResumeRequestId(), record.getSessionId());
         }
 
         AgentRequest agentRequest = buildContinuationRequest(record, visitorId);
-        AgentResponseProjectionStream projectingStream =
-                new AgentResponseProjectionStream(stream, agentRequest, handlerMap);
         try {
-            AgentExecutorSupport.execute(dispatchExecutor, "askUserResume", agentRequest.getRequestId(),
-                    () -> dispatchContinuation(record, agentRequest, projectingStream));
-            return true;
-        } catch (AgentExecutorBusyException e) {
+            activeAgentRunRegistry.begin(
+                    agentRequest.getRequestId(), agentRequest.getSessionId(), visitorId);
+        } catch (AgentConcurrentRunException e) {
             userQuestionRepository.markStatus(record.getQuestionId(), UserQuestionStatuses.RESUME_PENDING);
-            stream.completeWithError(e);
-            return false;
+            throw e;
         }
+
+        AgentResponseProjectionStream projectingStream =
+                new AgentResponseProjectionStream(null, agentRequest, handlerMap, agentSessionEventBus, sessionEventClock)
+                        .bindRegistry(sessionProjectionRegistry);
+        agentRunLaunchGate.defer(agentRequest.getRequestId(), agentRequest.getSessionId(), () -> {
+            try {
+                AgentExecutorSupport.execute(dispatchExecutor, "askUserResume", agentRequest.getRequestId(),
+                        () -> dispatchContinuation(record, agentRequest, projectingStream));
+            } catch (AgentExecutorBusyException e) {
+                log.warn("{} deferred ask-user resume busy", agentRequest.getRequestId(), e);
+                activeAgentRunRegistry.end(agentRequest.getRequestId());
+                userQuestionRepository.markStatus(record.getQuestionId(), UserQuestionStatuses.RESUME_PENDING);
+                projectingStream.completeWithError(e);
+            }
+        });
+        return accepted(record);
+    }
+
+    private static AgentQuerySubmitResult accepted(UserQuestionRecord record) {
+        return AgentQuerySubmitResult.builder()
+                .accepted(true)
+                .sessionId(record.getSessionId())
+                .requestId(record.getResumeRequestId())
+                .build();
     }
 
     private void dispatchContinuation(UserQuestionRecord record,

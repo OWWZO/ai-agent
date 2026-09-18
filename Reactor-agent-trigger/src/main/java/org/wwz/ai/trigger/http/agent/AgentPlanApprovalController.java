@@ -2,35 +2,33 @@ package org.wwz.ai.trigger.http.agent;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.scheduling.TaskScheduler;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.api.response.Response;
 import org.wwz.ai.application.agent.planmode.PlanApprovalApplicationService;
 import org.wwz.ai.application.agent.planmode.PlanApprovalResumeApplicationService;
-import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
+import org.wwz.ai.application.agent.query.AgentQuerySubmitResult;
 import org.wwz.ai.trigger.http.agent.vo.PlanApprovalReqVO;
 import org.wwz.ai.trigger.http.agent.vo.PlanApprovalResumeReqVO;
-import org.wwz.ai.trigger.http.reactor.support.SseEmitterAgentSessionStream;
-import org.wwz.ai.trigger.http.reactor.support.SseLifecycleSupport;
-import org.wwz.ai.types.agent.config.AgentExecutorNames;
+import org.wwz.ai.types.agent.exception.AgentConcurrentRunException;
+import org.wwz.ai.types.agent.exception.AgentExecutorBusyException;
 import org.wwz.ai.types.enums.ResponseCode;
 
 import javax.annotation.Resource;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ScheduledFuture;
 
 /**
  * Plan Mode 计划批准接口（continuation HITL，对齐 AskUserQuestion）。
- * approve/reject 只 CAS；resume SSE claim 后派发 continuation Run B。
+ * approve/reject 只 CAS；resume JSON claim 后派发 continuation Run B，观察走 GET session stream。
  */
 @Slf4j
 @RestController
@@ -42,10 +40,6 @@ public class AgentPlanApprovalController {
 
     @Resource
     private PlanApprovalResumeApplicationService planApprovalResumeApplicationService;
-
-    @Resource
-    @Qualifier(AgentExecutorNames.HEARTBEAT_SCHEDULER)
-    private TaskScheduler heartbeatScheduler;
 
     @PostMapping("/approve")
     public Response<Map<String, Object>> approve(@RequestBody PlanApprovalReqVO req) {
@@ -95,34 +89,50 @@ public class AgentPlanApprovalController {
         }
     }
 
-    @PostMapping(value = "/resume", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter resume(@RequestBody PlanApprovalResumeReqVO req) {
+    @PostMapping(value = "/resume", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Response<Map<String, Object>>> resume(@RequestBody PlanApprovalResumeReqVO req) {
         String resumeRequestId = req == null ? null : StringUtils.trimToEmpty(req.getResumeRequestId());
-        SseEmitter emitter = SseLifecycleSupport.createLongLivedEmitter();
-        SseEmitterAgentSessionStream stream = new SseEmitterAgentSessionStream(emitter);
         try {
-            boolean started = planApprovalResumeApplicationService.resume(resumeRequestId, stream);
-            if (started) {
-                ScheduledFuture<?> heartbeatFuture = SseLifecycleSupport.startHeartbeat(
-                        heartbeatScheduler,
-                        emitter,
-                        stream,
-                        resumeRequestId,
-                        15_000L,
-                        log,
-                        AgentResponseProjectionStream.buildHeartbeat(resumeRequestId)
-                );
-                SseLifecycleSupport.registerLifecycle(emitter, resumeRequestId, heartbeatFuture, log);
-            }
+            AgentQuerySubmitResult submitted = planApprovalResumeApplicationService.resume(resumeRequestId);
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("accepted", submitted.isAccepted());
+            data.put("sessionId", submitted.getSessionId());
+            data.put("requestId", submitted.getRequestId());
+            return ResponseEntity.ok(Response.<Map<String, Object>>builder()
+                    .code(ResponseCode.SUCCESS.getCode())
+                    .info(ResponseCode.SUCCESS.getInfo())
+                    .data(data)
+                    .build());
+        } catch (AgentConcurrentRunException e) {
+            log.warn("{} plan-approval resume concurrent", resumeRequestId, e);
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("accepted", false);
+            data.put("activeRequestId", e.getActiveRequestId());
+            data.put("activeSessionId", e.getActiveSessionId());
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Response.<Map<String, Object>>builder()
+                    .code(ResponseCode.UN_ERROR.getCode())
+                    .info(e.getMessage())
+                    .data(data)
+                    .build());
+        } catch (AgentExecutorBusyException e) {
+            log.warn("{} plan-approval resume busy", resumeRequestId, e);
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Response.<Map<String, Object>>builder()
+                    .code(ResponseCode.UN_ERROR.getCode())
+                    .info(e.getMessage())
+                    .build());
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            log.warn("{} reject plan-approval resume", resumeRequestId, e);
+            return ResponseEntity.badRequest().body(Response.<Map<String, Object>>builder()
+                    .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
+                    .info(e.getMessage())
+                    .build());
         } catch (Exception e) {
             log.error("{} plan-approval resume bootstrap error", resumeRequestId, e);
-            try {
-                emitter.completeWithError(e);
-            } catch (Exception ignored) {
-                // ignore
-            }
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Response.<Map<String, Object>>builder()
+                    .code(ResponseCode.UN_ERROR.getCode())
+                    .info(e.getMessage())
+                    .build());
         }
-        return emitter;
     }
 
     @GetMapping("/pending")

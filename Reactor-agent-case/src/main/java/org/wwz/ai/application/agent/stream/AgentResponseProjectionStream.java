@@ -1,6 +1,7 @@
 package org.wwz.ai.application.agent.stream;
 
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
@@ -18,22 +19,23 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 将执行内核的 {@link AgentResponse} 投影为浏览器侧 {@link GptProcessResult}。
  * 应用层直接调度时使用，替代旧的 HTTP loopback 再解析路径。
- * <p>下游观察流可在客户端断开后通过 {@link #rebindDownstream(AgentSessionStream)} 续绑，
- * 投影状态（EventResult / 已投影响应列表）保持不变，仅替换浏览器 SSE 承载。
- * 断流期间投影结果写入环形缓冲，续绑后补发，降低丢帧。</p>
+ * <p>投影只赋序、缓冲并发布到 {@link AgentSessionEventBus}。HTTP 观察连接由 Hub 订阅。
+ * HITL resume 等仍可挂本地 downstream。断流窗口内的帧按 {@code lastEventSeq} 回放。</p>
  */
 @Slf4j
 public class AgentResponseProjectionStream implements AgentSessionStream {
 
     /** 断流窗口内保留的最近投影帧数（含 tool/结果，不含心跳）。 */
-    static final int REPLAY_BUFFER_SIZE = 128;
+    static final int REPLAY_BUFFER_SIZE = 512;
 
-    private final AtomicReference<AgentSessionStream> downstreamRef = new AtomicReference<>();
+    private final List<ObserverSink> observers = new CopyOnWriteArrayList<>();
+    private final AgentSessionEventBus eventBus;
+    private final SessionEventClock eventClock;
+    private SessionProjectionRegistry projectionRegistry;
     private final AgentRequest request;
     private final Map<AgentType, AgentResponseHandler> handlerMap;
     private final List<AgentResponse> agentRespList = new ArrayList<>();
@@ -53,30 +55,65 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
     public AgentResponseProjectionStream(AgentSessionStream downstream,
                                          AgentRequest request,
                                          Map<AgentType, AgentResponseHandler> handlerMap) {
+        this(downstream, request, handlerMap, null);
+    }
+
+    public AgentResponseProjectionStream(AgentSessionStream downstream,
+                                         AgentRequest request,
+                                         Map<AgentType, AgentResponseHandler> handlerMap,
+                                         AgentSessionEventBus eventBus) {
+        this(downstream, request, handlerMap, eventBus, null);
+    }
+
+    public AgentResponseProjectionStream(AgentSessionStream downstream,
+                                         AgentRequest request,
+                                         Map<AgentType, AgentResponseHandler> handlerMap,
+                                         AgentSessionEventBus eventBus,
+                                         SessionEventClock eventClock) {
         this.request = request;
         this.handlerMap = handlerMap == null ? Map.of() : handlerMap;
+        this.eventBus = eventBus;
+        this.eventClock = eventClock;
         if (downstream != null) {
-            this.downstreamRef.set(downstream);
-            wireDownstreamAbort(downstream);
+            addDownstream(downstream, 0L);
         }
+    }
+
+    public AgentResponseProjectionStream bindRegistry(SessionProjectionRegistry registry) {
+        this.projectionRegistry = registry;
+        if (registry != null && request != null && StringUtils.isNotBlank(request.getSessionId())) {
+            registry.register(request.getSessionId(), this);
+        }
+        return this;
+    }
+
+    public boolean isClosed() {
+        return closed.get();
     }
 
     /**
      * 刷新/重连后续绑浏览器观察流。已 finish 关闭的投影不再接受续绑。
-     * 续绑后补发断流窗口内缓冲帧。
+     * 续绑后补发断流窗口内缓冲帧。旧观察者若仍活着会继续收帧，不会被替换。
      */
     public void rebindDownstream(AgentSessionStream next) {
         rebindDownstream(next, 0L);
     }
 
     public void rebindDownstream(AgentSessionStream next, long lastEventSeq) {
+        addDownstream(next, lastEventSeq);
+    }
+
+    public void addDownstream(AgentSessionStream next, long lastEventSeq) {
         if (next == null) {
             return;
         }
         synchronized (projectionLock) {
-            downstreamRef.set(next);
-            wireDownstreamAbort(next);
-            log.info("{} rebind projection downstream", request == null ? "-" : request.getRequestId());
+            pruneAbortedObservers();
+            ObserverSink sink = new ObserverSink(next);
+            observers.add(sink);
+            wireObserverAbort(sink);
+            log.info("{} attach projection observer lastEventSeq={} observers={}",
+                    request == null ? "-" : request.getRequestId(), lastEventSeq, observers.size());
             boolean wasClosed = closed.get();
             replayBufferedFrames(next, lastEventSeq, wasClosed);
             if (wasClosed && !next.isAborted()) {
@@ -105,6 +142,7 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
                 log.error("{} no AgentResponseHandler found for agentType: {}",
                         request.getRequestId(), agentType);
                 GptProcessResult failed = buildDefaultResult(request, "unsupported agentType: " + agentType);
+                assignSeq(failed);
                 offerReplayBuffer(failed);
                 forwardIfLive(failed);
                 return;
@@ -112,7 +150,7 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
 
             // 断流期间仍推进投影状态，避免 rebind 后状态机落后。
             GptProcessResult result = handler.handle(request, agentResponse, agentRespList, eventResult);
-            result.setEventSeq(eventSequence.incrementAndGet());
+            assignSeq(result);
             offerReplayBuffer(result);
             forwardIfLive(result);
             // 根 result 的 finished 只表示业务终态（前端收口 loading），不在此关传输层。
@@ -135,9 +173,12 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         if (!closed.compareAndSet(false, true)) {
             return;
         }
-        AgentSessionStream downstream = currentDownstream();
-        if (downstream != null) {
-            downstream.complete();
+        detachRegistry();
+        persistWatermark(lastBufferedSeq());
+        for (ObserverSink sink : observers) {
+            if (sink.stream != null && !sink.stream.isAborted()) {
+                sink.stream.complete();
+            }
         }
     }
 
@@ -146,9 +187,18 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         if (!closed.compareAndSet(false, true)) {
             return;
         }
-        AgentSessionStream downstream = currentDownstream();
-        if (downstream != null) {
-            downstream.completeWithError(throwable);
+        detachRegistry();
+        GptProcessResult failed = buildDefaultResult(
+                request, throwable == null ? "执行失败" : throwable.getMessage());
+        assignSeq(failed);
+        offerReplayBuffer(failed);
+        if (eventBus != null && request != null && StringUtils.isNotBlank(request.getSessionId())) {
+            eventBus.publish(request.getSessionId(), failed);
+        }
+        for (ObserverSink sink : observers) {
+            if (sink.stream != null && !sink.stream.isAborted()) {
+                sink.stream.completeWithError(throwable);
+            }
         }
     }
 
@@ -158,21 +208,36 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
             return;
         }
         abortHandlers.add(abortHandler);
-        AgentSessionStream downstream = currentDownstream();
-        if (downstream != null && downstream.isAborted() && !closed.get()) {
+        if (isAborted() && !closed.get()) {
             abortHandler.run();
         }
     }
 
     @Override
     public boolean isAborted() {
-        // 对外仍表示「当前浏览器观察流是否断开」；closed 才是投影生命周期结束。
-        // 续绑后下游恢复，isAborted 变 false。
         if (closed.get()) {
             return true;
         }
-        AgentSessionStream downstream = currentDownstream();
-        return downstream == null || downstream.isAborted();
+        // 主路径只发布到 session bus，没有本地 sink 也不算 aborted。
+        if (eventBus != null) {
+            return false;
+        }
+        return liveObservers().isEmpty();
+    }
+
+    public List<GptProcessResult> replayAfter(long lastEventSeq) {
+        List<GptProcessResult> snapshot;
+        synchronized (bufferLock) {
+            snapshot = new ArrayList<>(replayBuffer);
+        }
+        List<GptProcessResult> frames = new ArrayList<>();
+        for (GptProcessResult frame : snapshot) {
+            if (frame.getEventSeq() <= lastEventSeq) {
+                continue;
+            }
+            frames.add(frame);
+        }
+        return frames;
     }
 
     public static GptProcessResult buildHeartbeat(String requestId) {
@@ -231,12 +296,60 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         return result;
     }
 
-    private void forwardIfLive(Object payload) throws Exception {
-        AgentSessionStream liveDownstream = currentDownstream();
-        if (liveDownstream == null || liveDownstream.isAborted()) {
+    private void forwardIfLive(Object payload) {
+        if (eventBus != null && request != null && StringUtils.isNotBlank(request.getSessionId())) {
+            eventBus.publish(request.getSessionId(), payload);
+        }
+        for (ObserverSink sink : liveObservers()) {
+            try {
+                sink.stream.send(payload);
+            } catch (Exception e) {
+                log.warn("{} forward observer failed",
+                        request == null ? "-" : request.getRequestId(), e);
+            }
+        }
+    }
+
+    private void assignSeq(GptProcessResult result) {
+        if (result == null) {
             return;
         }
-        liveDownstream.send(payload);
+        result.setEventSeq(nextSeq());
+        if (isDurable(result)) {
+            persistWatermark(result.getEventSeq());
+        }
+    }
+
+    private long nextSeq() {
+        if (eventClock != null && request != null && StringUtils.isNotBlank(request.getSessionId())) {
+            return eventClock.next(request.getSessionId());
+        }
+        return eventSequence.incrementAndGet();
+    }
+
+    private void persistWatermark(long eventSeq) {
+        if (eventClock == null || request == null || StringUtils.isBlank(request.getSessionId()) || eventSeq <= 0) {
+            return;
+        }
+        eventClock.persist(request.getSessionId(), eventSeq);
+    }
+
+    private long lastBufferedSeq() {
+        synchronized (bufferLock) {
+            GptProcessResult last = replayBuffer.peekLast();
+            return last == null ? 0L : last.getEventSeq();
+        }
+    }
+
+    private static boolean isDurable(GptProcessResult result) {
+        if (result.isFinished()) {
+            return true;
+        }
+        String packageType = result.getPackageType();
+        return "result".equals(packageType)
+                || "tool".equals(packageType)
+                || "stream_settle".equals(packageType)
+                || "follow_idle".equals(packageType);
     }
 
     private void offerReplayBuffer(GptProcessResult result) {
@@ -278,16 +391,34 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         }
     }
 
-    private AgentSessionStream currentDownstream() {
-        return downstreamRef.get();
+    private List<ObserverSink> liveObservers() {
+        List<ObserverSink> live = new ArrayList<>();
+        for (ObserverSink sink : observers) {
+            if (sink.stream != null && !sink.stream.isAborted()) {
+                live.add(sink);
+            }
+        }
+        return live;
     }
 
-    private void wireDownstreamAbort(AgentSessionStream downstream) {
-        if (downstream == null) {
+    private void detachRegistry() {
+        if (projectionRegistry == null || request == null) {
             return;
         }
-        downstream.onAbort(() -> {
-            if (downstreamRef.get() != downstream) {
+        projectionRegistry.unregister(request.getSessionId(), this);
+    }
+
+    private void pruneAbortedObservers() {
+        observers.removeIf(sink -> sink.stream == null || sink.stream.isAborted());
+    }
+
+    private void wireObserverAbort(ObserverSink sink) {
+        if (sink == null || sink.stream == null) {
+            return;
+        }
+        sink.stream.onAbort(() -> {
+            observers.remove(sink);
+            if (closed.get() || !liveObservers().isEmpty()) {
                 return;
             }
             for (Runnable handler : abortHandlers) {
@@ -308,5 +439,13 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         result.setFinished(true);
         result.setErrorMsg(errMsg);
         return result;
+    }
+
+    private static final class ObserverSink {
+        private final AgentSessionStream stream;
+
+        private ObserverSink(AgentSessionStream stream) {
+            this.stream = stream;
+        }
     }
 }

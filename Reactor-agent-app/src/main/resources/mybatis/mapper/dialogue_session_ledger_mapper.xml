@@ -16,6 +16,7 @@
         <result column="failed_run_count" property="failedRunCount"/>
         <result column="started_at" property="startedAt"/>
         <result column="last_active_at" property="lastActiveAt"/>
+        <result column="event_seq" property="eventSeq"/>
         <result column="create_time" property="createTime"/>
         <result column="update_time" property="updateTime"/>
         <result column="deleted" property="deleted"/>
@@ -107,4 +108,12 @@
         ORDER BY last_active_at DESC, id DESC
         LIMIT #{limit}
     </select>
+
+    <update id="bumpEventSeq">
+        UPDATE ai_agent_dialogue_session
+        SET event_seq = GREATEST(IFNULL(event_seq, 0), #{eventSeq}),
+            update_time = NOW()
+        WHERE session_id = #{sessionId}
+          AND deleted = 0
+    </update>
 </mapper>

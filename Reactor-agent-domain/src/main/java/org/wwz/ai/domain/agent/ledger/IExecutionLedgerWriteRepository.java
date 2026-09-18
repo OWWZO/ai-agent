@@ -43,4 +43,6 @@ public interface IExecutionLedgerWriteRepository {
     void updateToolInvocationFinish(ToolInvocation invocation);
 
     int batchInsertArtifacts(List<ArtifactRecord> records);
+
+    void bumpSessionEventSeq(String sessionId, long eventSeq);
 }

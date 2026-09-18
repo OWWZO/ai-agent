@@ -219,6 +219,117 @@ public class MultiAgentServiceImplTest {
         Assert.assertEquals("断流期间投影帧应在 rebind 时补发", 2, second.payloads.size());
     }
 
+    @Test
+    public void shouldFanOutToMultipleLiveObservers() throws Exception {
+        RecordingAgentSessionStream first = new RecordingAgentSessionStream();
+        RecordingAgentSessionStream second = new RecordingAgentSessionStream();
+
+        AgentRequest request = new AgentRequest();
+        request.setRequestId("req-fanout-1");
+        request.setAgentType(AgentType.REACT.getValue());
+
+        AgentResponseHandler handler = (req, response, agentRespList, eventResult) -> GptProcessResult.builder()
+                .finished(false)
+                .status("success")
+                .packageType("result")
+                .resultMap(Map.of())
+                .build();
+
+        AgentResponseProjectionStream projecting = new AgentResponseProjectionStream(
+                first,
+                request,
+                Map.of(AgentType.REACT, handler)
+        );
+        projecting.rebindDownstream(second);
+
+        projecting.send(AgentResponse.builder()
+                .requestId("req-fanout-1")
+                .messageType("tool_thought")
+                .finish(false)
+                .resultMap(Map.of("agentType", 5))
+                .build());
+
+        Assert.assertEquals(1, first.payloads.size());
+        Assert.assertEquals(1, second.payloads.size());
+        Assert.assertFalse(projecting.isAborted());
+    }
+
+    @Test
+    public void shouldKeepProjectionAliveWhenOneObserverDisconnects() throws Exception {
+        AbortableAgentSessionStream first = new AbortableAgentSessionStream();
+        RecordingAgentSessionStream second = new RecordingAgentSessionStream();
+        AtomicBoolean projectionAbortSeen = new AtomicBoolean(false);
+
+        AgentRequest request = new AgentRequest();
+        request.setRequestId("req-keep-alive-1");
+        request.setAgentType(AgentType.REACT.getValue());
+
+        AgentResponseHandler handler = (req, response, agentRespList, eventResult) -> GptProcessResult.builder()
+                .finished(false)
+                .status("success")
+                .packageType("result")
+                .resultMap(Map.of())
+                .build();
+
+        AgentResponseProjectionStream projecting = new AgentResponseProjectionStream(
+                first,
+                request,
+                Map.of(AgentType.REACT, handler)
+        );
+        projecting.onAbort(() -> projectionAbortSeen.set(true));
+        projecting.rebindDownstream(second);
+        first.abort();
+
+        Assert.assertFalse("仍有旁观连接时投影不能因 POST 断开而 aborted", projecting.isAborted());
+        Assert.assertFalse(projectionAbortSeen.get());
+
+        projecting.send(AgentResponse.builder()
+                .requestId("req-keep-alive-1")
+                .messageType("tool_thought")
+                .finish(false)
+                .resultMap(Map.of("agentType", 5))
+                .build());
+
+        Assert.assertEquals(1, second.payloads.size());
+    }
+
+    @Test
+    public void shouldPublishProjectedFramesToSessionEventBus() throws Exception {
+        List<Object> published = new ArrayList<>();
+        RecordingAgentSessionStream local = new RecordingAgentSessionStream();
+
+        AgentRequest request = new AgentRequest();
+        request.setRequestId("req-bus-1");
+        request.setSessionId("sess-bus-1");
+        request.setAgentType(AgentType.REACT.getValue());
+
+        AgentResponseHandler handler = (req, response, agentRespList, eventResult) -> GptProcessResult.builder()
+                .finished(false)
+                .status("success")
+                .packageType("result")
+                .resultMap(Map.of())
+                .build();
+
+        AgentResponseProjectionStream projecting = new AgentResponseProjectionStream(
+                local,
+                request,
+                Map.of(AgentType.REACT, handler),
+                (sessionId, frame) -> published.add(frame)
+        );
+
+        projecting.send(AgentResponse.builder()
+                .requestId("req-bus-1")
+                .messageType("tool_thought")
+                .finish(false)
+                .resultMap(Map.of("agentType", 5))
+                .build());
+
+        Assert.assertEquals(1, published.size());
+        Assert.assertEquals(1, local.payloads.size());
+        Assert.assertEquals(1, projecting.replayAfter(0).size());
+        Assert.assertTrue(projecting.replayAfter(1).isEmpty());
+    }
+
     private ReactorConfig buildReactorConfig() {
         ReactorConfig reactorConfig = new ReactorConfig();
         ReflectionTestUtils.setField(reactorConfig, "reactorBasePrompt", "react-base-prompt");

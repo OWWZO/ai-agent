@@ -42,6 +42,8 @@ public class DialogueSession {
 
     private LocalDateTime lastActiveAt;
 
+    private Long eventSeq;
+
     private LocalDateTime createTime;
 
     private LocalDateTime updateTime;

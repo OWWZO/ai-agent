@@ -89,6 +89,8 @@ public class ActiveAgentRunRegistry {
     private final Map<String, ActiveRun> byRequestId = new ConcurrentHashMap<>();
     /** visitorId → requestId，保证同一访客单并发。 */
     private final Map<String, String> byVisitorId = new ConcurrentHashMap<>();
+    /** sessionId → requestId，供 GET 旁观按会话挂流。 */
+    private final Map<String, String> bySessionId = new ConcurrentHashMap<>();
 
     @Resource
     private PendingUserQuestionRegistry pendingUserQuestionRegistry;
@@ -117,6 +119,10 @@ public class ActiveAgentRunRegistry {
             throw new IllegalArgumentException("requestId 不能为空");
         }
         String rid = requestId.trim();
+        ActiveRun existingRun = byRequestId.get(rid);
+        if (existingRun != null) {
+            return existingRun;
+        }
         String vid = StringUtils.trimToNull(visitorId);
 
         if (vid != null) {
@@ -137,8 +143,10 @@ public class ActiveAgentRunRegistry {
         ActiveRun run = new ActiveRun(rid, sessionId, vid, cancellation);
         ActiveRun previous = byRequestId.put(rid, run);
         if (previous != null) {
-            // 同 requestId 重复 begin：保留 visitor 映射，覆盖 run 记录
             log.warn("replace active run record requestId={}", rid);
+        }
+        if (StringUtils.isNotBlank(sessionId)) {
+            bySessionId.put(sessionId.trim(), rid);
         }
         return run;
     }
@@ -191,8 +199,8 @@ public class ActiveAgentRunRegistry {
      * @return true 若首次成功取消
      */
     public boolean cancel(String requestId, String reason) {
-        // 取消顺序是“原子置位 -> 解除交互等待 -> 停止后台任务”。先置位保证并发的
-        // 显式 stop 只有一个调用者执行清理，其余调用只观察已取消状态。
+        // 取消顺序是“原子置位 -> 解除交互等待”。先置位保证并发的显式 stop
+        // 只有一个调用者执行清理。detached 后台任务不级联停止。
         ActiveRun run = byRequestId.get(StringUtils.trimToEmpty(requestId));
         if (run == null) {
             return false;
@@ -210,15 +218,7 @@ public class ActiveAgentRunRegistry {
         } else if (pendingPlanApprovalRegistry != null) {
             pendingPlanApprovalRegistry.cancelByRequestId(requestId, reason);
         }
-        AgentContext ctx = run.getAgentContext();
-        if (ctx != null) {
-            try {
-                ctx.requireBackgroundTasks().listRunning().forEach(task ->
-                        ctx.requireBackgroundTasks().stop(task.getId()));
-            } catch (Exception e) {
-                log.warn("cancel background tasks failed, requestId={}", requestId, e);
-            }
-        }
+        // detached 后台子 Agent 不随父 stop 级联；父占用释放后子任务继续。
         return true;
     }
 
@@ -227,6 +227,17 @@ public class ActiveAgentRunRegistry {
             return Optional.empty();
         }
         return Optional.ofNullable(byRequestId.get(requestId.trim()));
+    }
+
+    public Optional<ActiveRun> findBySessionId(String sessionId) {
+        if (StringUtils.isBlank(sessionId)) {
+            return Optional.empty();
+        }
+        String requestId = bySessionId.get(sessionId.trim());
+        if (StringUtils.isBlank(requestId)) {
+            return Optional.empty();
+        }
+        return find(requestId);
     }
 
     public Optional<ActiveRun> findByVisitorId(String visitorId) {
@@ -248,8 +259,13 @@ public class ActiveAgentRunRegistry {
         }
         String rid = requestId.trim();
         ActiveRun removed = byRequestId.remove(rid);
-        if (removed != null && StringUtils.isNotBlank(removed.getVisitorId())) {
-            byVisitorId.remove(removed.getVisitorId(), rid);
+        if (removed != null) {
+            if (StringUtils.isNotBlank(removed.getVisitorId())) {
+                byVisitorId.remove(removed.getVisitorId(), rid);
+            }
+            if (StringUtils.isNotBlank(removed.getSessionId())) {
+                bySessionId.remove(removed.getSessionId(), rid);
+            }
         }
     }
 
