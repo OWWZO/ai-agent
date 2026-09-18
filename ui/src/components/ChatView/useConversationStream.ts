@@ -209,18 +209,26 @@ function useRafThrottle<TValue>(
   }), [cancel, flush, reset, schedule]);
 }
 
-function replaceConversationListItem<TItem extends { requestId?: string }>(
+function getItemRequestId(item: unknown): string | undefined {
+  if (!item || typeof item !== "object") {
+    return undefined;
+  }
+  const requestId = (item as { requestId?: unknown }).requestId;
+  return typeof requestId === "string" ? requestId : undefined;
+}
+
+function replaceConversationListItem<TItem>(
   conversation: CHAT.ConversationHistory,
   key: ConversationListKey,
   item: TItem
 ) {
-  const prevList = [...((conversation[key] as TItem[]) || [])];
-  const requestId = item?.requestId;
+  const prevList = [...((conversation[key] as unknown as TItem[]) || [])];
+  const requestId = getItemRequestId(item);
   if (requestId) {
     const nextList: TItem[] = [];
     let replaced = false;
     for (const candidate of prevList) {
-      if (candidate?.requestId === requestId) {
+      if (getItemRequestId(candidate) === requestId) {
         if (!replaced) {
           nextList.push(item);
           replaced = true;
@@ -247,7 +255,7 @@ function replaceConversationListItem<TItem extends { requestId?: string }>(
   } as CHAT.ConversationHistory;
 }
 
-export function createConversationDraftController<TItem extends { requestId?: string }>(
+export function createConversationDraftController<TItem>(
   conversationId: string,
   initialConversation: CHAT.ConversationHistory,
   listKey: ConversationListKey,
