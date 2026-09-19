@@ -1,0 +1,40 @@
+name: OpenCodeReview PR Review
+
+on:
+  pull_request_target:
+    branches: [master]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ocr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  code-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Run OpenCodeReview
+        uses: alibaba/open-code-review@189be5b024d3309dd10fdc8cd8ee31b2530c210b
+        with:
+          ocr_version: '1.12.5'
+          llm_url: ${{ secrets.OCR_LLM_URL }}
+          llm_auth_token: ${{ secrets.OCR_LLM_AUTH_TOKEN }}
+          llm_model: ${{ vars.OCR_LLM_MODEL }}
+          llm_use_anthropic: 'false'
+          language: Chinese
+          review_concurrency: '4'
+          review_task_timeout: '30'
+          effort: medium
+          stream_progress: 'true'
+          upload_artifacts: 'true'
+          sticky_summary: 'true'
+          incremental: 'true'
+          background: >-
+            This is a multi-module Java Spring Boot, React, and Python project.
+            Prioritize correctness, security, concurrency, data integrity,
+            API compatibility, and accidental secret exposure.
