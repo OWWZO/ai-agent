@@ -164,15 +164,72 @@
         LIMIT #{limit}
     </select>
 
-    <select id="selectHistoryBySession" resultMap="WorkingMemorySearchMessageMap">
+    <select id="selectScrollAnchor" resultMap="WorkingMemorySearchMessageMap">
         SELECT <include refid="searchColumns"/>
         FROM ai_agent_working_memory_message m
         INNER JOIN ai_agent_working_memory_turn t ON m.turn_id = t.id
         WHERE m.session_id = #{sessionId}
           AND m.memory_scope = 'main'
+          AND m.id = #{messageId}
           AND m.deleted = 0
-        AND t.deleted = 0
+          AND t.deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="selectScrollBefore" resultMap="WorkingMemorySearchMessageMap">
+        SELECT <include refid="searchColumns"/>
+        FROM ai_agent_working_memory_message m
+        INNER JOIN ai_agent_working_memory_turn t ON m.turn_id = t.id
+        INNER JOIN ai_agent_working_memory_message anchor ON anchor.id = #{messageId}
+            AND anchor.session_id = #{sessionId}
+            AND anchor.memory_scope = 'main'
+            AND anchor.deleted = 0
+        INNER JOIN ai_agent_working_memory_turn anchor_turn ON anchor.turn_id = anchor_turn.id
+            AND anchor_turn.deleted = 0
+        WHERE m.session_id = #{sessionId}
+          AND m.memory_scope = 'main'
+          AND m.deleted = 0
+          AND t.deleted = 0
+          <include refid="roleFilter"/>
+          AND NOT (
+              LTRIM(COALESCE(m.content, '')) LIKE '[CONTEXT COMPACTION%'
+              OR LTRIM(COALESCE(m.content, '')) LIKE '[CONTEXT SUMMARY]:%'
+              OR LTRIM(COALESCE(m.content, '')) LIKE '[COMPACTION SUMMARY]%'
+              OR LTRIM(COALESCE(m.content, '')) LIKE '[WM_COMPACTION_SUMMARY]%'
+          )
+          AND (t.turn_seq < anchor_turn.turn_seq
+               OR (t.turn_seq = anchor_turn.turn_seq AND m.seq_no < anchor.seq_no)
+               OR (t.turn_seq = anchor_turn.turn_seq AND m.seq_no = anchor.seq_no AND m.id < anchor.id))
+        ORDER BY t.turn_seq DESC, m.seq_no DESC, m.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectScrollAfter" resultMap="WorkingMemorySearchMessageMap">
+        SELECT <include refid="searchColumns"/>
+        FROM ai_agent_working_memory_message m
+        INNER JOIN ai_agent_working_memory_turn t ON m.turn_id = t.id
+        INNER JOIN ai_agent_working_memory_message anchor ON anchor.id = #{messageId}
+            AND anchor.session_id = #{sessionId}
+            AND anchor.memory_scope = 'main'
+            AND anchor.deleted = 0
+        INNER JOIN ai_agent_working_memory_turn anchor_turn ON anchor.turn_id = anchor_turn.id
+            AND anchor_turn.deleted = 0
+        WHERE m.session_id = #{sessionId}
+          AND m.memory_scope = 'main'
+          AND m.deleted = 0
+          AND t.deleted = 0
+          <include refid="roleFilter"/>
+          AND NOT (
+              LTRIM(COALESCE(m.content, '')) LIKE '[CONTEXT COMPACTION%'
+              OR LTRIM(COALESCE(m.content, '')) LIKE '[CONTEXT SUMMARY]:%'
+              OR LTRIM(COALESCE(m.content, '')) LIKE '[COMPACTION SUMMARY]%'
+              OR LTRIM(COALESCE(m.content, '')) LIKE '[WM_COMPACTION_SUMMARY]%'
+          )
+          AND (t.turn_seq > anchor_turn.turn_seq
+               OR (t.turn_seq = anchor_turn.turn_seq AND m.seq_no > anchor.seq_no)
+               OR (t.turn_seq = anchor_turn.turn_seq AND m.seq_no = anchor.seq_no AND m.id > anchor.id))
         ORDER BY t.turn_seq ASC, m.seq_no ASC, m.id ASC
+        LIMIT #{limit}
     </select>
 
     <select id="selectRecentSessions" resultType="map">

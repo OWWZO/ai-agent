@@ -255,24 +255,48 @@ public class WorkingMemorySessionSearchService implements SessionSearchService {
         if (denied != null) {
             return denied;
         }
-        List<WorkingMemorySearchMessage> rawHistory;
+        WorkingMemorySearchMessage anchor;
         try {
-            rawHistory = safeList(workingMemoryMessageDao.selectHistoryBySession(sessionId));
+            anchor = workingMemoryMessageDao.selectScrollAnchor(sessionId, aroundMessageId);
         } catch (Exception e) {
             return error("failed to load messages: " + messageOf(e));
         }
-        List<WorkingMemorySearchMessage> history = applyViewFilter(rawHistory, roles);
-        int anchorIndex = indexOfMessage(history, aroundMessageId);
-        if (anchorIndex < 0) {
-            int rawIndex = indexOfMessage(rawHistory, aroundMessageId);
-            if (rawIndex >= 0) {
-                return error("around_message_id " + aroundMessageId
-                        + " is hidden by role_filter; pass a role_filter that includes that message");
-            }
+        if (anchor == null) {
             return error("around_message_id " + aroundMessageId + " not found in session_id " + sessionId);
         }
-        int from = Math.max(0, anchorIndex - window);
-        int to = Math.min(history.size(), anchorIndex + window + 1);
+        if (!roleAllowed(anchor.getRole(), roles)) {
+            return error("around_message_id " + aroundMessageId
+                    + " is hidden by role_filter; pass a role_filter that includes that message");
+        }
+        if (isCompactionSummary(anchor.getContent())) {
+            return error("around_message_id " + aroundMessageId
+                    + " is hidden by role_filter; pass a role_filter that includes that message");
+        }
+
+        List<WorkingMemorySearchMessage> before;
+        List<WorkingMemorySearchMessage> after;
+        try {
+            before = new ArrayList<>(safeList(
+                    workingMemoryMessageDao.selectScrollBefore(sessionId, aroundMessageId, window, roles)));
+            after = safeList(workingMemoryMessageDao.selectScrollAfter(sessionId, aroundMessageId, window, roles));
+        } catch (Exception e) {
+            return error("failed to load messages: " + messageOf(e));
+        }
+        before.removeIf(message -> isCompactionSummary(message == null ? null : message.getContent()));
+        after = new ArrayList<>(after);
+        after.removeIf(message -> isCompactionSummary(message == null ? null : message.getContent()));
+        before = applyViewFilter(before, roles);
+        after = applyViewFilter(after, roles);
+        before.sort(Comparator.comparing(WorkingMemorySearchMessage::getTurnSeq,
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(WorkingMemorySearchMessage::getSeqNo,
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(WorkingMemorySearchMessage::getId,
+                        Comparator.nullsLast(Comparator.naturalOrder())));
+        List<WorkingMemorySearchMessage> history = new ArrayList<>(before.size() + 1 + after.size());
+        history.addAll(before);
+        history.add(anchor);
+        history.addAll(after);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("success", true);
         payload.put("mode", "scroll");
@@ -280,9 +304,9 @@ public class WorkingMemorySessionSearchService implements SessionSearchService {
         payload.put("around_message_id", aroundMessageId);
         payload.put("window", window);
         payload.put("role_filter", String.join(",", roles));
-        payload.put("messages", shapeMessages(history.subList(from, to), aroundMessageId));
-        payload.put("messages_before", anchorIndex - from);
-        payload.put("messages_after", Math.max(0, to - anchorIndex - 1));
+        payload.put("messages", shapeMessages(history, aroundMessageId));
+        payload.put("messages_before", before.size());
+        payload.put("messages_after", after.size());
         addSessionMetadata(payload, sessionId);
         return JSON.toJSONString(payload);
     }
@@ -475,16 +499,6 @@ public class WorkingMemorySessionSearchService implements SessionSearchService {
         int start = Math.max(0, match - 100);
         int end = Math.min(text.length(), start + 280);
         return (start > 0 ? "..." : "") + text.substring(start, end) + (end < text.length() ? "..." : "");
-    }
-
-    private static int indexOfMessage(List<WorkingMemorySearchMessage> history, long messageId) {
-        for (int i = 0; i < history.size(); i++) {
-            WorkingMemorySearchMessage message = history.get(i);
-            if (message != null && Long.valueOf(messageId).equals(message.getId())) {
-                return i;
-            }
-        }
-        return -1;
     }
 
     private static int compareHistoryOrder(WorkingMemorySearchMessage left, WorkingMemorySearchMessage right) {

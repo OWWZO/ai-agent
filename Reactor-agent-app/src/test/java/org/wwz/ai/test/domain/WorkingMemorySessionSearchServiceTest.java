@@ -15,10 +15,13 @@ import org.wwz.ai.infrastructure.memory.WorkingMemorySessionSearchService;
 
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.Collections;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -302,6 +305,10 @@ public class WorkingMemorySessionSearchServiceTest {
         Assert.assertFalse(messages.getJSONObject(0).containsKey("request_id"));
         Assert.assertEquals(1, payload.getIntValue("messages_before"));
         Assert.assertEquals(1, payload.getIntValue("messages_after"));
+        verify(dao).selectScrollAnchor("session-1", 3L);
+        verify(dao).selectScrollBefore(eq("session-1"), eq(3L), eq(1), eq(List.of("USER", "ASSISTANT")));
+        verify(dao).selectScrollAfter(eq("session-1"), eq(3L), eq(1), eq(List.of("USER", "ASSISTANT")));
+        verify(dao, never()).selectHistoryBySession(any());
     }
 
     @Test
@@ -458,7 +465,50 @@ public class WorkingMemorySessionSearchServiceTest {
         IWorkingMemoryMessageDao dao = mock(IWorkingMemoryMessageDao.class);
         when(dao.selectSessionSummary("session-1")).thenReturn(ownedSummary());
         when(dao.selectHistoryBySession("session-1")).thenReturn(history);
+        when(dao.selectScrollAnchor(eq("session-1"), anyLong())).thenAnswer(invocation -> history.stream()
+                .filter(message -> message.getId().equals(invocation.getArgument(1, Long.class)))
+                .findFirst()
+                .orElse(null));
+        when(dao.selectScrollBefore(eq("session-1"), anyLong(), anyInt(), anyList())).thenAnswer(invocation -> {
+            long anchorId = invocation.getArgument(1, Long.class);
+            int limit = invocation.getArgument(2, Integer.class);
+            List<WorkingMemorySearchMessage> visible = visibleHistory(history, invocation.getArgument(3));
+            int anchorIndex = indexOf(visible, anchorId);
+            if (anchorIndex < 0) {
+                return List.of();
+            }
+            List<WorkingMemorySearchMessage> result = new ArrayList<>(visible.subList(Math.max(0, anchorIndex - limit), anchorIndex));
+            Collections.reverse(result);
+            return result;
+        });
+        when(dao.selectScrollAfter(eq("session-1"), anyLong(), anyInt(), anyList())).thenAnswer(invocation -> {
+            long anchorId = invocation.getArgument(1, Long.class);
+            int limit = invocation.getArgument(2, Integer.class);
+            List<WorkingMemorySearchMessage> visible = visibleHistory(history, invocation.getArgument(3));
+            int anchorIndex = indexOf(visible, anchorId);
+            if (anchorIndex < 0) {
+                return List.of();
+            }
+            return new ArrayList<>(visible.subList(anchorIndex + 1, Math.min(visible.size(), anchorIndex + 1 + limit)));
+        });
         return dao;
+    }
+
+    private static List<WorkingMemorySearchMessage> visibleHistory(List<WorkingMemorySearchMessage> history,
+                                                                   List<String> roles) {
+        return history.stream()
+                .filter(message -> roles.contains(message.getRole()))
+                .filter(message -> !message.getContent().startsWith("[CONTEXT SUMMARY]:"))
+                .toList();
+    }
+
+    private static int indexOf(List<WorkingMemorySearchMessage> messages, long id) {
+        for (int i = 0; i < messages.size(); i++) {
+            if (messages.get(i).getId().equals(id)) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private static Map<String, Object> ownedSummary() {

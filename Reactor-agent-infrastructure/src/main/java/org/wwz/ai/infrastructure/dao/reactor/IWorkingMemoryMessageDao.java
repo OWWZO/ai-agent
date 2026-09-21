@@ -36,6 +36,19 @@ public interface IWorkingMemoryMessageDao {
                                                    @Param("limit") int limit,
                                                    @Param("roles") List<String> roles);
 
+    WorkingMemorySearchMessage selectScrollAnchor(@Param("sessionId") String sessionId,
+                                                  @Param("messageId") long messageId);
+
+    List<WorkingMemorySearchMessage> selectScrollBefore(@Param("sessionId") String sessionId,
+                                                        @Param("messageId") long messageId,
+                                                        @Param("limit") int limit,
+                                                        @Param("roles") List<String> roles);
+
+    List<WorkingMemorySearchMessage> selectScrollAfter(@Param("sessionId") String sessionId,
+                                                       @Param("messageId") long messageId,
+                                                       @Param("limit") int limit,
+                                                       @Param("roles") List<String> roles);
+
     List<WorkingMemorySearchMessage> selectHistoryBySession(@Param("sessionId") String sessionId);
 
     /** 最近的主会话摘要，用于 session_search browse。 */
