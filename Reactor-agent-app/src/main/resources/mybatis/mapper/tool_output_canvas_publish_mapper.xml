@@ -47,6 +47,17 @@
         LIMIT 1
     </select>
 
+    <select id="queryByToolInvocationIds" resultType="map">
+        SELECT id, tool_invocation_id, run_id, request_id, session_id, tool_call_id, status, error_msg,
+               title, mode, primary_file_name, preview_url, download_url, open_in_panel, salvaged, created_at, updated_at
+        FROM ai_agent_tool_output_canvas_publish
+        WHERE tool_invocation_id IN
+        <foreach collection="toolInvocationIds" item="toolInvocationId" open="(" separator="," close=")">
+            #{toolInvocationId}
+        </foreach>
+        ORDER BY tool_invocation_id ASC, id ASC
+    </select>
+
     <select id="queryByRequestToolCall" resultType="map">
         SELECT id, tool_invocation_id, run_id, request_id, session_id, tool_call_id, status, error_msg,
                title, mode, primary_file_name, preview_url, download_url, open_in_panel, salvaged, created_at, updated_at

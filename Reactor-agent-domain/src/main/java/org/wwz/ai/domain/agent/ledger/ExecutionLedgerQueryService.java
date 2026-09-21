@@ -12,13 +12,27 @@ import java.util.List;
  */
 public interface ExecutionLedgerQueryService {
 
+    int DEFAULT_SESSION_RUN_PAGE_SIZE = 100;
+    int MAX_SESSION_RUN_PAGE_SIZE = 100;
+
     ExecutionRunDetail queryRunDetail(String requestId);
+
+    /**
+     * 批量加载已经定位好的 run 明细，避免历史回放按 run 重复查询账本事实。
+     */
+    List<ExecutionRunDetail> queryRunDetails(List<DialogueRunView> runs);
 
     List<ToolInvocationView> queryRecentToolInvocations(String toolName, int limit);
 
     List<DialogueRunView> queryRecentSessionRuns(String sessionId, int limit);
 
-    List<DialogueRunView> querySessionRuns(String sessionId);
+    /** 按创建时间正序读取 session run 页面，limit 会在实现层强制限制。 */
+    List<DialogueRunView> querySessionRuns(String sessionId, int offset, int limit);
+
+    /** 兼容已有调用方的首页查询；完整历史由 replay/memory 调用方逐页读取。 */
+    default List<DialogueRunView> querySessionRuns(String sessionId) {
+        return querySessionRuns(sessionId, 0, DEFAULT_SESSION_RUN_PAGE_SIZE);
+    }
 
     DialogueSessionView querySession(String sessionId);
 

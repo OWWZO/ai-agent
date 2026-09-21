@@ -1,5 +1,6 @@
 package org.wwz.ai.infrastructure.reactor.service.impl;
 
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -209,7 +210,21 @@ public class SessionContextMemoryServiceImpl implements SessionContextMemoryServ
 
 
     private SessionHistoryMemory assembleSessionHistoryMemory(String sessionId, String currentRequestId) {
-        List<DialogueRunView> orderedRuns = executionLedgerQueryService.querySessionRuns(sessionId).stream()
+        List<DialogueRunView> orderedRuns = new ArrayList<>();
+        int offset = 0;
+        final int pageSize = 100;
+        while (true) {
+            List<DialogueRunView> page = executionLedgerQueryService.querySessionRuns(sessionId, offset, pageSize);
+            if (CollectionUtils.isEmpty(page)) {
+                break;
+            }
+            orderedRuns.addAll(page);
+            if (page.size() < pageSize) {
+                break;
+            }
+            offset += pageSize;
+        }
+        orderedRuns = orderedRuns.stream()
                 .filter(run -> run != null && run.getId() != null)
                 .filter(run -> !StringUtils.equals(run.getRequestId(), currentRequestId))
                 .toList();

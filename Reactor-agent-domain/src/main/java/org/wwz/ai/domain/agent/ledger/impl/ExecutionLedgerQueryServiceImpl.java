@@ -16,6 +16,7 @@ import org.wwz.ai.domain.agent.ledger.model.ExecutionRunDetail;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationView;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputNames;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolStructuredOutput;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerQueryService;
 import org.wwz.ai.domain.agent.ledger.tooloutput.ToolOutputReader;
 
@@ -47,14 +48,86 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
         List<LlmInvocation> llmInvocations = executionLedgerReadRepository.queryLlmInvocationsByRunId(run.getId());
         List<ToolInvocation> toolInvocations = executionLedgerReadRepository.queryToolInvocationsByRunId(run.getId());
         List<ArtifactRecord> artifacts = executionLedgerReadRepository.queryArtifactsByRunId(run.getId());
+        List<ToolInvocationView> toolViews = toToolViews(
+                toolInvocations,
+                run.getRequestId(),
+                run.getSessionId(),
+                artifacts
+        );
+        List<ArtifactView> artifactViews = toArtifactViews(artifacts);
+        enrichStructuredOutputs(toolViews, artifactViews);
         // 先读取账本中的通用事实，再在 tool view 上延迟挂载 rich output；展示投影不能反向创建账本记录。
         // 先聚合三类通用事实，再补 rich tool output；查询层不读取旧 message/transcript 表。
         return ExecutionRunDetail.builder()
                 .run(toRunView(run))
                 .llmInvocations(toLlmViews(llmInvocations))
-                .toolInvocations(toToolViews(toolInvocations, run.getRequestId(), run.getSessionId(), artifacts))
-                .artifacts(toArtifactViews(artifacts))
+                .toolInvocations(toolViews)
+                .artifacts(artifactViews)
                 .build();
+    }
+
+    @Override
+    public List<ExecutionRunDetail> queryRunDetails(List<DialogueRunView> runs) {
+        if (CollectionUtils.isEmpty(runs)) {
+            return List.of();
+        }
+
+        Map<Long, DialogueRunView> runViewsById = new LinkedHashMap<>();
+        for (DialogueRunView run : runs) {
+            if (run != null && run.getId() != null) {
+                runViewsById.putIfAbsent(run.getId(), run);
+            }
+        }
+        if (runViewsById.isEmpty()) {
+            return emptyRunDetails(runs);
+        }
+
+        List<Long> runIds = new ArrayList<>(runViewsById.keySet());
+        Map<Long, List<ArtifactView>> artifactsByRunId = resolveArtifactViews(runs, runIds);
+        List<ArtifactView> allArtifacts = artifactsByRunId.values().stream()
+                .flatMap(List::stream)
+                .toList();
+
+        // 历史回放一次加载整个 session 的事实，再在内存中按 run 分组，避免 4*N 的账本查询。
+        List<LlmInvocationView> llmViews = toLlmViews(
+                executionLedgerReadRepository.queryLlmInvocationsByRunIds(runIds)
+        );
+        List<ToolInvocationView> toolViews = toToolViews(
+                executionLedgerReadRepository.queryToolInvocationsByRunIds(runIds),
+                runViewsById,
+                artifactsByRunId
+        );
+        enrichStructuredOutputs(toolViews, allArtifacts);
+
+        Map<Long, List<LlmInvocationView>> llmViewsByRunId = llmViews.stream()
+                .filter(view -> view != null && view.getRunId() != null)
+                .collect(Collectors.groupingBy(
+                        LlmInvocationView::getRunId,
+                        LinkedHashMap::new,
+                        Collectors.toCollection(ArrayList::new)
+                ));
+        Map<Long, List<ToolInvocationView>> toolViewsByRunId = toolViews.stream()
+                .filter(view -> view != null && view.getRunId() != null)
+                .collect(Collectors.groupingBy(
+                        ToolInvocationView::getRunId,
+                        LinkedHashMap::new,
+                        Collectors.toCollection(ArrayList::new)
+                ));
+
+        List<ExecutionRunDetail> details = new ArrayList<>(runs.size());
+        for (DialogueRunView run : runs) {
+            if (run == null || run.getId() == null) {
+                details.add(emptyRunDetail(run));
+                continue;
+            }
+            details.add(ExecutionRunDetail.builder()
+                    .run(run)
+                    .llmInvocations(llmViewsByRunId.getOrDefault(run.getId(), List.of()))
+                    .toolInvocations(toolViewsByRunId.getOrDefault(run.getId(), List.of()))
+                    .artifacts(artifactsByRunId.getOrDefault(run.getId(), List.of()))
+                    .build());
+        }
+        return details;
     }
 
     @Override
@@ -62,7 +135,12 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
         if (StringUtils.isBlank(toolName)) {
             return List.of();
         }
-        return enrichStructuredOutputs(executionLedgerReadRepository.queryRecentToolInvocations(toolName, normalizeLimit(limit)));
+        List<ToolInvocationView> views = executionLedgerReadRepository.queryRecentToolInvocations(
+                toolName,
+                normalizeLimit(limit)
+        );
+        enrichStructuredOutputs(views, null);
+        return views;
     }
 
     @Override
@@ -75,11 +153,12 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
     }
 
     @Override
-    public List<DialogueRunView> querySessionRuns(String sessionId) {
+    public List<DialogueRunView> querySessionRuns(String sessionId, int offset, int limit) {
         if (StringUtils.isBlank(sessionId)) {
             return List.of();
         }
-        return attachArtifactSummaries(executionLedgerReadRepository.queryRunsBySessionId(sessionId));
+        return attachArtifactSummaries(executionLedgerReadRepository.queryRunsBySessionId(
+                sessionId, normalizeOffset(offset), normalizeSessionRunLimit(limit)));
     }
 
     @Override
@@ -145,16 +224,24 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
         if (StringUtils.isBlank(sessionId)) {
             return null;
         }
-        List<DialogueRunView> runs = executionLedgerReadRepository.queryRunsBySessionId(sessionId);
-        if (CollectionUtils.isEmpty(runs)) {
-            return null;
-        }
-        for (DialogueRunView run : runs) {
-            if (run != null && StringUtils.isNotBlank(run.getQueryText())) {
-                return run.getQueryText();
+        int offset = 0;
+        final int pageSize = ExecutionLedgerQueryService.DEFAULT_SESSION_RUN_PAGE_SIZE;
+        while (true) {
+            List<DialogueRunView> page = executionLedgerReadRepository.queryRunsBySessionId(
+                    sessionId, offset, pageSize);
+            if (CollectionUtils.isEmpty(page)) {
+                return null;
             }
+            for (DialogueRunView run : page) {
+                if (run != null && StringUtils.isNotBlank(run.getQueryText())) {
+                    return run.getQueryText();
+                }
+            }
+            if (page.size() < pageSize) {
+                return null;
+            }
+            offset += pageSize;
         }
-        return null;
     }
 
     private boolean isMeaningfulSessionTitle(String title) {
@@ -198,6 +285,17 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
             return 20;
         }
         return Math.min(limit, 100);
+    }
+
+    private int normalizeSessionRunLimit(int limit) {
+        if (limit <= 0) {
+            return ExecutionLedgerQueryService.DEFAULT_SESSION_RUN_PAGE_SIZE;
+        }
+        return Math.min(limit, ExecutionLedgerQueryService.MAX_SESSION_RUN_PAGE_SIZE);
+    }
+
+    private int normalizeOffset(int offset) {
+        return Math.max(offset, 0);
     }
 
     private DialogueRunView toRunView(DialogueRun run) {
@@ -267,9 +365,9 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
     }
 
     private List<ToolInvocationView> toToolViews(List<ToolInvocation> invocations,
-                                                 String requestId,
-                                                 String sessionId,
-                                                 List<ArtifactRecord> artifacts) {
+                                                  String requestId,
+                                                  String sessionId,
+                                                  List<ArtifactRecord> artifacts) {
         if (invocations == null) {
             return List.of();
         }
@@ -285,52 +383,150 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
         }
         List<ToolInvocationView> views = new ArrayList<>(invocations.size());
         for (ToolInvocation invocation : invocations) {
-            views.add(ToolInvocationView.builder()
-                    .id(invocation.getId())
-                    .runId(invocation.getRunId())
-                    .llmInvocationId(invocation.getLlmInvocationId())
-                    .requestId(requestId)
-                    .sessionId(sessionId)
-                    .toolCallId(invocation.getToolCallId())
-                    .parentToolCallId(invocation.getParentToolCallId())
-                    .subAgentId(invocation.getSubAgentId())
-                    .subAgentType(invocation.getSubAgentType())
-                    .subAgentDescription(invocation.getSubAgentDescription())
-                    .dispatchIndex(invocation.getDispatchIndex())
-                    .agentName(invocation.getAgentName())
-                    .stepNo(invocation.getStepNo())
-                    .toolName(invocation.getToolName())
-                    .toolProvider(invocation.getToolProvider())
-                    .inputJson(invocation.getInputJson())
-                    .llmObservation(invocation.getLlmObservation())
-                    .status(invocation.getStatus())
-                    .errorMsg(invocation.getErrorMsg())
-                    .durationMs(invocation.getDurationMs())
-                    .artifactCount(artifactCountByToolInvocationId.getOrDefault(invocation.getId(), 0))
-                    .startedAt(invocation.getStartedAt())
-                    .finishedAt(invocation.getFinishedAt())
-                    .createTime(invocation.getCreateTime())
-                    .build());
-        }
-        return enrichStructuredOutputs(views);
-    }
-
-    private List<ToolInvocationView> enrichStructuredOutputs(List<ToolInvocationView> views) {
-        if (views == null || toolOutputReader == null) {
-            return views == null ? List.of() : views;
-        }
-        // 只为仍持久化的 rich tool 且已有主键的记录回读专用输出表；普通工具及已退役
-        // 的 file/planning/report/script 输出保持轻量 invocation 视图。
-        for (ToolInvocationView view : views) {
-            if (view == null
-                    || view.getId() == null
-                    || !ToolOutputNames.isPersistedTool(view.getToolName())) {
-                continue;
-            }
-            toolOutputReader.readByInvocationId(view.getToolName(), view.getId())
-                    .ifPresent(view::setStructuredOutput);
+            views.add(toToolView(
+                    invocation,
+                    requestId,
+                    sessionId,
+                    artifactCountByToolInvocationId.getOrDefault(invocation.getId(), 0)
+            ));
         }
         return views;
+    }
+
+    private List<ToolInvocationView> toToolViews(List<ToolInvocation> invocations,
+                                                  Map<Long, DialogueRunView> runViewsById,
+                                                  Map<Long, List<ArtifactView>> artifactsByRunId) {
+        if (CollectionUtils.isEmpty(invocations)) {
+            return List.of();
+        }
+        Map<Long, Integer> artifactCountByToolInvocationId = new LinkedHashMap<>();
+        if (artifactsByRunId != null) {
+            for (List<ArtifactView> artifacts : artifactsByRunId.values()) {
+                if (artifacts == null) {
+                    continue;
+                }
+                for (ArtifactView artifact : artifacts) {
+                    if (artifact == null || artifact.getToolInvocationId() == null) {
+                        continue;
+                    }
+                    artifactCountByToolInvocationId.merge(artifact.getToolInvocationId(), 1, Integer::sum);
+                }
+            }
+        }
+        List<ToolInvocationView> views = new ArrayList<>(invocations.size());
+        for (ToolInvocation invocation : invocations) {
+            DialogueRunView run = runViewsById.get(invocation.getRunId());
+            views.add(toToolView(
+                    invocation,
+                    run == null ? null : run.getRequestId(),
+                    run == null ? null : run.getSessionId(),
+                    artifactCountByToolInvocationId.getOrDefault(invocation.getId(), 0)
+            ));
+        }
+        return views;
+    }
+
+    private ToolInvocationView toToolView(ToolInvocation invocation,
+                                           String requestId,
+                                           String sessionId,
+                                           int artifactCount) {
+        return ToolInvocationView.builder()
+                .id(invocation.getId())
+                .runId(invocation.getRunId())
+                .llmInvocationId(invocation.getLlmInvocationId())
+                .requestId(requestId)
+                .sessionId(sessionId)
+                .toolCallId(invocation.getToolCallId())
+                .parentToolCallId(invocation.getParentToolCallId())
+                .subAgentId(invocation.getSubAgentId())
+                .subAgentType(invocation.getSubAgentType())
+                .subAgentDescription(invocation.getSubAgentDescription())
+                .dispatchIndex(invocation.getDispatchIndex())
+                .agentName(invocation.getAgentName())
+                .stepNo(invocation.getStepNo())
+                .toolName(invocation.getToolName())
+                .toolProvider(invocation.getToolProvider())
+                .inputJson(invocation.getInputJson())
+                .llmObservation(invocation.getLlmObservation())
+                .status(invocation.getStatus())
+                .errorMsg(invocation.getErrorMsg())
+                .durationMs(invocation.getDurationMs())
+                .artifactCount(artifactCount)
+                .startedAt(invocation.getStartedAt())
+                .finishedAt(invocation.getFinishedAt())
+                .createTime(invocation.getCreateTime())
+                .build();
+    }
+
+    private void enrichStructuredOutputs(List<ToolInvocationView> views, List<ArtifactView> artifacts) {
+        if (CollectionUtils.isEmpty(views) || toolOutputReader == null) {
+            return;
+        }
+        List<ToolInvocationView> richViews = views.stream()
+                .filter(view -> view != null
+                        && view.getId() != null
+                        && ToolOutputNames.isPersistedTool(view.getToolName()))
+                .toList();
+        if (richViews.isEmpty()) {
+            return;
+        }
+        Map<Long, ToolStructuredOutput> outputs = toolOutputReader.readByInvocationIds(richViews, artifacts);
+        if (outputs == null || outputs.isEmpty()) {
+            return;
+        }
+        for (ToolInvocationView view : richViews) {
+            ToolStructuredOutput output = outputs.get(view.getId());
+            if (output != null) {
+                view.setStructuredOutput(output);
+            }
+        }
+    }
+
+    private Map<Long, List<ArtifactView>> resolveArtifactViews(List<DialogueRunView> runs, List<Long> runIds) {
+        boolean summariesLoaded = true;
+        for (DialogueRunView run : runs) {
+            if (run != null && run.getId() != null && run.getArtifactSummaries() == null) {
+                summariesLoaded = false;
+                break;
+            }
+        }
+
+        List<ArtifactView> artifacts;
+        if (summariesLoaded) {
+            artifacts = runs.stream()
+                    .filter(run -> run != null && run.getArtifactSummaries() != null)
+                    .flatMap(run -> run.getArtifactSummaries().stream())
+                    .filter(artifact -> artifact != null)
+                    .toList();
+        } else {
+            artifacts = toArtifactViews(executionLedgerReadRepository.queryArtifactsByRunIds(runIds));
+        }
+        return artifacts.stream()
+                .filter(artifact -> artifact.getRunId() != null)
+                .collect(Collectors.groupingBy(
+                        ArtifactView::getRunId,
+                        LinkedHashMap::new,
+                        Collectors.toCollection(ArrayList::new)
+                ));
+    }
+
+    private List<ExecutionRunDetail> emptyRunDetails(List<DialogueRunView> runs) {
+        List<ExecutionRunDetail> details = new ArrayList<>(runs.size());
+        for (DialogueRunView run : runs) {
+            details.add(emptyRunDetail(run));
+        }
+        return details;
+    }
+
+    private ExecutionRunDetail emptyRunDetail(DialogueRunView run) {
+        return ExecutionRunDetail.builder()
+                .run(run)
+                .llmInvocations(List.of())
+                .toolInvocations(List.of())
+                .artifacts(run == null || run.getArtifactSummaries() == null
+                        ? List.of()
+                        : run.getArtifactSummaries())
+                .build();
     }
 
     private List<ArtifactView> toArtifactViews(List<ArtifactRecord> artifacts) {

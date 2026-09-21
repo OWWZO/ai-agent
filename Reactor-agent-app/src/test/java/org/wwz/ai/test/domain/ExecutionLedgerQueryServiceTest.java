@@ -68,6 +68,21 @@ public class ExecutionLedgerQueryServiceTest {
     }
 
     @Test
+    public void shouldPageSessionRunsAndClampPageSize() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        seedRun(ctx, "req-page-001", "session-page-001", "visitor-page-001", "file_tool", 1, "report-1.md");
+        seedRun(ctx, "req-page-002", "session-page-001", "visitor-page-001", "file_tool", 2, "report-2.md");
+
+        var firstPage = ctx.queryService.querySessionRuns("session-page-001", -10, 1_000);
+        Assert.assertEquals(2, firstPage.size());
+        Assert.assertEquals("req-page-001", firstPage.get(0).getRequestId());
+
+        var secondPage = ctx.queryService.querySessionRuns("session-page-001", 1, 1);
+        Assert.assertEquals(1, secondPage.size());
+        Assert.assertEquals("req-page-002", secondPage.get(0).getRequestId());
+    }
+
+    @Test
     public void shouldKeepFailedRetiredToolExplainableWithObservation() {
         ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
         LocalDateTime now = LocalDateTime.now();
@@ -136,6 +151,32 @@ public class ExecutionLedgerQueryServiceTest {
         Assert.assertEquals("req-history-002", detail.getRuns().get(1).getRequestId());
         Assert.assertFalse(detail.getRuns().get(0).getReplayFrames().isEmpty());
         Assert.assertFalse(detail.getRuns().get(1).getReplayFrames().isEmpty());
+    }
+
+    @Test
+    public void shouldBatchLedgerFactsAndRichOutputsForConversationHistory() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        seedRun(ctx, "req-batch-history-001", "session-batch-history-001", "visitor-batch-001", "deep_search", 1, "report-1.md");
+        seedRun(ctx, "req-batch-history-002", "session-batch-history-001", "visitor-batch-001", "file_tool", 2, "report-2.md");
+        seedRun(ctx, "req-batch-history-003", "session-batch-history-001", "visitor-batch-001", "read_tool", 3, "report-3.md");
+        int queryRunByRequestIdBefore = ctx.store.queryRunByRequestIdCount;
+        int queryLlmByRunIdBefore = ctx.store.queryLlmByRunIdCount;
+        int queryToolByRunIdBefore = ctx.store.queryToolByRunIdCount;
+        int queryArtifactsByRunIdBefore = ctx.store.queryArtifactsByRunIdCount;
+        int readToolOutputByInvocationIdBefore = ctx.store.readToolOutputByInvocationIdCount;
+
+        ConversationHistoryDetail detail = ctx.replayService.queryConversationHistory("session-batch-history-001");
+
+        Assert.assertEquals(3, detail.getRuns().size());
+        Assert.assertEquals(queryRunByRequestIdBefore, ctx.store.queryRunByRequestIdCount);
+        Assert.assertEquals(queryLlmByRunIdBefore, ctx.store.queryLlmByRunIdCount);
+        Assert.assertEquals(1, ctx.store.queryLlmByRunIdsCount);
+        Assert.assertEquals(queryToolByRunIdBefore, ctx.store.queryToolByRunIdCount);
+        Assert.assertEquals(1, ctx.store.queryToolByRunIdsCount);
+        Assert.assertEquals(queryArtifactsByRunIdBefore, ctx.store.queryArtifactsByRunIdCount);
+        Assert.assertEquals(1, ctx.store.queryArtifactsByRunIdsCount);
+        Assert.assertEquals(readToolOutputByInvocationIdBefore, ctx.store.readToolOutputByInvocationIdCount);
+        Assert.assertEquals(1, ctx.store.readToolOutputByInvocationIdsCount);
     }
 
     @Test

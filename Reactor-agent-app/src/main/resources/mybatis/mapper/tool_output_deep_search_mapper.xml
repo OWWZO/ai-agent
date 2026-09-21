@@ -43,6 +43,17 @@
         LIMIT 1
     </select>
 
+    <select id="queryByToolInvocationIds" resultType="map">
+        SELECT id, tool_invocation_id, run_id, request_id, session_id, tool_call_id, status, error_msg,
+               query, answer_summary, stages_json, created_at, updated_at
+        FROM ai_agent_tool_output_deep_search
+        WHERE tool_invocation_id IN
+        <foreach collection="toolInvocationIds" item="toolInvocationId" open="(" separator="," close=")">
+            #{toolInvocationId}
+        </foreach>
+        ORDER BY tool_invocation_id ASC, id ASC
+    </select>
+
     <select id="queryByRequestToolCall" resultType="map">
         SELECT id, tool_invocation_id, run_id, request_id, session_id, tool_call_id, status, error_msg,
                query, answer_summary, stages_json, created_at, updated_at

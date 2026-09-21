@@ -16,6 +16,8 @@ public interface IToolOutputImageGenerationDao {
 
     Map<String, Object> queryByToolInvocationId(@Param("toolInvocationId") Long toolInvocationId);
 
+    List<Map<String, Object>> queryByToolInvocationIds(@Param("toolInvocationIds") List<Long> toolInvocationIds);
+
     Map<String, Object> queryByRequestToolCall(@Param("requestId") String requestId,
                                                @Param("toolCallId") String toolCallId);
 

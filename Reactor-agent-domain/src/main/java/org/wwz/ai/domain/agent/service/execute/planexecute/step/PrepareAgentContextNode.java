@@ -20,6 +20,7 @@ import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadStateStore;
 import org.wwz.ai.domain.agent.runtime.util.DateUtil;
 import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
 import org.wwz.ai.domain.agent.ledger.IExecutionLedgerReadRepository;
+import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.ledger.AgentExecutionRecorder;
@@ -176,9 +177,19 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
             return false;
         }
         try {
-            return PlanModeEntryPolicy.hasPriorPlanSolveUserTurn(
-                    executionLedgerReadRepository.queryRunsBySessionId(request.getSessionId()),
-                    request.getRequestId());
+            int offset = 0;
+            final int pageSize = 100;
+            while (true) {
+                List<DialogueRunView> page = executionLedgerReadRepository.queryRunsBySessionId(
+                        request.getSessionId(), offset, pageSize);
+                if (PlanModeEntryPolicy.hasPriorPlanSolveUserTurn(page, request.getRequestId())) {
+                    return true;
+                }
+                if (page == null || page.size() < pageSize) {
+                    return false;
+                }
+                offset += pageSize;
+            }
         } catch (Exception e) {
             log.warn("query prior plan_solve runs failed, sessionId={}", request.getSessionId(), e);
             return false;

@@ -21,7 +21,11 @@ public interface IExecutionLedgerReadRepository {
 
     List<LlmInvocation> queryLlmInvocationsByRunId(Long runId);
 
+    List<LlmInvocation> queryLlmInvocationsByRunIds(List<Long> runIds);
+
     List<ToolInvocation> queryToolInvocationsByRunId(Long runId);
+
+    List<ToolInvocation> queryToolInvocationsByRunIds(List<Long> runIds);
 
     List<ArtifactRecord> queryArtifactsByRunId(Long runId);
 
@@ -29,7 +33,12 @@ public interface IExecutionLedgerReadRepository {
 
     List<DialogueRunView> queryRecentRunsBySessionId(String sessionId, int limit);
 
-    List<DialogueRunView> queryRunsBySessionId(String sessionId);
+    List<DialogueRunView> queryRunsBySessionId(String sessionId, int offset, int limit);
+
+    /** 兼容已有内部调用方；底层查询仍受分页上限约束。 */
+    default List<DialogueRunView> queryRunsBySessionId(String sessionId) {
+        return queryRunsBySessionId(sessionId, 0, 100);
+    }
 
     DialogueSessionView querySession(String sessionId);
 

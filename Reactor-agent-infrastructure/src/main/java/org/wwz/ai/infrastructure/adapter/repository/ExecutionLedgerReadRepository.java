@@ -46,8 +46,18 @@ public class ExecutionLedgerReadRepository implements IExecutionLedgerReadReposi
     }
 
     @Override
+    public List<LlmInvocation> queryLlmInvocationsByRunIds(List<Long> runIds) {
+        return llmInvocationLedgerDao.queryByRunIds(runIds);
+    }
+
+    @Override
     public List<ToolInvocation> queryToolInvocationsByRunId(Long runId) {
         return toolInvocationLedgerDao.queryByRunId(runId);
+    }
+
+    @Override
+    public List<ToolInvocation> queryToolInvocationsByRunIds(List<Long> runIds) {
+        return toolInvocationLedgerDao.queryByRunIds(runIds);
     }
 
     @Override
@@ -67,8 +77,10 @@ public class ExecutionLedgerReadRepository implements IExecutionLedgerReadReposi
     }
 
     @Override
-    public List<DialogueRunView> queryRunsBySessionId(String sessionId) {
-        return dialogueRunLedgerDao.queryBySessionId(sessionId);
+    public List<DialogueRunView> queryRunsBySessionId(String sessionId, int offset, int limit) {
+        int normalizedOffset = Math.max(offset, 0);
+        int normalizedLimit = limit <= 0 ? 100 : Math.min(limit, 100);
+        return dialogueRunLedgerDao.queryBySessionId(sessionId, normalizedOffset, normalizedLimit);
     }
 
     @Override

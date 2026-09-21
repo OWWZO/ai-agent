@@ -6,6 +6,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.ledger.entity.ArtifactRecord;
+import org.wwz.ai.domain.agent.ledger.model.ArtifactView;
+import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
+import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.CanvasPublishToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.CodeInterpreterToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DataAnalysisToolOutput;
@@ -36,9 +39,12 @@ import org.wwz.ai.infrastructure.dao.reactor.IToolOutputMultimodalAgentDao;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Execution Ledger 工具输出投影读取实现。
@@ -88,6 +94,64 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
     }
 
     @Override
+    public Map<Long, ToolStructuredOutput> readByInvocationIds(List<ToolInvocationView> invocations,
+                                                                List<ArtifactView> artifacts) {
+        if (invocations == null || invocations.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<String, Set<Long>> invocationIdsByTool = new LinkedHashMap<>();
+        for (ToolInvocationView invocation : invocations) {
+            if (invocation == null
+                    || invocation.getId() == null
+                    || !ToolOutputNames.isPersistedTool(invocation.getToolName())) {
+                continue;
+            }
+            invocationIdsByTool
+                    .computeIfAbsent(invocation.getToolName(), ignored -> new LinkedHashSet<>())
+                    .add(invocation.getId());
+        }
+        if (invocationIdsByTool.isEmpty()) {
+            return Map.of();
+        }
+
+        List<Long> allInvocationIds = invocationIdsByTool.values().stream()
+                .flatMap(Set::stream)
+                .toList();
+        Map<Long, List<ArtifactView>> artifactsByInvocationId = artifacts == null
+                ? groupArtifactViews(toArtifactViews(artifactLedgerDao == null
+                ? List.of()
+                : artifactLedgerDao.queryByToolInvocationIds(allInvocationIds)))
+                : groupArtifactViews(artifacts);
+
+        Map<Long, ToolStructuredOutput> outputs = new LinkedHashMap<>();
+        for (Map.Entry<String, Set<Long>> entry : invocationIdsByTool.entrySet()) {
+            List<Map<String, Object>> rows = queryByToolInvocationIds(
+                    entry.getKey(),
+                    new ArrayList<>(entry.getValue())
+            );
+            if (rows == null) {
+                continue;
+            }
+            for (Map<String, Object> row : rows) {
+                Long invocationId = longValue(row, "tool_invocation_id", "toolInvocationId");
+                if (invocationId == null) {
+                    continue;
+                }
+                ToolStructuredOutput output = toStructuredOutput(
+                        entry.getKey(),
+                        row,
+                        artifactsByInvocationId
+                );
+                if (output != null) {
+                    outputs.putIfAbsent(invocationId, output);
+                }
+            }
+        }
+        return outputs;
+    }
+
+    @Override
     public Optional<ToolOutputView> readDirect(String requestId, String toolCallId) {
         // 兼容旧数据的直接查询允许跨表，但只有唯一命中时才返回，确保历史回放不产生错配。
         if (StringUtils.isBlank(requestId) || StringUtils.isBlank(toolCallId)) {
@@ -128,6 +192,36 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
         if (view != null) {
             matches.add(view);
         }
+    }
+
+    private List<Map<String, Object>> queryByToolInvocationIds(String toolName, List<Long> invocationIds) {
+        return switch (toolName) {
+            case ToolOutputNames.DEEP_SEARCH -> deepSearchDao.queryByToolInvocationIds(invocationIds);
+            case ToolOutputNames.CODE_INTERPRETER -> codeInterpreterDao.queryByToolInvocationIds(invocationIds);
+            case ToolOutputNames.DATA_ANALYSIS -> dataAnalysisDao.queryByToolInvocationIds(invocationIds);
+            case ToolOutputNames.MULTIMODAL_AGENT -> multimodalAgentDao.queryByToolInvocationIds(invocationIds);
+            case ToolOutputNames.IMAGE_GENERATION -> imageGenerationDao.queryByToolInvocationIds(invocationIds);
+            case ToolOutputNames.CANVAS_PUBLISH -> canvasPublishDao.queryByToolInvocationIds(invocationIds);
+            case ToolOutputNames.EMIT_UI_TREE -> emitUiTreeDao.queryByToolInvocationIds(invocationIds);
+            case ToolOutputNames.EMIT_UI_PATCH -> emitUiPatchDao.queryByToolInvocationIds(invocationIds);
+            default -> List.of();
+        };
+    }
+
+    private ToolStructuredOutput toStructuredOutput(String toolName,
+                                                     Map<String, Object> row,
+                                                     Map<Long, List<ArtifactView>> artifactsByInvocationId) {
+        return switch (toolName) {
+            case ToolOutputNames.DEEP_SEARCH -> toDeepSearchOutput(row);
+            case ToolOutputNames.CODE_INTERPRETER -> toCodeInterpreterOutput(row, artifactsByInvocationId);
+            case ToolOutputNames.DATA_ANALYSIS -> toDataAnalysisOutput(row, artifactsByInvocationId);
+            case ToolOutputNames.MULTIMODAL_AGENT -> toMultimodalOutput(row, artifactsByInvocationId);
+            case ToolOutputNames.IMAGE_GENERATION -> toImageGenerationOutput(row, artifactsByInvocationId);
+            case ToolOutputNames.CANVAS_PUBLISH -> toCanvasPublishOutput(row, artifactsByInvocationId);
+            case ToolOutputNames.EMIT_UI_TREE -> toEmitUiTreeOutput(row);
+            case ToolOutputNames.EMIT_UI_PATCH -> toEmitUiPatchOutput(row);
+            default -> null;
+        };
     }
 
     private ToolStructuredOutput toDeepSearchOutput(Map<String, Object> row) {
@@ -175,6 +269,11 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
     }
 
     private ToolStructuredOutput toCodeInterpreterOutput(Map<String, Object> row) {
+        return toCodeInterpreterOutput(row, null);
+    }
+
+    private ToolStructuredOutput toCodeInterpreterOutput(Map<String, Object> row,
+                                                         Map<Long, List<ArtifactView>> artifactsByInvocationId) {
         if (row == null) {
             return null;
         }
@@ -183,12 +282,17 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
                 .content(stringValue(row, "content"))
                 .code(stringValue(row, "code"))
                 .explain(stringValue(row, "explain"))
-                .fileRefs(resolveFileRefs(row))
+                .fileRefs(resolveFileRefs(row, artifactsByInvocationId))
                 .build();
     }
 
 
     private ToolStructuredOutput toCanvasPublishOutput(Map<String, Object> row) {
+        return toCanvasPublishOutput(row, null);
+    }
+
+    private ToolStructuredOutput toCanvasPublishOutput(Map<String, Object> row,
+                                                       Map<Long, List<ArtifactView>> artifactsByInvocationId) {
         if (row == null) {
             return null;
         }
@@ -200,7 +304,7 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
                 .downloadUrl(stringValue(row, "download_url", "downloadUrl"))
                 .openInPanel(booleanValue(row, "open_in_panel", "openInPanel"))
                 .salvaged(booleanValue(row, "salvaged"))
-                .fileRefs(resolveFileRefs(row))
+                .fileRefs(resolveFileRefs(row, artifactsByInvocationId))
                 .build();
     }
 
@@ -229,6 +333,11 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
     }
 
     private ToolStructuredOutput toDataAnalysisOutput(Map<String, Object> row) {
+        return toDataAnalysisOutput(row, null);
+    }
+
+    private ToolStructuredOutput toDataAnalysisOutput(Map<String, Object> row,
+                                                      Map<Long, List<ArtifactView>> artifactsByInvocationId) {
         if (row == null) {
             return null;
         }
@@ -236,22 +345,32 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
                 .task(stringValue(row, "task"))
                 .summary(stringValue(row, "summary"))
                 .content(stringValue(row, "content"))
-                .fileRefs(resolveFileRefs(row))
+                .fileRefs(resolveFileRefs(row, artifactsByInvocationId))
                 .build();
     }
 
     private ToolStructuredOutput toMultimodalOutput(Map<String, Object> row) {
+        return toMultimodalOutput(row, null);
+    }
+
+    private ToolStructuredOutput toMultimodalOutput(Map<String, Object> row,
+                                                    Map<Long, List<ArtifactView>> artifactsByInvocationId) {
         if (row == null) {
             return null;
         }
         return MultimodalAgentToolOutput.builder()
                 .summary(stringValue(row, "summary"))
                 .markdownContent(stringValue(row, "markdown_content", "markdownContent"))
-                .fileRefs(resolveFileRefs(row))
+                .fileRefs(resolveFileRefs(row, artifactsByInvocationId))
                 .build();
     }
 
     private ToolStructuredOutput toImageGenerationOutput(Map<String, Object> row) {
+        return toImageGenerationOutput(row, null);
+    }
+
+    private ToolStructuredOutput toImageGenerationOutput(Map<String, Object> row,
+                                                          Map<Long, List<ArtifactView>> artifactsByInvocationId) {
         if (row == null) {
             return null;
         }
@@ -264,7 +383,7 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
                 .sourceImageCount(integerValue(row, "source_image_count", "sourceImageCount"))
                 .maskImageCount(integerValue(row, "mask_image_count", "maskImageCount"))
                 .usedFallback(booleanValue(row, "used_fallback", "usedFallback"))
-                .fileRefs(resolveFileRefs(row))
+                .fileRefs(resolveFileRefs(row, artifactsByInvocationId))
                 .build();
     }
 
@@ -293,10 +412,24 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
     }
 
     private List<ToolFileRef> resolveFileRefs(Map<String, Object> row) {
-        if (row == null || artifactLedgerDao == null) {
+        return resolveFileRefs(row, null);
+    }
+
+    private List<ToolFileRef> resolveFileRefs(Map<String, Object> row,
+                                              Map<Long, List<ArtifactView>> artifactsByInvocationId) {
+        if (row == null) {
             return List.of();
         }
         Long toolInvocationId = longValue(row, "tool_invocation_id", "toolInvocationId");
+        if (artifactsByInvocationId != null) {
+            if (toolInvocationId == null) {
+                return List.of();
+            }
+            return toToolFileRefs(artifactsByInvocationId.getOrDefault(toolInvocationId, List.of()));
+        }
+        if (artifactLedgerDao == null) {
+            return List.of();
+        }
         List<ArtifactRecord> artifacts;
         if (toolInvocationId != null) {
             // 优先使用工具调用主键关联产物；兼容历史行时再按 run/request + toolCallId 回退。
@@ -319,9 +452,15 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
         if (artifacts == null || artifacts.isEmpty()) {
             return List.of();
         }
-        // 产物不存进工具输出 JSON；这里把 Execution Ledger 的 artifact 投影重新挂回结构化输出。
+        return toToolFileRefs(toArtifactViews(artifacts));
+    }
+
+    private List<ToolFileRef> toToolFileRefs(List<ArtifactView> artifacts) {
+        if (artifacts == null || artifacts.isEmpty()) {
+            return List.of();
+        }
         List<ToolFileRef> fileRefs = new ArrayList<>(artifacts.size());
-        for (ArtifactRecord artifact : artifacts) {
+        for (ArtifactView artifact : artifacts) {
             if (artifact == null) {
                 continue;
             }
@@ -336,6 +475,55 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
                     .build());
         }
         return fileRefs;
+    }
+
+    private Map<Long, List<ArtifactView>> groupArtifactViews(List<ArtifactView> artifacts) {
+        if (artifacts == null || artifacts.isEmpty()) {
+            return Map.of();
+        }
+        return artifacts.stream()
+                .filter(artifact -> artifact != null
+                        && artifact.getToolInvocationId() != null
+                        && ExecutionLedgerConstants.ARTIFACT_ROLE_OUTPUT.equals(artifact.getArtifactRole())
+                        && ExecutionLedgerConstants.VISIBILITY_VISIBLE.equals(artifact.getVisibility()))
+                .collect(java.util.stream.Collectors.groupingBy(
+                        ArtifactView::getToolInvocationId,
+                        LinkedHashMap::new,
+                        java.util.stream.Collectors.toCollection(ArrayList::new)
+                ));
+    }
+
+    private List<ArtifactView> toArtifactViews(List<ArtifactRecord> artifacts) {
+        if (artifacts == null || artifacts.isEmpty()) {
+            return List.of();
+        }
+        List<ArtifactView> views = new ArrayList<>(artifacts.size());
+        for (ArtifactRecord artifact : artifacts) {
+            if (artifact == null) {
+                continue;
+            }
+            views.add(ArtifactView.builder()
+                    .id(artifact.getId())
+                    .runId(artifact.getRunId())
+                    .requestId(artifact.getRequestId())
+                    .toolInvocationId(artifact.getToolInvocationId())
+                    .toolCallId(artifact.getToolCallId())
+                    .artifactRole(artifact.getArtifactRole())
+                    .visibility(artifact.getVisibility())
+                    .sourceType(artifact.getSourceType())
+                    .sourceName(artifact.getSourceName())
+                    .fileName(artifact.getFileName())
+                    .storageKey(artifact.getStorageKey())
+                    .downloadUrl(artifact.getDownloadUrl())
+                    .previewUrl(artifact.getPreviewUrl())
+                    .mimeType(artifact.getMimeType())
+                    .fileSize(artifact.getFileSize())
+                    .fileHash(artifact.getFileHash())
+                    .metadataJson(artifact.getMetadataJson())
+                    .createTime(artifact.getCreateTime())
+                    .build());
+        }
+        return views;
     }
 
     @SuppressWarnings("unchecked")

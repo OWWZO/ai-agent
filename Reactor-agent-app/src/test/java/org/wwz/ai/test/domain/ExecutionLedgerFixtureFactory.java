@@ -11,6 +11,7 @@ import org.wwz.ai.domain.agent.ledger.entity.DialogueSession;
 import org.wwz.ai.domain.agent.ledger.entity.DialogueRun;
 import org.wwz.ai.domain.agent.ledger.entity.LlmInvocation;
 import org.wwz.ai.domain.agent.ledger.entity.ToolInvocation;
+import org.wwz.ai.domain.agent.ledger.model.ArtifactView;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionUpsertRecord;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionView;
@@ -243,6 +244,15 @@ public final class ExecutionLedgerFixtureFactory {
         Map<Long, ArtifactRecord> artifacts = new LinkedHashMap<>();
         Map<String, Map<Long, ToolOutputView>> toolOutputsByToolAndInvocationId = new LinkedHashMap<>();
         Map<String, Map<String, ToolOutputView>> toolOutputsByToolAndDirectKey = new LinkedHashMap<>();
+        int queryRunByRequestIdCount;
+        int queryLlmByRunIdCount;
+        int queryLlmByRunIdsCount;
+        int queryToolByRunIdCount;
+        int queryToolByRunIdsCount;
+        int queryArtifactsByRunIdCount;
+        int queryArtifactsByRunIdsCount;
+        int readToolOutputByInvocationIdCount;
+        int readToolOutputByInvocationIdsCount;
     }
 
     static final class InMemoryToolOutputWriter implements ToolOutputWriter {
@@ -335,12 +345,35 @@ public final class ExecutionLedgerFixtureFactory {
 
         @Override
         public java.util.Optional<ToolStructuredOutput> readByInvocationId(String toolName, Long toolInvocationId) {
+            store.readToolOutputByInvocationIdCount++;
             if (isBlank(toolName) || toolInvocationId == null) {
                 return java.util.Optional.empty();
             }
             Map<Long, ToolOutputView> outputs = store.toolOutputsByToolAndInvocationId.get(toolName);
             ToolOutputView view = outputs == null ? null : outputs.get(toolInvocationId);
             return java.util.Optional.ofNullable(view == null ? null : view.getStructuredOutput());
+        }
+
+        @Override
+        public Map<Long, ToolStructuredOutput> readByInvocationIds(List<ToolInvocationView> invocations,
+                                                                   List<ArtifactView> artifacts) {
+            store.readToolOutputByInvocationIdsCount++;
+            Map<Long, ToolStructuredOutput> outputs = new LinkedHashMap<>();
+            if (invocations == null) {
+                return outputs;
+            }
+            for (ToolInvocationView invocation : invocations) {
+                if (invocation == null || invocation.getId() == null) {
+                    continue;
+                }
+                Map<Long, ToolOutputView> toolOutputs = store.toolOutputsByToolAndInvocationId
+                        .get(invocation.getToolName());
+                ToolOutputView output = toolOutputs == null ? null : toolOutputs.get(invocation.getId());
+                if (output != null && output.getStructuredOutput() != null) {
+                    outputs.put(invocation.getId(), output.getStructuredOutput());
+                }
+            }
+            return outputs;
         }
 
         @Override
@@ -414,6 +447,7 @@ public final class ExecutionLedgerFixtureFactory {
 
         @Override
         public DialogueRun queryByRequestId(String requestId) {
+            store.queryRunByRequestIdCount++;
             return store.runs.values().stream()
                     .filter(item -> item.getDeleted() == 0 && item.getRequestId().equals(requestId))
                     .findFirst()
@@ -433,11 +467,13 @@ public final class ExecutionLedgerFixtureFactory {
         }
 
         @Override
-        public List<DialogueRunView> queryBySessionId(String sessionId) {
+        public List<DialogueRunView> queryBySessionId(String sessionId, int offset, int limit) {
             return store.runs.values().stream()
                     .filter(item -> item.getDeleted() == 0 && item.getSessionId().equals(sessionId))
                     .sorted(Comparator.comparing(DialogueRun::getCreateTime)
                             .thenComparing(DialogueRun::getId))
+                    .skip(offset)
+                    .limit(limit)
                     .map(ExecutionLedgerFixtureFactory::toRunView)
                     .toList();
         }
@@ -594,6 +630,7 @@ public final class ExecutionLedgerFixtureFactory {
 
         @Override
         public List<LlmInvocation> queryByRunId(Long runId) {
+            store.queryLlmByRunIdCount++;
             return store.llmInvocations.values().stream()
                     .filter(item -> item.getDeleted() == 0 && item.getRunId().equals(runId))
                     .sorted(Comparator.comparing(LlmInvocation::getInvocationSeq).thenComparing(LlmInvocation::getId))
@@ -603,6 +640,7 @@ public final class ExecutionLedgerFixtureFactory {
 
         @Override
         public List<LlmInvocation> queryByRunIds(List<Long> runIds) {
+            store.queryLlmByRunIdsCount++;
             return store.llmInvocations.values().stream()
                     .filter(item -> item.getDeleted() == 0 && runIds.contains(item.getRunId()))
                     .sorted(Comparator.comparing(LlmInvocation::getRunId)
@@ -660,6 +698,7 @@ public final class ExecutionLedgerFixtureFactory {
 
         @Override
         public List<ToolInvocation> queryByRunId(Long runId) {
+            store.queryToolByRunIdCount++;
             return store.toolInvocations.values().stream()
                     .filter(item -> item.getDeleted() == 0 && item.getRunId().equals(runId))
                     .sorted(Comparator.comparing(ToolInvocation::getLlmInvocationId)
@@ -671,6 +710,7 @@ public final class ExecutionLedgerFixtureFactory {
 
         @Override
         public List<ToolInvocation> queryByRunIds(List<Long> runIds) {
+            store.queryToolByRunIdsCount++;
             return store.toolInvocations.values().stream()
                     .filter(item -> item.getDeleted() == 0 && runIds.contains(item.getRunId()))
                     .sorted(Comparator.comparing(ToolInvocation::getRunId)
@@ -762,6 +802,7 @@ public final class ExecutionLedgerFixtureFactory {
 
         @Override
         public List<ArtifactRecord> queryByRunId(Long runId) {
+            store.queryArtifactsByRunIdCount++;
             return store.artifacts.values().stream()
                     .filter(item -> item.getDeleted() == 0 && item.getRunId().equals(runId))
                     .sorted(Comparator.comparing(ArtifactRecord::getCreateTime).thenComparing(ArtifactRecord::getId))
@@ -771,6 +812,7 @@ public final class ExecutionLedgerFixtureFactory {
 
         @Override
         public List<ArtifactRecord> queryByRunIds(List<Long> runIds) {
+            store.queryArtifactsByRunIdsCount++;
             return store.artifacts.values().stream()
                     .filter(item -> item.getDeleted() == 0 && runIds.contains(item.getRunId()))
                     .sorted(Comparator.comparing(ArtifactRecord::getRunId).reversed()

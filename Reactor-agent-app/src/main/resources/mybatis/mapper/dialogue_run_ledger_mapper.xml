@@ -111,6 +111,7 @@
         WHERE session_id = #{sessionId}
           AND deleted = 0
         ORDER BY create_time ASC, id ASC
+        LIMIT #{offset}, #{limit}
     </select>
 
 </mapper>

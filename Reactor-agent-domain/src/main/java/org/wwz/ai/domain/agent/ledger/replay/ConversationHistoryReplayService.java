@@ -42,17 +42,34 @@ public class ConversationHistoryReplayService {
             return null;
         }
         // session 只提供会话头，具体 run/LLM/tool/artifact 事实由 projector 统一组装。
-        List<DialogueRunView> runs = executionLedgerQueryService.querySessionRuns(sessionId);
+        List<DialogueRunView> runs = new ArrayList<>();
+        List<ExecutionRunDetail> batchRunDetails = new ArrayList<>();
+        int offset = 0;
+        final int pageSize = ExecutionLedgerQueryService.DEFAULT_SESSION_RUN_PAGE_SIZE;
+        while (true) {
+            List<DialogueRunView> page = executionLedgerQueryService.querySessionRuns(sessionId, offset, pageSize);
+            if (CollectionUtils.isEmpty(page)) {
+                break;
+            }
+            runs.addAll(page);
+            // 每页批量补齐事实，避免逐 run 调 queryRunDetail，也避免一次读取无界 run 列表。
+            batchRunDetails.addAll(executionLedgerQueryService.queryRunDetails(page));
+            if (page.size() < pageSize) {
+                break;
+            }
+            offset += pageSize;
+        }
         List<ConversationHistoryDetail.ConversationRunDetail> runDetails = new ArrayList<>();
         HistoryModeSnapshot historyModeSnapshot = HistoryModeSnapshot.defaultReact();
         if (CollectionUtils.isNotEmpty(runs)) {
-            for (DialogueRunView run : runs) {
+            for (int index = 0; index < runs.size(); index++) {
+                DialogueRunView run = runs.get(index);
                 if (run == null || StringUtils.isBlank(run.getRequestId())) {
                     continue;
                 }
-                // 历史详情严格以 run 为最小回放单元：
-                // 先查单 run 明细，再交给共享 projector 产出与实时同构的 replay frames。
-                ExecutionRunDetail runDetail = executionLedgerQueryService.queryRunDetail(run.getRequestId());
+                ExecutionRunDetail runDetail = batchRunDetails != null && index < batchRunDetails.size()
+                        ? batchRunDetails.get(index)
+                        : null;
                 ReplayFactBundle bundle = ReplayFactBundle.builder()
                         .run(runDetail == null ? run : runDetail.getRun())
                         .llmInvocations(runDetail == null ? List.of() : runDetail.getLlmInvocations())

@@ -16,6 +16,7 @@ import org.wwz.ai.infrastructure.dao.reactor.IDialogueSessionLedgerDao;
 import org.wwz.ai.infrastructure.dao.reactor.ILlmInvocationLedgerDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolInvocationLedgerDao;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -75,7 +76,20 @@ public class ExecutionLedgerWriteRepository implements IExecutionLedgerWriteRepo
 
     @Override
     public List<DialogueRunView> queryRunsBySessionId(String sessionId) {
-        return dialogueRunLedgerDao.queryBySessionId(sessionId);
+        List<DialogueRunView> runs = new ArrayList<>();
+        int offset = 0;
+        final int pageSize = 100;
+        while (true) {
+            List<DialogueRunView> page = dialogueRunLedgerDao.queryBySessionId(sessionId, offset, pageSize);
+            if (page == null || page.isEmpty()) {
+                return runs;
+            }
+            runs.addAll(page);
+            if (page.size() < pageSize) {
+                return runs;
+            }
+            offset += pageSize;
+        }
     }
 
     @Override
