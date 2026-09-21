@@ -9,6 +9,7 @@ import java.util.concurrent.*;
  * <p>主链路优先使用 AgentExecutorSupport 的受控执行器，本类仅服务历史调用方。</p>
  */
 public class ThreadUtil {
+    private static final int MAX_QUEUE_SIZE = 1000;
     private static ThreadPoolExecutor executor = null;
 
     private ThreadUtil() {
@@ -17,10 +18,9 @@ public class ThreadUtil {
     public static synchronized void initPool(int poolSize) {
         if (executor == null) {
             ThreadFactory threadFactory = (new BasicThreadFactory.Builder()).namingPattern("exe-pool-%d").daemon(true).build();
-            RejectedExecutionHandler handler = (r, executor) -> {
-            };
-            int maxPoolSize = Math.max(poolSize, 1000);
-            executor = new ThreadPoolExecutor(poolSize, maxPoolSize, 60000L, TimeUnit.MILLISECONDS, new SynchronousQueue(), threadFactory, handler);
+            int actualPoolSize = Math.max(poolSize, 1);
+            executor = new ThreadPoolExecutor(actualPoolSize, actualPoolSize, 60000L, TimeUnit.MILLISECONDS,
+                    new ArrayBlockingQueue<>(MAX_QUEUE_SIZE), threadFactory, new ThreadPoolExecutor.CallerRunsPolicy());
         }
 
     }

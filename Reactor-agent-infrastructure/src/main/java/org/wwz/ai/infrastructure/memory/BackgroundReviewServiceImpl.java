@@ -20,6 +20,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -28,6 +33,17 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Slf4j
 @Service
 public class BackgroundReviewServiceImpl implements BackgroundReviewService {
+
+    private static final int BACKGROUND_REVIEW_THREADS = 4;
+    private static final int BACKGROUND_REVIEW_QUEUE_SIZE = 64;
+    private static final ExecutorService REVIEW_EXECUTOR = new ThreadPoolExecutor(
+            BACKGROUND_REVIEW_THREADS,
+            BACKGROUND_REVIEW_THREADS,
+            0L,
+            java.util.concurrent.TimeUnit.MILLISECONDS,
+            new ArrayBlockingQueue<>(BACKGROUND_REVIEW_QUEUE_SIZE),
+            new ReviewThreadFactory(),
+            new ThreadPoolExecutor.AbortPolicy());
 
     private final ObjectProvider<ReactorRuntimeDependencies> runtimeDependenciesProvider;
     private final ObjectProvider<CuratedMemoryStore> curatedMemoryStoreProvider;
@@ -113,19 +129,23 @@ public class BackgroundReviewServiceImpl implements BackgroundReviewService {
         String system = parentSystemPrompt;
         ToolCollection tools = parentTools;
 
-        Thread t = new Thread(() -> {
-            try {
-                runReviewFork(sessionId, requestId, owner, snapshot, system, tools);
-            } catch (Exception e) {
-                log.warn("background-review fork error sessionId={}: {}", sessionId, e.toString(), e);
-                recordSkip(sessionId, requestId, owner, snapshot, "thread-error");
-            } finally {
-                inFlight.remove(sessionId);
-            }
-        }, "ltm-bg-review-" + sessionId);
-        t.setDaemon(true);
-        t.start();
-        log.info("background-review scheduled on daemon thread sessionId={}", sessionId);
+        try {
+            REVIEW_EXECUTOR.execute(() -> {
+                try {
+                    runReviewFork(sessionId, requestId, owner, snapshot, system, tools);
+                } catch (Exception e) {
+                    log.warn("background-review fork error sessionId={}: {}", sessionId, e.toString(), e);
+                    recordSkip(sessionId, requestId, owner, snapshot, "executor-error");
+                } finally {
+                    inFlight.remove(sessionId);
+                }
+            });
+            log.info("background-review scheduled on bounded executor sessionId={}", sessionId);
+        } catch (RejectedExecutionException e) {
+            inFlight.remove(sessionId);
+            log.warn("background-review rejected by bounded executor sessionId={}", sessionId);
+            recordSkip(sessionId, requestId, owner, snapshot, "executor-rejected");
+        }
     }
 
     private void runReviewFork(String sessionId,
@@ -226,6 +246,17 @@ public class BackgroundReviewServiceImpl implements BackgroundReviewService {
         } catch (Exception e) {
             log.warn("record ltm fork review event failed sessionId={}: {}",
                     event == null ? null : event.getSessionId(), e.toString());
+        }
+    }
+
+    private static final class ReviewThreadFactory implements ThreadFactory {
+        private final AtomicInteger sequence = new AtomicInteger();
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable, "ltm-bg-review-" + sequence.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
         }
     }
 }

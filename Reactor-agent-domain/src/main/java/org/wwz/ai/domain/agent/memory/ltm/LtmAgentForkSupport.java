@@ -21,12 +21,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -39,7 +40,15 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public final class LtmAgentForkSupport {
 
-    private static final ExecutorService FORK_POOL = Executors.newCachedThreadPool(new ThreadFactory() {
+    private static final int FORK_THREADS = 4;
+    private static final int FORK_QUEUE_SIZE = 32;
+    private static final ExecutorService FORK_POOL = new ThreadPoolExecutor(
+            FORK_THREADS,
+            FORK_THREADS,
+            0L,
+            TimeUnit.MILLISECONDS,
+            new ArrayBlockingQueue<>(FORK_QUEUE_SIZE),
+            new ThreadFactory() {
         private final AtomicInteger n = new AtomicInteger();
 
         @Override
@@ -48,7 +57,8 @@ public final class LtmAgentForkSupport {
             t.setDaemon(true);
             return t;
         }
-    });
+    },
+            new ThreadPoolExecutor.AbortPolicy());
 
     private LtmAgentForkSupport() {
     }
@@ -164,7 +174,13 @@ public final class LtmAgentForkSupport {
                     .build();
         };
 
-        Future<LtmForkRunResult> future = FORK_POOL.submit(task);
+        Future<LtmForkRunResult> future;
+        try {
+            future = FORK_POOL.submit(task);
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            return LtmForkRunResult.failed(forkRequestId, label, before,
+                    System.currentTimeMillis() - startedAt, "fork executor rejected");
+        }
         try {
             LtmForkRunResult result = future.get(Math.max(5L, timeoutSeconds), TimeUnit.SECONDS);
             if (result == null) {
