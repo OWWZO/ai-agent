@@ -29,28 +29,28 @@ public class JdbcDataMetaProvider implements DataMetaProvider<JdbcQueryRequest> 
 
     @Override
     public List<SimpleTable> queryTables(JdbcQueryRequest request, String schemaPattern) throws SQLException {
-        final ConnectionWrapper wrapper = JdbcConnectionFactory.getConnection(request.getJdbcConnectionConfig());
-        try (Connection connection = wrapper.getConnection()) {
+        try (ConnectionWrapper wrapper = JdbcConnectionFactory.getConnection(request.getJdbcConnectionConfig());
+             Connection connection = wrapper.getConnection()) {
             return wrapper.getCatalog().listTables(connection, schemaPattern);
         }
     }
 
     @Override
     public List<TableColumn> queryColumns(JdbcQueryRequest request, String tableName, String schema) throws SQLException {
-        final ConnectionWrapper wrapper = JdbcConnectionFactory.getConnection(request.getJdbcConnectionConfig());
-        try (Connection connection = wrapper.getConnection()) {
+        try (ConnectionWrapper wrapper = JdbcConnectionFactory.getConnection(request.getJdbcConnectionConfig());
+             Connection connection = wrapper.getConnection()) {
             return wrapper.getCatalog().getTableColumns(connection, tableName, schema);
         }
     }
 
     @Override
     public List<TableColumn> getTableColumnsOfSql(JdbcQueryRequest request) throws SQLException {
-        final ConnectionWrapper wrapper = JdbcConnectionFactory.getConnection(request.getJdbcConnectionConfig());
-        // 元数据查询同样使用方言格式化和 limit，保证字段探测与真正执行 SQL 的约束一致。
-        request.setSql(wrapper.getJdbcDialect().formatSql(request.getSql()));
-        log.info("jdbc meta 执行sql:{}", request.getSql());
-        List<TableColumn> columnList = new ArrayList<>();
-        try (Connection connection = wrapper.getConnection()) {
+        try (ConnectionWrapper wrapper = JdbcConnectionFactory.getConnection(request.getJdbcConnectionConfig())) {
+            // 元数据查询同样使用方言格式化和 limit，保证字段探测与真正执行 SQL 的约束一致。
+            request.setSql(wrapper.getJdbcDialect().formatSql(request.getSql()));
+            log.info("jdbc meta 执行sql:{}", request.getSql());
+            List<TableColumn> columnList = new ArrayList<>();
+            try (Connection connection = wrapper.getConnection()) {
             try (
                     Statement ps = wrapper.createStatement(connection, request.getLimit());
                     ResultSet rs = ps.executeQuery(request.getSql())) {
@@ -73,8 +73,9 @@ public class JdbcDataMetaProvider implements DataMetaProvider<JdbcQueryRequest> 
                 }
             }
 
+            }
+            return columnList;
         }
-        return columnList;
     }
 
 }

@@ -64,12 +64,12 @@ public class JdbcDataProvider implements DataProvider<JdbcQueryRequest> {
         QueryResult queryResult = new QueryResult();
         long queryStartTime = System.currentTimeMillis();
         queryResult.setQueryStartTime(queryStartTime);
-        final ConnectionWrapper wrapper = JdbcConnectionFactory.getConnection(request.getJdbcConnectionConfig());
-        // 先由连接包装器按方言改写 SQL，再记录最终执行文本，日志和返回结果保持一致。
-        request.setSql(wrapper.getJdbcDialect().formatSql(request.getSql()));
-        queryResult.setQuerySql(request.getSql());
-        log.info("jdbc执行sql:{}", request.getSql());
-        try (Connection connection = wrapper.getConnection()) {
+        try (ConnectionWrapper wrapper = JdbcConnectionFactory.getConnection(request.getJdbcConnectionConfig())) {
+            // 先由连接包装器按方言改写 SQL，再记录最终执行文本，日志和返回结果保持一致。
+            request.setSql(wrapper.getJdbcDialect().formatSql(request.getSql()));
+            queryResult.setQuerySql(request.getSql());
+            log.info("jdbc执行sql:{}", request.getSql());
+            try (Connection connection = wrapper.getConnection()) {
             long getConnectionTime = System.currentTimeMillis();
             queryResult.setCreateConnectionTime(getConnectionTime - queryStartTime);
             try (
@@ -95,6 +95,7 @@ public class JdbcDataProvider implements DataProvider<JdbcQueryRequest> {
                 return queryResult;
             }
 
+            }
         }
     }
 
@@ -103,7 +104,8 @@ public class JdbcDataProvider implements DataProvider<JdbcQueryRequest> {
         // 连通性测试只申请并关闭连接，不执行用户 SQL，避免测试请求产生业务副作用。
         boolean success = false;
         request.getJdbcConnectionConfig().setMaxRetryTimes(1);
-        try (Connection connection = JdbcConnectionFactory.getConnection(request.getJdbcConnectionConfig()).getConnection()) {
+        try (ConnectionWrapper wrapper = JdbcConnectionFactory.getConnection(request.getJdbcConnectionConfig());
+             Connection connection = wrapper.getConnection()) {
             success = true;
         } catch (Exception e) {
             log.warn("An error occurred while querying for test: {}", e.getMessage(), e);

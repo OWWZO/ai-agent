@@ -24,11 +24,12 @@ import java.sql.Statement;
  */
 @Slf4j
 @Data
-public class ConnectionWrapper {
+public class ConnectionWrapper implements AutoCloseable {
     private JdbcDialect jdbcDialect;
     private JdbcCatalog catalog;
     private DatasourceWrapper datasourceWrapper;
     private JdbcConnectionConfig jdbcConnectionConfig;
+    private boolean closed;
 
     public PreparedStatement createPreparedStatement(Connection connection, String queryTemplate, Integer fetchSize) throws SQLException {
         // 由方言决定预编译语句的游标和 fetch 行为，避免连接层复制数据库差异。
@@ -71,5 +72,13 @@ public class ConnectionWrapper {
             i++;
         }
         return connection;
+    }
+
+    @Override
+    public void close() {
+        if (!closed) {
+            closed = true;
+            datasourceWrapper.close();
+        }
     }
 }

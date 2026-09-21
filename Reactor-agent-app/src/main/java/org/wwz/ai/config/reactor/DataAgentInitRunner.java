@@ -19,6 +19,7 @@ import org.wwz.ai.domain.agent.reactor.service.ColumnValueSyncService;
 import org.wwz.ai.domain.agent.reactor.service.EmbeddingService;
 import org.wwz.ai.domain.agent.reactor.service.QdrantService;
 import org.wwz.ai.infrastructure.dataquery.jdbc.connection.JdbcConnectionFactory;
+import org.wwz.ai.infrastructure.dataquery.jdbc.connection.ConnectionWrapper;
 import org.wwz.ai.infrastructure.dataquery.util.JdbcUtils;
 
 import java.sql.Connection;
@@ -57,7 +58,8 @@ public class DataAgentInitRunner implements CommandLineRunner {
         // H2数据库初始化：如果配置为H2且存在初始化脚本，则执行初始化
         DbConfig dbConfig = dataAgentConfig.getDbConfig();
         if (dbConfig != null && "h2".equalsIgnoreCase(dbConfig.getType())) {
-            try (Connection connection = JdbcConnectionFactory.getConnection(JdbcUtils.parseJdbcConnectionConfig(dbConfig)).getConnection()) {
+            try (ConnectionWrapper wrapper = JdbcConnectionFactory.getConnection(JdbcUtils.parseJdbcConnectionConfig(dbConfig));
+                 Connection connection = wrapper.getConnection()) {
                 ScriptUtils.executeSqlScript(connection, new ClassPathResource("db/schema.sql"));
                 // 尝试执行data.sql，如果文件不存在或出错不影响启动
                 try {

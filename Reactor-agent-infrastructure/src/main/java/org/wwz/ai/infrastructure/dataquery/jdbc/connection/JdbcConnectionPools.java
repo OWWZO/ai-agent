@@ -48,9 +48,12 @@ public class JdbcConnectionPools {
     public DatasourceWrapper getOrCreateConnectionPool(JdbcConnectionConfig config) {
 
         if (!config.isCachePools()) {
-            // 明确关闭缓存时每次创建独立数据源，调用方应承担其生命周期；缓存路径才进入读写锁保护。
+            // 无缓存池通过返回的 DatasourceWrapper 关闭：调用方必须使用 try-with-resources。
             log.info("创建无缓存的数据源连接池");
-            return createNewDatasource(config);
+            DatasourceWrapper wrapper = createNewDatasource(config);
+            wrapper.closeWhenReleased();
+            wrapper.acquire();
+            return wrapper;
         }
 
         String poolId = config.getKey();
@@ -60,6 +63,7 @@ public class JdbcConnectionPools {
         try {
             DatasourceWrapper existingWrapper = pools.get(poolId);
             if (existingWrapper != null && noNeedsRefresh(existingWrapper, config.getFreshTimestamp())) {
+                existingWrapper.acquire();
                 log.info("从缓存获取连接池 poolId {}", poolId);
                 return existingWrapper;
             }
@@ -73,6 +77,7 @@ public class JdbcConnectionPools {
             // 双重检查避免多个线程在读锁 miss 后重复创建同一个连接池。
             DatasourceWrapper existingWrapper = pools.get(poolId);
             if (existingWrapper != null && noNeedsRefresh(existingWrapper, config.getFreshTimestamp())) {
+                existingWrapper.acquire();
                 log.info("再次从缓存获取连接池 poolId {}", poolId);
                 return existingWrapper;
             }
@@ -105,7 +110,12 @@ public class JdbcConnectionPools {
 
         // 创建新的数据源
         DatasourceWrapper newWrapper = createNewDatasource(config);
-        pools.put(poolId, newWrapper);
+        newWrapper.acquire();
+        DatasourceWrapper oldWrapper = pools.put(poolId, newWrapper);
+        if (oldWrapper != null && oldWrapper != newWrapper) {
+            // 旧 wrapper 可能仍被正在执行的查询持有，退役后等其 lease 归零再关闭池。
+            oldWrapper.retire();
+        }
 
         log.info("数据源刷新完成 poolId {}", poolId);
         return newWrapper;
