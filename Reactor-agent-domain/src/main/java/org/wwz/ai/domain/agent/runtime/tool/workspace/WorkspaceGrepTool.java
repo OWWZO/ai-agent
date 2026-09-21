@@ -1,6 +1,8 @@
 package org.wwz.ai.domain.agent.runtime.tool.workspace;
 
 import java.io.IOException;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -65,46 +67,40 @@ public class WorkspaceGrepTool extends AbstractWorkspacePathTool {
             boolean caseSensitive = readBoolean(params, "case_sensitive", false);
             Pattern pattern = buildPattern(searchPattern, regex, caseSensitive);
 
-            List<Path> candidateFiles;
-            if (Files.isRegularFile(basePath)) {
-                candidateFiles = List.of(basePath);
-            } else if (Files.isDirectory(basePath)) {
-                try (var pathStream = Files.walk(basePath)) {
-                    candidateFiles = pathStream.filter(Files::isRegularFile).toList();
-                }
-            } else {
+            if (!Files.isRegularFile(basePath) && !Files.isDirectory(basePath)) {
                 return failResult("workspace_grep 需要文件或目录路径: " + toAgentPath(basePath));
             }
 
             List<Map<String, Object>> matches = new ArrayList<>();
             boolean truncated = false;
-            // 逐文件逐行匹配并保留相对路径；达到上限后停止整个遍历，响应明确标记 truncated。
-            for (Path filePath : candidateFiles) {
-                List<String> lines;
-                try {
-                    lines = Files.readAllLines(filePath, StandardCharsets.UTF_8);
-                } catch (IOException ignore) {
-                    continue;
-                }
-                for (int i = 0; i < lines.size(); i++) {
-                    if (pattern.matcher(lines.get(i)).find()) {
-                        Path displayBasePath = Files.isDirectory(basePath) ? basePath : basePath.getParent();
-                        String relativePath = displayBasePath == null
-                                ? filePath.getFileName().toString()
-                                : toRelativePath(displayBasePath, filePath);
-                        Map<String, Object> row = new LinkedHashMap<>();
-                        row.put("path", relativePath);
-                        row.put("line", i + 1);
-                        row.put("text", lines.get(i));
-                        matches.add(row);
-                        if (matches.size() >= workspaceRuntimeOptions.getMaxGrepMatches()) {
+            if (Files.isRegularFile(basePath)) {
+                Path displayBasePath = basePath.getParent() == null ? basePath : basePath.getParent();
+                truncated = grepFile(basePath, displayBasePath, pattern, matches);
+            } else {
+                int scanBudget = Math.max(1, workspaceRuntimeOptions.getMaxGrepMatches());
+                try (var paths = Files.walk(basePath)) {
+                    var iterator = paths.iterator();
+                    int scanned = 0;
+                    while (iterator.hasNext()) {
+                        Path path = iterator.next();
+                        if (path.equals(basePath)) {
+                            continue;
+                        }
+                        if (scanned++ >= scanBudget) {
+                            truncated = true;
+                            break;
+                        }
+                        if (!Files.isRegularFile(path)) {
+                            continue;
+                        }
+                        if (grepFile(path, basePath, pattern, matches)) {
                             truncated = true;
                             break;
                         }
                     }
-                }
-                if (truncated) {
-                    break;
+                    if (!truncated && scanned >= scanBudget && iterator.hasNext()) {
+                        truncated = true;
+                    }
                 }
             }
             Map<String, Object> data = new LinkedHashMap<>();
@@ -131,5 +127,40 @@ public class WorkspaceGrepTool extends AbstractWorkspacePathTool {
         String expression = regex ? searchPattern : Pattern.quote(searchPattern);
         int flags = caseSensitive ? 0 : Pattern.CASE_INSENSITIVE;
         return Pattern.compile(expression, flags);
+    }
+
+    private boolean grepFile(Path filePath, Path basePath, Pattern pattern,
+                             List<Map<String, Object>> matches) {
+        int maxMatches = Math.max(0, workspaceRuntimeOptions.getMaxGrepMatches());
+        if (maxMatches == 0) {
+            return true;
+        }
+        int maxLineChars = Math.max(1, workspaceRuntimeOptions.getMaxReadChars());
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(Files.newInputStream(filePath), StandardCharsets.UTF_8))) {
+            int lineNumber = 0;
+            int fileChars = 0;
+            WorkspaceTextReader.Line line;
+            while ((line = WorkspaceTextReader.readLineBounded(reader, maxLineChars)) != null) {
+                lineNumber++;
+                fileChars = Math.addExact(fileChars, line.characters());
+                if (line.truncated() || fileChars > maxLineChars) {
+                    return true;
+                }
+                if (pattern.matcher(line.text()).find()) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("path", toRelativePath(basePath, filePath));
+                    row.put("line", lineNumber);
+                    row.put("text", line.text());
+                    matches.add(row);
+                    if (matches.size() >= maxMatches) {
+                        return true;
+                    }
+                }
+            }
+        } catch (IOException ignore) {
+            // A file can disappear or become unreadable while the directory is scanned.
+        }
+        return false;
     }
 }

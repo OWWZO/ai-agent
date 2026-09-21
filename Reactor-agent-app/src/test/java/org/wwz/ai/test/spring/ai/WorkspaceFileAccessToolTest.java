@@ -111,4 +111,39 @@ public class WorkspaceFileAccessToolTest {
                 "content", "x"
         ))).contains("outside allowed roots"));
     }
+
+    @Test
+    public void shouldBoundGlobAndGrepTraversalEvenWithoutMatches() throws Exception {
+        options.setMaxGlobResults(1);
+        options.setMaxGrepMatches(1);
+        Files.createDirectories(workspaceRoot.resolve("a/b"));
+        Files.writeString(workspaceRoot.resolve("a/one.txt"), "nothing\n", StandardCharsets.UTF_8);
+        Files.writeString(workspaceRoot.resolve("a/b/two.txt"), "nothing\n", StandardCharsets.UTF_8);
+
+        WorkspaceGlobTool globTool = new WorkspaceGlobTool(workspaceService, options);
+        globTool.setAgentContext(agentContext);
+        WorkspaceGrepTool grepTool = new WorkspaceGrepTool(workspaceService, options);
+        grepTool.setAgentContext(agentContext);
+
+        Assert.assertTrue(String.valueOf(globTool.execute(Map.of(
+                "path", workspaceRoot.toString(), "pattern", "**/*.java"))).contains("truncated"));
+        Assert.assertTrue(String.valueOf(grepTool.execute(Map.of(
+                "path", workspaceRoot.toString(), "pattern", "missing"))).contains("truncated"));
+    }
+
+    @Test
+    public void shouldBoundReadMemoryForAnOversizedLine() throws Exception {
+        options.setMaxReadChars(16);
+        Files.writeString(workspaceRoot.resolve("large.txt"), "0123456789abcdefghijklmnopqrstuvwxyz\nsecond\n",
+                StandardCharsets.UTF_8);
+
+        WorkspaceReadTool readTool = new WorkspaceReadTool(workspaceService, options);
+        readTool.setAgentContext(agentContext);
+        String result = String.valueOf(readTool.execute(Map.of(
+                "path", "large.txt", "start_line", 1, "line_count", 1)));
+
+        Assert.assertTrue(result.contains("truncated"));
+        Assert.assertTrue(result.contains("1 | 0123456789"));
+        Assert.assertFalse(result.contains("abcdefghijklmnopqrstuvwxyz"));
+    }
 }

@@ -78,7 +78,7 @@ public class WorkspaceSessionFileMaterializer {
             try {
                 // 始终二进制下载，避免 xlsx/pdf/png 被当文本 UTF-8 转码损坏
                 // 文件名先经过 basename、字符清洗和去重，再交给 workspace guard 做根目录校验。
-                byte[] bytes = fileArtifactPort.readBytes(sourceUrl, READ_TIMEOUT_SECONDS);
+                byte[] bytes = fileArtifactPort.readBytes(sourceUrl, READ_TIMEOUT_SECONDS, MAX_FILE_BYTES);
                 if (bytes == null || bytes.length == 0) {
                     log.warn("{} materialize empty content, fileName={}, url={}",
                             agentContext.getRequestId(), fileName, sourceUrl);
@@ -94,14 +94,16 @@ public class WorkspaceSessionFileMaterializer {
                 if (parent != null) {
                     Files.createDirectories(parent);
                 }
-                Files.write(target, bytes);
-                written.add(fileName);
-                usedNames.add(fileName.toLowerCase(Locale.ROOT));
-                log.info("{} materialize session file ok, fileName={}, bytes={}, magic={}",
-                        agentContext.getRequestId(),
-                        fileName,
-                        bytes.length,
-                        magicHint(bytes));
+                try {
+                    Files.write(target, bytes);
+                    written.add(fileName);
+                    usedNames.add(fileName.toLowerCase(Locale.ROOT));
+                    log.info("{} materialize session file ok, fileName={}, bytes={}, magic={}",
+                            agentContext.getRequestId(), fileName, bytes.length, magicHint(bytes));
+                } catch (Exception writeFailure) {
+                    Files.deleteIfExists(target);
+                    throw writeFailure;
+                }
             } catch (Exception e) {
                 log.warn("{} materialize session file failed, fileName={}, url={}",
                         agentContext.getRequestId(), fileName, sourceUrl, e);

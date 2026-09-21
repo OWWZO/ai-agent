@@ -90,6 +90,7 @@ public class WorkspaceWriteTool extends AbstractWorkspacePathTool {
             WorkspaceFileRegistration.registerLocalFile(
                     agentContext, relativePath, filePath, "写入文件");
             Map<String, Object> data = new LinkedHashMap<>();
+            data.put("message", "已写入文件");
             data.put("path", agentPath);
             data.put("chars", content.length());
             return okResult(data);

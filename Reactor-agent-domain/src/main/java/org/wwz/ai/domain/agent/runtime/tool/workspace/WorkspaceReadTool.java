@@ -2,7 +2,11 @@ package org.wwz.ai.domain.agent.runtime.tool.workspace;
 
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.BufferedInputStream;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -10,6 +14,8 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 
 /**
  * 读取工作区文本文件（含跨轮未变更去重 stub）。
@@ -72,8 +78,9 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
             int lineCount = Math.max(1, readInt(params, "line_count", readInt(params, "limit", 2000)));
             String absolutePath = filePath.toAbsolutePath().normalize().toString();
             long mtimeMs = Files.getLastModifiedTime(filePath).toMillis();
-            String fullContent = Files.readString(filePath, StandardCharsets.UTF_8);
-            String contentHash = WorkspaceReadStateStore.sha256Hex(fullContent);
+            ReadSnapshot snapshot = readSnapshot(filePath, startLine, lineCount,
+                    workspaceRuntimeOptions.getMaxReadChars());
+            String contentHash = snapshot.contentHash();
             // 读取状态绑定 mtime、范围和内容 hash，workspace_edit 据此拒绝基于过期内容的覆盖写。
 
             if (agentContext != null) {
@@ -94,20 +101,8 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
                 }
             }
 
-            List<String> lineList = Files.readAllLines(filePath, StandardCharsets.UTF_8);
-            int fromIndex = Math.min(lineList.size(), startLine - 1);
-            int toIndex = Math.min(lineList.size(), fromIndex + lineCount);
-
-            StringBuilder content = new StringBuilder();
-            for (int i = fromIndex; i < toIndex; i++) {
-                content.append(i + 1).append(" | ").append(lineList.get(i)).append('\n');
-            }
-            String body = content.toString();
-            boolean truncated = false;
-            if (body.length() > workspaceRuntimeOptions.getMaxReadChars()) {
-                body = body.substring(0, workspaceRuntimeOptions.getMaxReadChars());
-                truncated = true;
-            }
+            String body = snapshot.body();
+            boolean truncated = snapshot.truncated();
 
             if (agentContext != null) {
                 agentContext.markWorkspaceFileRead(WorkspaceFileReadState.builder()
@@ -123,9 +118,9 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
             data.put("type", "text");
             data.put("path", agentPath);
             data.put("startLine", startLine);
-            data.put("endLine", fromIndex + (toIndex - fromIndex));
-            data.put("numLines", toIndex - fromIndex);
-            data.put("totalLines", lineList.size());
+            data.put("endLine", snapshot.endLine());
+            data.put("numLines", snapshot.numLines());
+            data.put("totalLines", snapshot.totalLines());
             data.put("content", body);
             if (truncated) {
                 data.put("truncated", Boolean.TRUE);
@@ -198,5 +193,50 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
             return true;
         }
         return existing.getContentHash() != null && existing.getContentHash().equals(contentHash);
+    }
+
+    private ReadSnapshot readSnapshot(Path filePath, int startLine, int lineCount, int maxChars)
+            throws IOException {
+        MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (Exception e) {
+            throw new IOException("SHA-256 unavailable", e);
+        }
+        int outputLimit = Math.max(1, maxChars);
+        StringBuilder body = new StringBuilder(Math.min(outputLimit, 1024));
+        int totalLines = 0;
+        int endLine = Math.max(0, startLine - 1);
+        boolean truncated = false;
+        long endExclusive = (long) startLine + lineCount;
+        try (InputStream input = new java.security.DigestInputStream(
+                new BufferedInputStream(Files.newInputStream(filePath)), digest);
+             BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
+            WorkspaceTextReader.Line line;
+            while ((line = WorkspaceTextReader.readLine(reader, outputLimit)) != null) {
+                totalLines++;
+                if (totalLines >= startLine && totalLines < endExclusive) {
+                    String rendered = (totalLines + " | " + line.text() + "\n");
+                    int remaining = outputLimit - body.length();
+                    if (remaining > 0) {
+                        body.append(rendered, 0, Math.min(remaining, rendered.length()));
+                    }
+                    if (rendered.length() > remaining || line.truncated()) {
+                        truncated = true;
+                    }
+                    endLine = totalLines;
+                }
+            }
+        }
+        int numLines = totalLines < startLine
+                ? 0
+                : (int) (Math.min((long) totalLines, endExclusive - 1) - startLine + 1);
+        return new ReadSnapshot(body.toString(), HexFormat.of().formatHex(digest.digest()),
+                endLine, numLines,
+                totalLines, truncated);
+    }
+
+    private record ReadSnapshot(String body, String contentHash, int endLine, int numLines,
+                                int totalLines, boolean truncated) {
     }
 }

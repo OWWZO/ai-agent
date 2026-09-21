@@ -15,6 +15,8 @@ import org.wwz.ai.domain.agent.runtime.dto.FileRequest;
 import org.wwz.ai.domain.agent.runtime.dto.FileResponse;
 
 import java.io.IOException;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
@@ -25,6 +27,8 @@ import java.util.concurrent.TimeUnit;
  */
 @Component
 public class ReactorToolFileArtifactAdapter implements FileArtifactPort {
+
+    private static final long DEFAULT_MAX_RESPONSE_BYTES = 32L * 1024 * 1024;
 
     private final RemoteHttpPort remoteHttpPort;
     private final OkHttpClient sharedClient;
@@ -101,8 +105,16 @@ public class ReactorToolFileArtifactAdapter implements FileArtifactPort {
 
     @Override
     public byte[] readBytes(String url, Long timeoutSeconds) throws IOException {
+        return readBytes(url, timeoutSeconds, DEFAULT_MAX_RESPONSE_BYTES);
+    }
+
+    @Override
+    public byte[] readBytes(String url, Long timeoutSeconds, long maxBytes) throws IOException {
         if (StringUtils.isBlank(url)) {
             throw new IllegalArgumentException("url must not be blank");
+        }
+        if (maxBytes <= 0) {
+            throw new IllegalArgumentException("maxBytes must be greater than zero");
         }
         long timeout = timeoutSeconds == null || timeoutSeconds <= 0 ? 60L : timeoutSeconds;
         // 每次下载按调用方超时创建轻量 client，避免修改共享 OkHttp client 影响其它远端请求。
@@ -119,14 +131,40 @@ public class ReactorToolFileArtifactAdapter implements FileArtifactPort {
             // Response 必须在 try-with-resources 内消费和关闭，确保大文件下载不会长期占用连接池。
             ResponseBody body = response.body();
             if (!response.isSuccessful()) {
-                String err = body == null ? "" : body.string();
+                String err;
+                try {
+                    err = body == null ? "" : new String(readBody(body, maxBytes), StandardCharsets.UTF_8);
+                } catch (IOException e) {
+                    throw new IOException("HTTP download failed, code=" + response.code()
+                            + ", url=" + url + ", body=" + e.getMessage(), e);
+                }
                 throw new IOException("HTTP download failed, code=" + response.code()
                         + ", url=" + url + ", body=" + err);
             }
             if (body == null) {
                 return new byte[0];
             }
-            return body.bytes();
+            return readBody(body, maxBytes);
+        }
+    }
+
+    private byte[] readBody(ResponseBody body, long maxBytes) throws IOException {
+        long contentLength = body.contentLength();
+        if (contentLength > maxBytes) {
+            throw new IOException("HTTP response body exceeds limit, limit=" + maxBytes);
+        }
+        try (InputStream input = body.byteStream(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[8192];
+            long total = 0;
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                total += read;
+                if (total > maxBytes) {
+                    throw new IOException("HTTP response body exceeds limit, limit=" + maxBytes);
+                }
+                output.write(buffer, 0, read);
+            }
+            return output.toByteArray();
         }
     }
 

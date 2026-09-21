@@ -36,4 +36,7 @@ public interface FileArtifactPort {
      * 读取指定 URL 的原始字节（xlsx/pdf/图片等二进制附件必须走此接口）。
      */
     byte[] readBytes(String url, Long timeoutSeconds) throws IOException;
+
+    /** 读取原始字节，并在流式读取阶段限制最大响应大小。 */
+    byte[] readBytes(String url, Long timeoutSeconds, long maxBytes) throws IOException;
 }

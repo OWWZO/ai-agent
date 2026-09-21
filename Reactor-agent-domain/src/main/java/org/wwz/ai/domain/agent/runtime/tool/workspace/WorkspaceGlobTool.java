@@ -65,19 +65,31 @@ public class WorkspaceGlobTool extends AbstractWorkspacePathTool {
             List<String> files = new ArrayList<>();
             boolean truncated = false;
             try (var pathStream = Files.walk(basePath)) {
-                // 多取一条结果判断是否截断，再只返回配置上限以内的路径。
-                List<Path> matchedPaths = pathStream
-                        .filter(Files::isRegularFile)
-                        .filter(path -> matcher.matcher(toRelativePath(basePath, path)).matches())
-                        .limit(workspaceRuntimeOptions.getMaxGlobResults() + 1L)
-                        .toList();
-                truncated = matchedPaths.size() > workspaceRuntimeOptions.getMaxGlobResults();
-                List<Path> displayPaths = truncated
-                        ? matchedPaths.subList(0, workspaceRuntimeOptions.getMaxGlobResults())
-                        : matchedPaths;
-
-                for (Path matchedPath : displayPaths) {
-                    files.add(toRelativePath(basePath, matchedPath));
+                int resultLimit = Math.max(0, workspaceRuntimeOptions.getMaxGlobResults());
+                int scanBudget = Math.max(1, resultLimit);
+                var iterator = pathStream.iterator();
+                int scanned = 0;
+                while (iterator.hasNext()) {
+                    Path path = iterator.next();
+                    if (path.equals(basePath)) {
+                        continue;
+                    }
+                    if (scanned++ >= scanBudget) {
+                        truncated = true;
+                        break;
+                    }
+                    if (Files.isRegularFile(path)
+                            && matcher.matcher(toRelativePath(basePath, path)).matches()) {
+                        if (files.size() < resultLimit) {
+                            files.add(toRelativePath(basePath, path));
+                        } else {
+                            truncated = true;
+                            break;
+                        }
+                    }
+                }
+                if (!truncated && scanned >= scanBudget && iterator.hasNext()) {
+                    truncated = true;
                 }
             }
             Map<String, Object> data = new LinkedHashMap<>();
