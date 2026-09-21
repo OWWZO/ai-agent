@@ -101,7 +101,7 @@ public class ReactorImageGenerationGateway implements IReactorImageGenerationGat
         if (!StringUtils.hasText(apiKey)) {
             throw new IllegalStateException("autobots.autoagent.image_generation.api_key 未配置");
         }
-        long timeout = timeoutSeconds == null || timeoutSeconds <= 0 ? 900L : timeoutSeconds.longValue();
+        long timeout = MicuImageGenerationClient.normalizeTimeoutSeconds(timeoutSeconds == null ? null : timeoutSeconds.longValue());
         return new MicuImageGenerationClient(MicuImageGenerationClient.ClientConfig.builder()
                 .baseUrl(baseUrl)
                 .apiKey(apiKey)

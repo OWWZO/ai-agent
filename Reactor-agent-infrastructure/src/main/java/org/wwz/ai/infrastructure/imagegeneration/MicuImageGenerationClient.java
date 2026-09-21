@@ -12,9 +12,11 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
+import okhttp3.ResponseBody;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -47,6 +49,8 @@ public class MicuImageGenerationClient {
     private static final long MAX_INPUT_FILE_BYTES = 4L * 1024 * 1024;
     private static final long MAX_TOTAL_INPUT_BYTES = 8L * 1024 * 1024;
     private static final long MAX_RESPONSE_BYTES = 25L * 1024 * 1024;
+    public static final long DEFAULT_TIMEOUT_SECONDS = 900L;
+    public static final long MAX_TIMEOUT_SECONDS = 1800L;
     private static final Set<Integer> RETRYABLE_STATUS = Set.of(
             0, 408, 409, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524, 525, 527
     );
@@ -89,9 +93,7 @@ public class MicuImageGenerationClient {
         this.previewBaseUrl = StringUtils.hasText(config.getPreviewBaseUrl())
                 ? trimTrailingSlash(config.getPreviewBaseUrl())
                 : null;
-        long timeoutSeconds = config.getTimeoutSeconds() == null || config.getTimeoutSeconds() <= 0
-                ? 900L
-                : config.getTimeoutSeconds();
+        long timeoutSeconds = normalizeTimeoutSeconds(config.getTimeoutSeconds());
         this.httpClient = Objects.requireNonNull(sharedClient, "sharedClient").newBuilder()
                 .connectTimeout(60, TimeUnit.SECONDS)
                 .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
@@ -121,7 +123,7 @@ public class MicuImageGenerationClient {
             return generateTextToImage(request, model, size, n, notes);
         }
         List<LoadedImage> sourceImages = loadReferenceImages(request.getFileNames(), "fileNames", request.getRequestId());
-        List<LoadedImage> maskImages = loadOptionalMaskImages(request.getMaskFileNames(), sourceImages.size(), request.getRequestId());
+        List<LoadedImage> maskImages = loadOptionalMaskImages(request.getMaskFileNames(), sourceImages.size(), request.getRequestId(), totalBytes(sourceImages));
         if (sourceImages.size() == 1) {
             return editSingleImage(request, model, size, n, sourceImages.get(0),
                     maskImages.isEmpty() ? null : maskImages.get(0), notes);
@@ -425,8 +427,10 @@ public class MicuImageGenerationClient {
 
     private CallResult execute(Request request) {
         try (Response response = httpClient.newCall(request).execute()) {
-            byte[] raw = response.body() == null ? new byte[0] : response.body().bytes();
-            if (raw.length > MAX_RESPONSE_BYTES) {
+            byte[] raw;
+            try {
+                raw = response.body() == null ? new byte[0] : readBoundedBody(response.body(), MAX_RESPONSE_BYTES);
+            } catch (ResponseBodyTooLargeException e) {
                 return CallResult.failure(413, "响应体超过上限 " + (MAX_RESPONSE_BYTES / 1024 / 1024) + "MB");
             }
             String text = new String(raw, StandardCharsets.UTF_8);
@@ -554,7 +558,11 @@ public class MicuImageGenerationClient {
             throw new IllegalStateException("图片结果为空");
         }
         if (StringUtils.hasText(image.getDataUrl())) {
-            return decodeDataUrl(image.getDataUrl()).getBytes();
+            byte[] bytes = decodeDataUrl(image.getDataUrl(), MAX_RESPONSE_BYTES, "生成图片").getBytes();
+            if (bytes.length == 0) {
+                throw new IllegalStateException("生成图片内容为空");
+            }
+            return bytes;
         }
         if (!StringUtils.hasText(image.getUrl())) {
             throw new IllegalStateException("图片结果缺少 data_url 和 url");
@@ -564,7 +572,9 @@ public class MicuImageGenerationClient {
             if (!response.isSuccessful() || response.body() == null) {
                 throw new IllegalStateException("下载生成图片失败 HTTP " + response.code());
             }
-            return response.body().bytes();
+            return readBoundedBody(response.body(), MAX_RESPONSE_BYTES);
+        } catch (ResponseBodyTooLargeException e) {
+            throw new IllegalStateException("下载生成图片失败：响应体超过上限 " + (MAX_RESPONSE_BYTES / 1024 / 1024) + "MB", e);
         } catch (IOException e) {
             throw new IllegalStateException("下载生成图片失败", e);
         }
@@ -594,8 +604,36 @@ public class MicuImageGenerationClient {
             throw new IllegalArgumentException("图生图模式至少需要一张参考图片");
         }
         // 参考图统一物化为受大小限制的字节，调用方不需要区分 URL、data URL 和 Base64。
+        return loadImages(references, fieldName, requestId, 0L);
+    }
+
+    private List<LoadedImage> loadOptionalMaskImages(List<String> references, int sourceCount, String requestId, long initialTotal) {
+        if (CollectionUtils.isEmpty(references)) {
+            return List.of();
+        }
+        if (references.size() > sourceCount) {
+            throw new IllegalArgumentException("maskFileNames 数量不能超过 fileNames");
+        }
+        List<LoadedImage> masks = new ArrayList<>();
+        long total = initialTotal;
+        for (int i = 0; i < references.size(); i++) {
+            String ref = references.get(i);
+            if (!StringUtils.hasText(ref)) {
+                continue;
+            }
+            LoadedImage image = loadImageReference(ref, "maskFileNames[" + i + "]", requestId);
+            total += image.getBytes().length;
+            if (total > MAX_TOTAL_INPUT_BYTES) {
+                throw new IllegalArgumentException("参考图累计超过 " + (MAX_TOTAL_INPUT_BYTES / 1024 / 1024) + "MB 上限");
+            }
+            masks.add(image);
+        }
+        return masks;
+    }
+
+    private List<LoadedImage> loadImages(List<String> references, String fieldName, String requestId, long initialTotal) {
         List<LoadedImage> images = new ArrayList<>();
-        long total = 0L;
+        long total = initialTotal;
         for (int i = 0; i < references.size(); i++) {
             LoadedImage image = loadImageReference(references.get(i), fieldName + "[" + i + "]", requestId);
             total += image.getBytes().length;
@@ -607,22 +645,12 @@ public class MicuImageGenerationClient {
         return images;
     }
 
-    private List<LoadedImage> loadOptionalMaskImages(List<String> references, int sourceCount, String requestId) {
-        if (CollectionUtils.isEmpty(references)) {
-            return List.of();
+    private long totalBytes(List<LoadedImage> images) {
+        long total = 0L;
+        for (LoadedImage image : images) {
+            total += image.getBytes().length;
         }
-        if (references.size() > sourceCount) {
-            throw new IllegalArgumentException("maskFileNames 数量不能超过 fileNames");
-        }
-        List<LoadedImage> masks = new ArrayList<>();
-        for (int i = 0; i < references.size(); i++) {
-            String ref = references.get(i);
-            if (!StringUtils.hasText(ref)) {
-                continue;
-            }
-            masks.add(loadImageReference(ref, "maskFileNames[" + i + "]", requestId));
-        }
-        return masks;
+        return total;
     }
 
     private LoadedImage loadImageReference(String reference, String label, String requestId) {
@@ -631,7 +659,7 @@ public class MicuImageGenerationClient {
             throw new IllegalArgumentException(label + " 为空");
         }
         if (normalized.startsWith("data:")) {
-            DecodedData decoded = decodeDataUrl(normalized);
+            DecodedData decoded = decodeDataUrl(normalized, MAX_INPUT_FILE_BYTES, label);
             validateInputSize(decoded.getBytes(), label);
             return new LoadedImage(label + ".png", decoded.getMimeType(), decoded.getBytes());
         }
@@ -641,7 +669,12 @@ public class MicuImageGenerationClient {
                 if (!response.isSuccessful() || response.body() == null) {
                     throw new IllegalStateException(label + " 下载失败 HTTP " + response.code() + " url=" + normalized);
                 }
-                byte[] bytes = response.body().bytes();
+                byte[] bytes;
+                try {
+                    bytes = readBoundedBody(response.body(), MAX_INPUT_FILE_BYTES);
+                } catch (ResponseBodyTooLargeException e) {
+                    throw new IllegalArgumentException(label + " 超过单图 " + (MAX_INPUT_FILE_BYTES / 1024 / 1024) + "MB 上限", e);
+                }
                 validateInputSize(bytes, label);
                 String mime = response.header("Content-Type");
                 if (!StringUtils.hasText(mime) || !mime.startsWith("image/")) {
@@ -726,6 +759,33 @@ public class MicuImageGenerationClient {
         if (bytes.length > MAX_INPUT_FILE_BYTES) {
             throw new IllegalArgumentException(label + " 超过单图 " + (MAX_INPUT_FILE_BYTES / 1024 / 1024) + "MB 上限");
         }
+    }
+
+    public static long normalizeTimeoutSeconds(Long timeoutSeconds) {
+        if (timeoutSeconds == null || timeoutSeconds <= 0) {
+            return DEFAULT_TIMEOUT_SECONDS;
+        }
+        return Math.min(timeoutSeconds, MAX_TIMEOUT_SECONDS);
+    }
+
+    private byte[] readBoundedBody(ResponseBody body, long maxBytes) throws IOException {
+        long advertisedLength = body.contentLength();
+        if (advertisedLength > maxBytes) {
+            throw new ResponseBodyTooLargeException();
+        }
+        int initialCapacity = (int) Math.min(advertisedLength >= 0 ? advertisedLength : 8192L, maxBytes);
+        ByteArrayOutputStream output = new ByteArrayOutputStream(initialCapacity);
+        byte[] buffer = new byte[8192];
+        long total = 0L;
+        int read;
+        while ((read = body.source().read(buffer)) != -1) {
+            total += read;
+            if (total > maxBytes) {
+                throw new ResponseBodyTooLargeException();
+            }
+            output.write(buffer, 0, read);
+        }
+        return output.toByteArray();
     }
 
     private String resolveMode(GenerationRequest request) {
@@ -901,15 +961,26 @@ public class MicuImageGenerationClient {
         return "data:" + image.getMimeType() + ";base64," + Base64.getEncoder().encodeToString(image.getBytes());
     }
 
-    private DecodedData decodeDataUrl(String dataUrl) {
+    private DecodedData decodeDataUrl(String dataUrl, long maxBytes, String label) {
         Matcher matcher = DATA_URL_PATTERN.matcher(dataUrl.trim());
         if (!matcher.matches()) {
-            byte[] raw = Base64.getDecoder().decode(padBase64(dataUrl.replaceAll("\\s+", "")));
+            String encoded = dataUrl.replaceAll("\\s+", "");
+            rejectOversizedBase64(encoded, maxBytes, label);
+            byte[] raw = Base64.getDecoder().decode(padBase64(encoded));
             return new DecodedData(guessMime(raw), raw);
         }
         String mime = matcher.group("mime");
-        byte[] raw = Base64.getDecoder().decode(padBase64(matcher.group("data").replaceAll("\\s+", "")));
+        String encoded = matcher.group("data").replaceAll("\\s+", "");
+        rejectOversizedBase64(encoded, maxBytes, label);
+        byte[] raw = Base64.getDecoder().decode(padBase64(encoded));
         return new DecodedData(StringUtils.hasText(mime) ? mime : guessMime(raw), raw);
+    }
+
+    private void rejectOversizedBase64(String encoded, long maxBytes, String label) {
+        long estimatedBytes = (encoded.length() * 3L) / 4L;
+        if (estimatedBytes > maxBytes) {
+            throw new IllegalArgumentException(label + " 超过上限 " + (maxBytes / 1024 / 1024) + "MB");
+        }
     }
 
     private String padBase64(String value) {
@@ -1102,5 +1173,8 @@ public class MicuImageGenerationClient {
             }
             return body.substring(0, Math.min(400, body.length()));
         }
+    }
+
+    private static final class ResponseBodyTooLargeException extends IOException {
     }
 }
