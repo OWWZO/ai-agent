@@ -1,4 +1,5 @@
 import os
+import threading
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +10,53 @@ from reactor_tool.tool.direct_code_execution import execute_code
 
 
 class DirectCodeExecutionTest(unittest.IsolatedAsyncioTestCase):
+    async def test_should_run_sandbox_execution_off_the_event_loop(self):
+        observed_threads = []
+
+        class FakeExecutor:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def execute(self, *args, **kwargs):
+                observed_threads.append(threading.current_thread().name)
+                return type(
+                    "Result",
+                    (),
+                    {
+                        "stdout": "worker",
+                        "stderr": "",
+                        "result": None,
+                        "duration_ms": 1,
+                        "returncode": 0,
+                        "stdout_truncated": False,
+                        "stderr_truncated": False,
+                    },
+                )()
+
+            def produced_files(self):
+                return []
+
+            def close(self):
+                pass
+
+        with (
+            tempfile.TemporaryDirectory() as workspace,
+            patch.dict(
+                "os.environ", {"CODE_EXECUTION_WORKSPACE_ROOT": workspace}, clear=False
+            ),
+            patch(
+                "reactor_tool.tool.direct_code_execution.PythonSandboxExecutor",
+                FakeExecutor,
+            ),
+        ):
+            result = await execute_code(
+                CodeExecutionRequest(requestId="worker-check", source="print('ok')")
+            )
+
+        self.assertEqual("ok", result["status"])
+        self.assertTrue(observed_threads)
+        self.assertTrue(observed_threads[0].startswith("reactor-tool-blocking"))
+
     async def test_should_return_stdout_and_uploaded_produced_file(self):
         with (
             tempfile.TemporaryDirectory() as workspace,

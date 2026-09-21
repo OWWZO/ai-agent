@@ -1,13 +1,60 @@
 # -*- coding: utf-8 -*-
 import asyncio
+import threading
 import unittest
 from unittest.mock import AsyncMock, patch
 
 from reactor_tool.model.protocal import AutoAnalysisRequest
 from reactor_tool.tool.auto_analysis import AutoAnalysisAgent
+from reactor_tool.model.context import AnalysisContext
+from reactor_tool.tool.analysis_component.analysis_fc_agent import AnalysisStepEvent
 
 
 class AutoAnalysisReportTest(unittest.IsolatedAsyncioTestCase):
+    async def test_should_iterate_agent_on_bounded_worker_and_forward_events(self):
+        observed_threads = []
+
+        class FakeAgent:
+            def run(self, task, stream):
+                observed_threads.append(threading.current_thread().name)
+                yield AnalysisStepEvent(
+                    step=1,
+                    thought="thinking",
+                    code="print(1)",
+                    observation="one",
+                    is_final=True,
+                    output="finished",
+                )
+
+        context = AnalysisContext(
+            task="分析销售趋势",
+            request_id="analysis-request",
+            modelCodeList=["sales-model"],
+            schemas=[],
+            queue=asyncio.Queue(),
+        )
+        agent = AutoAnalysisAgent(queue=context.queue)
+
+        with (
+            patch(
+                "reactor_tool.tool.auto_analysis.create_agent",
+                return_value=FakeAgent(),
+            ),
+            patch(
+                "reactor_tool.tool.auto_analysis.get_prompt",
+                return_value={"analysis_auto_prompt": "{{ schema }}"},
+            ),
+        ):
+            result = await agent.analysis(context)
+
+        self.assertEqual("finished", result["summary"])
+        self.assertTrue(observed_threads)
+        self.assertTrue(observed_threads[0].startswith("reactor-tool-blocking"))
+        events = []
+        while not agent.queue.empty():
+            events.append(await agent.queue.get())
+        self.assertTrue(any("分析步骤 1" in event.get("data", "") for event in events))
+
     async def test_should_use_requested_report_file_name(self):
         request = AutoAnalysisRequest(
             request_id="analysis-request",

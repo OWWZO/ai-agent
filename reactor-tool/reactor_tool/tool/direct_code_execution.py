@@ -14,6 +14,7 @@ from reactor_tool.tool.python_sandbox_executor import (
     PythonSandboxExecutionError,
     PythonSandboxExecutor,
 )
+from reactor_tool.util.blocking_executor import run_blocking
 from reactor_tool.util.file_util import download_all_files_in_path, upload_file_by_path
 
 # reactor-tool 包根：.../reactor-tool/reactor_tool/tool/this.py → parents[2] = reactor-tool
@@ -79,7 +80,9 @@ async def execute_code(request: CodeExecutionRequest) -> dict:
             candidate = (workspace / request.workspace_file).resolve()
             if workspace in candidate.parents and candidate.is_file():
                 logical_source = candidate
-        execution_result = executor.execute(source, source_file=str(logical_source))
+        execution_result = await run_blocking(
+            executor.execute, source, source_file=str(logical_source)
+        )
         status, error, stdout, stderr = (
             "ok",
             None,
@@ -98,7 +101,7 @@ async def execute_code(request: CodeExecutionRequest) -> dict:
     finally:
         # 即使超时或执行器抛出异常，也要先快照产物再关闭进程/资源，保证结果可回传。
         produced_files = executor.produced_files()
-        executor.close()
+        await run_blocking(executor.close)
     file_info = []
     for produced in produced_files:
         uploaded = await upload_file_by_path(

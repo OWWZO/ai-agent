@@ -144,10 +144,10 @@ public class DataAnalysisTool implements ContextIsolatableTool {
                     .url(url)
                     .headers(Map.of("Content-Type", "application/json"))
                     .body(JSONObject.toJSONString(analysisRequest))
-                    .connectTimeoutSeconds(60000L)
-                    .readTimeoutSeconds(30000L)
-                    .writeTimeoutSeconds(30000L)
-                    .callTimeoutSeconds(30000L)
+                    .connectTimeoutSeconds(60L)
+                    .readTimeoutSeconds(30L)
+                    .writeTimeoutSeconds(30L)
+                    .callTimeoutSeconds(30L)
                     .build(), new RemoteStreamListener() {
                 @Override
                 public void onOpen() {

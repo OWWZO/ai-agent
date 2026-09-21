@@ -463,20 +463,12 @@ async def auto_analysis(body: AutoAnalysisRequest):
                         data = json.dumps(data, ensure_ascii=False)
                     yield ServerSentEvent(data=data)
 
-        def run_task(context, queue, body):
-            if body.modelCodeList:
-                context.run(
-                    lambda: asyncio.run(
-                        AutoAnalysisAgent(
-                            queue=queue, max_steps=body.max_steps, stream=body.stream
-                        ).run(**body.model_dump())
-                    )
-                )
-
-        thread = threading.Thread(
-            target=run_task, args=(contextvars.copy_context(), queue, body), daemon=True
-        )
-        thread.start()
+        if body.modelCodeList:
+            asyncio.create_task(
+                AutoAnalysisAgent(
+                    queue=queue, max_steps=body.max_steps, stream=body.stream
+                ).run(**body.model_dump())
+            )
         return EventSourceResponse(
             _stream(queue),
             ping_message_factory=lambda: ServerSentEvent(data="heartbeat"),

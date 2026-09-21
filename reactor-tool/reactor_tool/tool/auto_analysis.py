@@ -25,6 +25,7 @@ from loguru import logger
 from reactor_tool.util.file_name import normalize_report_file_name
 from reactor_tool.util.log_util import timer
 from reactor_tool.util.file_util import upload_file
+from reactor_tool.util.blocking_executor import run_blocking
 from reactor_tool.util.prompt_util import get_prompt
 
 from reactor_tool.model.context import AnalysisContext
@@ -96,9 +97,10 @@ class AutoAnalysisAgent(object):
     ) -> List[Dict]:
         """执行完整分析任务；stream 模式下向 queue 推送步骤事件。"""
         try:
-            schemas = get_schema(modelCodeList, query=task, request_id=request_id)[
-                "schemaInfo"
-            ]
+            schema_response = await run_blocking(
+                get_schema, modelCodeList, query=task, request_id=request_id
+            )
+            schemas = schema_response["schemaInfo"]
             context = AnalysisContext(
                 task=task,
                 request_id=request_id,
@@ -167,13 +169,6 @@ class AutoAnalysisAgent(object):
             max_lenght=context.max_data_size,
         )
 
-        agent = create_agent(
-            instructions=instructions,
-            context=context,
-            max_steps=self.max_steps,
-        )
-        result_stream = agent.run(task=context.task, stream=True)
-
         await self.queue.put(
             {
                 "requestId": context.request_id,
@@ -182,7 +177,28 @@ class AutoAnalysisAgent(object):
             }
         )
         final_output = None
-        for event in result_stream:
+        event_queue: asyncio.Queue = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+
+        def run_agent() -> None:
+            try:
+                agent = create_agent(
+                    instructions=instructions,
+                    context=context,
+                    max_steps=self.max_steps,
+                )
+                for event in agent.run(task=context.task, stream=True):
+                    asyncio.run_coroutine_threadsafe(
+                        event_queue.put(event), loop
+                    ).result()
+            finally:
+                asyncio.run_coroutine_threadsafe(event_queue.put(None), loop).result()
+
+        agent_future = asyncio.create_task(run_blocking(run_agent))
+        while True:
+            event = await event_queue.get()
+            if event is None:
+                break
             if not isinstance(event, AnalysisStepEvent):
                 continue
             await self.queue.put(
@@ -222,6 +238,8 @@ class AutoAnalysisAgent(object):
             if event.is_final:
                 final_output = event.output
                 break
+
+        await agent_future
 
         if final_output is None:
             return {
