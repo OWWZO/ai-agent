@@ -6,6 +6,8 @@ import org.wwz.ai.domain.agent.runtime.tool.common.canvas.GenUiSchema;
 
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.ArrayList;
 
 public class GenUiSchemaTest {
 
@@ -46,5 +48,55 @@ public class GenUiSchemaTest {
         );
         Map<String, Object> normalized = GenUiSchema.validateUiPatch(payload);
         Assert.assertEquals(1, ((List<?>) normalized.get("patches")).size());
+    }
+
+    @Test
+    public void rejectDepthDuringNormalization() {
+        Map<String, Object> root = node("Card");
+        Map<String, Object> current = root;
+        for (int i = 0; i < 10000; i++) {
+            Map<String, Object> child = node("Card");
+            current.put("children", List.of(child));
+            current = child;
+        }
+
+        try {
+            GenUiSchema.validateUiTree(root, 24, 20000);
+            Assert.fail("should fail on depth");
+        } catch (IllegalArgumentException e) {
+            Assert.assertEquals("tree depth 25 exceeds max 24", e.getMessage());
+        }
+    }
+
+    @Test
+    public void rejectNodeBudgetDuringNormalization() {
+        Map<String, Object> root = node("Card");
+        root.put("children", List.of(node("Card"), node("Card")));
+
+        try {
+            GenUiSchema.validateUiTree(root, 24, 2);
+            Assert.fail("should fail on node count");
+        } catch (IllegalArgumentException e) {
+            Assert.assertEquals("tree node count 3 exceeds max 2", e.getMessage());
+        }
+    }
+
+    @Test
+    public void rejectCyclicNodeReference() {
+        Map<String, Object> root = node("Card");
+        List<Object> children = new ArrayList<>();
+        children.add(root);
+        root.put("children", children);
+
+        try {
+            GenUiSchema.validateUiTree(root);
+            Assert.fail("should fail on cycle");
+        } catch (IllegalArgumentException e) {
+            Assert.assertEquals("tree contains cyclic node reference", e.getMessage());
+        }
+    }
+
+    private static Map<String, Object> node(String kind) {
+        return new HashMap<>(Map.of("kind", kind));
     }
 }

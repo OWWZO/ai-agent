@@ -3,6 +3,8 @@ package org.wwz.ai.domain.agent.runtime.tool.common.canvas;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,16 +46,8 @@ public final class GenUiSchema {
         if (!(rootObj instanceof Map<?, ?>)) {
             throw new IllegalArgumentException("root must be an object");
         }
-        Map<String, Object> root = normalizeNode(castMap((Map<?, ?>) rootObj));
+        Map<String, Object> root = normalizeNode((Map<?, ?>) rootObj, maxDepth, maxNodes);
         envelope.put("root", root);
-        // 深度和节点数是输入资源上限，防止异常树拖垮递归校验和前端渲染。
-        int[] count = countNodesDepth(root, 1);
-        if (count[1] > maxDepth) {
-            throw new IllegalArgumentException("tree depth " + count[1] + " exceeds max " + maxDepth);
-        }
-        if (count[0] > maxNodes) {
-            throw new IllegalArgumentException("tree node count " + count[0] + " exceeds max " + maxNodes);
-        }
         return envelope;
     }
 
@@ -109,12 +103,17 @@ public final class GenUiSchema {
 
     private static Map<String, Object> normalizeEnvelope(Map<String, Object> tree) {
         // 兼容 {schemaVersion, root}、{root}、{tree:{...}} 和裸 root，统一输出单一 envelope。
-        if (tree.containsKey("tree") && tree.get("tree") instanceof Map<?, ?> nested
-                && tree.keySet().stream().allMatch(k -> "tree".equals(k) || "canvas_id".equals(k))) {
-            return normalizeEnvelope(castMap((Map<?, ?>) nested));
+        Map<String, Object> current = tree;
+        Set<Map<?, ?>> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        while (current.containsKey("tree") && current.get("tree") instanceof Map<?, ?> nested
+                && current.keySet().stream().allMatch(k -> "tree".equals(k) || "canvas_id".equals(k))) {
+            if (!seen.add(nested)) {
+                throw new IllegalArgumentException("tree contains cyclic envelope reference");
+            }
+            current = castMap((Map<?, ?>) nested);
         }
-        if (tree.containsKey("root") || tree.containsKey("schemaVersion")) {
-            Object root = tree.get("root");
+        if (current.containsKey("root") || current.containsKey("schemaVersion")) {
+            Object root = current.get("root");
             if (!(root instanceof Map<?, ?>)) {
                 throw new IllegalArgumentException("envelope requires root object");
             }
@@ -124,17 +123,68 @@ public final class GenUiSchema {
             return out;
         }
         // 裸 root 只要能识别出 kind/type，就可以进入同一套节点规范化流程。
-        if (tree.containsKey("kind") || tree.containsKey("type")) {
+        if (current.containsKey("kind") || current.containsKey("type")) {
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("schemaVersion", "1");
-            out.put("root", tree);
+            out.put("root", current);
             return out;
         }
         throw new IllegalArgumentException("invalid tree envelope; expected {schemaVersion,root} or bare root");
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> normalizeNode(Map<String, Object> node) {
+    private static Map<String, Object> normalizeNode(Map<?, ?> root, int maxDepth, int maxNodes) {
+        if (maxDepth < 1) {
+            throw new IllegalArgumentException("tree depth 1 exceeds max " + maxDepth);
+        }
+        if (maxNodes < 1) {
+            throw new IllegalArgumentException("tree node count 1 exceeds max " + maxNodes);
+        }
+
+        Map<String, Object> normalizedRoot = null;
+        int nodeCount = 0;
+        List<NodeFrame> stack = new ArrayList<>();
+        Set<Map<?, ?>> activeNodes = Collections.newSetFromMap(new IdentityHashMap<>());
+        stack.add(new NodeFrame(root, 1, null));
+        while (!stack.isEmpty()) {
+            NodeFrame frame = stack.get(stack.size() - 1);
+            if (frame.output == null) {
+                if (frame.depth > maxDepth) {
+                    throw new IllegalArgumentException("tree depth " + frame.depth + " exceeds max " + maxDepth);
+                }
+                if (++nodeCount > maxNodes) {
+                    throw new IllegalArgumentException("tree node count " + nodeCount + " exceeds max " + maxNodes);
+                }
+                if (!activeNodes.add(frame.input)) {
+                    throw new IllegalArgumentException("tree contains cyclic node reference");
+                }
+                frame.output = normalizeNodeFields(castMap(frame.input));
+                if (frame.parentChildren == null) {
+                    normalizedRoot = frame.output;
+                } else {
+                    frame.parentChildren.add(frame.output);
+                }
+                frame.children = childrenOf(frame.input);
+            }
+            if (frame.nextChild < frame.children.size()) {
+                Object child = frame.children.get(frame.nextChild++);
+                if (child == null) {
+                    continue;
+                }
+                if (!(child instanceof Map<?, ?> childMap)) {
+                    throw new IllegalArgumentException("children must be node objects, not primitives");
+                }
+                stack.add(new NodeFrame(childMap, frame.depth + 1,
+                        (List<Map<String, Object>>) frame.output.get("children")));
+            } else {
+                activeNodes.remove(frame.input);
+                stack.remove(stack.size() - 1);
+            }
+        }
+        return normalizedRoot;
+    }
+
+    private static Map<String, Object> normalizeNodeFields(Map<String, Object> node) {
         Map<String, Object> out = new LinkedHashMap<>();
         String kind = stringVal(node.get("kind"));
         if (StringUtils.isBlank(kind)) {
@@ -176,40 +226,34 @@ public final class GenUiSchema {
         out.put("props", props);
 
         List<Map<String, Object>> children = new ArrayList<>();
-        if (node.get("children") instanceof List<?> list) {
-            for (Object child : list) {
-                if (child instanceof Map<?, ?> childMap) {
-                    children.add(normalizeNode(castMap(childMap)));
-                } else if (child != null) {
-                    throw new IllegalArgumentException("children must be node objects, not primitives");
-                }
-            }
-        }
         out.put("children", children);
         return out;
+    }
+
+    private static List<?> childrenOf(Map<?, ?> node) {
+        Object children = node.get("children");
+        return children instanceof List<?> list ? list : List.of();
+    }
+
+    private static final class NodeFrame {
+        private final Map<?, ?> input;
+        private final int depth;
+        private final List<Map<String, Object>> parentChildren;
+        private Map<String, Object> output;
+        private List<?> children;
+        private int nextChild;
+
+        private NodeFrame(Map<?, ?> input, int depth, List<Map<String, Object>> parentChildren) {
+            this.input = input;
+            this.depth = depth;
+            this.parentChildren = parentChildren;
+        }
     }
 
     private static void liftAlias(Map<String, Object> props, String from, String to) {
         if (!props.containsKey(to) && props.containsKey(from)) {
             props.put(to, props.get(from));
         }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static int[] countNodesDepth(Map<String, Object> node, int depth) {
-        int total = 1;
-        int maxD = depth;
-        Object children = node.get("children");
-        if (children instanceof List<?> list) {
-            for (Object child : list) {
-                if (child instanceof Map<?, ?> m) {
-                    int[] sub = countNodesDepth((Map<String, Object>) m, depth + 1);
-                    total += sub[0];
-                    maxD = Math.max(maxD, sub[1]);
-                }
-            }
-        }
-        return new int[]{total, maxD};
     }
 
     private static Map<String, Object> castMap(Map<?, ?> map) {
