@@ -303,7 +303,7 @@ const PdfToolbar: React.FC<{
   </div>
 );
 
-const PdfRenderer: ReactorType.FC<PdfRendererProps> = React.memo((props) => {
+const PdfRenderer: React.FC<PdfRendererProps> = React.memo((props) => {
   const {
     fileUrl,
     fileName,

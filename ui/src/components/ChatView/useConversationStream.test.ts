@@ -3,12 +3,20 @@ import { describe, expect, it } from "vitest";
 import {
   applyGuardError,
   createConversationDraftController,
+  isSessionControlPackage,
   resolveLatestContextUsage,
 } from "./useConversationStream";
 import { resolveActionPanelVisibility } from "./streamState";
 import { parseAgentAnswer } from "@/utils/sseParsers";
 
 describe("useConversationStream helpers", () => {
+  it("会话级控制帧不依赖 requestId 路由", () => {
+    expect(isSessionControlPackage("heartbeat")).toBe(true);
+    expect(isSessionControlPackage("follow_pending")).toBe(true);
+    expect(isSessionControlPackage("follow_idle")).toBe(true);
+    expect(isSessionControlPackage("result")).toBe(false);
+  });
+
   it("新任务沿用上一轮最近的真实上下文快照", () => {
     const usage = {
       max: 200000,

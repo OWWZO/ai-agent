@@ -78,6 +78,16 @@ function isLlmRetryTip(tip?: string): boolean {
   return !!tip && tip.includes("正在重试");
 }
 
+const SESSION_CONTROL_PACKAGES = new Set([
+  "heartbeat",
+  "follow_idle",
+  "follow_pending",
+]);
+
+export function isSessionControlPackage(packageType?: string): boolean {
+  return SESSION_CONTROL_PACKAGES.has(String(packageType || ""));
+}
+
 type UseConversationStreamOptions = {
   conversation: CHAT.ConversationHistory;
   onConversationChange: (
@@ -466,6 +476,11 @@ export function useConversationStream(
     }
   );
 
+  const hasConversationLiveStream = useMemoizedFn((conversationId: string) => {
+    const entry = liveStreamsRef.current.get(conversationId);
+    return !!entry && !entry.controller.signal.aborted;
+  });
+
   const workspaceTaskThrottle = useRafThrottle<CHAT.Task | undefined>(
     undefined,
     32,
@@ -738,7 +753,7 @@ export function useConversationStream(
     if (!seedChat?.requestId) {
       return;
     }
-    if (hasLiveStream(conversationId, targetRequestId)) {
+    if (hasConversationLiveStream(conversationId)) {
       return;
     }
     clearFollowReconnectTimer(targetRequestId);
@@ -1039,6 +1054,10 @@ export function useConversationStream(
     };
 
     const handleMessage = (data: MESSAGE.Answer) => {
+      const live = liveStreamsRef.current.get(conversationId);
+      if (!live || live.controller !== abortController) {
+        return;
+      }
       const eventSeq = Number(data.eventSeq || 0);
       const lastEventSeq = lastEventSeqRef.current.get(requestId) || 0;
       if (eventSeq > 0 && eventSeq <= lastEventSeq) {
@@ -1048,14 +1067,20 @@ export function useConversationStream(
         lastEventSeqRef.current.set(requestId, eventSeq);
         updateActiveRunSeq(sessionId, eventSeq);
       }
+      const { finished, resultMap, packageType } = data;
       const frameRequestId = String(data.reqId || "");
-      if (frameRequestId && frameRequestId !== requestId) {
+      // 会话控制帧的 reqId 由后端会话级 Hub 填充，可能是 sessionId；
+      // 先处理控制语义，不能按普通业务帧的 requestId 规则丢弃。
+      if (
+        !isSessionControlPackage(packageType) &&
+        frameRequestId &&
+        frameRequestId !== requestId
+      ) {
         patchChatByRequestId(conversationId, frameRequestId, data);
         return;
       }
       // 收到任意有效帧说明观察流已经恢复，下一次断开从最短退避重新开始。
       followReconnectAttemptsRef.current.set(requestId, 0);
-      const { finished, resultMap, packageType } = data;
       const streamStillActive = isActiveStream();
 
       if (packageType === "follow_idle") {
@@ -1342,7 +1367,7 @@ export function useConversationStream(
     if (followReconnectTimersRef.current.has(requestId)) {
       return;
     }
-    if (hasLiveStream(conversationId, requestId)) {
+    if (hasConversationLiveStream(conversationId)) {
       return;
     }
 
@@ -1372,7 +1397,7 @@ export function useConversationStream(
     );
     const timer = window.setTimeout(() => {
       followReconnectTimersRef.current.delete(requestId);
-      if (hasLiveStream(conversationId, requestId)) {
+      if (hasConversationLiveStream(conversationId)) {
         return;
       }
       // 前台/后台均可续绑：用 reconnect context，不依赖当前 conversationRef
@@ -1391,7 +1416,7 @@ export function useConversationStream(
       return;
     }
     // 同会话已有活流时不要再 follow。
-    if (hasLiveStream(conversationId, requestId)) {
+    if (hasConversationLiveStream(conversationId)) {
       return;
     }
     followActiveRun(requestId);
@@ -1538,6 +1563,10 @@ export function useConversationStream(
     };
 
     const handleMessage = (data: MESSAGE.Answer) => {
+      const live = liveStreamsRef.current.get(conversationId);
+      if (!live || live.controller !== abortController) {
+        return;
+      }
       const eventSeq = Number(data.eventSeq || 0);
       const lastEventSeq = lastEventSeqRef.current.get(resumeRequestId) || 0;
       if (eventSeq > 0 && eventSeq <= lastEventSeq) {
@@ -1547,13 +1576,17 @@ export function useConversationStream(
         lastEventSeqRef.current.set(resumeRequestId, eventSeq);
         updateActiveRunSeq(sessionId, eventSeq);
       }
+      const { finished, resultMap, packageType } = data;
       const frameRequestId = String(data.reqId || "");
-      if (frameRequestId && frameRequestId !== resumeRequestId) {
+      if (
+        !isSessionControlPackage(packageType) &&
+        frameRequestId &&
+        frameRequestId !== resumeRequestId
+      ) {
         patchChatByRequestId(conversationId, frameRequestId, data);
         return;
       }
       followReconnectAttemptsRef.current.set(resumeRequestId, 0);
-      const { finished, resultMap, packageType } = data;
       if (packageType === "heartbeat" || packageType === "follow_idle" || packageType === "follow_pending") {
         if (packageType === "heartbeat" && currentChat.loading && isActiveStream()) {
           const presence = resolveRunPresence({
@@ -1749,7 +1782,7 @@ export function useConversationStream(
   useEffect(() => {
     const kickReconnect = () => {
       followReconnectContextsRef.current.forEach((ctx, requestId) => {
-        if (hasLiveStream(ctx.conversationId, requestId)) {
+        if (hasConversationLiveStream(ctx.conversationId)) {
           return;
         }
         if (followReconnectTimersRef.current.has(requestId)) {
@@ -1769,7 +1802,11 @@ export function useConversationStream(
       window.removeEventListener("online", kickReconnect);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [clearFollowReconnectTimer, hasLiveStream, scheduleFollowReconnect]);
+  }, [
+    clearFollowReconnectTimer,
+    hasConversationLiveStream,
+    scheduleFollowReconnect,
+  ]);
 
   const resolveActiveRequestId = useMemoizedFn((conversationId?: string) => {
     const id = conversationId || conversationRef.current.id;
@@ -1882,16 +1919,11 @@ export function useConversationStream(
     followReconnectAttemptsRef.current.delete(requestId);
     followReconnectContextsRef.current.delete(requestId);
     const previous = liveStreamsRef.current.get(conversationId);
-    const reuseObserve = Boolean(
-      previous && !previous.controller.signal.aborted
-    );
-    const abortController = reuseObserve
-      ? previous!.controller
-      : new AbortController();
-    if (!reuseObserve) {
-      previous?.controller.abort();
-      bindForegroundStream(conversationId, requestId, abortController);
-    }
+    // 一个会话只保留一个前端观察连接；新 run 必须绑定新的 controller，
+    // 否则旧回调会继续占用 activeRequestIdRef，导致 stop/inject 操作旧 run。
+    previous?.controller.abort();
+    const abortController = new AbortController();
+    bindForegroundStream(conversationId, requestId, abortController);
     saveActiveRun(baseConversation.sessionId, requestId);
     lastEventSeqRef.current.set(requestId, 0);
     const isActiveStream = () =>
@@ -2058,6 +2090,10 @@ export function useConversationStream(
     };
 
     const handleMessage = (data: MESSAGE.Answer) => {
+      const live = liveStreamsRef.current.get(conversationId);
+      if (!live || live.controller !== abortController) {
+        return;
+      }
       const eventSeq = Number(data.eventSeq || 0);
       const lastEventSeq = lastEventSeqRef.current.get(requestId) || 0;
       if (eventSeq > 0 && eventSeq <= lastEventSeq) {
@@ -2067,14 +2103,18 @@ export function useConversationStream(
         lastEventSeqRef.current.set(requestId, eventSeq);
         updateActiveRunSeq(baseConversation.sessionId, eventSeq);
       }
+      const { finished, resultMap, packageType, status } = data;
       const frameRequestId = String(data.reqId || "");
-      if (frameRequestId && frameRequestId !== requestId) {
+      if (
+        !isSessionControlPackage(packageType) &&
+        frameRequestId &&
+        frameRequestId !== requestId
+      ) {
         patchChatByRequestId(conversationId, frameRequestId, data);
         return;
       }
       // 收到任意有效帧说明主观察流正常，后续断开不应沿用旧的退避次数。
       followReconnectAttemptsRef.current.set(requestId, 0);
-      const { finished, resultMap, packageType, status } = data;
       const streamStillActive = isActiveStream();
       const isTerminalGuardError =
         Boolean(finished) &&
@@ -2352,14 +2392,12 @@ export function useConversationStream(
       clearActiveRun(requestId);
       followReconnectContextsRef.current.delete(requestId);
       clearFollowReconnectTimer(requestId);
-      if (!reuseObserve) {
-        unbindLiveStream(conversationId, abortController);
-      }
+      unbindLiveStream(conversationId, abortController);
       currentChat = applyGuardError(
         currentChat,
         messageText || "请求未能建立，请稍后重试"
       );
-      if (streamStillActive || reuseObserve) {
+      if (streamStillActive) {
         setLoading(false);
       }
       pendingConversation = draftController.replaceLastItem({ ...currentChat });
@@ -2477,9 +2515,6 @@ export function useConversationStream(
         return;
       }
       streamOpened = true;
-      if (reuseObserve) {
-        return;
-      }
       querySSE(
         {
           method: "GET",
