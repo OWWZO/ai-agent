@@ -16,6 +16,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -242,51 +244,65 @@ public final class LlmRequestRetry {
      * 与 {@link #stream(String, Supplier)} 不同，中途已产出 chunk 仍可重试。
      */
     public static <T> CompletableFuture<T> callAsync(String label,
-                                                     Supplier<CompletableFuture<T>> supplier,
-                                                     RetryListener listener) {
-        return callAsyncAttempt(label, supplier, listener, 0, maxRetries());
+                                                      Supplier<CompletableFuture<T>> supplier,
+                                                      RetryListener listener) {
+        CancellableFuture<T> result = new CancellableFuture<>();
+        callAsyncAttempt(result, label, supplier, listener, 0, maxRetries());
+        return result;
     }
 
-    private static <T> CompletableFuture<T> callAsyncAttempt(String label,
-                                                             Supplier<CompletableFuture<T>> supplier,
-                                                             RetryListener listener,
-                                                             int attempt,
-                                                             int retries) {
+    private static <T> void callAsyncAttempt(CancellableFuture<T> result,
+                                                              String label,
+                                                              Supplier<CompletableFuture<T>> supplier,
+                                                              RetryListener listener,
+                                                              int attempt,
+                                                              int retries) {
+        if (result.isCancelled()) {
+            return;
+        }
         int maxAttempts = retries + 1;
         CompletableFuture<T> started;
         try {
             started = supplier.get();
         } catch (RuntimeException ex) {
-            return retryAsyncOrFail(label, supplier, listener, attempt, retries, maxAttempts, ex);
+            retryAsyncOrFail(result, label, supplier, listener, attempt, retries, maxAttempts, ex);
+            return;
         } catch (Exception ex) {
-            return retryAsyncOrFail(label, supplier, listener, attempt, retries, maxAttempts, new RuntimeException(ex));
+            retryAsyncOrFail(result, label, supplier, listener, attempt, retries, maxAttempts, new RuntimeException(ex));
+            return;
         }
         if (started == null) {
-            return CompletableFuture.failedFuture(new IllegalStateException("LLM async supplier returned null"));
+            result.completeExceptionally(new IllegalStateException("LLM async supplier returned null"));
+            return;
         }
-        return started.handle((value, error) -> {
+        result.bind(started);
+        started.whenComplete((value, error) -> {
+            if (result.isCancelled()) {
+                return;
+            }
             if (error == null) {
-                return CompletableFuture.completedFuture(value);
+                result.complete(value);
+                return;
             }
             Throwable root = unwrapAsyncError(error);
             RuntimeException asRuntime = root instanceof RuntimeException
                     ? (RuntimeException) root
                     : new RuntimeException(root);
-            return retryAsyncOrFail(label, supplier, listener, attempt, retries, maxAttempts, asRuntime);
-        }).thenCompose(future -> future);
+            retryAsyncOrFail(result, label, supplier, listener, attempt, retries, maxAttempts, asRuntime);
+        });
     }
 
-    private static <T> CompletableFuture<T> retryAsyncOrFail(String label,
-                                                             Supplier<CompletableFuture<T>> supplier,
+    private static <T> void retryAsyncOrFail(CancellableFuture<T> result,
+                                                              String label,
+                                                              Supplier<CompletableFuture<T>> supplier,
                                                              RetryListener listener,
                                                              int attempt,
                                                              int retries,
-                                                             int maxAttempts,
-                                                             RuntimeException error) {
+        int maxAttempts,
+                                                              RuntimeException error) {
         if (attempt >= retries || !isTransient(error)) {
-            CompletableFuture<T> failed = new CompletableFuture<>();
-            failed.completeExceptionally(error);
-            return failed;
+            result.completeExceptionally(error);
+            return;
         }
         long sleepMs = computeDelayMs(attempt);
         int nextAttempt = attempt + 2;
@@ -294,10 +310,71 @@ public final class LlmRequestRetry {
                 "[%s] transient failure (attempt %d/%d): %s; retry in %dms",
                 label, attempt + 1, maxAttempts, error.getMessage(), sleepMs));
         notifyRetry(listener, label, nextAttempt, maxAttempts, error, sleepMs);
-        return CompletableFuture.supplyAsync(
-                        () -> null,
-                        CompletableFuture.delayedExecutor(sleepMs, TimeUnit.MILLISECONDS))
-                .thenCompose(ignored -> callAsyncAttempt(label, supplier, listener, attempt + 1, retries));
+        CompletableFuture<Void> delayed = CompletableFuture.runAsync(
+                        () -> {
+                        },
+                        CompletableFuture.delayedExecutor(sleepMs, TimeUnit.MILLISECONDS));
+        result.bind(delayed);
+        delayed.whenComplete((ignored, delayError) -> {
+            if (delayError == null && !result.isCancelled()) {
+                callAsyncAttempt(result, label, supplier, listener, attempt + 1, retries);
+            }
+        });
+    }
+
+    /** Maps a request result while retaining cancellation of its source future. */
+    public static <T, R> CompletableFuture<R> mapCancellable(CompletableFuture<T> source,
+                                                               Function<T, R> mapper) {
+        CancellableFuture<R> result = new CancellableFuture<>();
+        result.bind(source);
+        source.whenComplete((value, error) -> {
+            if (error != null) {
+                result.completeExceptionally(error);
+            } else {
+                try {
+                    result.complete(mapper.apply(value));
+                } catch (Throwable mappingError) {
+                    result.completeExceptionally(mappingError);
+                }
+            }
+        });
+        return result;
+    }
+
+    /** Keeps cancellation of a composed public future connected to its active request. */
+    public static <T> CompletableFuture<T> propagateCancellation(CompletableFuture<T> result,
+                                                                   CompletableFuture<?> activeRequest) {
+        CancellableFuture<T> bridged = new CancellableFuture<>();
+        bridged.bind(activeRequest);
+        result.whenComplete((value, error) -> {
+            if (error != null) {
+                bridged.completeExceptionally(error);
+            } else {
+                bridged.complete(value);
+            }
+        });
+        return bridged;
+    }
+
+    private static final class CancellableFuture<T> extends CompletableFuture<T> {
+        private final AtomicReference<CompletableFuture<?>> delegate = new AtomicReference<>();
+
+        private void bind(CompletableFuture<?> future) {
+            delegate.set(future);
+            if (isCancelled()) {
+                future.cancel(true);
+            }
+        }
+
+        @Override
+        public boolean cancel(boolean mayInterruptIfRunning) {
+            boolean cancelled = super.cancel(mayInterruptIfRunning);
+            CompletableFuture<?> current = delegate.get();
+            if (cancelled && current != null) {
+                current.cancel(mayInterruptIfRunning);
+            }
+            return cancelled;
+        }
     }
 
     private static Throwable unwrapAsyncError(Throwable error) {

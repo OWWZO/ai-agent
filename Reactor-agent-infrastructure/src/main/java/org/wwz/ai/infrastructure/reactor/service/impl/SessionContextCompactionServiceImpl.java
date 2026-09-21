@@ -491,8 +491,9 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
                     ? CompactionPrompt.buildIterativeUserPayload(previous, serialized)
                     : serialized + "\n\nPlease provide the conversation checkpoint now.";
             List<Message> askMessages = List.of(Message.userMessage(userPayload, null));
+            java.util.concurrent.CompletableFuture<String> llmFuture = null;
             try {
-                String raw = llm.ask(
+                llmFuture = llm.ask(
                         context,
                         askMessages,
                         List.of(system),
@@ -500,7 +501,8 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
                         false,
                         budget.getTemperature(),
                         ExecutionLedgerConstants.CALL_KIND_INTERNAL_COMPACT
-                ).get(Math.max(1, budget.getSummarizerTimeoutSeconds()), TimeUnit.SECONDS);
+                );
+                String raw = llmFuture.get(Math.max(1, budget.getSummarizerTimeoutSeconds()), TimeUnit.SECONDS);
 
                 String formatted = CompactionPrompt.formatCompactSummary(raw);
                 if (StringUtils.isBlank(formatted)) {
@@ -516,6 +518,12 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
                         compactor.estimateTokens(post));
                 return post;
             } catch (Exception e) {
+                if (llmFuture != null) {
+                    llmFuture.cancel(true);
+                }
+                if (e instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                }
                 lastError = e;
                 if (attempt >= MAX_COMPACT_PTL_RETRIES || !isPromptTooLongForCompact(e)) {
                     throw e;

@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class LlmRequestRetryTest {
 
@@ -171,6 +172,40 @@ public class LlmRequestRetryTest {
             Assert.assertTrue(expected.getCause() instanceof IllegalArgumentException);
             Assert.assertEquals(1, attempts.get());
         }
+    }
+
+    @Test
+    public void shouldCancelActiveAsyncAttemptWhenOuterFutureIsCancelled() throws Exception {
+        AtomicBoolean cancelled = new AtomicBoolean();
+        CompletableFuture<String> inner = new CompletableFuture<>() {
+            @Override
+            public boolean cancel(boolean mayInterruptIfRunning) {
+                cancelled.set(true);
+                return super.cancel(mayInterruptIfRunning);
+            }
+        };
+
+        CompletableFuture<String> outer = LlmRequestRetry.callAsync("cancel-test", () -> inner);
+        Assert.assertTrue(outer.cancel(true));
+        Assert.assertTrue(cancelled.get());
+        Assert.assertTrue(inner.isCancelled());
+    }
+
+    @Test
+    public void shouldCancelSourceWhenMappedFutureIsCancelled() {
+        AtomicBoolean cancelled = new AtomicBoolean();
+        CompletableFuture<String> source = new CompletableFuture<>() {
+            @Override
+            public boolean cancel(boolean mayInterruptIfRunning) {
+                cancelled.set(true);
+                return super.cancel(mayInterruptIfRunning);
+            }
+        };
+
+        CompletableFuture<Integer> mapped = LlmRequestRetry.mapCancellable(source, String::length);
+        Assert.assertTrue(mapped.cancel(true));
+        Assert.assertTrue(cancelled.get());
+        Assert.assertTrue(source.isCancelled());
     }
 
     @Test

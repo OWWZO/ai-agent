@@ -190,8 +190,9 @@ public class LLM {
     ) {
         CompletableFuture<String> primary = askOnCurrentModel(
                 context, messages, systemMsgs, stream, pushToClient, temperature, callKind);
-        return withFallbackModel(context, "ask", primary, fallbackName -> new LLM(fallbackName, llmErp, runtimeDependencies, false)
+        CompletableFuture<String> composed = withFallbackModel(context, "ask", primary, fallbackName -> new LLM(fallbackName, llmErp, runtimeDependencies, false)
                 .askOnCurrentModel(context, messages, systemMsgs, stream, pushToClient, temperature, callKind));
+        return LlmRequestRetry.propagateCancellation(composed, primary);
     }
 
     private CompletableFuture<String> askOnCurrentModel(
@@ -272,7 +273,7 @@ public class LLM {
 
             // 流式调用的完成与失败都由 whenComplete 收口，避免网络异常时留下 RUNNING 的孤立 invocation。
             // callAsync：整次 handler 失败后丢弃半截累积并新开流，覆盖首 chunk 前与中途断流。
-            return LlmRequestRetry.callAsync(
+            CompletableFuture<StreamResponseHandler.StringStreamResult> streamFuture = LlmRequestRetry.callAsync(
                     retryLabel,
                     () -> streamResponseHandler.handleStringStreamWithUsage(
                             context,
@@ -282,34 +283,34 @@ public class LLM {
                             pushToClient
                     ),
                     retryNotifier(context)
-            )
-                    .whenComplete((result, throwable) -> {
-                        if (throwable == null) {
-                            finishLlmInvocation(
-                                    context,
-                                    invocationHandle,
-                                    ExecutionLedgerConstants.STATUS_SUCCESS,
-                                    result == null ? null : result.getContent(),
-                                    0,
-                                    result == null ? null : result.getUsage(),
-                                    null,
-                                    null
-                            );
-                            return;
-                        }
-                        Throwable cause = unwrapCompletionThrowable(throwable);
-                        finishLlmInvocation(
-                                context,
-                                invocationHandle,
-                                ExecutionLedgerConstants.resolveFailureStatus(cause),
-                                null,
-                                0,
-                                null,
-                                null,
-                                cause.getMessage()
-                        );
-                    })
-                    .thenApply(result -> result == null ? null : result.getContent());
+            );
+            streamFuture.whenComplete((result, throwable) -> {
+                if (throwable == null) {
+                    finishLlmInvocation(
+                            context,
+                            invocationHandle,
+                            ExecutionLedgerConstants.STATUS_SUCCESS,
+                            result == null ? null : result.getContent(),
+                            0,
+                            result == null ? null : result.getUsage(),
+                            null,
+                            null
+                    );
+                    return;
+                }
+                Throwable cause = unwrapCompletionThrowable(throwable);
+                finishLlmInvocation(
+                        context,
+                        invocationHandle,
+                        ExecutionLedgerConstants.resolveFailureStatus(cause),
+                        null,
+                        0,
+                        null,
+                        null,
+                        cause.getMessage()
+                );
+            });
+            return LlmRequestRetry.mapCancellable(streamFuture, result -> result == null ? null : result.getContent());
         } catch (Exception e) {
             log.error("{} Unexpected error in ask: {}", context.getRequestId(), e.getMessage(), e);
             return failedFuture(e);
@@ -348,8 +349,9 @@ public class LLM {
     ) {
         CompletableFuture<ToolCallResponse> primary = askToolOnCurrentModel(
                 context, messages, systemMsgs, tools, toolChoice, temperature, stream, pushToClient, timeout);
-        return withFallbackModel(context, "askTool", primary, fallbackName -> new LLM(fallbackName, llmErp, runtimeDependencies, false)
+        CompletableFuture<ToolCallResponse> composed = withFallbackModel(context, "askTool", primary, fallbackName -> new LLM(fallbackName, llmErp, runtimeDependencies, false)
                 .askToolOnCurrentModel(context, messages, systemMsgs, tools, toolChoice, temperature, stream, pushToClient, timeout));
+        return LlmRequestRetry.propagateCancellation(composed, primary);
     }
 
     private CompletableFuture<ToolCallResponse> askToolOnCurrentModel(

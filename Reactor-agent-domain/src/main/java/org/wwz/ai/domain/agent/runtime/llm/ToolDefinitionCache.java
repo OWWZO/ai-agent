@@ -9,7 +9,10 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 
 /**
  * 工具定义（name/description/inputSchema）进程级缓存。
@@ -17,7 +20,13 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class ToolDefinitionCache {
 
-    private static final ConcurrentHashMap<String, ToolDefinition> CACHE = new ConcurrentHashMap<>();
+    static final long MAXIMUM_SIZE = 4096;
+    static final long EXPIRE_AFTER_ACCESS_MS = TimeUnit.MINUTES.toMillis(30);
+
+    private static final Cache<String, ToolDefinition> CACHE = CacheBuilder.newBuilder()
+            .maximumSize(MAXIMUM_SIZE)
+            .expireAfterAccess(EXPIRE_AFTER_ACCESS_MS, TimeUnit.MILLISECONDS)
+            .build();
 
     private ToolDefinitionCache() {
     }
@@ -27,7 +36,7 @@ public final class ToolDefinitionCache {
         String desc = StringUtils.defaultString(description);
         String schema = StringUtils.defaultString(inputSchemaJson);
         String key = toolName + "\0" + sha12(desc + "\0" + schema);
-        return CACHE.computeIfAbsent(key, k -> DefaultToolDefinition.builder()
+        return CACHE.asMap().computeIfAbsent(key, k -> DefaultToolDefinition.builder()
                 .name(toolName)
                 .description(desc)
                 .inputSchema(schema)
@@ -45,7 +54,8 @@ public final class ToolDefinitionCache {
     }
 
     public static int size() {
-        return CACHE.size();
+        CACHE.cleanUp();
+        return (int) CACHE.size();
     }
 
     private static String sha12(String text) {
