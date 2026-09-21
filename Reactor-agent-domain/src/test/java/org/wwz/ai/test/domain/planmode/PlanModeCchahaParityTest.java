@@ -80,6 +80,7 @@ public class PlanModeCchahaParityTest {
 
         Thread.sleep(50);
         Assert.assertTrue(registry.approve(pending.getApprovalId(), null, null));
+        Assert.assertTrue(registry.get(pending.getApprovalId()).isEmpty());
         PlanApprovalDecision decision = waiter.get(3, TimeUnit.SECONDS);
         Assert.assertTrue(decision.isApproved());
     }
@@ -109,8 +110,22 @@ public class PlanModeCchahaParityTest {
 
         Thread.sleep(50);
         Assert.assertTrue(registry.reject(pending.getApprovalId(), "need more detail"));
+        Assert.assertTrue(registry.get(pending.getApprovalId()).isEmpty());
         PlanApprovalDecision decision = waiter.get(3, TimeUnit.SECONDS);
         Assert.assertFalse(decision.isApproved());
         Assert.assertTrue(decision.getFeedback().contains("more detail"));
+    }
+
+    @Test
+    public void cancelRemovesPendingEntryAndConsumeIsOneShot() {
+        PendingPlanApprovalRegistry registry = new PendingPlanApprovalRegistry();
+        PendingPlanApproval cancelled = registry.create("sess", "req", "tc1", "## P", null, 5000L);
+
+        Assert.assertTrue(registry.cancel(cancelled.getApprovalId(), "stopped"));
+        Assert.assertTrue(registry.get(cancelled.getApprovalId()).isEmpty());
+
+        PendingPlanApproval consumable = registry.create("sess", "req", "tc2", "## P", null, 5000L);
+        Assert.assertTrue(registry.consume(consumable.getApprovalId()).isPresent());
+        Assert.assertTrue(registry.consume(consumable.getApprovalId()).isEmpty());
     }
 }

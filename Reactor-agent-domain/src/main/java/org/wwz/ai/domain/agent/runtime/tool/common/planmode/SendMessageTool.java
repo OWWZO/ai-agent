@@ -121,6 +121,14 @@ public class SendMessageTool implements BaseTool {
                     .createdAtMs(System.currentTimeMillis())
                     .build();
             int queued = SessionAgentMailboxHub.offer(sessionId, target.agentId, inject);
+            if (queued < 0) {
+                return ToolResultPayload.softFailData(TaskToolNames.SEND_MESSAGE, Map.of(
+                        "ok", false,
+                        "to", to,
+                        "agentId", target.agentId,
+                        "message", "目标子 Agent 邮箱已满，指导未投递。"
+                ));
+            }
 
             Map<String, Object> fields = new LinkedHashMap<>();
             fields.put("ok", true);

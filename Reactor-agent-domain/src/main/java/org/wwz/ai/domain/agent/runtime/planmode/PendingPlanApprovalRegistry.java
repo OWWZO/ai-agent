@@ -75,7 +75,8 @@ public class PendingPlanApprovalRegistry {
             return false;
         }
         synchronized (item) {
-            if (!PendingPlanApproval.STATUS_PENDING.equals(item.getStatus())) {
+            if (pending.get(item.getApprovalId()) != item
+                    || !PendingPlanApproval.STATUS_PENDING.equals(item.getStatus())) {
                 return false;
             }
             item.setStatus(PendingPlanApproval.STATUS_APPROVED);
@@ -88,6 +89,7 @@ public class PendingPlanApprovalRegistry {
                     .feedback(feedback)
                     .editedPlanContent(editedPlanContent)
                     .build());
+            pending.remove(item.getApprovalId(), item);
         }
         return true;
     }
@@ -98,7 +100,8 @@ public class PendingPlanApprovalRegistry {
             return false;
         }
         synchronized (item) {
-            if (!PendingPlanApproval.STATUS_PENDING.equals(item.getStatus())) {
+            if (pending.get(item.getApprovalId()) != item
+                    || !PendingPlanApproval.STATUS_PENDING.equals(item.getStatus())) {
                 return false;
             }
             item.setStatus(PendingPlanApproval.STATUS_REJECTED);
@@ -107,6 +110,7 @@ public class PendingPlanApprovalRegistry {
                     .approved(false)
                     .feedback(StringUtils.defaultIfBlank(feedback, "Plan rejected by user"))
                     .build());
+            pending.remove(item.getApprovalId(), item);
         }
         return true;
     }
@@ -117,12 +121,14 @@ public class PendingPlanApprovalRegistry {
             return false;
         }
         synchronized (item) {
-            if (!PendingPlanApproval.STATUS_PENDING.equals(item.getStatus())) {
+            if (pending.get(item.getApprovalId()) != item
+                    || !PendingPlanApproval.STATUS_PENDING.equals(item.getStatus())) {
                 return false;
             }
             item.setStatus(PendingPlanApproval.STATUS_CANCELLED);
             item.getFuture().completeExceptionally(
                     new IllegalStateException(StringUtils.defaultIfBlank(reason, "cancelled")));
+            pending.remove(item.getApprovalId(), item);
         }
         return true;
     }
@@ -160,5 +166,13 @@ public class PendingPlanApprovalRegistry {
         } finally {
             pending.remove(item.getApprovalId());
         }
+    }
+
+    /** 原子取出兼容 registry 条目，供不再等待 Future 的旧调用方释放引用。 */
+    public Optional<PendingPlanApproval> consume(String approvalId) {
+        if (StringUtils.isBlank(approvalId)) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(pending.remove(approvalId.trim()));
     }
 }

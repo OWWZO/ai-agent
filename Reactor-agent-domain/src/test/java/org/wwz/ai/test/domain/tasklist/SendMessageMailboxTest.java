@@ -57,8 +57,26 @@ public class SendMessageMailboxTest {
                 .build());
         SessionAgentMailboxHub.markActive("s", "a", false);
         Assert.assertFalse(SessionAgentMailboxHub.isActive("s", "a"));
-        // 队列仍可保留未消费消息
-        Assert.assertEquals(1, SessionAgentMailboxHub.queue("s", "a").size());
+        Assert.assertEquals(0, SessionAgentMailboxHub.queue("s", "a").size());
+    }
+
+    @Test
+    public void offerIsBounded() {
+        for (int i = 0; i < 256; i++) {
+            SessionAgentMailboxHub.offer("bounded", "a", PendingInjectMessage.builder()
+                    .text("message-" + i)
+                    .source(PendingInjectMessage.SOURCE_COORDINATOR)
+                    .createdAtMs(System.currentTimeMillis())
+                    .build());
+        }
+
+        Assert.assertEquals(-1, SessionAgentMailboxHub.offer("bounded", "a",
+                PendingInjectMessage.builder()
+                        .text("overflow")
+                        .source(PendingInjectMessage.SOURCE_COORDINATOR)
+                        .createdAtMs(System.currentTimeMillis())
+                        .build()));
+        Assert.assertEquals(256, SessionAgentMailboxHub.queue("bounded", "a").size());
     }
 
     @Test
