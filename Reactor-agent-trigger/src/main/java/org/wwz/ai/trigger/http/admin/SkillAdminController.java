@@ -19,6 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.wwz.ai.api.response.Response;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillLoadException;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillPackageService;
+import org.wwz.ai.domain.agent.runtime.tool.skill.SkillPackageParser;
 import org.wwz.ai.types.enums.ResponseCode;
 
 import java.util.List;
@@ -46,7 +47,7 @@ public class SkillAdminController {
     @PostMapping(value = "/parse-package", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Response<Map<String, Object>> parsePackage(@RequestPart("file") MultipartFile file) {
         try {
-            return ok(skillPackageService.previewZipAsMap(file.getBytes()));
+            return ok(skillPackageService.previewZipAsMap(readPackage(file)));
         } catch (Exception e) {
             return fail(e);
         }
@@ -59,12 +60,22 @@ public class SkillAdminController {
     ) {
         try {
             return ok(skillPackageService.installZip(
-                    file.getBytes(),
+                    readPackage(file),
                     file.getOriginalFilename() == null ? "skill.zip" : file.getOriginalFilename(),
                     replace));
         } catch (Exception e) {
             return fail(e);
         }
+    }
+
+    private byte[] readPackage(MultipartFile file) throws java.io.IOException {
+        if (file == null || file.isEmpty() || file.getSize() <= 0) {
+            throw new SkillLoadException("技能包不能为空");
+        }
+        if (file.getSize() > SkillPackageParser.MAX_PACKAGE_BYTES) {
+            throw new SkillLoadException("技能包不能超过 32MB");
+        }
+        return file.getBytes();
     }
 
     @PostMapping("/create")

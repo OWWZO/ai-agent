@@ -1,6 +1,7 @@
 package org.wwz.ai.domain.agent.runtime.tool.skill;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -20,9 +21,10 @@ import java.util.zip.ZipInputStream;
 public final class SkillPackageParser {
 
     public static final String SKILL_FILE = "SKILL.md";
+    public static final long MAX_PACKAGE_BYTES = 32L * 1024 * 1024;
 
     private static final int MAX_ENTRIES = 500;
-    private static final long MAX_INFLATED_BYTES = 32L * 1024 * 1024;
+    private static final long MAX_INFLATED_BYTES = MAX_PACKAGE_BYTES;
     private static final int MAX_SKILL_MD_BYTES = 1024 * 1024;
     private static final Pattern FRONT_MATTER =
             Pattern.compile("^---\\s*\\R(.*?)\\R---\\s*\\R?(.*)$", Pattern.DOTALL);
@@ -61,7 +63,7 @@ public final class SkillPackageParser {
                 if (path.startsWith("__MACOSX/") || path.endsWith("/.DS_Store") || path.equals(".DS_Store")) {
                     continue;
                 }
-                byte[] bytes = zis.readAllBytes();
+                byte[] bytes = readEntryBytes(zis, MAX_INFLATED_BYTES - inflated);
                 inflated += bytes.length;
                 if (inflated > MAX_INFLATED_BYTES) {
                     throw new SkillLoadException("技能包解压后超过 32MB");
@@ -131,7 +133,7 @@ public final class SkillPackageParser {
                 if (path.startsWith("__MACOSX/") || path.endsWith(".DS_Store")) {
                     continue;
                 }
-                byte[] bytes = zis.readAllBytes();
+                byte[] bytes = readEntryBytes(zis, MAX_INFLATED_BYTES - inflated);
                 inflated += bytes.length;
                 if (inflated > MAX_INFLATED_BYTES) {
                     throw new SkillLoadException("技能包解压后超过 32MB");
@@ -163,6 +165,25 @@ public final class SkillPackageParser {
             }
         }
         return out;
+    }
+
+    private static byte[] readEntryBytes(ZipInputStream zis, long remainingBytes) throws Exception {
+        if (remainingBytes < 0) {
+            throw new SkillLoadException("技能包解压后超过 32MB");
+        }
+        ByteArrayOutputStream output = new ByteArrayOutputStream(
+                (int) Math.min(8192L, remainingBytes));
+        byte[] buffer = new byte[8192];
+        long total = 0L;
+        int read;
+        while ((read = zis.read(buffer)) != -1) {
+            total += read;
+            if (total > remainingBytes) {
+                throw new SkillLoadException("技能包解压后超过 32MB");
+            }
+            output.write(buffer, 0, read);
+        }
+        return output.toByteArray();
     }
 
     public static FrontmatterSplit splitFrontmatter(String markdown) {
