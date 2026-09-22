@@ -47,6 +47,7 @@ import ContextRing, { type ContextUsageView } from "./ContextRing";
 import MarkdownBar from "./MarkdownBar";
 import ModelPicker from "./ModelPicker";
 import ThinkingToggle, { type ThinkingEffort } from "./ThinkingToggle";
+import BrowserRelayChip from "./BrowserRelayChip";
 import { buildSubmitPayload } from "./inputMode";
 import { useAttachmentUploads } from "./useAttachmentUploads";
 
@@ -455,6 +456,8 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                 disabled={disabled}
                 className="reactor-composer-icon-button h-8 w-8 rounded-md border-0 bg-transparent text-[#6b6b70] shadow-none ring-0 hover:bg-black/[0.04] hover:text-[#1d1d1f] focus-visible:ring-0"
               />
+
+              <BrowserRelayChip disabled={disabled} />
 
               {showPlanToggle ? (
                 <button

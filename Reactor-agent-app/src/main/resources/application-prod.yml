@@ -1,6 +1,13 @@
 server:
   port: 8100
 
+reactor:
+  browser-relay:
+    enabled: true
+    path: /api/agent/browser/relay
+    pairing-ttl-seconds: 300
+    rpc-timeout-seconds: 60
+
 #长期记忆 策展有界、单外部 Provider、无 curated 向量
 memory:
   ltm:

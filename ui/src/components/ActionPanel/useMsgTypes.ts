@@ -143,7 +143,7 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
     const useCode = messageType === 'code' && !useFile;
 
     return {
-      useBrowser: messageType === 'browser',
+      useBrowser: messageType === 'browser' || messageType === 'browser_viewport',
       useCode,
       useHtml,
       useGenUi,

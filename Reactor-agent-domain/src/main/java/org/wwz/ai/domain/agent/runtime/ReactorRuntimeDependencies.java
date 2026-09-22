@@ -3,6 +3,7 @@ package org.wwz.ai.domain.agent.runtime;
 import lombok.Builder;
 import lombok.Value;
 import org.springframework.core.env.Environment;
+import org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort;
 import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteStreamPort;
@@ -47,6 +48,9 @@ public class ReactorRuntimeDependencies {
     RemoteStreamPort remoteStreamPort;
 
     FileArtifactPort fileArtifactPort;
+
+    /** 可选：用户本机浏览器遥控 */
+    BrowserRelayPort browserRelayPort;
 
     //预留给之后并发调用llm
     Executor llmExecutor;
@@ -114,6 +118,10 @@ public class ReactorRuntimeDependencies {
 
     public FileArtifactPort requireFileArtifactPort() {
         return Objects.requireNonNull(fileArtifactPort, "FileArtifactPort must not be null");
+    }
+
+    public BrowserRelayPort getOptionalBrowserRelayPort() {
+        return browserRelayPort;
     }
 
     public Executor requireLlmExecutor() {

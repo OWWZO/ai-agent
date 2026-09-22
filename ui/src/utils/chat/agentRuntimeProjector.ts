@@ -234,6 +234,7 @@ function isToolishTask(task: CHAT.Task): boolean {
     type === "ask_user_question" ||
     type === "plan_approval" ||
     type === "browser" ||
+    type === "browser_viewport" ||
     type === "code" ||
     type === "html" ||
     type === "markdown" ||

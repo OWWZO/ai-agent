@@ -1850,6 +1850,7 @@ export const handleTaskData = (
     "session_tasks",
     "user_brief",
     "browser",
+    "browser_viewport",
     "code",
     "html",
     "file",

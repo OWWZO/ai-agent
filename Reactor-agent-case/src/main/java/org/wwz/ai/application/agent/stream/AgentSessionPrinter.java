@@ -186,6 +186,7 @@ public class AgentSessionPrinter implements Printer {
                 case "llm_retry":
                 case "context_usage":
                 case "browser":
+                case "browser_viewport":
                 case "code":
                 case "html":
                 case "markdown":

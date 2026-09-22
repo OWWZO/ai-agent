@@ -461,7 +461,7 @@ mvn -pl Reactor-agent-app -am package '-Dmaven.test.skip=true'
 java -jar Reactor-agent-app/target/Reactor-agent-app.jar
 ```
 
-Backend 默认监听 `http://127.0.0.1:8100`。健康检查：
+Backend 默认监听 `http://127.0.0.1:8100`。浏览器遥控扩展连接 `ws://127.0.0.1:8100/api/agent/browser/relay`；生产 Nginx 需为该路径转发 `Upgrade` / `Connection` 头。健康检查：
 
 ```bash
 curl http://127.0.0.1:8100/web/health

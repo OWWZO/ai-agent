@@ -2,6 +2,7 @@ package org.wwz.ai.domain.agent.runtime.tool.factory;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
@@ -61,6 +62,32 @@ import org.wwz.ai.domain.agent.runtime.tool.common.canvas.GetHtmlCanvasGuideTool
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.ListUiComponentsTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.MemoryTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.SessionSearchTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserBackTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserClickTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserFillTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserFindTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserFocusTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserDblClickTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserCheckTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserUncheckTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserDragTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserGetTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserExtractTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserHtmlTreeTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserAutoScrollTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserNetworkTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserFramesTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserHoverTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserKeysTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserNavigateTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserScreenshotTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserScrollTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserSelectTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserSiteTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserSnapshotTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserTabsTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserTypeTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserWaitTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.WebFetchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.WebSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.social.RedditTool;
@@ -190,6 +217,7 @@ public class AgentToolCollectionFactory {
             if (workspaceService.isEnabled()) {
                 registerWorkspaceTools(toolCollection, agentContext);
             }
+            registerBrowserTools(toolCollection, agentContext, request);
 
             List<String> agentToolList = parseToolNames(reactorConfig.getMultiAgentToolListMap()
                             .getOrDefault("default", "search,web_fetch,web_search,code_execution,docgen,docread,dataprep,canvas,image_generation,data_analysis")
@@ -546,6 +574,42 @@ public class AgentToolCollectionFactory {
 
         SqlQueryTool sqlQueryTool = new SqlQueryTool();
         addTool(toolCollection, sqlQueryTool, agentContext, SqlQueryTool::setAgentContext);
+    }
+
+    private void registerBrowserTools(ToolCollection toolCollection, AgentContext agentContext, AgentRequest request) {
+        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
+            return;
+        }
+        var port = agentContext.getRuntimeDependencies().getOptionalBrowserRelayPort();
+        if (port == null || request == null || StringUtils.isBlank(request.getVisitorId()) || !port.isOnline(request.getVisitorId())) {
+            return;
+        }
+        addTool(toolCollection, new BrowserTabsTool(), agentContext, BrowserTabsTool::setAgentContext);
+        addTool(toolCollection, new BrowserNavigateTool(), agentContext, BrowserNavigateTool::setAgentContext);
+        addTool(toolCollection, new BrowserSnapshotTool(), agentContext, BrowserSnapshotTool::setAgentContext);
+        addTool(toolCollection, new BrowserClickTool(), agentContext, BrowserClickTool::setAgentContext);
+        addTool(toolCollection, new BrowserTypeTool(), agentContext, BrowserTypeTool::setAgentContext);
+        addTool(toolCollection, new BrowserScrollTool(), agentContext, BrowserScrollTool::setAgentContext);
+        addTool(toolCollection, new BrowserScreenshotTool(), agentContext, BrowserScreenshotTool::setAgentContext);
+        addTool(toolCollection, new BrowserWaitTool(), agentContext, BrowserWaitTool::setAgentContext);
+        addTool(toolCollection, new BrowserBackTool(), agentContext, BrowserBackTool::setAgentContext);
+        addTool(toolCollection, new BrowserHoverTool(), agentContext, BrowserHoverTool::setAgentContext);
+        addTool(toolCollection, new BrowserFillTool(), agentContext, BrowserFillTool::setAgentContext);
+        addTool(toolCollection, new BrowserSelectTool(), agentContext, BrowserSelectTool::setAgentContext);
+        addTool(toolCollection, new BrowserKeysTool(), agentContext, BrowserKeysTool::setAgentContext);
+        addTool(toolCollection, new BrowserFindTool(), agentContext, BrowserFindTool::setAgentContext);
+        addTool(toolCollection, new BrowserFocusTool(), agentContext, BrowserFocusTool::setAgentContext);
+        addTool(toolCollection, new BrowserDblClickTool(), agentContext, BrowserDblClickTool::setAgentContext);
+        addTool(toolCollection, new BrowserCheckTool(), agentContext, BrowserCheckTool::setAgentContext);
+        addTool(toolCollection, new BrowserUncheckTool(), agentContext, BrowserUncheckTool::setAgentContext);
+        addTool(toolCollection, new BrowserDragTool(), agentContext, BrowserDragTool::setAgentContext);
+        addTool(toolCollection, new BrowserGetTool(), agentContext, BrowserGetTool::setAgentContext);
+        addTool(toolCollection, new BrowserExtractTool(), agentContext, BrowserExtractTool::setAgentContext);
+        addTool(toolCollection, new BrowserHtmlTreeTool(), agentContext, BrowserHtmlTreeTool::setAgentContext);
+        addTool(toolCollection, new BrowserAutoScrollTool(), agentContext, BrowserAutoScrollTool::setAgentContext);
+        addTool(toolCollection, new BrowserNetworkTool(), agentContext, BrowserNetworkTool::setAgentContext);
+        addTool(toolCollection, new BrowserFramesTool(), agentContext, BrowserFramesTool::setAgentContext);
+        addTool(toolCollection, new BrowserSiteTool(), agentContext, BrowserSiteTool::setAgentContext);
     }
 
     /** 统一完成工具上下文绑定和注册，避免遗漏其中任一步骤。 */

@@ -240,6 +240,7 @@ public class BaseAgentResponseHandler {
             case "llm_retry":
             case "subagent_progress":
             case "browser":
+            case "browser_viewport":
             case "code":
             case "html":
             case "markdown":

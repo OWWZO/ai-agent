@@ -64,6 +64,11 @@ public class AgentContext {
     String sessionId;
 
     /**
+     * 匿名访客 ID。浏览器遥控按 visitorId 索引本机扩展连接，不是 sessionId。
+     */
+    String visitorId;
+
+    /**
      * 用户原始查询语句
      * 用途：智能体的核心输入，是所有任务拆解、工具调用的源头；
      * 示例："帮我分析这款产品的市场竞争力并生成报告"
@@ -636,6 +641,7 @@ public class AgentContext {
         return AgentContext.builder()
                 .requestId(requestId)
                 .sessionId(sessionId)
+                .visitorId(visitorId)
                 .query(query)
                 .task(parallelTask)
                 .printer(printer)

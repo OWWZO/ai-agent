@@ -444,6 +444,98 @@ public class AgentToolCollectionFactoryTest {
         Assert.assertNotNull(ctx.getWorkspaceRoot());
     }
 
+    @Test
+    public void shouldRegisterBrowserToolsWhenRelayOnline() {
+        AgentToolCollectionFactory factory = newFactory(
+                buildReactorConfig(),
+                Mockito.mock(McpToolExecutor.class),
+                Mockito.mock(DefaultSkillRegistry.class),
+                SkillRuntimeOptions.builder().enabled(false).build(),
+                disabledWorkspaceService(),
+                disabledWorkspaceOptions()
+        );
+        org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort port =
+                Mockito.mock(org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort.class);
+        Mockito.when(port.isOnline("visitor-1")).thenReturn(true);
+        AgentContext ctx = buildAgentContext();
+        ctx.setVisitorId("visitor-1");
+        ctx.setRuntimeDependencies(ctx.getRuntimeDependencies().toBuilder().browserRelayPort(port).build());
+        AgentRequest request = AgentRequest.builder()
+                .requestId("req-001")
+                .sessionId("session-001")
+                .visitorId("visitor-1")
+                .query("打开已登录页面")
+                .build();
+
+        ToolCollection toolCollection = factory.buildForReact(ctx, request);
+
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("browser_navigate"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("browser_snapshot"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("browser_click"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("browser_find"));
+         Assert.assertTrue(toolCollection.getToolMap().containsKey("browser_get"));
+         Assert.assertTrue(toolCollection.getToolMap().containsKey("browser_extract"));
+         Assert.assertTrue(toolCollection.getToolMap().containsKey("browser_site"));
+    }
+
+    @Test
+    public void shouldNotRegisterBrowserToolsWhenRelayOffline() {
+        AgentToolCollectionFactory factory = newFactory(
+                buildReactorConfig(),
+                Mockito.mock(McpToolExecutor.class),
+                Mockito.mock(DefaultSkillRegistry.class),
+                SkillRuntimeOptions.builder().enabled(false).build(),
+                disabledWorkspaceService(),
+                disabledWorkspaceOptions()
+        );
+        org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort port =
+                Mockito.mock(org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort.class);
+        Mockito.when(port.isOnline("visitor-1")).thenReturn(false);
+        AgentContext ctx = buildAgentContext();
+        ctx.setVisitorId("visitor-1");
+        ctx.setRuntimeDependencies(ctx.getRuntimeDependencies().toBuilder().browserRelayPort(port).build());
+        AgentRequest request = AgentRequest.builder()
+                .requestId("req-001")
+                .sessionId("session-001")
+                .visitorId("visitor-1")
+                .query("打开已登录页面")
+                .build();
+
+        ToolCollection toolCollection = factory.buildForReact(ctx, request);
+
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("browser_navigate"));
+        Assert.assertFalse(toolCollection.getToolMap().keySet().stream().anyMatch(name -> name.startsWith("browser_")));
+    }
+
+    @Test
+    public void shouldNotRegisterBrowserToolsForDataAgentEvenWhenOnline() {
+        AgentToolCollectionFactory factory = newFactory(
+                buildReactorConfig(),
+                Mockito.mock(McpToolExecutor.class),
+                Mockito.mock(DefaultSkillRegistry.class),
+                SkillRuntimeOptions.builder().enabled(false).build(),
+                disabledWorkspaceService(),
+                disabledWorkspaceOptions()
+        );
+        org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort port =
+                Mockito.mock(org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort.class);
+        Mockito.when(port.isOnline("visitor-1")).thenReturn(true);
+        AgentContext ctx = buildAgentContext();
+        ctx.setVisitorId("visitor-1");
+        ctx.setRuntimeDependencies(ctx.getRuntimeDependencies().toBuilder().browserRelayPort(port).build());
+        AgentRequest request = AgentRequest.builder()
+                .requestId("req-001")
+                .sessionId("session-001")
+                .visitorId("visitor-1")
+                .outputStyle("dataAgent")
+                .query("问数")
+                .build();
+
+        ToolCollection toolCollection = factory.buildForReact(ctx, request);
+
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("browser_navigate"));
+    }
+
     private AgentToolCollectionFactory newFactory(ReactorConfig reactorConfig,
                                                   McpToolExecutor mcpToolExecutor,
                                                   org.wwz.ai.domain.agent.runtime.tool.skill.SkillRegistry skillRegistry,

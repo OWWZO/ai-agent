@@ -47,7 +47,10 @@ public class VisitorIdentityFilter extends OncePerRequestFilter {
                 // ask-user answer / resume / cancel 需要访客身份做归属与 claim
                 || StringUtils.startsWith(path, "/api/agent/ask-user")
                 // plan-approval approve / reject / resume / cancel 同上
-                || StringUtils.startsWith(path, "/api/agent/plan-approval"));
+                || StringUtils.startsWith(path, "/api/agent/plan-approval")
+                || StringUtils.startsWith(path, "/api/agent/browser/pairing")
+                || StringUtils.startsWith(path, "/api/agent/browser/status")
+                || StringUtils.startsWith(path, "/api/agent/browser/disconnect"));
     }
 
     /**

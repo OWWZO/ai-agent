@@ -31,6 +31,17 @@ public class BaseFilterConfig {
 	public FilterRegistrationBean<CorsFilter> corsFilter(AgentExecutorProperties properties) {
 		// 仅在配置提供允许来源时启用凭证；否则保留通配来源的无凭证跨域行为。
 		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+
+		CorsConfiguration browser = new CorsConfiguration();
+		if (CollectionUtils.isNotEmpty(properties.getVisitorCookie().getAllowedOrigins())) {
+			browser.setAllowCredentials(true);
+			browser.setAllowedOrigins(properties.getVisitorCookie().getAllowedOrigins());
+		}
+		browser.addAllowedOriginPattern("chrome-extension://*");
+		browser.addAllowedHeader("*");
+		browser.addAllowedMethod("*");
+		source.registerCorsConfiguration("/api/agent/browser/**", browser);
+
 		CorsConfiguration config = new CorsConfiguration();
 		if (CollectionUtils.isNotEmpty(properties.getVisitorCookie().getAllowedOrigins())) {
 			config.setAllowCredentials(true);

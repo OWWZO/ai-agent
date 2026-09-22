@@ -264,6 +264,20 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
     return fileView("excel", primaryFile, missingReason);
   }
 
+  if (taskItem.messageType === "browser_viewport") {
+    if (primaryFile) {
+      return fileView("image", primaryFile, missingReason);
+    }
+    const url = typeof resolvedResultMap.url === "string" ? resolvedResultMap.url : "";
+    const title = typeof resolvedResultMap.title === "string" ? resolvedResultMap.title : "";
+    const tree = typeof resolvedResultMap.tree === "string" ? resolvedResultMap.tree : markDownContent;
+    return {
+      type: "markdown",
+      content: [title, url, tree].filter(Boolean).join("\n\n"),
+      isStreaming: false,
+    };
+  }
+
   if (useImage) {
     return fileView("image", primaryFile, missingReason);
   }

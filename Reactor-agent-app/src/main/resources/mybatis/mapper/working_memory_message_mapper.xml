@@ -197,9 +197,9 @@
               OR LTRIM(COALESCE(m.content, '')) LIKE '[COMPACTION SUMMARY]%'
               OR LTRIM(COALESCE(m.content, '')) LIKE '[WM_COMPACTION_SUMMARY]%'
           )
-          AND (t.turn_seq < anchor_turn.turn_seq
-               OR (t.turn_seq = anchor_turn.turn_seq AND m.seq_no < anchor.seq_no)
-               OR (t.turn_seq = anchor_turn.turn_seq AND m.seq_no = anchor.seq_no AND m.id < anchor.id))
+          AND (t.turn_seq &lt; anchor_turn.turn_seq
+               OR (t.turn_seq = anchor_turn.turn_seq AND m.seq_no &lt; anchor.seq_no)
+               OR (t.turn_seq = anchor_turn.turn_seq AND m.seq_no = anchor.seq_no AND m.id &lt; anchor.id))
         ORDER BY t.turn_seq DESC, m.seq_no DESC, m.id DESC
         LIMIT #{limit}
     </select>
