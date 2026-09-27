@@ -28,6 +28,10 @@ public class SubAgentDefinitionRespVO {
 
     private List<String> disallowedTools;
 
+    private String toolPolicyMode;
+
+    private List<String> deferredTools;
+
     private Integer maxSteps;
 
     private Integer status;

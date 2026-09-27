@@ -36,7 +36,7 @@ public class SkillDefinition {
     private Map<String, SkillScriptDefinition> scripts = new LinkedHashMap<>();
 
     /**
-     * 构建脚本摘要，便于直接拼接到 skill_tool 返回结果里。
+     * 构建脚本摘要，便于直接拼接到 skill_view 返回结果里。
      */
     public List<String> buildScriptSummaries() {
         if (scripts == null || scripts.isEmpty()) {

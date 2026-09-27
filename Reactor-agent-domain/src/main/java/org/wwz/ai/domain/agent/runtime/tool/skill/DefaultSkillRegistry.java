@@ -7,29 +7,44 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 默认 skill 注册中心实现，负责扫描目录、缓存结果并做路径校验。
+ * Skill 注册中心 / Catalog：扫描时只缓存 metadata 与文件清单。
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class DefaultSkillRegistry implements SkillRegistry {
+public class DefaultSkillRegistry implements SkillRegistry, SkillCatalog {
+
+    private static final Map<String, String> KIND_BY_DIR = Map.of(
+            "references", "reference",
+            "templates", "template",
+            "scripts", "script",
+            "assets", "asset",
+            "examples", "example"
+    );
 
     private final SkillRuntimeOptions skillRuntimeOptions;
     private final SkillMarkdownParser skillMarkdownParser;
     private final SkillScriptDiscoverer skillScriptDiscoverer;
     private final SkillPathGuard skillPathGuard;
 
-    private volatile Map<String, SkillDefinition> skillCache = Collections.emptyMap();
+    private volatile Map<String, SkillDescriptor> byId = Collections.emptyMap();
+    private volatile Map<String, SkillDescriptor> byUniqueName = Collections.emptyMap();
+    private volatile Map<String, List<SkillDescriptor>> byName = Collections.emptyMap();
+    private volatile List<SkillDescriptor> descriptors = Collections.emptyList();
     private volatile List<Path> skillRootDirectories = Collections.emptyList();
+    private final AtomicLong catalogVersion = new AtomicLong(0);
 
     @Override
     public synchronized void refresh() {
@@ -37,18 +52,26 @@ public class DefaultSkillRegistry implements SkillRegistry {
         this.skillRootDirectories = Collections.unmodifiableList(resolvedRootDirectories);
 
         if (!skillRuntimeOptions.isEnabled()) {
-            this.skillCache = Collections.emptyMap();
+            replaceSnapshot(List.of(), Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap());
             log.info("skill registry disabled, skip loading skills");
             return;
         }
 
-        // 先构造完整的新快照，最后一次性替换 volatile 缓存，读取方不会看到半成品注册结果。
-        Map<String, SkillDefinition> loadedSkills = new LinkedHashMap<>();
+        List<SkillDescriptor> loaded = new ArrayList<>();
         for (Path rootDirectory : resolvedRootDirectories) {
-            loadSkillsFromRoot(rootDirectory, loadedSkills);
+            loadSkillsFromRoot(rootDirectory, loaded);
         }
-        this.skillCache = Collections.unmodifiableMap(loadedSkills);
-        log.info("skill registry refreshed, roots={}, skills={}", skillRootDirectories, loadedSkills.keySet());
+        Map<String, SkillDescriptor> idIndex = new LinkedHashMap<>();
+        Map<String, List<SkillDescriptor>> nameIndex = new LinkedHashMap<>();
+        Map<String, SkillDescriptor> uniqueNameIndex = new LinkedHashMap<>();
+        for (SkillDescriptor descriptor : loaded) {
+            idIndex.put(descriptor.getRef().id(), descriptor);
+            nameIndex.computeIfAbsent(descriptor.getName(), key -> new ArrayList<>()).add(descriptor);
+            uniqueNameIndex.putIfAbsent(descriptor.getName(), descriptor);
+        }
+        replaceSnapshot(loaded, idIndex, nameIndex, uniqueNameIndex);
+        log.info("skill catalog refreshed, version={}, roots={}, skills={}",
+                catalogVersion.get(), skillRootDirectories, uniqueNameIndex.keySet());
     }
 
     @Override
@@ -58,29 +81,28 @@ public class DefaultSkillRegistry implements SkillRegistry {
 
     @Override
     public Collection<SkillDefinition> listSkills() {
-        return skillCache.values();
+        List<SkillDefinition> definitions = new ArrayList<>();
+        for (SkillDescriptor descriptor : byUniqueName.values()) {
+            definitions.add(toDefinition(descriptor));
+        }
+        return definitions;
     }
 
     @Override
     public Optional<SkillDefinition> findSkill(String skillName) {
-        if (skillName == null || skillName.isBlank()) {
-            return Optional.empty();
-        }
-        return Optional.ofNullable(skillCache.get(skillName.trim()));
+        return find(skillName).map(this::toDefinition);
     }
 
     @Override
     public SkillDefinition getRequiredSkill(String skillName) {
-        return findSkill(skillName)
-                .orElseThrow(() -> new SkillLoadException("Skill not found: " + skillName));
+        return toDefinition(getRequired(skillName));
     }
 
     @Override
     public Path assertPathAllowed(Path candidatePath) {
         Path normalizedCandidatePath = candidatePath.toAbsolutePath().normalize();
-        // 先按 skill 所属根匹配，再交给 guard 做最终边界校验，防止 ../ 或符号路径绕出目录。
-        for (SkillDefinition skillDefinition : skillCache.values()) {
-            Path skillBasePath = skillDefinition.getBasePath().toAbsolutePath().normalize();
+        for (SkillDescriptor descriptor : descriptors) {
+            Path skillBasePath = descriptor.getBasePath().toAbsolutePath().normalize();
             if (normalizedCandidatePath.startsWith(skillBasePath)) {
                 return skillPathGuard.ensureUnderRoot(skillBasePath, normalizedCandidatePath);
             }
@@ -90,18 +112,105 @@ public class DefaultSkillRegistry implements SkillRegistry {
 
     @Override
     public String buildSkillDescription() {
-        if (skillCache.isEmpty()) {
+        if (descriptors.isEmpty()) {
             return "当前没有可用 skill。";
         }
-        StringBuilder descriptionBuilder = new StringBuilder();
-        descriptionBuilder.append("当前可用 skills：");
-        for (SkillDefinition skillDefinition : skillCache.values()) {
-            descriptionBuilder.append("\n- ")
-                    .append(skillDefinition.getName())
-                    .append(": ")
-                    .append(skillDefinition.getDescription());
+        return "当前可用 skills 见 system prompt 中的 <available_skills>。使用 skill_view 加载正文。";
+    }
+
+    @Override
+    public List<SkillDescriptor> list() {
+        return descriptors;
+    }
+
+    @Override
+    public List<SkillSearchHit> search(SkillQuery query) {
+        return SkillCatalogSearch.search(descriptors, query);
+    }
+
+    @Override
+    public SkillRef resolve(String identifier) {
+        return getRequired(identifier).getRef();
+    }
+
+    @Override
+    public Optional<SkillDescriptor> find(String identifier) {
+        if (identifier == null || identifier.isBlank()) {
+            return Optional.empty();
         }
-        return descriptionBuilder.toString();
+        String trimmed = identifier.trim();
+        SkillDescriptor byExactId = byId.get(trimmed);
+        if (byExactId != null) {
+            return Optional.of(byExactId);
+        }
+        if (trimmed.contains("/")) {
+            String slashPath = trimmed.replace('\\', '/');
+            for (SkillDescriptor descriptor : descriptors) {
+                if (slashPath.equals(descriptor.getRef().relativePath())) {
+                    return Optional.of(descriptor);
+                }
+            }
+        }
+        if (trimmed.contains(":")) {
+            int colon = trimmed.indexOf(':');
+            String source = trimmed.substring(0, colon);
+            String rest = trimmed.substring(colon + 1);
+            if (!source.isBlank() && !rest.isBlank() && !rest.contains("\\") && rest.indexOf(':') < 0) {
+                for (SkillDescriptor descriptor : descriptors) {
+                    if (source.equals(descriptor.getSource())
+                            && (rest.equals(descriptor.getName()) || rest.equals(descriptor.getRef().relativePath()))) {
+                        return Optional.of(descriptor);
+                    }
+                }
+                String categorized = rest.replace(':', '/');
+                for (SkillDescriptor descriptor : descriptors) {
+                    if (categorized.equals(descriptor.getRef().relativePath())) {
+                        return Optional.of(descriptor);
+                    }
+                }
+            }
+        }
+        List<SkillDescriptor> sameName = byName.get(trimmed);
+        if (sameName != null && sameName.size() == 1) {
+            return Optional.of(sameName.get(0));
+        }
+        if (sameName != null && sameName.size() > 1) {
+            throw ambiguous(trimmed, sameName);
+        }
+        return Optional.empty();
+    }
+
+    @Override
+    public SkillDescriptor getRequired(String identifier) {
+        try {
+            return find(identifier).orElseThrow(() -> new SkillLoadException("Skill not found: " + identifier));
+        } catch (SkillLoadException e) {
+            throw e;
+        }
+    }
+
+    @Override
+    public String version() {
+        return String.valueOf(catalogVersion.get());
+    }
+
+    private void replaceSnapshot(List<SkillDescriptor> loaded,
+                                 Map<String, SkillDescriptor> idIndex,
+                                 Map<String, List<SkillDescriptor>> nameIndex,
+                                 Map<String, SkillDescriptor> uniqueNameIndex) {
+        this.descriptors = Collections.unmodifiableList(new ArrayList<>(loaded));
+        this.byId = Collections.unmodifiableMap(idIndex);
+        this.byName = unmodifiableNameIndex(nameIndex);
+        this.byUniqueName = Collections.unmodifiableMap(uniqueNameIndex);
+        catalogVersion.incrementAndGet();
+    }
+
+    private Map<String, List<SkillDescriptor>> unmodifiableNameIndex(Map<String, List<SkillDescriptor>> nameIndex) {
+        Map<String, List<SkillDescriptor>> copy = new LinkedHashMap<>();
+        for (Map.Entry<String, List<SkillDescriptor>> entry : nameIndex.entrySet()) {
+            copy.put(entry.getKey(), Collections.unmodifiableList(entry.getValue()));
+        }
+        return Collections.unmodifiableMap(copy);
     }
 
     private List<Path> resolveRootDirectories() {
@@ -128,22 +237,20 @@ public class DefaultSkillRegistry implements SkillRegistry {
         return true;
     }
 
-    private void loadSkillsFromRoot(Path rootDirectory, Map<String, SkillDefinition> loadedSkills) {
+    private void loadSkillsFromRoot(Path rootDirectory, List<SkillDescriptor> loadedSkills) {
         List<Path> skillDirectories = findSkillDirectories(rootDirectory);
         for (Path skillDirectory : skillDirectories) {
             try {
-                // SKILL.md 定义元数据，脚本发现器只补充可执行入口；任一 skill 失败都不污染其它已加载项。
-                SkillDefinition skillDefinition = skillMarkdownParser.parse(skillDirectory);
-                if (loadedSkills.containsKey(skillDefinition.getName())) {
-                    throw new SkillLoadException("duplicate skill name detected: " + skillDefinition.getName());
+                String relativePath = toRelativePath(rootDirectory, skillDirectory);
+                SkillDescriptor descriptor = skillMarkdownParser.parseMetadata(
+                        skillDirectory, SkillRef.SOURCE_BUILTIN, relativePath);
+                if (!matchesCurrentPlatform(descriptor.getFrontMatter())) {
+                    log.info("skip skill {} on current platform", descriptor.getName());
+                    continue;
                 }
-                skillDefinition.setScripts(skillScriptDiscoverer.discover(skillDirectory));
-                loadedSkills.put(skillDefinition.getName(), skillDefinition);
+                descriptor.setFiles(scanLinkedFiles(skillDirectory));
+                loadedSkills.add(descriptor);
             } catch (SkillLoadException e) {
-                // 重名冲突必须显式抛出，避免注册结果不确定。
-                if (e.getMessage() != null && e.getMessage().startsWith("duplicate skill name detected")) {
-                    throw e;
-                }
                 log.warn("skip invalid skill directory {}, reason: {}", skillDirectory, e.getMessage());
             }
         }
@@ -160,5 +267,107 @@ public class DefaultSkillRegistry implements SkillRegistry {
         } catch (IOException e) {
             throw new SkillLoadException("failed to scan skill root directory: " + rootDirectory, e);
         }
+    }
+
+    private List<SkillFileDescriptor> scanLinkedFiles(Path skillDirectory) {
+        Path base = skillDirectory.toAbsolutePath().normalize();
+        List<SkillFileDescriptor> files = new ArrayList<>();
+        try (var pathStream = Files.walk(base)) {
+            pathStream
+                    .filter(Files::isRegularFile)
+                    .filter(path -> !"SKILL.md".equals(path.getFileName().toString()))
+                    .sorted(Comparator.comparing(path -> path.toAbsolutePath().normalize().toString()))
+                    .forEach(path -> {
+                        try {
+                            Path allowed = skillPathGuard.ensureUnderRoot(base, path);
+                            String relative = base.relativize(allowed).toString().replace('\\', '/');
+                            files.add(new SkillFileDescriptor(
+                                    relative,
+                                    kindOf(relative),
+                                    "",
+                                    Files.size(allowed)));
+                        } catch (Exception e) {
+                            log.debug("skip skill file {}: {}", path, e.getMessage());
+                        }
+                    });
+        } catch (IOException e) {
+            throw new SkillLoadException("failed to scan skill files under " + skillDirectory, e);
+        }
+        return files;
+    }
+
+    private String kindOf(String relativePath) {
+        int slash = relativePath.indexOf('/');
+        String dir = slash < 0 ? "" : relativePath.substring(0, slash);
+        return KIND_BY_DIR.getOrDefault(dir, "other");
+    }
+
+    private String toRelativePath(Path rootDirectory, Path skillDirectory) {
+        return rootDirectory.toAbsolutePath().normalize()
+                .relativize(skillDirectory.toAbsolutePath().normalize())
+                .toString()
+                .replace('\\', '/');
+    }
+
+    private SkillDefinition toDefinition(SkillDescriptor descriptor) {
+        return SkillDefinition.builder()
+                .name(descriptor.getName())
+                .description(descriptor.getDescription())
+                .basePath(descriptor.getBasePath())
+                .content(null)
+                .frontMatter(descriptor.getFrontMatter())
+                .scripts(Collections.emptyMap())
+                .build();
+    }
+
+    private SkillLoadException ambiguous(String identifier, List<SkillDescriptor> matches) {
+        List<String> ids = matches.stream().map(item -> item.getRef().id()).toList();
+        return new SkillLoadException(
+                "Ambiguous skill name '" + identifier + "': " + matches.size()
+                        + " skills match. Use a qualified id such as " + ids.get(0)
+                        + ". matches=" + ids);
+    }
+
+    static boolean matchesCurrentPlatform(Map<String, Object> frontMatter) {
+        if (frontMatter == null) {
+            return true;
+        }
+        Object raw = frontMatter.get("platforms");
+        if (raw == null) {
+            return true;
+        }
+        List<String> platforms = new ArrayList<>();
+        if (raw instanceof Collection<?> collection) {
+            for (Object item : collection) {
+                if (item != null && !String.valueOf(item).isBlank()) {
+                    platforms.add(String.valueOf(item).trim().toLowerCase(Locale.ROOT));
+                }
+            }
+        } else {
+            String text = String.valueOf(raw).trim();
+            if (!text.isBlank()) {
+                for (String part : text.split("[,\\s]+")) {
+                    if (!part.isBlank()) {
+                        platforms.add(part.trim().toLowerCase(Locale.ROOT));
+                    }
+                }
+            }
+        }
+        if (platforms.isEmpty()) {
+            return true;
+        }
+        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        for (String platform : platforms) {
+            if (platform.contains("win") && os.contains("win")) {
+                return true;
+            }
+            if (platform.contains("linux") && os.contains("linux")) {
+                return true;
+            }
+            if ((platform.contains("mac") || platform.contains("darwin")) && os.contains("mac")) {
+                return true;
+            }
+        }
+        return false;
     }
 }

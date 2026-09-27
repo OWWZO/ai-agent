@@ -44,6 +44,16 @@
         <result column="deleted" property="deleted"/>
     </resultMap>
 
+    <sql id="llmInvocationColumns">
+        id, run_id, invocation_seq, agent_name, step_no, call_kind, streaming, model_name,
+        response_text, reasoning_content, tool_call_count, prompt_tokens, completion_tokens, total_tokens,
+        cached_prompt_tokens, prompt_text_tokens, prompt_audio_tokens, prompt_image_tokens,
+        completion_text_tokens, completion_audio_tokens, reasoning_tokens, system_fingerprint,
+        est_total_tokens, est_system_tokens, est_message_tokens, est_tool_tokens,
+        message_count, tool_count, cache_status, cache_risk_flags, finish_reason, status, error_msg,
+        started_at, finished_at, duration_ms, create_time, update_time, deleted
+    </sql>
+
     <insert id="insertLlmInvocation" parameterType="org.wwz.ai.domain.agent.ledger.entity.LlmInvocation" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_agent_llm_invocation (
             run_id, invocation_seq, agent_name, step_no, call_kind, streaming, model_name, response_text, reasoning_content,
@@ -97,7 +107,7 @@
     </update>
 
     <select id="queryByRunId" resultMap="LlmInvocationMap">
-        SELECT *
+        SELECT <include refid="llmInvocationColumns"/>
         FROM ai_agent_llm_invocation
         WHERE run_id = #{runId}
           AND deleted = 0
@@ -105,7 +115,7 @@
     </select>
 
     <select id="queryByRunIds" resultMap="LlmInvocationMap">
-        SELECT *
+        SELECT <include refid="llmInvocationColumns"/>
         FROM ai_agent_llm_invocation
         WHERE deleted = 0
           AND run_id IN

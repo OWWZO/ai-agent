@@ -456,6 +456,11 @@ public final class ExecutionLedgerFixtureFactory {
         }
 
         @Override
+        public DialogueRun querySummaryByRequestId(String requestId) {
+            return queryByRequestId(requestId);
+        }
+
+        @Override
         public List<DialogueRunView> queryRecentBySessionId(String sessionId, int limit) {
             return store.runs.values().stream()
                     .filter(item -> item.getDeleted() == 0 && item.getSessionId().equals(sessionId))
@@ -473,6 +478,23 @@ public final class ExecutionLedgerFixtureFactory {
                     .sorted(Comparator.comparing(DialogueRun::getCreateTime)
                             .thenComparing(DialogueRun::getId))
                     .skip(offset)
+                    .limit(limit)
+                    .map(ExecutionLedgerFixtureFactory::toRunView)
+                    .toList();
+        }
+
+        @Override
+        public List<DialogueRunView> queryBySessionIdAfter(String sessionId,
+                                                            LocalDateTime afterCreateTime,
+                                                            Long afterId,
+                                                            int limit) {
+            return store.runs.values().stream()
+                    .filter(item -> item.getDeleted() == 0 && item.getSessionId().equals(sessionId))
+                    .filter(item -> afterCreateTime == null || afterId == null
+                            || item.getCreateTime().isAfter(afterCreateTime)
+                            || (item.getCreateTime().isEqual(afterCreateTime) && item.getId() > afterId))
+                    .sorted(Comparator.comparing(DialogueRun::getCreateTime)
+                            .thenComparing(DialogueRun::getId))
                     .limit(limit)
                     .map(ExecutionLedgerFixtureFactory::toRunView)
                     .toList();
@@ -532,9 +554,28 @@ public final class ExecutionLedgerFixtureFactory {
         }
 
         @Override
+        public DialogueSession querySessionOwnership(String sessionId) {
+            DialogueSession session = queryBySessionId(sessionId);
+            if (session == null) {
+                return null;
+            }
+            return DialogueSession.builder()
+                    .id(session.getId())
+                    .sessionId(session.getSessionId())
+                    .visitorId(session.getVisitorId())
+                    .deleted(session.getDeleted())
+                    .build();
+        }
+
+        @Override
         public DialogueSessionView querySessionView(String sessionId) {
             DialogueSession session = queryBySessionId(sessionId);
             return session == null ? null : toSessionView(session);
+        }
+
+        @Override
+        public DialogueSessionView querySessionHistoryView(String sessionId) {
+            return querySessionView(sessionId);
         }
 
         @Override

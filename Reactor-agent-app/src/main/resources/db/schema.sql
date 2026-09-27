@@ -103,6 +103,8 @@ CREATE TABLE IF NOT EXISTS ai_agent_sub_agent_definition (
     system_prompt           MEDIUMTEXT     NOT NULL COMMENT '子 Agent 系统提示词',
     allowed_tools_json      JSON           NULL COMMENT '允许工具名 JSON 数组；含 * 或空表示全部',
     disallowed_tools_json   JSON           NULL COMMENT '额外禁止工具名 JSON 数组',
+    tool_policy_mode        VARCHAR(16)    NOT NULL DEFAULT 'inherit' COMMENT '工具装配策略：inherit|custom',
+    deferred_tools_json     JSON           NULL COMMENT 'custom 模式下延迟加载的工具名 JSON 数组',
     max_steps               INT            NULL COMMENT '最大步数；NULL 沿用 React 配置',
     status                  TINYINT        NOT NULL DEFAULT 1 COMMENT '1=启用,0=禁用',
     create_time             DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -190,7 +192,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_dialogue_run (
     session_id              VARCHAR(64)    NOT NULL COMMENT '会话ID',
     visitor_id              VARCHAR(64)    NULL COMMENT '匿名访客ID',
     entry_agent             VARCHAR(32)    NOT NULL COMMENT '入口执行链 react /\r\n  plan_solve',
-    status                  TINYINT        NOT NULL DEFAULT 0 COMMENT '0=RUNNING,1=SUCCESS,2=FAILED,3=TIMEOUT,4=STOPPED',
+    status                  TINYINT        NOT NULL DEFAULT 0 COMMENT '0=RUNNING,1=SUCCESS,2=FAILED,3=TIMEOUT,4=STOPPED,5=WAITING_INPUT',
     query_text              MEDIUMTEXT     NULL COMMENT '用户原始问题',
     final_summary_text      MEDIUMTEXT     NULL COMMENT '最终总结文本',
     llm_call_count          INT            NOT NULL DEFAULT 0 COMMENT 'LLM 调用次数',
@@ -211,6 +213,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_dialogue_run (
     UNIQUE KEY uk_dialogue_run_uid (run_uid),
     UNIQUE KEY uk_dialogue_request_id (request_id),
     KEY idx_dialogue_session_create (session_id, deleted, create_time DESC),
+    KEY idx_dialogue_session_cursor (session_id, deleted, create_time, id),
     KEY idx_dialogue_run_visitor_create (visitor_id, deleted, create_time DESC),
     KEY idx_dialogue_entry_status (entry_agent, status, deleted, create_time DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='对话执行\r\n  总账表';

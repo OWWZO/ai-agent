@@ -3,6 +3,8 @@ package org.wwz.ai.domain.agent.runtime.tool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolCatalog;
+import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolEntry;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -58,12 +60,26 @@ public final class ToolIsolation {
      * 就地隔离 ToolCollection 内全部基础工具。
      */
     public static void bindAll(ToolCollection tools, AgentContext context) {
-        if (tools == null || context == null || tools.getToolMap() == null) {
+        if (tools == null || context == null) {
             return;
         }
         tools.setAgentContext(context);
-        for (Map.Entry<String, BaseTool> entry : tools.getToolMap().entrySet()) {
-            entry.setValue(bindToContext(entry.getValue(), context));
+        if (tools.getToolMap() != null) {
+            for (Map.Entry<String, BaseTool> entry : tools.getToolMap().entrySet()) {
+                entry.setValue(bindToContext(entry.getValue(), context));
+            }
+        }
+        DeferredToolCatalog catalog = tools.getDeferredToolCatalog();
+        if (catalog != null && catalog.size() > 0) {
+            List<DeferredToolEntry> rebound = new ArrayList<>();
+            for (DeferredToolEntry entry : catalog.listAll()) {
+                if (entry.isLocal()) {
+                    rebound.add(entry.withLocalTool(bindToContext(entry.getLocalTool(), context)));
+                } else {
+                    rebound.add(entry);
+                }
+            }
+            tools.setDeferredToolCatalog(new DeferredToolCatalog(rebound));
         }
     }
 

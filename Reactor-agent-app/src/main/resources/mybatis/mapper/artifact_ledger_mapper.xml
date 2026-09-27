@@ -25,6 +25,12 @@
         <result column="deleted" property="deleted"/>
     </resultMap>
 
+    <sql id="artifactRecordColumns">
+        id, run_id, request_id, tool_invocation_id, tool_call_id, artifact_role, visibility,
+        source_type, source_name, file_name, storage_key, download_url, preview_url, mime_type,
+        file_size, file_hash, metadata_json, create_time, update_time, deleted
+    </sql>
+
     <insert id="batchInsertArtifacts">
         INSERT IGNORE INTO ai_agent_artifact (
             run_id, request_id, tool_invocation_id, tool_call_id, artifact_role, visibility, source_type, source_name,
@@ -42,7 +48,7 @@
     </insert>
 
     <select id="queryByRunId" resultMap="ArtifactRecordMap">
-        SELECT *
+        SELECT <include refid="artifactRecordColumns"/>
         FROM ai_agent_artifact
         WHERE run_id = #{runId}
           AND deleted = 0
@@ -50,7 +56,7 @@
     </select>
 
     <select id="queryByRunIds" resultMap="ArtifactRecordMap">
-        SELECT *
+        SELECT <include refid="artifactRecordColumns"/>
         FROM ai_agent_artifact
         WHERE deleted = 0
           AND run_id IN
@@ -61,7 +67,7 @@
     </select>
 
     <select id="queryByToolInvocationIds" resultMap="ArtifactRecordMap">
-        SELECT *
+        SELECT <include refid="artifactRecordColumns"/>
         FROM ai_agent_artifact
         WHERE deleted = 0
           AND artifact_role = 'output'
@@ -74,7 +80,7 @@
     </select>
 
     <select id="queryInputArtifactsByRunIds" resultMap="ArtifactRecordMap">
-        SELECT *
+        SELECT <include refid="artifactRecordColumns"/>
         FROM ai_agent_artifact
         WHERE deleted = 0
           AND artifact_role = 'input'
@@ -87,7 +93,7 @@
     </select>
 
     <select id="queryOutputArtifactsByToolInvocationId" resultMap="ArtifactRecordMap">
-        SELECT *
+        SELECT <include refid="artifactRecordColumns"/>
         FROM ai_agent_artifact
         WHERE deleted = 0
           AND artifact_role = 'output'
@@ -97,7 +103,7 @@
     </select>
 
     <select id="queryOutputArtifactsByRunIdAndToolCallId" resultMap="ArtifactRecordMap">
-        SELECT *
+        SELECT <include refid="artifactRecordColumns"/>
         FROM ai_agent_artifact
         WHERE deleted = 0
           AND artifact_role = 'output'
@@ -108,7 +114,7 @@
     </select>
 
     <select id="queryOutputArtifactsByRequestIdAndToolCallId" resultMap="ArtifactRecordMap">
-        SELECT *
+        SELECT <include refid="artifactRecordColumns"/>
         FROM ai_agent_artifact
         WHERE deleted = 0
           AND artifact_role = 'output'
@@ -128,7 +134,10 @@
     </select>
 
     <select id="queryBatchHeadsBySourceName" resultMap="ArtifactRecordMap">
-        SELECT a.*
+        SELECT a.id, a.run_id, a.request_id, a.tool_invocation_id, a.tool_call_id,
+               a.artifact_role, a.visibility, a.source_type, a.source_name, a.file_name,
+               a.storage_key, a.download_url, a.preview_url, a.mime_type, a.file_size,
+               a.file_hash, a.metadata_json, a.create_time, a.update_time, a.deleted
         FROM ai_agent_artifact a
         INNER JOIN (
             SELECT MIN(id) AS head_id

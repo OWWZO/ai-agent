@@ -2,6 +2,7 @@ package org.wwz.ai.domain.agent.runtime.agent;
 
 import lombok.Data;
 import lombok.experimental.Accessors;
+import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolStructuredOutput;
 
 /**
@@ -13,10 +14,12 @@ public class ToolExecutionOutcome {
     private boolean success;
     private String toolResult;
     private String llmObservation;
+    private String ledgerObservation;
     private ToolStructuredOutput structuredOutput;
     private String errorMsg;
     private String base64Image;
     private String imageMimeType;
+    private ReplayTiming timing;
 
     static ToolExecutionOutcome success(String toolResult,
                                         String llmObservation,

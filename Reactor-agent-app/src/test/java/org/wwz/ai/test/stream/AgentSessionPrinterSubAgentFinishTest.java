@@ -10,12 +10,14 @@ import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
 import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentPrinter;
+import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
 
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.time.LocalDateTime;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -98,6 +100,36 @@ public class AgentSessionPrinterSubAgentFinishTest {
         AgentResponse response = (AgentResponse) stream.payloads.get(0);
         Assert.assertEquals("result", response.getMessageType());
         Assert.assertTrue(Boolean.TRUE.equals(response.getFinish()));
+    }
+
+    @Test
+    public void toolResultCarriesRuntimeTimingWithoutReplacingMessageTime() throws Exception {
+        CapturingStream stream = new CapturingStream();
+        AgentRequest request = new AgentRequest();
+        request.setRequestId("req-tool-timing");
+        AgentSessionPrinter printer = new AgentSessionPrinter(stream, request, 1);
+        LocalDateTime startedAt = LocalDateTime.of(2026, 9, 26, 12, 1, 0);
+        LocalDateTime finishedAt = startedAt.plusNanos(250_000_000L);
+
+        printer.send("tool-call-timing", "tool_result",
+                AgentResponse.ToolResult.builder()
+                        .toolName("read_tool")
+                        .toolCallId("tool-call-timing")
+                        .toolResult("ok")
+                        .build(),
+                Map.of("timing", ReplayTiming.builder()
+                        .startedAt(startedAt)
+                        .finishedAt(finishedAt)
+                        .durationMs(250L)
+                        .source(ReplayTiming.SOURCE_RUNTIME)
+                        .build()),
+                null,
+                true);
+
+        AgentResponse response = (AgentResponse) stream.payloads.get(0);
+        Assert.assertNotNull(response.getMessageTime());
+        Assert.assertEquals(ReplayTiming.SOURCE_RUNTIME, response.getTiming().getSource());
+        Assert.assertEquals("tool-call-timing", response.getToolResult().getToolCallId());
     }
 
     @Test

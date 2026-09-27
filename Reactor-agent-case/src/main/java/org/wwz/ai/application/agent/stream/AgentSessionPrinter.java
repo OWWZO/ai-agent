@@ -10,9 +10,11 @@ import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentPrinter;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
+import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -135,6 +137,12 @@ public class AgentSessionPrinter implements Printer {
             if (extraResultMap != null && !extraResultMap.isEmpty()) {
                 resultMap.putAll(extraResultMap);
             }
+            ReplayTiming timing = toReplayTiming(
+                    extraResultMap == null ? null : extraResultMap.get("timing"));
+            if (timing == null && message instanceof Map<?, ?> messageMap) {
+                timing = toReplayTiming(messageMap.get("timing"));
+            }
+            response.setTiming(timing);
 
             if (!StringUtils.isEmpty(digitalEmployee)) {
                 response.setDigitalEmployee(digitalEmployee);
@@ -333,5 +341,55 @@ public class AgentSessionPrinter implements Printer {
 
     private static boolean hasNonBlankTag(Object value) {
         return value != null && StringUtils.isNotBlank(String.valueOf(value));
+    }
+
+    private ReplayTiming toReplayTiming(Object value) {
+        if (value instanceof ReplayTiming timing) {
+            return timing;
+        }
+        if (!(value instanceof Map<?, ?> map)) {
+            return null;
+        }
+        LocalDateTime startedAt = toLocalDateTime(map.get("startedAt"));
+        LocalDateTime finishedAt = toLocalDateTime(map.get("finishedAt"));
+        Long durationMs = toLong(map.get("durationMs"));
+        String source = map.get("source") == null ? null : String.valueOf(map.get("source"));
+        if (startedAt == null && finishedAt == null && durationMs == null && StringUtils.isBlank(source)) {
+            return null;
+        }
+        return ReplayTiming.builder()
+                .startedAt(startedAt)
+                .finishedAt(finishedAt)
+                .durationMs(durationMs)
+                .source(source)
+                .build();
+    }
+
+    private LocalDateTime toLocalDateTime(Object value) {
+        if (value instanceof LocalDateTime localDateTime) {
+            return localDateTime;
+        }
+        if (value == null) {
+            return null;
+        }
+        try {
+            return LocalDateTime.parse(String.valueOf(value));
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private Long toLong(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Long.valueOf(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 }

@@ -24,6 +24,10 @@ public class SubAgentDefinitionUpsertCommand {
 
     private Set<String> disallowedTools;
 
+    private String toolPolicyMode;
+
+    private Set<String> deferredTools;
+
     private Integer maxSteps;
 
     /** 1=启用,0=禁用；null 时 create 默认 1 */

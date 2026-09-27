@@ -32,7 +32,7 @@ public class SkillScriptDefinition {
     private Map<String, Object> metadata = new LinkedHashMap<>();
 
     /**
-     * 构建脚本摘要，供 skill_tool 直接展示。
+     * 构建脚本摘要，供 skill_view 直接展示。
      */
     public String toSummaryLine() {
         String desc = (description == null || description.isBlank()) ? "未提供说明" : description;

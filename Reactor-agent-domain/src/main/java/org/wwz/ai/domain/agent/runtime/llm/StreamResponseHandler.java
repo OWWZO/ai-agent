@@ -12,11 +12,14 @@ import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
 import reactor.core.publisher.Flux;
 
 import reactor.core.Disposable;
 
 import javax.annotation.Resource;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -72,22 +75,33 @@ public class StreamResponseHandler {
      * 处理纯文本流式响应，同时返回接口 usage。
      */
     public CompletableFuture<StringStreamResult> handleStringStreamWithUsage(AgentContext context,
-                                                                             Flux<ChatResponse> flux,
-                                                                             String hiddenStartMarker,
-                                                                             boolean emitFinalSnapshot,
-                                                                             boolean pushToClient) {
-        return handleStringStreamWithUsage(context, flux, hiddenStartMarker, emitFinalSnapshot, pushToClient, 0);
+                                                                              Flux<ChatResponse> flux,
+                                                                              String hiddenStartMarker,
+                                                                              boolean emitFinalSnapshot,
+                                                                              boolean pushToClient) {
+        return handleStringStreamWithUsage(context, flux, hiddenStartMarker, emitFinalSnapshot, pushToClient, 0, null);
     }
 
     /**
      * 处理纯文本流式响应；timeoutSeconds>0 时到期取消上游订阅。
      */
     public CompletableFuture<StringStreamResult> handleStringStreamWithUsage(AgentContext context,
-                                                                             Flux<ChatResponse> flux,
-                                                                             String hiddenStartMarker,
-                                                                             boolean emitFinalSnapshot,
-                                                                             boolean pushToClient,
-                                                                             int timeoutSeconds) {
+                                                                              Flux<ChatResponse> flux,
+                                                                              String hiddenStartMarker,
+                                                                              boolean emitFinalSnapshot,
+                                                                              boolean pushToClient,
+                                                                              int timeoutSeconds) {
+        return handleStringStreamWithUsage(
+                context, flux, hiddenStartMarker, emitFinalSnapshot, pushToClient, timeoutSeconds, null);
+    }
+
+    public CompletableFuture<StringStreamResult> handleStringStreamWithUsage(AgentContext context,
+                                                                              Flux<ChatResponse> flux,
+                                                                              String hiddenStartMarker,
+                                                                              boolean emitFinalSnapshot,
+                                                                              boolean pushToClient,
+                                                                              int timeoutSeconds,
+                                                                              ReplayTiming runtimeTiming) {
         // 文本流按“累积完整响应 -> 过滤隐藏标记 -> 计算新增片段 -> 按间隔推送”处理；
         // future 只在 complete/error 收口，避免每个 chunk 都改变上游调用契约。
         CompletableFuture<StringStreamResult> future = new CompletableFuture<>();
@@ -119,7 +133,8 @@ public class StreamResponseHandler {
                         streamBuffer.append(visibleContent, emittedLength[0], visibleContent.length());
                         emittedLength[0] = visibleContent.length();
                         if (shouldFlush(tokenIndex[0], intervals[0], intervals[1])) {
-                            context.getPrinter().send(messageId, context.getStreamMessageType(), streamBuffer.toString(), false);
+                            sendStreamEvent(context, messageId, context.getStreamMessageType(),
+                                    streamBuffer.toString(), runtimeTiming, false);
                             streamBuffer.setLength(0);
                         }
                         tokenIndex[0]++;
@@ -135,14 +150,18 @@ public class StreamResponseHandler {
                 }
                 // onComplete 负责冲刷最后不足一个 interval 的增量，并发送可选的最终快照。
                 if (pushToClient && messageId != null && streamBuffer.length() > 0) {
-                    context.getPrinter().send(messageId, context.getStreamMessageType(), streamBuffer.toString(), false);
+                    sendStreamEvent(context, messageId, context.getStreamMessageType(),
+                            streamBuffer.toString(), runtimeTiming, false);
                 }
                 if (pushToClient && messageId != null && emitFinalSnapshot) {
                     String visibleFinalContent = extractVisibleContent(allContent.toString(), hiddenStartMarker).trim();
                     if (StringUtils.isNotBlank(visibleFinalContent)) {
-                        context.getPrinter().send(messageId, context.getStreamMessageType(), visibleFinalContent, true);
+                        completeRuntimeTiming(runtimeTiming);
+                        sendStreamEvent(context, messageId, context.getStreamMessageType(),
+                                visibleFinalContent, runtimeTiming, true);
                     }
                 }
+                completeRuntimeTiming(runtimeTiming);
                 String finalContent = allContent.toString().trim();
                 if (finalContent.isEmpty()) {
                     future.completeExceptionally(new IllegalArgumentException("Empty response from streaming LLM"));
@@ -186,6 +205,15 @@ public class StreamResponseHandler {
                                                                         long startTimeMs,
                                                                         boolean pushToClient,
                                                                         int timeoutSeconds) {
+        return handleToolCallStream(context, flux, startTimeMs, pushToClient, timeoutSeconds, null);
+    }
+
+    public CompletableFuture<LLM.ToolCallResponse> handleToolCallStream(AgentContext context,
+                                                                         Flux<ChatResponse> flux,
+                                                                         long startTimeMs,
+                                                                         boolean pushToClient,
+                                                                         int timeoutSeconds,
+                                                                         ReplayTiming runtimeTiming) {
         // tool-call 流同时维护 content、reasoning 和 tool-call delta 三条累积线；
         // 中间帧只聚合，只有 onComplete 才能确认参数完整并交给执行层。
         // 异步结果容器
@@ -254,9 +282,9 @@ public class StreamResponseHandler {
                             reasoningBuffer.append(reasoningDelta);
                             if (shouldFlush(tokenIndex[0], intervals[0], intervals[1])
                                     || reasoningBuffer.length() >= 24) {
-                                context.getPrinter().send(reasoningMessageId,
+                                sendStreamEvent(context, reasoningMessageId,
                                         ReasoningContentExtractor.EVENT_TYPE,
-                                        reasoningBuffer.toString(), false);
+                                        reasoningBuffer.toString(), runtimeTiming, false);
                                 reasoningBuffer.setLength(0);
                             }
                         }
@@ -268,8 +296,8 @@ public class StreamResponseHandler {
                         if (pushToClient && messageId != null && context.getPrinter() != null) {
                             streamBuffer.append(chunkContent);
                             if (shouldFlush(tokenIndex[0], intervals[0], intervals[1])) {
-                                context.getPrinter().send(messageId, context.getStreamMessageType(),
-                                    streamBuffer.toString(), false);
+                                sendStreamEvent(context, messageId, context.getStreamMessageType(),
+                                    streamBuffer.toString(), runtimeTiming, false);
                                 streamBuffer.setLength(0);
                             }
                             tokenIndex[0]++;
@@ -312,27 +340,31 @@ public class StreamResponseHandler {
                     // reasoning 收尾：有就推 final（有/无 tool_call 均推）
                     if (pushToClient && reasoningMessageId != null && context.getPrinter() != null && hasReasoning) {
                         if (reasoningBuffer.length() > 0) {
-                            context.getPrinter().send(reasoningMessageId,
+                            sendStreamEvent(context, reasoningMessageId,
                                     ReasoningContentExtractor.EVENT_TYPE,
-                                    reasoningBuffer.toString(), false);
+                                    reasoningBuffer.toString(), runtimeTiming, false);
                             reasoningBuffer.setLength(0);
                         }
-                        context.getPrinter().send(reasoningMessageId,
+                        completeRuntimeTiming(runtimeTiming);
+                        sendStreamEvent(context, reasoningMessageId,
                                 ReasoningContentExtractor.EVENT_TYPE,
-                                reasoningContent, true);
+                                reasoningContent, runtimeTiming, true);
                     }
 
                     // content 收尾：有正文就 final（有/无 tool 均推）。
                     // 无 tool 时后续 result 终答与过程文同文案，前端会去重隐藏过程块。
                     if (pushToClient && messageId != null && hasContent && context.getPrinter() != null) {
                         if (streamBuffer.length() > 0) {
-                            context.getPrinter().send(messageId, context.getStreamMessageType(),
-                                    streamBuffer.toString(), false);
+                            sendStreamEvent(context, messageId, context.getStreamMessageType(),
+                                    streamBuffer.toString(), runtimeTiming, false);
                             streamBuffer.setLength(0);
                         }
-                        context.getPrinter().send(messageId, context.getStreamMessageType(),
-                                content, true);
+                        completeRuntimeTiming(runtimeTiming);
+                        sendStreamEvent(context, messageId, context.getStreamMessageType(),
+                                content, runtimeTiming, true);
                     }
+
+                    completeRuntimeTiming(runtimeTiming);
 
                     if (!hasContent && !hasToolCalls && !hasReasoning) {
                         String requestId = context == null ? "-" : context.getRequestId();
@@ -362,6 +394,7 @@ public class StreamResponseHandler {
                         .streamMessageId(messageId)
                         .finishReason(finishReason[0])
                         .duration(System.currentTimeMillis() - startTimeMs)
+                        .timing(snapshotTiming(runtimeTiming))
                         .build(), usageHolder[0]));
 
                 } catch (Exception e) {
@@ -429,6 +462,50 @@ public class StreamResponseHandler {
         return context != null
                 && Boolean.TRUE.equals(context.getIsStream())
                 && StringUtils.isNotBlank(context.getStreamMessageType());
+    }
+
+    private void sendStreamEvent(AgentContext context,
+                                 String messageId,
+                                 String messageType,
+                                 Object message,
+                                 ReplayTiming runtimeTiming,
+                                 boolean isFinal) {
+        if (context == null || context.getPrinter() == null) {
+            return;
+        }
+        if (runtimeTiming == null) {
+            context.getPrinter().send(messageId, messageType, message, isFinal);
+            return;
+        }
+        context.getPrinter().sendWithResultMap(
+                messageId,
+                messageType,
+                message,
+                Map.of("timing", snapshotTiming(runtimeTiming)),
+                isFinal
+        );
+    }
+
+    private void completeRuntimeTiming(ReplayTiming timing) {
+        if (timing == null || timing.getFinishedAt() != null || timing.getStartedAt() == null) {
+            return;
+        }
+        LocalDateTime finishedAt = LocalDateTime.now();
+        timing.setFinishedAt(finishedAt);
+        timing.setDurationMs(Math.max(0L, Duration.between(timing.getStartedAt(), finishedAt).toMillis()));
+        timing.setSource(ReplayTiming.SOURCE_RUNTIME);
+    }
+
+    private ReplayTiming snapshotTiming(ReplayTiming timing) {
+        if (timing == null) {
+            return null;
+        }
+        return ReplayTiming.builder()
+                .startedAt(timing.getStartedAt())
+                .finishedAt(timing.getFinishedAt())
+                .durationMs(timing.getDurationMs())
+                .source(timing.getSource())
+                .build();
     }
 
     private int[] resolveIntervals() {

@@ -14,6 +14,7 @@ import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionView;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionRunDetail;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationView;
+import org.wwz.ai.domain.agent.ledger.model.RunCursor;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputNames;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolStructuredOutput;
@@ -64,6 +65,14 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
                 .toolInvocations(toolViews)
                 .artifacts(artifactViews)
                 .build();
+    }
+
+    @Override
+    public DialogueRunView queryRunSummary(String requestId) {
+        if (StringUtils.isBlank(requestId)) {
+            return null;
+        }
+        return toRunView(executionLedgerReadRepository.queryRunSummaryByRequestId(requestId));
     }
 
     @Override
@@ -162,11 +171,28 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
     }
 
     @Override
+    public List<DialogueRunView> querySessionRuns(String sessionId, RunCursor after, int limit) {
+        if (StringUtils.isBlank(sessionId)) {
+            return List.of();
+        }
+        int normalizedLimit = Math.max(1, Math.min(limit, MAX_SESSION_RUN_PAGE_SIZE + 1));
+        return executionLedgerReadRepository.queryRunsBySessionId(sessionId, after, normalizedLimit);
+    }
+
+    @Override
     public DialogueSessionView querySession(String sessionId) {
         if (StringUtils.isBlank(sessionId)) {
             return null;
         }
         return restoreSessionTitle(executionLedgerReadRepository.querySession(sessionId));
+    }
+
+    @Override
+    public DialogueSessionView querySessionHistorySummary(String sessionId) {
+        if (StringUtils.isBlank(sessionId)) {
+            return null;
+        }
+        return executionLedgerReadRepository.querySessionHistorySummary(sessionId);
     }
 
     @Override

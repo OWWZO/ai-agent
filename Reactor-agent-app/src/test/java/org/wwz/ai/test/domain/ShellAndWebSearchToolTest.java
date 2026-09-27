@@ -5,6 +5,7 @@ import org.junit.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.mockito.ArgumentCaptor;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
+import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
@@ -129,7 +130,70 @@ public class ShellAndWebSearchToolTest {
 
         ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of("command", "echo ok"));
         Assert.assertFalse(Boolean.TRUE.equals(payload.getFailed()));
-        Assert.assertEquals(workspaceRoot, JSON.parseObject(capturedBody.get()).getString("workspaceRoot"));
+        com.alibaba.fastjson.JSONObject request = JSON.parseObject(capturedBody.get());
+        Assert.assertEquals(workspaceRoot, request.getString("workspaceRoot"));
+        Assert.assertEquals("session-bash-align", request.getString("sessionId"));
+        Assert.assertEquals("visitor:anonymous", request.getString("ownerKey"));
+    }
+
+    @Test
+    public void bashShouldSendVisitorOwnerKey() {
+        java.util.concurrent.atomic.AtomicReference<String> capturedBody = new java.util.concurrent.atomic.AtomicReference<>();
+        RemoteHttpPort httpPort = request -> {
+            capturedBody.set(request.getBody());
+            return """
+                    {"exitCode":0,"stdout":"ok","stderr":"","truncated":false,"timedOut":false,"durationMs":1}
+                    """;
+        };
+        ReactorConfig config = new ReactorConfig();
+        ReflectionTestUtils.setField(config, "codeInterpreterUrl", "http://reactor-tool");
+        AgentContext context = AgentContext.builder()
+                .requestId("req-bash-owner")
+                .sessionId("session-bash-owner")
+                .visitorId("v1")
+                .productFiles(new ArrayList<>())
+                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .build();
+        SkillRuntimeOptions skillOptions = SkillRuntimeOptions.builder().enabled(false).build();
+        BashTool tool = new BashTool(skillOptions, new SkillVirtualPaths(skillOptions));
+        tool.setAgentContext(context);
+
+        ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of("command", "echo ok"));
+        Assert.assertFalse(Boolean.TRUE.equals(payload.getFailed()));
+        Assert.assertEquals("visitor:v1", JSON.parseObject(capturedBody.get()).getString("ownerKey"));
+    }
+
+    @Test
+    public void bashShouldResolveOwnerKeyFromVisitorOrLtmOwner() {
+        java.util.concurrent.atomic.AtomicReference<String> capturedBody = new java.util.concurrent.atomic.AtomicReference<>();
+        RemoteHttpPort httpPort = request -> {
+            capturedBody.set(request.getBody());
+            return "{\"exitCode\":0,\"stdout\":\"ok\",\"stderr\":\"\",\"truncated\":false,\"timedOut\":false,\"durationMs\":1}";
+        };
+        ReactorConfig config = new ReactorConfig();
+        ReflectionTestUtils.setField(config, "codeInterpreterUrl", "http://reactor-tool");
+        SkillRuntimeOptions skillOptions = SkillRuntimeOptions.builder().enabled(false).build();
+        BashTool tool = new BashTool(skillOptions, new SkillVirtualPaths(skillOptions));
+
+        AgentContext visitorContext = AgentContext.builder()
+                .requestId("req-bash-visitor")
+                .sessionId("session-bash-visitor")
+                .visitorId("v1")
+                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .build();
+        tool.setAgentContext(visitorContext);
+        tool.execute(Map.of("command", "echo ok"));
+        Assert.assertEquals("visitor:v1", JSON.parseObject(capturedBody.get()).getString("ownerKey"));
+
+        AgentContext userContext = AgentContext.builder()
+                .requestId("req-bash-user")
+                .sessionId("session-bash-user")
+                .ltmOwner(LtmOwner.user("erp-1"))
+                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .build();
+        tool.setAgentContext(userContext);
+        tool.execute(Map.of("command", "echo ok"));
+        Assert.assertEquals("user:erp-1", JSON.parseObject(capturedBody.get()).getString("ownerKey"));
     }
 
     @Test

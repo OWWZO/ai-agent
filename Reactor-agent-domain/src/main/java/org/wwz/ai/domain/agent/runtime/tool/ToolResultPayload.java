@@ -42,6 +42,11 @@ public class ToolResultPayload {
      */
     private ToolStructuredOutput structuredOutput;
 
+    /**
+     * 写入 ledger 的 observation。缺省时沿用 {@link #llmObservation}。
+     */
+    private String ledgerObservation;
+
     /** 图片工具结果的多模态内容，使用 data URL 以保留 MIME 类型。 */
     private String base64Image;
 

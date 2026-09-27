@@ -39,5 +39,5 @@ public class FeaturedConversationDetailRespVO {
 
     private String contentUnavailableReason;
 
-    private ConversationHistoryDetailRespVO historyDetail;
+    private ConversationHistoryPageRespVO historyDetail;
 }

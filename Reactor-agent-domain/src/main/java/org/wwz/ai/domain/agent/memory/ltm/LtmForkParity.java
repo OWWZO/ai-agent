@@ -18,7 +18,7 @@ public final class LtmForkParity {
 
     /**
      * Background review 策展候选工具（再与父会话实际 tools 取交集）。
-     * skill 创作路径：workspace_* / skill_tool / bash（Skill Creator）。
+     * skill 创作路径：workspace_* / skill_view / skills_search / bash（Skill Creator）。
      */
     public static final Set<String> CURATOR_CANDIDATE_TOOLS = Set.of(
             "memory",
@@ -28,7 +28,8 @@ public final class LtmForkParity {
             "workspace_list",
             "workspace_glob",
             "workspace_grep",
-            "skill_tool",
+            "skill_view",
+            "skills_search",
             "bash"
     );
 

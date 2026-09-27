@@ -36,7 +36,38 @@ public class ConversationSessionOwnershipApplicationService {
      * 只校验既有会话的归属，不允许因为探测或详情请求自动创建空会话。
      */
     public DialogueSession ensureExistingSessionAccessible(String visitorId, String sessionId) {
-        return ensureSessionAccessible(visitorId, sessionId, null, false);
+        if (StringUtils.isAnyBlank(visitorId, sessionId)) {
+            throw new IllegalArgumentException("visitorId 和 sessionId 不能为空");
+        }
+        DialogueSession existing = executionLedgerReadRepository.querySessionOwnership(sessionId);
+        if (existing == null) {
+            throw new SessionOwnershipDeniedException("当前会话不存在");
+        }
+        if (StringUtils.isBlank(existing.getVisitorId())) {
+            DialogueSession fullSession = executionLedgerReadRepository.querySessionEntity(sessionId);
+            if (fullSession == null) {
+                throw new SessionOwnershipDeniedException("当前会话不存在");
+            }
+            executionLedgerWriteRepository.upsertSession(DialogueSessionUpsertRecord.builder()
+                    .sessionId(fullSession.getSessionId())
+                    .visitorId(visitorId)
+                    .title(fullSession.getTitle())
+                    .status(fullSession.getStatus())
+                    .latestRequestId(fullSession.getLatestRequestId())
+                    .latestQueryText(fullSession.getLatestQueryText())
+                    .latestSummaryText(fullSession.getLatestSummaryText())
+                    .runCount(fullSession.getRunCount())
+                    .finishedRunCount(fullSession.getFinishedRunCount())
+                    .failedRunCount(fullSession.getFailedRunCount())
+                    .startedAt(fullSession.getStartedAt())
+                    .lastActiveAt(fullSession.getLastActiveAt())
+                    .build());
+            return executionLedgerWriteRepository.querySessionBySessionId(sessionId);
+        }
+        if (!StringUtils.equals(existing.getVisitorId(), visitorId)) {
+            throw new SessionOwnershipDeniedException("当前访客无权访问该会话");
+        }
+        return existing;
     }
 
     private DialogueSession ensureSessionAccessible(String visitorId,

@@ -18,7 +18,11 @@ public interface IDialogueSessionLedgerDao {
 
     DialogueSession queryBySessionId(@Param("sessionId") String sessionId);
 
+    DialogueSession querySessionOwnership(@Param("sessionId") String sessionId);
+
     DialogueSessionView querySessionView(@Param("sessionId") String sessionId);
+
+    DialogueSessionView querySessionHistoryView(@Param("sessionId") String sessionId);
 
     List<DialogueSessionView> queryRecentSessions(@Param("limit") int limit);
 

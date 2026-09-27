@@ -6,12 +6,15 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.api.response.Response;
 import org.wwz.ai.application.agent.featured.FeaturedConversationPublicQueryApplicationService;
 import org.wwz.ai.domain.agent.ledger.model.ConversationHistoryDetail;
+import org.wwz.ai.domain.agent.ledger.model.ConversationRunReplay;
+import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 import org.wwz.ai.domain.agent.ledger.model.FeaturedConversationCardView;
 import org.wwz.ai.domain.agent.ledger.model.FeaturedConversationPageResult;
 import org.wwz.ai.domain.agent.ledger.model.FeaturedConversationPublicDetail;
 import org.wwz.ai.trigger.http.agent.AgentFeaturedConversationController;
 import org.wwz.ai.trigger.http.agent.vo.FeaturedConversationCardRespVO;
 import org.wwz.ai.trigger.http.agent.vo.FeaturedConversationDetailRespVO;
+import org.wwz.ai.trigger.http.agent.vo.ConversationRunReplayRespVO;
 import org.wwz.ai.trigger.http.agent.vo.PageRespVO;
 import org.wwz.ai.types.enums.ResponseCode;
 
@@ -100,6 +103,36 @@ public class FeaturedConversationPublicControllerTest {
         Assert.assertNull(response.getData().getHistoryDetail());
     }
 
+    @Test
+    public void shouldExposeFeaturedSingleRunReplay() {
+        StubFeaturedConversationPublicQueryApplicationService service =
+                new StubFeaturedConversationPublicQueryApplicationService();
+        service.replay = ConversationRunReplay.builder()
+                .run(DialogueRunView.builder()
+                        .runUid("req-featured-001")
+                        .requestId("req-featured-001")
+                        .sessionId("session-demo-001")
+                        .status(1)
+                        .queryText("精品 replay")
+                        .finalSummaryText("featured summary")
+                        .build())
+                .replayFrames(List.of())
+                .build();
+        AgentFeaturedConversationController controller = new AgentFeaturedConversationController();
+        ReflectionTestUtils.setField(
+                controller,
+                "featuredConversationPublicQueryApplicationService",
+                service
+        );
+
+        Response<ConversationRunReplayRespVO> response = controller.replay(
+                "featured-demo-001", "req-featured-001");
+
+        Assert.assertEquals(ResponseCode.SUCCESS.getCode(), response.getCode());
+        Assert.assertEquals("SUCCESS", response.getData().getStatus());
+        Assert.assertEquals("featured summary", response.getData().getFinalSummaryText());
+    }
+
     private static final class StubFeaturedConversationPublicQueryApplicationService
             extends FeaturedConversationPublicQueryApplicationService {
 
@@ -121,6 +154,8 @@ public class FeaturedConversationPublicControllerTest {
                                 .build()
                 )
                 .build();
+
+        private ConversationRunReplay replay;
 
         StubFeaturedConversationPublicQueryApplicationService() {
             super(null, null, null);
@@ -156,6 +191,11 @@ public class FeaturedConversationPublicControllerTest {
         @Override
         public FeaturedConversationPublicDetail queryDetail(String featuredId) {
             return detail;
+        }
+
+        @Override
+        public ConversationRunReplay queryRunReplay(String featuredId, String requestId) {
+            return replay;
         }
     }
 }

@@ -54,7 +54,7 @@ public class ReactorConfig {
     /**
      * PlanSolve 主 Agent 可见的工具白名单。完整 tool_list 仍作为子 Agent 的工具来源。
      */
-    @Value("${autobots.autoagent.plan-solve-main-tool-list:Agent,TaskCreate,TaskGet,TaskUpdate,TaskList,TodoWrite,TaskStop,TaskOutput,SendMessage,EnterPlanMode,ExitPlanMode,AskUserQuestion,ToolSearch,ListMcpResources,ReadMcpResource,workspace_read,workspace_list,workspace_glob,workspace_grep,workspace_write,workspace_edit,skill_tool,memory,session_search,emit_ui_patch,emit_ui_tree,list_ui_components,get_genui_guide,image_ocr,canvas_publish,pdf_reader,pdf_structure,word_reader,text_processor,markdown_processor,html_processor,excel_reader,csv_processor}")
+    @Value("${autobots.autoagent.plan-solve-main-tool-list:Agent,TaskCreate,TaskGet,TaskUpdate,TaskList,TodoWrite,TaskStop,TaskOutput,SendMessage,EnterPlanMode,ExitPlanMode,AskUserQuestion,ToolSearch,ToolDescribe,ToolCall,ListMcpResources,ReadMcpResource,workspace_read,workspace_list,workspace_glob,workspace_grep,workspace_write,workspace_edit,skill_view,skills_search,memory,session_search,emit_ui_patch,emit_ui_tree,list_ui_components,get_genui_guide,image_ocr,canvas_publish,pdf_reader,pdf_structure,word_reader,text_processor,markdown_processor,html_processor,excel_reader,csv_processor}")
     private String planSolveMainToolList;
 
     public void setPlanSolveMainToolList(String planSolveMainToolList) {
@@ -62,7 +62,7 @@ public class ReactorConfig {
     }
 
     /**
-     * MCP 工具搜索模式：always=默认延迟+ToolSearch；standard=全量进 tools[]；auto=超过阈值才延迟。
+     * MCP 工具搜索模式：always=有 deferred MCP 才注册三件套；standard/off=全量进 tools[]；auto=超过阈值才延迟。
      */
     @Value("${autobots.autoagent.mcp.tool-search-mode:always}")
     private String mcpToolSearchMode;
@@ -243,7 +243,7 @@ public class ReactorConfig {
     private Boolean skillPlanSolveEnabled;
 
     /**
-     * skill 文本读取上限，便于和 read_tool / skill_tool 的截断行为联动排查。
+     * skill 文本读取上限，便于和 read_tool / skill_view 的截断行为联动排查。
      */
     @Value("${autobots.autoagent.skill.max-read-chars:12000}")
     private Integer skillMaxReadChars;

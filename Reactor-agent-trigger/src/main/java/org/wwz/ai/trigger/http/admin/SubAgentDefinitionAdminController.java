@@ -72,7 +72,8 @@ public class SubAgentDefinitionAdminController {
                 "WebSearch",
                  // code / skill / media
                  "code_execution",
-                 "skill_tool",
+                 "skill_view",
+                 "skills_search",
                  "image_generation_tool",
                  "data_analysis",
                 // LTM / session（子 Agent 运行时默认剥离写记忆与 session_search）
@@ -191,6 +192,8 @@ public class SubAgentDefinitionAdminController {
                 .systemPrompt(request.getSystemPrompt())
                 .allowedTools(toSet(request.getAllowedTools()))
                 .disallowedTools(toSet(request.getDisallowedTools()))
+                .toolPolicyMode(request.getToolPolicyMode())
+                .deferredTools(toSet(request.getDeferredTools()))
                 .maxSteps(request.getMaxSteps())
                 .status(request.getStatus())
                 .build();
@@ -208,6 +211,8 @@ public class SubAgentDefinitionAdminController {
                 .systemPrompt(record.getSystemPrompt())
                 .allowedTools(toList(record.getAllowedTools()))
                 .disallowedTools(toList(record.getDisallowedTools()))
+                .toolPolicyMode(record.getToolPolicyMode())
+                .deferredTools(toList(record.getDeferredTools()))
                 .maxSteps(record.getMaxSteps())
                 .status(record.getStatus())
                 .build();

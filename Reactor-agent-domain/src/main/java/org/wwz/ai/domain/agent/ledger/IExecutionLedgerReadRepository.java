@@ -7,6 +7,7 @@ import org.wwz.ai.domain.agent.ledger.entity.LlmInvocation;
 import org.wwz.ai.domain.agent.ledger.entity.ToolInvocation;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionView;
+import org.wwz.ai.domain.agent.ledger.model.RunCursor;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 
 import java.util.List;
@@ -18,6 +19,8 @@ import java.util.List;
 public interface IExecutionLedgerReadRepository {
 
     DialogueRun queryRunByRequestId(String requestId);
+
+    DialogueRun queryRunSummaryByRequestId(String requestId);
 
     List<LlmInvocation> queryLlmInvocationsByRunId(Long runId);
 
@@ -35,6 +38,12 @@ public interface IExecutionLedgerReadRepository {
 
     List<DialogueRunView> queryRunsBySessionId(String sessionId, int offset, int limit);
 
+    /**
+     * 按 create_time/id 正序读取 session run，cursor 为空时从头开始。
+     * 实现层不得为该轻量查询补 artifact 或 rich tool output。
+     */
+    List<DialogueRunView> queryRunsBySessionId(String sessionId, RunCursor after, int limit);
+
     /** 兼容已有内部调用方；底层查询仍受分页上限约束。 */
     default List<DialogueRunView> queryRunsBySessionId(String sessionId) {
         return queryRunsBySessionId(sessionId, 0, 100);
@@ -42,9 +51,13 @@ public interface IExecutionLedgerReadRepository {
 
     DialogueSessionView querySession(String sessionId);
 
+    DialogueSessionView querySessionHistorySummary(String sessionId);
+
     List<DialogueSessionView> queryRecentSessions(int limit);
 
     DialogueSession querySessionEntity(String sessionId);
+
+    DialogueSession querySessionOwnership(String sessionId);
 
     DialogueSessionView querySession(String visitorId, String sessionId);
 

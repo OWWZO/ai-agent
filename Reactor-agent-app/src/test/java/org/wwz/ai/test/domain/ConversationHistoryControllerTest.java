@@ -18,7 +18,8 @@ import org.wwz.ai.domain.agent.ledger.model.tooloutput.FileToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRef;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolStructuredOutput;
 import org.wwz.ai.trigger.http.agent.AgentConversationHistoryController;
-import org.wwz.ai.trigger.http.agent.vo.ConversationHistoryDetailRespVO;
+import org.wwz.ai.trigger.http.agent.vo.ConversationHistoryPageRespVO;
+import org.wwz.ai.trigger.http.agent.vo.ConversationRunReplayRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationSessionRespVO;
 import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
 import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
@@ -44,7 +45,7 @@ public class ConversationHistoryControllerTest {
     }
 
     @Test
-    public void shouldReturnSessionDetailWithStatsAndReplayFrames() {
+    public void shouldReturnSessionSummaryPageWithoutReplayFrames() {
         ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
         seedRun(ctx, "req-history-001", "session-history-001", "file_tool",
                 "先分析项目风险", LocalDateTime.of(2026, 5, 2, 10, 0, 0),
@@ -59,24 +60,117 @@ public class ConversationHistoryControllerTest {
         ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
                 Mockito.mock(ConversationSessionOwnershipApplicationService.class));
 
-        Response<ConversationHistoryDetailRespVO> response = controller.detail("session-history-001");
+        int artifactQueriesBefore = ctx.store.queryArtifactsByRunIdsCount;
+        int toolQueriesBefore = ctx.store.queryToolByRunIdsCount;
+        int llmQueriesBefore = ctx.store.queryLlmByRunIdsCount;
+        int richOutputQueriesBefore = ctx.store.readToolOutputByInvocationIdsCount;
+        Response<ConversationHistoryPageRespVO> response = controller.detail("session-history-001", 20, null);
 
         Assert.assertEquals(ResponseCode.SUCCESS.getCode(), response.getCode());
         Assert.assertNotNull(response.getData());
-        ConversationHistoryDetailRespVO detail = response.getData();
+        ConversationHistoryPageRespVO detail = response.getData();
         Assert.assertEquals("session-history-001", detail.getSessionId());
         Assert.assertEquals("FAILED", detail.getStatus());
         Assert.assertEquals(Integer.valueOf(2), detail.getRunCount());
         Assert.assertEquals(Integer.valueOf(1), detail.getFinishedRunCount());
         Assert.assertEquals(Integer.valueOf(1), detail.getFailedRunCount());
         Assert.assertEquals(2, detail.getRuns().size());
-        Assert.assertFalse(detail.getRuns().get(0).getReplayFrames().isEmpty());
+        Assert.assertEquals("先分析项目风险", detail.getRuns().get(0).getQueryPreview());
+        Assert.assertEquals("summary:req-history-002", detail.getRuns().get(1).getFinalSummaryPreview());
+        Assert.assertTrue(detail.getRuns().get(0).getHasReplay());
+        Assert.assertFalse(detail.isHasMore());
+        Assert.assertEquals(artifactQueriesBefore, ctx.store.queryArtifactsByRunIdsCount);
+        Assert.assertEquals(toolQueriesBefore, ctx.store.queryToolByRunIdsCount);
+        Assert.assertEquals(llmQueriesBefore, ctx.store.queryLlmByRunIdsCount);
+        Assert.assertEquals(richOutputQueriesBefore, ctx.store.readToolOutputByInvocationIdsCount);
+    }
 
-        List<GptProcessResult> secondRunFrames = detail.getRuns().get(1).getReplayFrames();
+    @Test
+    public void shouldReplayOneRunOnlyAfterSessionOwnershipLookup() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        seedRun(ctx, "req-replay-001", "session-replay-001", "file_tool",
+                "单 run 回放", LocalDateTime.of(2026, 5, 2, 10, 0, 0),
+                ExecutionLedgerConstants.STATUS_SUCCESS, "summary:req-replay-001", "report-replay.md");
+
+        AgentConversationHistoryController controller = new AgentConversationHistoryController();
+        ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
+        ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
+        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
+                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
+
+        Response<ConversationRunReplayRespVO> response = controller.replay("req-replay-001");
+
+        Assert.assertEquals(ResponseCode.SUCCESS.getCode(), response.getCode());
+        Assert.assertNotNull(response.getData());
+        List<GptProcessResult> secondRunFrames = response.getData().getReplayFrames();
         Assert.assertFalse(secondRunFrames.isEmpty());
         Map<String, Object> finalResultMap = nestedResultMap(secondRunFrames.get(secondRunFrames.size() - 1));
         Assert.assertEquals("result", finalResultMap.get("messageType"));
-        Assert.assertEquals("summary:req-history-002", finalResultMap.get("result"));
+        Assert.assertEquals("summary:req-replay-001", finalResultMap.get("result"));
+    }
+
+    @Test
+    public void shouldRejectRunReplayBeforeLoadingLedgerFactsWhenOwnershipFails() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        seedRun(ctx, "req-owned-001", "session-owned-001", "file_tool",
+                "private run", LocalDateTime.of(2026, 5, 2, 10, 0, 0),
+                ExecutionLedgerConstants.STATUS_SUCCESS, "summary:req-owned-001", "private.md");
+
+        ConversationSessionOwnershipApplicationService ownership =
+                Mockito.mock(ConversationSessionOwnershipApplicationService.class);
+        Mockito.doThrow(new RuntimeException("denied"))
+                .when(ownership)
+                .ensureExistingSessionAccessible("visitor-test", "session-owned-001");
+        AgentConversationHistoryController controller = new AgentConversationHistoryController();
+        ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
+        ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
+        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService", ownership);
+
+        int llmQueriesBefore = ctx.store.queryLlmByRunIdCount;
+        int toolQueriesBefore = ctx.store.queryToolByRunIdCount;
+        int artifactQueriesBefore = ctx.store.queryArtifactsByRunIdCount;
+        Response<ConversationRunReplayRespVO> response = controller.replay("req-owned-001");
+
+        Assert.assertEquals(ResponseCode.UN_ERROR.getCode(), response.getCode());
+        Assert.assertEquals(llmQueriesBefore, ctx.store.queryLlmByRunIdCount);
+        Assert.assertEquals(toolQueriesBefore, ctx.store.queryToolByRunIdCount);
+        Assert.assertEquals(artifactQueriesBefore, ctx.store.queryArtifactsByRunIdCount);
+    }
+
+    @Test
+    public void shouldPageHistoryWithKeysetCursorAndRejectCrossSessionCursor() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        seedRun(ctx, "req-cursor-001", "session-cursor-001", "read_tool",
+                "cursor first", LocalDateTime.of(2026, 5, 2, 10, 0, 0),
+                ExecutionLedgerConstants.STATUS_SUCCESS, "summary:req-cursor-001", null);
+        seedRun(ctx, "req-cursor-002", "session-cursor-001", "read_tool",
+                "cursor second", LocalDateTime.of(2026, 5, 2, 10, 1, 0),
+                ExecutionLedgerConstants.STATUS_WAITING_INPUT, "summary:req-cursor-002", null);
+        seedRun(ctx, "req-cursor-other", "session-cursor-other", "read_tool",
+                "other session", LocalDateTime.of(2026, 5, 2, 10, 2, 0),
+                ExecutionLedgerConstants.STATUS_STOPPED, "summary:req-cursor-other", null);
+
+        AgentConversationHistoryController controller = new AgentConversationHistoryController();
+        ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
+        ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
+        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
+                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
+
+        Response<ConversationHistoryPageRespVO> first = controller.detail("session-cursor-001", 1, null);
+        Assert.assertEquals(ResponseCode.SUCCESS.getCode(), first.getCode());
+        Assert.assertEquals(1, first.getData().getRuns().size());
+        Assert.assertTrue(first.getData().isHasMore());
+        Assert.assertNotNull(first.getData().getNextCursor());
+
+        Response<ConversationHistoryPageRespVO> second = controller.detail(
+                "session-cursor-001", 1, first.getData().getNextCursor());
+        Assert.assertEquals(ResponseCode.SUCCESS.getCode(), second.getCode());
+        Assert.assertEquals("req-cursor-002", second.getData().getRuns().get(0).getRequestId());
+        Assert.assertFalse(second.getData().isHasMore());
+
+        Response<ConversationHistoryPageRespVO> crossSession = controller.detail(
+                "session-cursor-other", 1, first.getData().getNextCursor());
+        Assert.assertEquals(ResponseCode.UN_ERROR.getCode(), crossSession.getCode());
     }
 
     @Test
@@ -131,7 +225,7 @@ public class ConversationHistoryControllerTest {
         ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
                 Mockito.mock(ConversationSessionOwnershipApplicationService.class));
 
-        Response<ConversationHistoryDetailRespVO> response = controller.detail("session-react-structured-001");
+        Response<ConversationHistoryPageRespVO> response = controller.detail("session-react-structured-001", 20, null);
 
         Assert.assertEquals(ResponseCode.SUCCESS.getCode(), response.getCode());
         Assert.assertNotNull(response.getData());
@@ -162,7 +256,7 @@ public class ConversationHistoryControllerTest {
         ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
                 Mockito.mock(ConversationSessionOwnershipApplicationService.class));
 
-        Response<ConversationHistoryDetailRespVO> response = controller.detail("session-plan-solve-001");
+        Response<ConversationHistoryPageRespVO> response = controller.detail("session-plan-solve-001", 20, null);
 
         Assert.assertEquals(ResponseCode.SUCCESS.getCode(), response.getCode());
         Assert.assertNotNull(response.getData());
@@ -215,13 +309,16 @@ public class ConversationHistoryControllerTest {
         ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
                 Mockito.mock(ConversationSessionOwnershipApplicationService.class));
 
-        Response<ConversationHistoryDetailRespVO> response = controller.detail("session-history-stop-001");
+        Response<ConversationHistoryPageRespVO> response = controller.detail("session-history-stop-001", 20, null);
 
         Assert.assertEquals(ResponseCode.SUCCESS.getCode(), response.getCode());
         Assert.assertNotNull(response.getData());
         Assert.assertEquals("STOPPED", response.getData().getStatus());
         Assert.assertEquals("STOPPED", response.getData().getRuns().get(0).getStatus());
-        List<GptProcessResult> replayFrames = response.getData().getRuns().get(0).getReplayFrames();
+
+        Response<ConversationRunReplayRespVO> replayResponse = controller.replay("req-history-stop-001");
+        Assert.assertEquals(ResponseCode.SUCCESS.getCode(), replayResponse.getCode());
+        List<GptProcessResult> replayFrames = replayResponse.getData().getReplayFrames();
         Assert.assertFalse(replayFrames.isEmpty());
         Map<String, Object> firstEventData = eventData(replayFrames.get(0));
         Assert.assertTrue(firstEventData.containsKey("artifactRefs"));
@@ -240,7 +337,7 @@ public class ConversationHistoryControllerTest {
         ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
                 Mockito.mock(ConversationSessionOwnershipApplicationService.class));
 
-        Response<ConversationHistoryDetailRespVO> response = controller.detail("session-missing-001");
+        Response<ConversationHistoryPageRespVO> response = controller.detail("session-missing-001", 20, null);
 
         Assert.assertEquals(ResponseCode.SUCCESS.getCode(), response.getCode());
         Assert.assertNull(response.getData());

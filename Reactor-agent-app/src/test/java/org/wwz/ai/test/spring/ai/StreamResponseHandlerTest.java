@@ -15,6 +15,7 @@ import org.wwz.ai.domain.agent.runtime.llm.LLM;
 import org.wwz.ai.domain.agent.runtime.llm.LlmChatResponseMapper;
 import org.wwz.ai.domain.agent.runtime.llm.StreamResponseHandler;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
+import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.FluxSink;
@@ -28,6 +29,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.time.LocalDateTime;
 
 /**
  * StreamResponseHandler 测试
@@ -100,6 +102,42 @@ public class StreamResponseHandlerTest {
                 m -> "llm_reasoning".equals(m.messageType) && Boolean.TRUE.equals(m.isFinal)));
         Assert.assertTrue(printer.messages.stream().anyMatch(
                 m -> "tool_thought".equals(m.messageType)));
+    }
+
+    @Test
+    public void test_handleToolCallStreamCompletesRuntimeTimingAtInvocationBoundary() throws Exception {
+        StreamResponseHandler handler = new StreamResponseHandler();
+        ReactorConfig reactorConfig = new ReactorConfig();
+        reactorConfig.setMessageInterval("{\"llm\":\"1,1\"}");
+        ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
+        ReflectionTestUtils.setField(handler, "chatResponseMapper", new LlmChatResponseMapper());
+
+        RecordingPrinter printer = new RecordingPrinter();
+        AgentContext context = AgentContext.builder()
+                .requestId("req-runtime-llm-timing")
+                .isStream(true)
+                .streamMessageType("tool_thought")
+                .printer(printer)
+                .build();
+        ReplayTiming timing = ReplayTiming.builder()
+                .startedAt(LocalDateTime.now().minusNanos(10_000_000L))
+                .source(ReplayTiming.SOURCE_RUNTIME)
+                .build();
+
+        LLM.ToolCallResponse response = handler.handleToolCallStream(
+                context,
+                Flux.just(toolChunk("过程文", new AssistantMessage.ToolCall(
+                        "call-runtime-timing", "function", "read_file", "{}"), "tool_calls", 10)),
+                System.currentTimeMillis() - 10,
+                true,
+                0,
+                timing
+        ).get(5, TimeUnit.SECONDS);
+
+        Assert.assertNotNull(response.getTiming());
+        Assert.assertEquals(ReplayTiming.SOURCE_RUNTIME, response.getTiming().getSource());
+        Assert.assertNotNull(response.getTiming().getFinishedAt());
+        Assert.assertNotNull(response.getTiming().getDurationMs());
     }
 
     @Test

@@ -2,11 +2,30 @@ server:
   port: 8100
 
 reactor:
+  opencli:
+    enabled: true
+    command: ${REACTOR_OPENCLI_COMMAND:node}
+    prefix-args:
+      - ${REACTOR_OPENCLI_MAIN:/opt/opencli/dist/src/main.js}
+    extra-args:
+      - -f
+      - json
+    default-timeout-ms: 60000
+    max-timeout-ms: 180000
+    max-output-chars: 200000
+  host-cli:
+    enabled: true
+    allow:
+      - twitter
+      - rdt
+    default-timeout-ms: 120000
+    max-timeout-ms: 300000
   browser-relay:
     enabled: true
     path: /api/agent/browser/relay
     pairing-ttl-seconds: 300
     rpc-timeout-seconds: 60
+    internal-rpc-secret: "${ADAPTER_HOST_SECRET:}"
 
 #长期记忆 策展有界、单外部 Provider、无 curated 向量
 memory:
@@ -141,9 +160,9 @@ autobots:
           truncate_len: 1500
       clear_tool_message: 1
     task:
-      tool_list: '{"default":"search,web_fetch,web_search,twitter,reddit,xueqiu,code_execution,docgen,docread,dataprep,canvas,image_generation,data_analysis"}'
+      tool_list: '{"default":"search,web_fetch,web_search,code_execution,docgen,docread,dataprep,canvas,image_generation,data_analysis"}'
       # PlanSolve 主 Agent 只负责编排；完整 tool_list 仍作为子 Agent 的工具来源
-    plan-solve-main-tool-list: "Agent,TaskCreate,TaskGet,TaskUpdate,TaskList,TodoWrite,TaskStop,TaskOutput,SendMessage,EnterPlanMode,ExitPlanMode,AskUserQuestion,workspace_read,workspace_list,workspace_glob,workspace_grep,workspace_write,workspace_edit,skill_tool,memory,session_search,emit_ui_patch,emit_ui_tree,list_ui_components,get_genui_guide,image_ocr,canvas_publish,pdf_reader,pdf_structure,word_reader,text_processor,markdown_processor,html_processor,excel_reader,csv_processor"
+    plan-solve-main-tool-list: "Agent,TaskCreate,TaskGet,TaskUpdate,TaskList,TodoWrite,TaskStop,TaskOutput,SendMessage,EnterPlanMode,ExitPlanMode,AskUserQuestion,ToolSearch,ToolDescribe,ToolCall,workspace_read,workspace_list,workspace_glob,workspace_grep,workspace_write,workspace_edit,skill_view,skills_search,memory,session_search,emit_ui_patch,emit_ui_tree,list_ui_components,get_genui_guide,image_ocr,canvas_publish,pdf_reader,pdf_structure,word_reader,text_processor,markdown_processor,html_processor,excel_reader,csv_processor"
     code_interpreter_url: "http://127.0.0.1:1601"
     deep_search_url: "http://127.0.0.1:1601"
     multimodalagent_url: "http://127.0.0.1:1601"

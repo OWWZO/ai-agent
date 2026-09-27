@@ -19,11 +19,18 @@ public interface IDialogueRunLedgerDao {
 
     DialogueRun queryByRequestId(@Param("requestId") String requestId);
 
+    DialogueRun querySummaryByRequestId(@Param("requestId") String requestId);
+
     List<DialogueRunView> queryRecentBySessionId(@Param("sessionId") String sessionId,
                                                  @Param("limit") int limit);
 
     List<DialogueRunView> queryBySessionId(@Param("sessionId") String sessionId,
                                             @Param("offset") int offset,
                                             @Param("limit") int limit);
+
+    List<DialogueRunView> queryBySessionIdAfter(@Param("sessionId") String sessionId,
+                                                @Param("afterCreateTime") java.time.LocalDateTime afterCreateTime,
+                                                @Param("afterId") Long afterId,
+                                                @Param("limit") int limit);
 
 }

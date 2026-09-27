@@ -93,6 +93,9 @@ public class CodeExecutionToolTest {
             context.clearCurrentToolArtifactSource();
         }
 
-        Assert.assertEquals(workspaceRoot, JSON.parseObject(capturedBody.get()).getString("workspaceRoot"));
+        com.alibaba.fastjson.JSONObject request = JSON.parseObject(capturedBody.get());
+        Assert.assertEquals(workspaceRoot, request.getString("workspaceRoot"));
+        Assert.assertEquals("session-code-001", request.getString("sessionId"));
+        Assert.assertEquals("visitor:anonymous", request.getString("ownerKey"));
     }
 }

@@ -100,14 +100,14 @@ public class ReactImplAgent extends ReActAgent {
 
             if (!Boolean.TRUE.equals(context.getIsStream())) {
                 if (response.getReasoningContent() != null && !response.getReasoningContent().isEmpty()) {
-                    printer.send(org.wwz.ai.domain.agent.runtime.llm.ReasoningContentExtractor.EVENT_TYPE,
-                            response.getReasoningContent());
+                    sendLlmEvent(org.wwz.ai.domain.agent.runtime.llm.ReasoningContentExtractor.EVENT_TYPE,
+                            response.getReasoningContent(), response.getTiming());
                 }
                 if (response.getContent() != null
                         && !response.getContent().isEmpty()
                         && response.getToolCalls() != null
                         && !response.getToolCalls().isEmpty()) {
-                    printer.send("tool_thought", response.getContent());
+                    sendLlmEvent("tool_thought", response.getContent(), response.getTiming());
                 }
             }
 
@@ -124,6 +124,15 @@ public class ReactImplAgent extends ReActAgent {
         }
 
         return true; // 思考成功
+    }
+
+    private void sendLlmEvent(String messageType, Object message,
+                              org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming timing) {
+        if (timing == null) {
+            printer.send(messageType, message);
+            return;
+        }
+        printer.sendWithResultMap(null, messageType, message, Map.of("timing", timing), true);
     }
 
     /**
@@ -154,7 +163,7 @@ public class ReactImplAgent extends ReActAgent {
             ToolExecutionOutcome outcome = toolOutcomes.get(command.getId());
             String toolResult = outcome == null ? "" : outcome.getToolResult();
 
-            sendToolResult(command, toolResult);
+            sendToolResult(command, outcome);
 
             String result = writeToolObservationToMemory(command, outcome);
             results.add(result);

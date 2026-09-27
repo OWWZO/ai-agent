@@ -38,6 +38,7 @@ public class VisitorIdentityFilter extends OncePerRequestFilter {
                 || StringUtils.startsWith(path, "/1/web/api/v1/gpt/queryAgentStreamIncr")
                 || StringUtils.startsWith(path, "/api/agent/visitor")
                 || StringUtils.startsWith(path, "/api/agent/conversation/sessions")
+                || StringUtils.startsWith(path, "/api/agent/conversation/runs")
                 || StringUtils.startsWith(path, "/api/agent/file")
                 // 工作区 zip 下载需要访客身份做会话归属校验
                 || StringUtils.startsWith(path, "/api/agent/workspace")

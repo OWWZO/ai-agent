@@ -39,6 +39,26 @@
         <result column="create_time" property="createTime"/>
     </resultMap>
 
+    <sql id="dialogueSessionColumns">
+        id, session_id, visitor_id, title, status, latest_request_id, latest_query_text,
+        latest_summary_text, run_count, finished_run_count, failed_run_count,
+        started_at, last_active_at, event_seq, create_time, update_time, deleted
+    </sql>
+
+    <sql id="dialogueSessionViewColumns">
+        id, session_id, visitor_id, title, status, latest_request_id, latest_query_text,
+        latest_summary_text, run_count, finished_run_count, failed_run_count,
+        started_at, last_active_at, create_time
+    </sql>
+
+    <sql id="dialogueSessionHistoryViewColumns">
+        id, session_id, visitor_id, title, status, latest_request_id,
+        LEFT(latest_query_text, 241) AS latest_query_text,
+        LEFT(latest_summary_text, 241) AS latest_summary_text,
+        run_count, finished_run_count, failed_run_count,
+        started_at, last_active_at, create_time
+    </sql>
+
     <insert id="upsertSession" parameterType="org.wwz.ai.domain.agent.ledger.model.DialogueSessionUpsertRecord">
         INSERT INTO ai_agent_dialogue_session (
             session_id, visitor_id, title, status, latest_request_id, latest_query_text, latest_summary_text,
@@ -68,7 +88,15 @@
     </insert>
 
     <select id="queryBySessionId" resultMap="DialogueSessionMap">
-        SELECT *
+        SELECT <include refid="dialogueSessionColumns"/>
+        FROM ai_agent_dialogue_session
+        WHERE session_id = #{sessionId}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="querySessionOwnership" resultMap="DialogueSessionMap">
+        SELECT id, session_id, visitor_id, deleted
         FROM ai_agent_dialogue_session
         WHERE session_id = #{sessionId}
           AND deleted = 0
@@ -76,7 +104,15 @@
     </select>
 
     <select id="querySessionView" resultMap="DialogueSessionViewMap">
-        SELECT *
+        SELECT <include refid="dialogueSessionViewColumns"/>
+        FROM ai_agent_dialogue_session
+        WHERE session_id = #{sessionId}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="querySessionHistoryView" resultMap="DialogueSessionViewMap">
+        SELECT <include refid="dialogueSessionHistoryViewColumns"/>
         FROM ai_agent_dialogue_session
         WHERE session_id = #{sessionId}
           AND deleted = 0
@@ -84,7 +120,7 @@
     </select>
 
     <select id="queryRecentSessions" resultMap="DialogueSessionViewMap">
-        SELECT *
+        SELECT <include refid="dialogueSessionViewColumns"/>
         FROM ai_agent_dialogue_session
         WHERE deleted = 0
         ORDER BY last_active_at DESC, id DESC
@@ -92,7 +128,7 @@
     </select>
 
     <select id="querySessionViewByVisitor" resultMap="DialogueSessionViewMap">
-        SELECT *
+        SELECT <include refid="dialogueSessionViewColumns"/>
         FROM ai_agent_dialogue_session
         WHERE session_id = #{sessionId}
           AND visitor_id = #{visitorId}
@@ -101,7 +137,7 @@
     </select>
 
     <select id="queryRecentSessionsByVisitor" resultMap="DialogueSessionViewMap">
-        SELECT *
+        SELECT <include refid="dialogueSessionViewColumns"/>
         FROM ai_agent_dialogue_session
         WHERE visitor_id = #{visitorId}
           AND deleted = 0

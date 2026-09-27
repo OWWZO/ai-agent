@@ -11,6 +11,7 @@ import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
 import org.wwz.ai.domain.agent.ledger.model.replay.ProjectedReplayEvent;
 import org.wwz.ai.domain.agent.ledger.model.replay.ReplayFactBundle;
+import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.FileToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.PlanningToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRef;
@@ -77,6 +78,113 @@ public class ReplayProjectorTest {
         Assert.assertNotEquals(events.get(0).getTaskId(), events.get(1).getTaskId());
         Assert.assertEquals("读取文件", nestedResultMap(events.get(0)).get("command"));
         Assert.assertEquals("hello", toolResult(events.get(1)).get("toolResult"));
+    }
+
+    @Test
+    public void shouldProjectLedgerToolTimingInFrameWithoutStructuredToolTiming() {
+        LocalDateTime startedAt = LocalDateTime.of(2026, 5, 2, 12, 1, 0);
+        LocalDateTime finishedAt = startedAt.plusNanos(275_000_000L);
+        ToolInvocationView invocation = ToolInvocationView.builder()
+                .id(3L)
+                .toolCallId("tool-call-timing-001")
+                .toolName("read_tool")
+                .llmObservation("ok")
+                .startedAt(startedAt)
+                .finishedAt(finishedAt)
+                .durationMs(275L)
+                .build();
+
+        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+                .toolInvocations(List.of(invocation))
+                .build());
+
+        Assert.assertEquals(1, frames.size());
+        ReplayTiming timing = frameTiming(frames.get(0));
+        Assert.assertEquals(startedAt, timing.getStartedAt());
+        Assert.assertEquals(finishedAt, timing.getFinishedAt());
+        Assert.assertEquals(Long.valueOf(275L), timing.getDurationMs());
+        Assert.assertEquals(ReplayTiming.SOURCE_LEDGER, timing.getSource());
+        Assert.assertFalse(toolResult(frames.get(0)).containsKey("timing"));
+    }
+
+    @Test
+    public void shouldInferToolTimingWhenLedgerDurationIsAbsent() {
+        LocalDateTime startedAt = LocalDateTime.of(2026, 5, 2, 12, 2, 0);
+        LocalDateTime finishedAt = startedAt.plusNanos(425_000_000L);
+        ToolInvocationView invocation = ToolInvocationView.builder()
+                .id(4L)
+                .toolCallId("tool-call-timing-002")
+                .toolName("read_tool")
+                .llmObservation("ok")
+                .startedAt(startedAt)
+                .finishedAt(finishedAt)
+                .build();
+
+        List<ProjectedReplayEvent> events = replayProjector.projectHistory(ReplayFactBundle.builder()
+                .toolInvocations(List.of(invocation))
+                .build());
+
+        Assert.assertEquals(1, events.size());
+        Assert.assertEquals(Long.valueOf(425L), events.get(0).getTiming().getDurationMs());
+        Assert.assertEquals(ReplayTiming.SOURCE_INFERRED, events.get(0).getTiming().getSource());
+    }
+
+    @Test
+    public void shouldProjectLedgerLlmTimingInFrame() {
+        LocalDateTime startedAt = LocalDateTime.of(2026, 5, 2, 12, 3, 0);
+        LocalDateTime finishedAt = startedAt.plusNanos(910_000_000L);
+        LlmInvocationView invocation = LlmInvocationView.builder()
+                .id(5L)
+                .invocationSeq(1)
+                .agentName("executor")
+                .toolCallCount(0)
+                .responseText("任务已完成")
+                .startedAt(startedAt)
+                .finishedAt(finishedAt)
+                .durationMs(910L)
+                .build();
+
+        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+                .llmInvocations(List.of(invocation))
+                .build());
+
+        Assert.assertEquals(1, frames.size());
+        ReplayTiming timing = frameTiming(frames.get(0));
+        Assert.assertEquals(startedAt, timing.getStartedAt());
+        Assert.assertEquals(finishedAt, timing.getFinishedAt());
+        Assert.assertEquals(Long.valueOf(910L), timing.getDurationMs());
+        Assert.assertEquals(ReplayTiming.SOURCE_LEDGER, timing.getSource());
+    }
+
+    @Test
+    public void shouldPreserveIndependentDurationsForConcurrentTools() {
+        LocalDateTime base = LocalDateTime.of(2026, 5, 2, 12, 4, 0);
+        LlmInvocationView executor = LlmInvocationView.builder()
+                .id(6L)
+                .invocationSeq(1)
+                .agentName("react")
+                .toolCallCount(3)
+                .responseText("")
+                .build();
+        ToolInvocationView firstTool = concurrentTool(61L, 0, "tool-call-concurrent-a", base, 110L);
+        ToolInvocationView secondTool = concurrentTool(62L, 1, "tool-call-concurrent-b", base.plusNanos(20_000_000L), 220L);
+        ToolInvocationView thirdTool = concurrentTool(63L, 2, "tool-call-concurrent-c", base.plusNanos(40_000_000L), 330L);
+
+        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+                .llmInvocations(List.of(executor))
+                .toolInvocations(List.of(thirdTool, firstTool, secondTool))
+                .build());
+
+        Assert.assertEquals(3, frames.size());
+        Assert.assertEquals(List.of(110L, 220L, 330L), frames.stream()
+                .map(this::frameTiming)
+                .map(ReplayTiming::getDurationMs)
+                .toList());
+        Assert.assertEquals(List.of(
+                ReplayTiming.SOURCE_LEDGER,
+                ReplayTiming.SOURCE_LEDGER,
+                ReplayTiming.SOURCE_LEDGER
+        ), frames.stream().map(this::frameTiming).map(ReplayTiming::getSource).toList());
     }
 
     @Test
@@ -689,6 +797,29 @@ public class ReplayProjectorTest {
     private Map<String, Object> toolResult(GptProcessResult frame) {
         Object value = frameResultMap(frame).get("toolResult");
         return value instanceof Map<?, ?> ? (Map<String, Object>) value : Map.of();
+    }
+
+    private ReplayTiming frameTiming(GptProcessResult frame) {
+        Object value = ((Map<String, Object>) frame.getResultMap().get("eventData")).get("timing");
+        Assert.assertTrue(value instanceof ReplayTiming);
+        return (ReplayTiming) value;
+    }
+
+    private ToolInvocationView concurrentTool(Long id,
+                                              int dispatchIndex,
+                                              String toolCallId,
+                                              LocalDateTime startedAt,
+                                              long durationMs) {
+        return ToolInvocationView.builder()
+                .id(id)
+                .dispatchIndex(dispatchIndex)
+                .toolCallId(toolCallId)
+                .toolName("read_tool")
+                .llmObservation(toolCallId)
+                .startedAt(startedAt)
+                .finishedAt(startedAt.plusNanos(durationMs * 1_000_000L))
+                .durationMs(durationMs)
+                .build();
     }
 
     @SuppressWarnings("unchecked")

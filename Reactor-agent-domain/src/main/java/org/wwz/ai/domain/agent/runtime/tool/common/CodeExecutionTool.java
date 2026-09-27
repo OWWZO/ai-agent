@@ -6,6 +6,8 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpRequest;
+import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
+import org.wwz.ai.domain.agent.memory.ltm.LtmOwnerResolver;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.CodeInterpreterResponse;
@@ -30,7 +32,8 @@ public class CodeExecutionTool implements BaseTool {
 
     @Override public String getDescription() {
         return "直接在受控 Python 沙箱执行源码。用于计算、数据处理、图表及用户可下载文件生成。\n"
-                + "沙箱 cwd 为当前会话工作区（与 bash 相同）。用 Path / open / savefig 等相对路径读写即可，"
+                + "沙箱 cwd 为当前会话工作区（与 bash 相同）；skills/ 在该目录下。"
+                + "用 Path / open / savefig 等相对路径读写即可，"
                 + "例如 Path('chinagt-shanghai-fire-report/index.html').read_text(encoding='utf-8')；"
                 + "plt.savefig('chart.png')；df.to_excel('结果.xlsx')。\n"
                 + "本次新增或修改的工作区文件会自动采集上传，前端可预览/下载。\n"
@@ -79,6 +82,8 @@ public class CodeExecutionTool implements BaseTool {
             ReactorConfig config = agentContext.getRuntimeDependencies().requireReactorConfig();
             Map<String, Object> request = new LinkedHashMap<>(params);
             request.put("requestId", agentContext.getSessionId());
+            request.put("sessionId", agentContext.getSessionId());
+            request.put("ownerKey", resolveOwnerKey());
             request.put("workspaceRoot", WorkspacePaths.resolveSandboxRoot(
                     agentContext.getWorkspaceRoot(), agentContext.getSessionId()).toString());
             request.put("permissionProfile", "workspace");
@@ -155,5 +160,13 @@ public class CodeExecutionTool implements BaseTool {
             log.error("{} code_execution failed", agentContext == null ? "unknown" : agentContext.getRequestId(), e);
             return ToolResultPayload.failureFrom("code_execution 执行失败：" + e.getMessage(), null);
         }
+    }
+
+    private String resolveOwnerKey() {
+        LtmOwner owner = agentContext.getLtmOwner();
+        if (owner == null) {
+            owner = LtmOwnerResolver.resolve(agentContext.getVisitorId(), null);
+        }
+        return owner.asOwnerKey();
     }
 }

@@ -28,6 +28,13 @@
         <result column="deleted" property="deleted"/>
     </resultMap>
 
+    <sql id="toolInvocationColumns">
+        id, run_id, llm_invocation_id, tool_call_id, parent_tool_call_id, sub_agent_id, sub_agent_type,
+        sub_agent_description, dispatch_index, agent_name, step_no, tool_name, tool_provider,
+        input_json, llm_oberserve, status, error_msg, started_at, finished_at, duration_ms,
+        create_time, update_time, deleted
+    </sql>
+
     <resultMap id="ToolInvocationViewMap" type="org.wwz.ai.domain.agent.ledger.model.ToolInvocationView">
         <id column="id" property="id"/>
         <result column="run_id" property="runId"/>
@@ -85,7 +92,7 @@
     </update>
 
     <select id="queryByRunId" resultMap="ToolInvocationMap">
-        SELECT *
+        SELECT <include refid="toolInvocationColumns"/>
         FROM ai_agent_tool_invocation
         WHERE run_id = #{runId}
           AND deleted = 0
@@ -93,7 +100,7 @@
     </select>
 
     <select id="queryByRunIds" resultMap="ToolInvocationMap">
-        SELECT *
+        SELECT <include refid="toolInvocationColumns"/>
         FROM ai_agent_tool_invocation
         WHERE deleted = 0
           AND run_id IN
@@ -104,7 +111,7 @@
     </select>
 
     <select id="queryByLlmInvocationIds" resultMap="ToolInvocationMap">
-        SELECT *
+        SELECT <include refid="toolInvocationColumns"/>
         FROM ai_agent_tool_invocation
         WHERE deleted = 0
           AND llm_invocation_id IN

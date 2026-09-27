@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,6 +26,7 @@ public class AgentResponse {
     private String messageType;
     private String digitalEmployee;
     private String messageTime;
+    private ReplayTiming timing;
     private String planThought;
     private Plan plan;
     private String task;

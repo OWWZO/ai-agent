@@ -86,11 +86,16 @@ public final class IntentGatedPrompt {
     }
 
     private static boolean hasTool(ToolCollection tools, String name) {
-        return tools != null && tools.getToolMap() != null && tools.getToolMap().containsKey(name);
+        return tools != null
+                && ((tools.getToolMap() != null && tools.getToolMap().containsKey(name))
+                || (tools.getMcpToolMap() != null && tools.getMcpToolMap().containsKey(name))
+                || (tools.getDeferredToolCatalog() != null && tools.getDeferredToolCatalog().contains(name)));
     }
 
     private static boolean hasChartCapability(ToolCollection tools) {
-        return hasTool(tools, "document_generate") || hasTool(tools, "emit_ui_tree");
+        return hasTool(tools, "document_generate")
+                || hasTool(tools, "chart_generator")
+                || hasTool(tools, "emit_ui_tree");
     }
 
     private static boolean hasCanvasCapability(ToolCollection tools) {

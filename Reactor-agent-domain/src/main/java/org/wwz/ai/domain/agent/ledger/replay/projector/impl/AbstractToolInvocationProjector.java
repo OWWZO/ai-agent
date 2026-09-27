@@ -7,11 +7,13 @@ import org.wwz.ai.domain.agent.ledger.model.ArtifactView;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
 import org.wwz.ai.domain.agent.ledger.model.replay.ProjectedReplayEvent;
+import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRef;
 import org.wwz.ai.domain.agent.ledger.replay.ArtifactRelativePath;
 import org.wwz.ai.domain.agent.ledger.replay.projector.ToolInvocationProjector;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactFormatter;
 
+import java.time.Duration;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -155,6 +157,7 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
                 .messageOrder(state.getAndIncrOrder(orderKey))
                 .resultMap(responsePayload)
                 .artifactRefs(CollectionUtils.isEmpty(artifactRefs) ? null : artifactRefs)
+                .timing(resolveReplayTiming(invocation))
                 .build();
     }
 
@@ -264,6 +267,29 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
             return String.valueOf(invocation.getStartedAt().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli());
         }
         return String.valueOf(System.currentTimeMillis());
+    }
+
+    private ReplayTiming resolveReplayTiming(ToolInvocationView invocation) {
+        if (invocation == null) {
+            return null;
+        }
+        java.time.LocalDateTime startedAt = invocation.getStartedAt();
+        java.time.LocalDateTime finishedAt = invocation.getFinishedAt();
+        Long durationMs = invocation.getDurationMs();
+        String source = ReplayTiming.SOURCE_LEDGER;
+        if (durationMs == null && startedAt != null && finishedAt != null) {
+            durationMs = Duration.between(startedAt, finishedAt).toMillis();
+            source = ReplayTiming.SOURCE_INFERRED;
+        }
+        if (startedAt == null && finishedAt == null && durationMs == null) {
+            return null;
+        }
+        return ReplayTiming.builder()
+                .startedAt(startedAt)
+                .finishedAt(finishedAt)
+                .durationMs(durationMs)
+                .source(source)
+                .build();
     }
 
     private Map<String, Object> toArtifactInfo(ArtifactView artifact) {

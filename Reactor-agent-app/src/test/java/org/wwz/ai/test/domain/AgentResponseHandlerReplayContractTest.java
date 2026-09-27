@@ -10,7 +10,9 @@ import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
 import org.wwz.ai.domain.agent.ledger.replay.ReplayProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.ToolInvocationProjectorRegistry;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DefaultToolInvocationProjector;
+import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -198,6 +200,37 @@ public class AgentResponseHandlerReplayContractTest {
         Assert.assertEquals("tool_call", frameResultMap(result).get("messageType"));
         Assert.assertEquals("running", nestedResultMap(result).get("status"));
         Assert.assertEquals("file_tool", nestedResultMap(result).get("toolName"));
+    }
+
+    @Test
+    public void shouldProjectRuntimeTimingAtEventDataLevel() {
+        LocalDateTime startedAt = LocalDateTime.of(2026, 9, 26, 12, 0, 0);
+        LocalDateTime finishedAt = startedAt.plusNanos(125_000_000L);
+        GptProcessResult result = handler.build(
+                AgentRequest.builder().requestId("req-handler-timing-001").build(),
+                new EventResult(),
+                AgentResponse.builder()
+                        .requestId("req-handler-timing-001")
+                        .messageId("tool-call-timing-001")
+                        .messageType("tool_call")
+                        .messageTime("1714630005000")
+                        .resultMap(Map.of("toolCallId", "tool-call-timing-001"))
+                        .timing(ReplayTiming.builder()
+                                .startedAt(startedAt)
+                                .finishedAt(finishedAt)
+                                .durationMs(125L)
+                                .source(ReplayTiming.SOURCE_RUNTIME)
+                                .build())
+                        .isFinal(true)
+                        .finish(false)
+                        .build()
+        );
+
+        Object timing = eventData(result).get("timing");
+        Assert.assertTrue(timing instanceof ReplayTiming);
+        Assert.assertEquals(ReplayTiming.SOURCE_RUNTIME, ((ReplayTiming) timing).getSource());
+        Assert.assertEquals(Long.valueOf(125L), ((ReplayTiming) timing).getDurationMs());
+        Assert.assertEquals("1714630005000", frameResultMap(result).get("messageTime"));
     }
 
     @SuppressWarnings("unchecked")

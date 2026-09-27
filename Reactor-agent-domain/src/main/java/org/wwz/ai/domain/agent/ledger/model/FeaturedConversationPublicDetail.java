@@ -39,5 +39,8 @@ public class FeaturedConversationPublicDetail {
 
     private String contentUnavailableReason;
 
+    /** 新的默认轻量 history 载荷；旧字段保留给非历史兼容调用方。 */
+    private ConversationHistoryPage historyPage;
+
     private ConversationHistoryDetail historyDetail;
 }

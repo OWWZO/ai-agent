@@ -22,22 +22,38 @@ public class SessionProjectionRegistry {
         if (StringUtils.isBlank(sessionId) || stream == null) {
             return;
         }
-        bySession.computeIfAbsent(sessionId.trim(), key -> new CopyOnWriteArrayList<>()).addIfAbsent(stream);
+        String key = sessionId.trim();
+        bySession.compute(key, (ignored, streams) -> {
+            CopyOnWriteArrayList<AgentResponseProjectionStream> current =
+                    streams == null ? new CopyOnWriteArrayList<>() : streams;
+            current.addIfAbsent(stream);
+            return current;
+        });
     }
 
     public void unregister(String sessionId, AgentResponseProjectionStream stream) {
+        unregister(sessionId, stream, () -> { });
+    }
+
+    public void unregister(String sessionId,
+                           AgentResponseProjectionStream stream,
+                           Runnable onSessionIdle) {
         if (StringUtils.isBlank(sessionId) || stream == null) {
             return;
         }
         String key = sessionId.trim();
-        CopyOnWriteArrayList<AgentResponseProjectionStream> streams = bySession.get(key);
-        if (streams == null) {
-            return;
-        }
-        streams.remove(stream);
-        if (streams.isEmpty()) {
-            bySession.remove(key, streams);
-        }
+        bySession.compute(key, (ignored, streams) -> {
+            if (streams == null) {
+                onSessionIdle.run();
+                return null;
+            }
+            streams.remove(stream);
+            if (streams.isEmpty()) {
+                onSessionIdle.run();
+                return null;
+            }
+            return streams;
+        });
     }
 
     public List<AgentResponseProjectionStream> listLive(String sessionId) {

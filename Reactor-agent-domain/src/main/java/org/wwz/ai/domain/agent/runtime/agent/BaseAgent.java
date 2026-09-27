@@ -32,7 +32,9 @@ import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
 import org.wwz.ai.domain.agent.runtime.tool.common.MemoryTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.SessionSearchTool;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.DeferredMcpCatalog;
+import org.wwz.ai.domain.agent.runtime.tool.common.skill.SkillViewTool;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.DeferredToolCall;
+import org.wwz.ai.domain.agent.runtime.tool.skill.SkillPromptIndexBuilder;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadStateStore;
 import org.wwz.ai.domain.agent.runtime.util.FileUtil;
 
@@ -183,19 +185,45 @@ public abstract class BaseAgent {
     }
 
     protected void sendToolResult(ToolCall command, String toolResult) {
+        sendToolResult(command, toolResult, null);
+    }
+
+    protected void sendToolResult(ToolCall command, ToolExecutionOutcome outcome) {
+        sendToolResult(command,
+                outcome == null ? null : outcome.getToolResult(),
+                outcome == null ? null : outcome.getTiming());
+    }
+
+    private void sendToolResult(ToolCall command, String toolResult,
+                                org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming timing) {
         if (printer == null || command == null || command.getFunction() == null) {
             return;
         }
         String toolName = command.getFunction().getName();
+        Map<String, Object> toolParam = parseToolParam(command);
+        if (org.wwz.ai.domain.agent.runtime.tool.common.mcp.McpToolNames.TOOL_CALL.equals(toolName)) {
+            DeferredToolCall.Result resolved = DeferredToolCall.resolve(availableTools, toolParam);
+            if (resolved.ok()) {
+                toolName = resolved.name();
+                toolParam = resolved.arguments();
+            }
+        }
         if (TOOLS_WITHOUT_RESULT_EVENT.contains(toolName)) {
             return;
         }
-        printer.send(command.getId(), "tool_result", AgentResponse.ToolResult.builder()
+        AgentResponse.ToolResult result = AgentResponse.ToolResult.builder()
                 .toolName(toolName)
-                .toolParam(parseToolParam(command))
+                .toolParam(toolParam)
                 .toolResult(toolResult)
                 .toolCallId(command.getId())
-                .build(), null, true);
+                .build();
+        if (timing == null) {
+            printer.send(command.getId(), "tool_result", result, null, true);
+            return;
+        }
+        Map<String, Object> extraResultMap = new LinkedHashMap<>();
+        extraResultMap.put("timing", timing);
+        printer.send(command.getId(), "tool_result", result, extraResultMap, null, true);
     }
 
     /**
@@ -405,23 +433,11 @@ public abstract class BaseAgent {
                 }
             }
         }
-        // deferred MCP 仅列名进 system，schema 仍走 ToolSearch
-        String deferredSig = "";
-        if (context != null && context.getDeferredMcpCatalog() != null) {
-            DeferredMcpCatalog catalog = context.getDeferredMcpCatalog();
-            String deferredBlock = catalog.formatAvailableDeferredToolsBlock();
-            if (StringUtils.isNotBlank(deferredBlock) && !systemTemplate.contains("<available-deferred-tools>")) {
-                systemTemplate = systemTemplate.trim() + "\n\n" + deferredBlock.trim() + "\n";
-            }
-            deferredSig = catalog.deferredNamesSignature();
-        }
+        systemTemplate = appendSkillPromptIndex(systemTemplate);
         systemTemplate = canonicalizeSystemText(systemTemplate);
         // Freeze 仅作同 session 防御缓存；主稳定性来自确定性规范化
         String toolSig = LlmToolCallbackProvider.buildToolSignature(
                 context == null ? null : context.getToolCollection());
-        if (StringUtils.isNotBlank(deferredSig)) {
-            toolSig = toolSig + "|def:" + deferredSig;
-        }
         String agentSlot = StringUtils.defaultIfBlank(getName(), "agent")
                 + "|intent=" + intentPolicy.getCacheKey();
         String sessionId = context == null ? null : context.getSessionId();
@@ -434,6 +450,21 @@ public abstract class BaseAgent {
      */
     protected String buildStableSystemPrompt(String template) {
         return buildStableSystemPrompt(template, null, null, null);
+    }
+
+    private String appendSkillPromptIndex(String systemTemplate) {
+        if (context == null || context.getToolCollection() == null) {
+            return systemTemplate;
+        }
+        BaseTool viewTool = context.getToolCollection().getTool(SkillViewTool.NAME);
+        if (!(viewTool instanceof SkillViewTool skillViewTool)) {
+            return systemTemplate;
+        }
+        String index = skillViewTool.promptIndex();
+        if (StringUtils.isBlank(index) || systemTemplate.contains(SkillPromptIndexBuilder.AVAILABLE_SKILLS_OPEN)) {
+            return systemTemplate;
+        }
+        return systemTemplate.trim() + "\n\n" + index.trim() + "\n";
     }
 
     /**

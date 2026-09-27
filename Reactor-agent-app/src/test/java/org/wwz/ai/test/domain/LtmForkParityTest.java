@@ -38,12 +38,12 @@ public class LtmForkParityTest {
         tools.addTool(new StubTool("bash"));
         tools.addTool(new StubTool("workspace_write"));
         tools.addTool(new StubTool("WebSearch"));
-        tools.addTool(new StubTool("skill_tool"));
+        tools.addTool(new StubTool("skill_view"));
         Set<String> wl = LtmForkParity.resolveCuratorWhitelist(tools);
         Assert.assertTrue(wl.contains("memory"));
         Assert.assertTrue(wl.contains("bash"));
         Assert.assertTrue(wl.contains("workspace_write"));
-        Assert.assertTrue(wl.contains("skill_tool"));
+        Assert.assertTrue(wl.contains("skill_view"));
         Assert.assertFalse(wl.contains("WebSearch"));
 
         LtmForkParity review = LtmForkParity.forReview("sys", tools, List.of());

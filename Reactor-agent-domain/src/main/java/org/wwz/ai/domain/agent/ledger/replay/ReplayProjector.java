@@ -12,8 +12,10 @@ import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
 import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
 import org.wwz.ai.domain.agent.ledger.model.replay.ProjectedReplayEvent;
 import org.wwz.ai.domain.agent.ledger.model.replay.ReplayFactBundle;
+import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
 import org.wwz.ai.domain.agent.ledger.replay.projector.ToolInvocationProjectorRegistry;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -317,6 +319,11 @@ public class ReplayProjector {
                 .messageOrder(state.getAndIncrOrder(state.getTaskId() + ":" + messageType))
                 .resultMap(buildLlmResponse(bundle, invocation, messageType, plannerRoundId, parentToolUseId))
                 .artifactRefs(artifactRefs)
+                .timing(resolveReplayTiming(
+                        invocation.getStartedAt(),
+                        invocation.getFinishedAt(),
+                        invocation.getDurationMs()
+                ))
                 .build();
     }
 
@@ -605,6 +612,9 @@ public class ReplayProjector {
         if (event.getArtifactRefs() != null) {
             eventData.put("artifactRefs", event.getArtifactRefs());
         }
+        if (event.getTiming() != null) {
+            eventData.put("timing", event.getTiming());
+        }
         eventData.put("resultMap", event.getResultMap());
         resultMap.put("eventData", eventData);
         return GptProcessResult.builder()
@@ -671,5 +681,24 @@ public class ReplayProjector {
                 .thenComparing(ToolInvocationView::getStartedAt, Comparator.nullsLast(java.time.LocalDateTime::compareTo))
                 .thenComparing(ToolInvocationView::getId, Comparator.nullsLast(Long::compareTo)));
         return result;
+    }
+
+    private ReplayTiming resolveReplayTiming(java.time.LocalDateTime startedAt,
+                                             java.time.LocalDateTime finishedAt,
+                                             Long durationMs) {
+        String source = ReplayTiming.SOURCE_LEDGER;
+        if (durationMs == null && startedAt != null && finishedAt != null) {
+            durationMs = Duration.between(startedAt, finishedAt).toMillis();
+            source = ReplayTiming.SOURCE_INFERRED;
+        }
+        if (startedAt == null && finishedAt == null && durationMs == null) {
+            return null;
+        }
+        return ReplayTiming.builder()
+                .startedAt(startedAt)
+                .finishedAt(finishedAt)
+                .durationMs(durationMs)
+                .source(source)
+                .build();
     }
 }

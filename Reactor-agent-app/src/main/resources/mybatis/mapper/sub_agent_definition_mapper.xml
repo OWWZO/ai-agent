@@ -10,6 +10,8 @@
         <result column="system_prompt" property="systemPrompt"/>
         <result column="allowed_tools_json" property="allowedToolsJson"/>
         <result column="disallowed_tools_json" property="disallowedToolsJson"/>
+        <result column="tool_policy_mode" property="toolPolicyMode"/>
+        <result column="deferred_tools_json" property="deferredToolsJson"/>
         <result column="max_steps" property="maxSteps"/>
         <result column="status" property="status"/>
         <result column="create_time" property="createTime"/>
@@ -19,7 +21,7 @@
 
     <sql id="columns">
         id, agent_key, display_name, when_to_use, system_prompt,
-        allowed_tools_json, disallowed_tools_json, max_steps, status,
+        allowed_tools_json, disallowed_tools_json, tool_policy_mode, deferred_tools_json, max_steps, status,
         create_time, update_time, deleted
     </sql>
 
@@ -51,10 +53,10 @@
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_agent_sub_agent_definition (
             agent_key, display_name, when_to_use, system_prompt,
-            allowed_tools_json, disallowed_tools_json, max_steps, status, deleted
+            allowed_tools_json, disallowed_tools_json, tool_policy_mode, deferred_tools_json, max_steps, status, deleted
         ) VALUES (
             #{agentKey}, #{displayName}, #{whenToUse}, #{systemPrompt},
-            #{allowedToolsJson}, #{disallowedToolsJson}, #{maxSteps}, #{status}, 0
+            #{allowedToolsJson}, #{disallowedToolsJson}, #{toolPolicyMode}, #{deferredToolsJson}, #{maxSteps}, #{status}, 0
         )
     </insert>
 
@@ -65,6 +67,8 @@
             system_prompt = #{systemPrompt},
             allowed_tools_json = #{allowedToolsJson},
             disallowed_tools_json = #{disallowedToolsJson},
+            tool_policy_mode = #{toolPolicyMode},
+            deferred_tools_json = #{deferredToolsJson},
             max_steps = #{maxSteps},
             status = #{status},
             deleted = 0,

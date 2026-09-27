@@ -32,7 +32,7 @@ public final class PlanModePromptInjector {
 
             ## Hard constraints
             - NO business code/config/data edits. NO report/image/script side effects.
-              - Read-only tools OK: workspace_read/list/glob/grep, skill_tool (read).
+              - Read-only tools OK: workspace_read/list/glob/grep, skill_view/skills_search (read).
               - Plan mode constrains only the main agent. Agent subagents keep their own tool pool and may search or write files.
             - Clarify with AskUserQuestion when needed. NEVER use AskUserQuestion to ask "is the plan OK?" — that is ExitPlanMode's job.
             - When the plan is ready, call ExitPlanMode (optionally pass plan text). The system will WAIT for user approval; you cannot self-approve.

@@ -173,8 +173,8 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         if (!closed.compareAndSet(false, true)) {
             return;
         }
-        detachRegistry();
         persistWatermark(lastBufferedSeq());
+        detachRegistry();
         for (ObserverSink sink : observers) {
             if (sink.stream != null && !sink.stream.isAborted()) {
                 sink.stream.complete();
@@ -187,7 +187,6 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         if (!closed.compareAndSet(false, true)) {
             return;
         }
-        detachRegistry();
         GptProcessResult failed = buildDefaultResult(
                 request, throwable == null ? "执行失败" : throwable.getMessage());
         assignSeq(failed);
@@ -195,6 +194,7 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         if (eventBus != null && request != null && StringUtils.isNotBlank(request.getSessionId())) {
             eventBus.publish(request.getSessionId(), failed);
         }
+        detachRegistry();
         for (ObserverSink sink : observers) {
             if (sink.stream != null && !sink.stream.isAborted()) {
                 sink.stream.completeWithError(throwable);
@@ -403,9 +403,16 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
 
     private void detachRegistry() {
         if (projectionRegistry == null || request == null) {
+            completeSessionObservers();
             return;
         }
-        projectionRegistry.unregister(request.getSessionId(), this);
+        projectionRegistry.unregister(request.getSessionId(), this, this::completeSessionObservers);
+    }
+
+    private void completeSessionObservers() {
+        if (eventBus != null && request != null && StringUtils.isNotBlank(request.getSessionId())) {
+            eventBus.completeSession(request.getSessionId());
+        }
     }
 
     private void pruneAbortedObservers() {

@@ -26,6 +26,7 @@ import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationFinishRecord;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationStartRecord;
+import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
 import org.wwz.ai.domain.agent.runtime.ReactorLlmDependencies;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 
@@ -280,7 +281,9 @@ public class LLM {
                             chatModel.stream(prompt),
                             null,
                             false,
-                            pushToClient
+                            pushToClient,
+                            0,
+                            invocationHandle.runtimeTiming()
                     ),
                     retryNotifier(context)
             );
@@ -433,7 +436,8 @@ public class LLM {
                             chatModel.stream(prompt),
                             startTime,
                             pushToClient,
-                            timeout
+                            timeout,
+                            invocationHandle.runtimeTiming()
                     ),
                     retryNotifier(context)
             );
@@ -548,7 +552,8 @@ public class LLM {
                                 STRUCT_PARSE_JSON_MARKER,
                                 true,
                                 true,
-                                timeout
+                                timeout,
+                                invocationHandle.runtimeTiming()
                         ),
                         retryNotifier(context)
                 )
@@ -735,19 +740,23 @@ public class LLM {
     }
 
     private LlmInvocationHandle startLlmInvocation(AgentContext context, String callKind, boolean stream) {
+        ReplayTiming runtimeTiming = ReplayTiming.builder()
+                .startedAt(LocalDateTime.now())
+                .source(ReplayTiming.SOURCE_RUNTIME)
+                .build();
         if (context == null || !context.hasActiveLedgerRun() || context.getAgentRunState() == null) {
-            return LlmInvocationHandle.disabled();
+            return LlmInvocationHandle.disabled(runtimeTiming);
         }
         // invocation 的 prompt 估算和观测快照来自当前线程上下文，必须在异步切换前捕获。
         // 若当前请求没有有效 run，则保持 fail-open，不让可选的持久化能力阻断模型调用。
-        LocalDateTime startedAt = LocalDateTime.now();
+        LocalDateTime startedAt = runtimeTiming.getStartedAt();
         int invocationSeq = context.getAgentRunState().nextInvocationSeq();
         String agentName = context.getAgentRunState().getCurrentAgentName();
         Integer stepNo = context.getAgentRunState().getCurrentStepNo();
         if (StringUtils.isBlank(agentName)) {
             log.error("{} skip llm invocation ledger insert: blank agentName, seq={}, stepNo={}, model={}, callKind={}, thread={}",
                     context.getRequestId(), invocationSeq, stepNo, model, callKind, Thread.currentThread().getName());
-            return LlmInvocationHandle.disabled();
+            return LlmInvocationHandle.disabled(runtimeTiming);
         }
         log.info("{} start llm invocation seq={} agentName={} stepNo={} model={} callKind={} stream={} thread={}",
                 context.getRequestId(), invocationSeq, agentName, stepNo, model, callKind, stream,
@@ -775,7 +784,7 @@ public class LLM {
                 .cacheRiskFlags(obs == null ? null : obs.getCacheRiskFlags())
                 .build());
         context.getAgentRunState().bindCurrentLlmInvocationId(invocationId);
-        return new LlmInvocationHandle(invocationId, obs);
+        return new LlmInvocationHandle(invocationId, obs, runtimeTiming);
     }
 
     private void finishLlmInvocation(AgentContext context,
@@ -797,7 +806,14 @@ public class LLM {
             );
             return;
         }
-        long durationMs = response == null ? 0L : response.getDuration();
+        completeRuntimeTiming(handle == null ? null : handle.runtimeTiming());
+        if (response != null) {
+            response.setTiming(snapshotTiming(handle == null ? null : handle.runtimeTiming()));
+        }
+        long durationMs = handle == null || handle.runtimeTiming() == null
+                || handle.runtimeTiming().getDurationMs() == null
+                ? 0L
+                : handle.runtimeTiming().getDurationMs();
         LlmUsageSnapshot usage = response == null ? LlmUsageSnapshot.empty() : response.toUsageSnapshot();
         LlmPromptObservability.logResponse(
                 context,
@@ -839,6 +855,7 @@ public class LLM {
                                      LlmUsageSnapshot usage,
                                      String finishReason,
                                      String errorMsg) {
+        completeRuntimeTiming(handle == null ? null : handle.runtimeTiming());
         if (context == null || handle == null || !handle.enabled() || handle.invocationId() == null) {
             return;
         }
@@ -874,7 +891,9 @@ public class LLM {
                 .cacheRiskFlags(obs == null ? null : obs.getCacheRiskFlags())
                 .finishReason(finishReason)
                 .errorMsg(errorMsg)
-                .finishedAt(LocalDateTime.now())
+                .finishedAt(handle.runtimeTiming() == null || handle.runtimeTiming().getFinishedAt() == null
+                        ? LocalDateTime.now()
+                        : handle.runtimeTiming().getFinishedAt())
                 .build());
         LlmPromptObservability.clear();
     }
@@ -886,6 +905,29 @@ public class LLM {
         if (LlmPromptObservability.current() == null) {
             LlmPromptObservability.restore(handle.observationBundle());
         }
+    }
+
+    private void completeRuntimeTiming(ReplayTiming timing) {
+        if (timing == null || timing.getFinishedAt() != null || timing.getStartedAt() == null) {
+            return;
+        }
+        LocalDateTime finishedAt = LocalDateTime.now();
+        timing.setFinishedAt(finishedAt);
+        timing.setDurationMs(Math.max(0L,
+                java.time.Duration.between(timing.getStartedAt(), finishedAt).toMillis()));
+        timing.setSource(ReplayTiming.SOURCE_RUNTIME);
+    }
+
+    private ReplayTiming snapshotTiming(ReplayTiming timing) {
+        if (timing == null) {
+            return null;
+        }
+        return ReplayTiming.builder()
+                .startedAt(timing.getStartedAt())
+                .finishedAt(timing.getFinishedAt())
+                .durationMs(timing.getDurationMs())
+                .source(timing.getSource())
+                .build();
     }
 
     private Throwable unwrapCompletionThrowable(Throwable throwable) {
@@ -985,6 +1027,7 @@ public class LLM {
         private Integer completionAudioTokens;
         private Integer reasoningTokens;
         private long duration;
+        private ReplayTiming timing;
 
         public LlmUsageSnapshot toUsageSnapshot() {
             return LlmUsageSnapshot.builder()
@@ -1002,9 +1045,11 @@ public class LLM {
         }
     }
 
-    private record LlmInvocationHandle(Long invocationId, LlmPromptObservability.ObservationBundle observationBundle) {
-        private static LlmInvocationHandle disabled() {
-            return new LlmInvocationHandle(null, null);
+    private record LlmInvocationHandle(Long invocationId,
+                                       LlmPromptObservability.ObservationBundle observationBundle,
+                                       ReplayTiming runtimeTiming) {
+        private static LlmInvocationHandle disabled(ReplayTiming runtimeTiming) {
+            return new LlmInvocationHandle(null, null, runtimeTiming);
         }
 
         private boolean enabled() {

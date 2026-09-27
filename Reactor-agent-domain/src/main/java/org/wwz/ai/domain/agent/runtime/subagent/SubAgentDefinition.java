@@ -14,6 +14,9 @@ import java.util.Set;
 @Builder
 public class SubAgentDefinition {
 
+    public static final String TOOL_POLICY_INHERIT = "inherit";
+    public static final String TOOL_POLICY_CUSTOM = "custom";
+
     /** 类型名，如 general-purpose */
     private String agentType;
 
@@ -35,6 +38,18 @@ public class SubAgentDefinition {
     @Builder.Default
     private Set<String> disallowedTools = Collections.emptySet();
 
+    /**
+     * inherit=跟随父 Agent 的工具视图；custom=按本定义的 allowed/deferred 配置装配。
+     */
+    @Builder.Default
+    private String toolPolicyMode = TOOL_POLICY_INHERIT;
+
+    /**
+     * custom 模式下从允许工具中移入延迟 catalog 的工具名。
+     */
+    @Builder.Default
+    private Set<String> deferredTools = Collections.emptySet();
+
     /** 最大步数；null 表示沿用 React 配置 */
     private Integer maxSteps;
 
@@ -42,5 +57,9 @@ public class SubAgentDefinition {
         return allowedTools == null
                 || allowedTools.isEmpty()
                 || allowedTools.contains("*");
+    }
+
+    public boolean usesCustomToolPolicy() {
+        return TOOL_POLICY_CUSTOM.equalsIgnoreCase(toolPolicyMode);
     }
 }

@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.scheduling.TaskScheduler;
 import org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort;
+import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteStreamPort;
@@ -32,6 +33,8 @@ import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationE
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentConcurrencyGate;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
 import org.wwz.ai.types.agent.config.AgentExecutorProperties;
+import org.wwz.ai.types.agent.config.HostCliProperties;
+import org.wwz.ai.types.agent.config.OpenCliProperties;
 
 import java.util.concurrent.Executor;
 
@@ -69,7 +72,10 @@ public class ReactorRuntimeAutoConfiguration {
                                                                  RemoteHttpPort remoteHttpPort,
                                                                  RemoteStreamPort remoteStreamPort,
                                                                  FileArtifactPort fileArtifactPort,
-                                                                 ObjectProvider<BrowserRelayPort> browserRelayPortProvider,
+                                                                  ObjectProvider<BrowserRelayPort> browserRelayPortProvider,
+                                                                   ObjectProvider<CliExecutionPort> cliExecutionPortProvider,
+                                                                   ObjectProvider<OpenCliProperties> openCliPropertiesProvider,
+                                                                   ObjectProvider<HostCliProperties> hostCliPropertiesProvider,
                                                                   @Qualifier(AgentExecutorNames.LLM_EXECUTOR) Executor llmExecutor,
                                                                   @Qualifier(AgentExecutorNames.TASK_EXECUTOR) Executor taskExecutor,
                                                                   @Qualifier(AgentExecutorNames.TOOL_EXECUTOR) Executor toolExecutor,
@@ -95,6 +101,9 @@ public class ReactorRuntimeAutoConfiguration {
                 .remoteStreamPort(remoteStreamPort)
                 .fileArtifactPort(fileArtifactPort)
                 .browserRelayPort(browserRelayPortProvider.getIfAvailable())
+                .cliExecutionPort(cliExecutionPortProvider.getIfAvailable())
+                .openCliProperties(openCliPropertiesProvider.getIfAvailable())
+                .hostCliProperties(hostCliPropertiesProvider.getIfAvailable())
                 .llmExecutor(llmExecutor)
                 .taskExecutor(taskExecutor)
                 .toolExecutor(toolExecutor)

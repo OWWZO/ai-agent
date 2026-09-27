@@ -224,6 +224,9 @@ public final class LtmAgentForkSupport {
                     }
                 }
             }
+            if (parent.getDeferredToolCatalog() != null) {
+                copy.setDeferredToolCatalog(parent.getDeferredToolCatalog());
+            }
         }
         if (copy.getTool(MemoryTool.TOOL_NAME) == null) {
             MemoryTool memoryTool = new MemoryTool();

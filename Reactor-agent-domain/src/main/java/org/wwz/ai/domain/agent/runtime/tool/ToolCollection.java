@@ -14,6 +14,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
+import org.wwz.ai.domain.agent.runtime.tool.common.mcp.McpToolNames;
+import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolCatalog;
+import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolEntry;
+import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolSource;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.DeferredToolCall;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
 
 import java.util.LinkedHashMap;
@@ -71,6 +76,14 @@ public class ToolCollection {
     @EqualsAndHashCode.Exclude
     @JSONField(serialize = false, deserialize = false)
     private McpToolExecutor mcpToolExecutor;
+
+    /**
+     * 本 collection 的不可变延迟工具目录。不进 tools[] / eager map。
+     */
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    @JSONField(serialize = false, deserialize = false)
+    private DeferredToolCatalog deferredToolCatalog;
 
     /**
      * 当前执行的任务标识
@@ -151,29 +164,38 @@ public class ToolCollection {
      *         - 工具不存在：返回null。
      */
     public Object execute(String name, Object toolInput) {
-        if (agentContext != null
-                && agentContext.getToolDispatchWhitelist() != null
-                && !agentContext.getToolDispatchWhitelist().isEmpty()) {
-            String toolName = name == null ? "" : name.trim();
-            if (!agentContext.getToolDispatchWhitelist().contains(toolName)) {
-                String deny = "LTM fork denied non-whitelisted tool: " + toolName
-                        + ". Only curator-allowed tools (memory / skill workspace / bash) may run.";
-                log.warn("requestId:{} {}",
-                        agentContext.getRequestId() == null ? "unknown" : agentContext.getRequestId(),
-                        deny);
-                return deny;
+        if (McpToolNames.TOOL_CALL.equals(name)) {
+            DeferredToolCall.Result resolved = DeferredToolCall.resolve(this, toolInput);
+            if (!resolved.ok()) {
+                return resolved.errorPayload();
             }
+            return executeResolved(resolved.name(), resolved.arguments());
         }
-        // 分支1：执行本地基础工具
-        if (toolMap.containsKey(name)) {
-            // 本地工具优先，避免同名 MCP 工具抢占已经注册的领域实现。
+        if (deferredToolCatalog != null && deferredToolCatalog.contains(name)
+                && (mcpToolMap == null || !mcpToolMap.containsKey(name))) {
+            String hint = "Error: Tool " + name + " is deferred. Invoke it via ToolCall "
+                    + "(name + arguments), not as a direct function call.";
+            log.warn("requestId:{} {}", agentContext == null ? "unknown" : agentContext.getRequestId(), hint);
+            return hint;
+        }
+        return executeResolved(name, toolInput);
+    }
+
+    /**
+     * 执行已解析的真实工具名（eager 本地 / eager MCP / 延迟本地或 MCP）。
+     * pipeline 解包后走这里，避免再次命中 deferred 拒绝或二次 ToolCall 解包。
+     */
+    public Object executeResolved(String name, Object toolInput) {
+        String deny = denyIfNotWhitelisted(name);
+        if (deny != null) {
+            return deny;
+        }
+        if (toolMap != null && toolMap.containsKey(name)) {
             BaseTool tool = getTool(name);
             return tool.execute(toolInput);
         }
-        // 分支2：执行远程MCP工具
-        else if (mcpToolMap.containsKey(name)) {
-            // 只有本地不存在时才交给统一 MCP executor，保持工具名解析的确定性。
-            McpToolInfo toolInfo = mcpToolMap.get(name);
+        McpToolInfo toolInfo = mcpToolMap == null ? null : mcpToolMap.get(name);
+        if (toolInfo != null) {
             McpToolExecutor executor = mcpToolExecutor;
             if (executor == null) {
                 log.error("requestId:{} execute mcp tool {} failed, McpToolExecutor not found",
@@ -182,19 +204,39 @@ public class ToolCollection {
             }
             return executor.executeTool(toolInfo, toolInput);
         }
-        // 分支3：工具不存在；若在延迟目录中则提示先 ToolSearch
-        else {
-            if (agentContext != null
-                    && agentContext.getDeferredMcpCatalog() != null
-                    && agentContext.getDeferredMcpCatalog().get(name) != null) {
-                String hint = "Error: Tool " + name + " is deferred. Call ToolSearch with select:"
-                        + name + " first, then retry.";
-                log.warn("requestId:{} {}", agentContext.getRequestId(), hint);
-                return hint;
+        DeferredToolEntry deferred = deferredToolCatalog == null ? null : deferredToolCatalog.get(name);
+        if (deferred != null) {
+            if (deferred.getSource() == DeferredToolSource.LOCAL) {
+                return deferred.getLocalTool().execute(toolInput);
             }
-            log.error("Error: Unknown tool {}", name);
+            McpToolExecutor executor = mcpToolExecutor;
+            if (executor == null) {
+                log.error("requestId:{} execute deferred mcp tool {} failed, McpToolExecutor not found",
+                        agentContext != null ? agentContext.getRequestId() : "unknown", name);
+                return "Tool" + name + " Error.";
+            }
+            return executor.executeTool(deferred.getMcpToolInfo(), toolInput);
         }
+        log.error("Error: Unknown tool {}", name);
         return null;
+    }
+
+    private String denyIfNotWhitelisted(String name) {
+        if (agentContext == null
+                || agentContext.getToolDispatchWhitelist() == null
+                || agentContext.getToolDispatchWhitelist().isEmpty()) {
+            return null;
+        }
+        String toolName = name == null ? "" : name.trim();
+        if (agentContext.getToolDispatchWhitelist().contains(toolName)) {
+            return null;
+        }
+        String deny = "LTM fork denied non-whitelisted tool: " + toolName
+                + ". Only curator-allowed tools (memory / skill workspace / bash) may run.";
+        log.warn("requestId:{} {}",
+                agentContext.getRequestId() == null ? "unknown" : agentContext.getRequestId(),
+                deny);
+        return deny;
     }
 
     /**
@@ -261,6 +303,7 @@ public class ToolCollection {
         return "ToolCollection(" +
                 "toolMap=" + (toolMap != null ? toolMap.keySet() : "null") +
                 ", mcpToolMap=" + (mcpToolMap != null ? mcpToolMap.keySet() : "null") +
+                ", deferredToolCatalog=" + (deferredToolCatalog != null ? deferredToolCatalog.size() : 0) +
                 ", currentTask='" + currentTask + '\'' +
                 ')';
     }

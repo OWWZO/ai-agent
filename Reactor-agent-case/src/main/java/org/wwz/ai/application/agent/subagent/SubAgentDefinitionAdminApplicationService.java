@@ -7,6 +7,7 @@ import org.wwz.ai.domain.agent.adapter.repository.ISubAgentDefinitionRepository;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentDefinitionLoader;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentDefinitionRecord;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentDefinitionUpsertCommand;
+import org.wwz.ai.domain.agent.runtime.subagent.SubAgentDefinition;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRegistry;
 
 import java.util.List;
@@ -88,6 +89,9 @@ public class SubAgentDefinitionAdminApplicationService {
                 .systemPrompt(command.getSystemPrompt())
                 .allowedTools(command.getAllowedTools())
                 .disallowedTools(command.getDisallowedTools())
+                .toolPolicyMode(StringUtils.defaultIfBlank(command.getToolPolicyMode(),
+                        SubAgentDefinition.TOOL_POLICY_INHERIT).trim().toLowerCase())
+                .deferredTools(command.getDeferredTools())
                 .maxSteps(command.getMaxSteps())
                 .status(status)
                 .build();
@@ -110,6 +114,12 @@ public class SubAgentDefinitionAdminApplicationService {
         }
         if (command.getMaxSteps() != null && command.getMaxSteps() <= 0) {
             throw new IllegalArgumentException("maxSteps 必须为正整数或留空");
+        }
+        String toolPolicyMode = StringUtils.defaultIfBlank(command.getToolPolicyMode(),
+                SubAgentDefinition.TOOL_POLICY_INHERIT).trim().toLowerCase();
+        if (!SubAgentDefinition.TOOL_POLICY_INHERIT.equals(toolPolicyMode)
+                && !SubAgentDefinition.TOOL_POLICY_CUSTOM.equals(toolPolicyMode)) {
+            throw new IllegalArgumentException("toolPolicyMode 只能是 inherit 或 custom");
         }
         if (!create && StringUtils.isBlank(key)) {
             throw new IllegalArgumentException("agentKey 不能为空");

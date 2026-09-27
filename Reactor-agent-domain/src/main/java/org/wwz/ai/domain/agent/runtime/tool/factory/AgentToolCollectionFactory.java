@@ -62,47 +62,29 @@ import org.wwz.ai.domain.agent.runtime.tool.common.canvas.GetHtmlCanvasGuideTool
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.ListUiComponentsTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.MemoryTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.SessionSearchTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserBackTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserClickTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserFillTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserFindTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserFocusTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserDblClickTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserCheckTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserUncheckTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserDragTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserGetTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserExtractTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserHtmlTreeTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserAutoScrollTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserNetworkTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserFramesTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserHoverTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserKeysTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserNavigateTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserScreenshotTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserScrollTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserSelectTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserSiteTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserSnapshotTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserTabsTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserTypeTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserWaitTool;
+import org.wwz.ai.domain.agent.runtime.tool.cli.HostCliTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.WebFetchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.WebSearchTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.social.RedditTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.social.TwitterTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.social.XueqiuTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.mcp.ListMcpResourcesTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.mcp.McpToolNames;
 import org.wwz.ai.domain.agent.runtime.tool.common.mcp.ReadMcpResourceTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.mcp.ToolCallTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.mcp.ToolDescribeTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.mcp.ToolSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.shell.BashTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.skill.SkillTool;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.DeferredMcpCatalog;
+import org.wwz.ai.domain.agent.runtime.tool.common.skill.SkillViewTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.skill.SkillsSearchTool;
+import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolCatalog;
+import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolEntry;
+import org.wwz.ai.domain.agent.runtime.tool.deferred.LocalToolDeferralPolicy;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
+import org.wwz.ai.domain.agent.runtime.tool.skill.SkillCatalog;
+import org.wwz.ai.domain.agent.runtime.tool.skill.SkillLoader;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRegistry;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeLayout;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeOptions;
+import org.wwz.ai.domain.agent.runtime.tool.skill.SkillScriptDiscoverer;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillVirtualPaths;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceGlobTool;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceGrepTool;
@@ -120,6 +102,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 
@@ -134,6 +117,8 @@ public class AgentToolCollectionFactory {
     private final ReactorConfig reactorConfig;
     private final McpToolExecutor mcpToolExecutor;
     private final SkillRegistry skillRegistry;
+    private final SkillLoader skillLoader;
+    private final SkillScriptDiscoverer skillScriptDiscoverer;
     private final SkillRuntimeOptions skillRuntimeOptions;
     private final SkillRuntimeLayout skillRuntimeLayout;
     private final SkillVirtualPaths skillVirtualPaths;
@@ -164,6 +149,10 @@ public class AgentToolCollectionFactory {
         }
         main.setMcpToolExecutor(fullToolCollection.getMcpToolExecutor());
         Set<String> allowed = new HashSet<>(parseToolNames(reactorConfig.getPlanSolveMainToolList()));
+        if (allowed.contains(McpToolNames.TOOL_SEARCH)) {
+            allowed.add(McpToolNames.TOOL_DESCRIBE);
+            allowed.add(McpToolNames.TOOL_CALL);
+        }
         if (fullToolCollection.getToolMap() != null) {
             fullToolCollection.getToolMap().forEach((name, tool) -> {
                 if (allowed.contains(name)) {
@@ -176,11 +165,21 @@ public class AgentToolCollectionFactory {
                 // 显式白名单；alwaysLoad MCP 在启用 ToolSearch 时对主 Agent 可见
                 if (allowed.contains(name)
                         || allowed.contains("*")
-                        || (Boolean.TRUE.equals(tool.getAlwaysLoad()) && allowed.contains("ToolSearch"))) {
+                        || (Boolean.TRUE.equals(tool.getAlwaysLoad()) && allowed.contains(McpToolNames.TOOL_SEARCH))) {
                     main.addMcpTool(tool);
                 }
             });
         }
+        if (fullToolCollection.getDeferredToolCatalog() != null) {
+            boolean exposeCatalog = allowed.contains("*")
+                    || allowed.contains(McpToolNames.TOOL_SEARCH);
+            DeferredToolCatalog catalog = fullToolCollection.getDeferredToolCatalog().filter(entry ->
+                    exposeCatalog || allowed.contains(entry.getName()));
+            if (catalog.size() > 0) {
+                main.setDeferredToolCatalog(catalog);
+            }
+        }
+        main.setAgentContext(fullToolCollection.getAgentContext());
         main.restoreTaskScopedState(fullToolCollection.snapshotTaskScopedState());
         return main;
     }
@@ -217,7 +216,8 @@ public class AgentToolCollectionFactory {
             if (workspaceService.isEnabled()) {
                 registerWorkspaceTools(toolCollection, agentContext);
             }
-            registerBrowserTools(toolCollection, agentContext, request);
+            registerBrowserTool(toolCollection, agentContext, request);
+            registerHostCliTool(toolCollection, agentContext);
 
             List<String> agentToolList = parseToolNames(reactorConfig.getMultiAgentToolListMap()
                             .getOrDefault("default", "search,web_fetch,web_search,code_execution,docgen,docread,dataprep,canvas,image_generation,data_analysis")
@@ -312,18 +312,6 @@ public class AgentToolCollectionFactory {
                 WebSearchTool webSearchTool = new WebSearchTool();
                 addTool(toolCollection, webSearchTool, agentContext, WebSearchTool::setAgentContext);
             }
-            if (agentToolList.contains("twitter")) {
-                TwitterTool twitterTool = new TwitterTool();
-                addTool(toolCollection, twitterTool, agentContext, TwitterTool::setAgentContext);
-            }
-            if (agentToolList.contains("reddit")) {
-                RedditTool redditTool = new RedditTool();
-                addTool(toolCollection, redditTool, agentContext, RedditTool::setAgentContext);
-            }
-            if (agentToolList.contains("xueqiu")) {
-                XueqiuTool xueqiuTool = new XueqiuTool();
-                addTool(toolCollection, xueqiuTool, agentContext, XueqiuTool::setAgentContext);
-            }
             if (agentToolList.contains("code_execution")) {
                 CodeExecutionTool codeExecutionTool = new CodeExecutionTool();
                 addTool(toolCollection, codeExecutionTool, agentContext, CodeExecutionTool::setAgentContext);
@@ -360,8 +348,8 @@ public class AgentToolCollectionFactory {
     }
 
     /**
-     * 装配 MCP 工具 + ToolSearch + Resources 元工具。
-     * always/auto 延迟模式下仅 alwaysLoad 工具进入 tools[]，其余进 DeferredMcpCatalog。
+     * 装配本地/MCP 工具 + 三件套 bridge + Resources 元工具。
+     * 本地和 MCP 候选在同一个不可变 catalog 中，不会因为搜索而进入 tools[]。
      */
     private void attachMcpSurface(ToolCollection toolCollection, AgentContext agentContext, AgentRequest request) {
         List<McpToolInfo> discovered = List.of();
@@ -373,29 +361,63 @@ public class AgentToolCollectionFactory {
             log.error("{} discover mcp tool failed", agentContext.getRequestId(), e);
         }
 
-        DeferredMcpCatalog catalog = new DeferredMcpCatalog(discovered);
-        agentContext.setDeferredMcpCatalog(catalog);
+        List<McpToolInfo> visible = new ArrayList<>();
+        List<McpToolInfo> deferredTools = new ArrayList<>();
+        for (McpToolInfo toolInfo : discovered) {
+            if (toolInfo == null) {
+                continue;
+            }
+            if (isDisabledMcp(agentContext, toolInfo)) {
+                continue;
+            }
+            if (Boolean.TRUE.equals(toolInfo.getAlwaysLoad())) {
+                visible.add(toolInfo);
+            } else {
+                deferredTools.add(toolInfo);
+            }
+        }
 
-        boolean deferred = shouldDeferMcpTools(discovered.size());
-        if (deferred) {
-            for (McpToolInfo toolInfo : catalog.listActivated()) {
+        int localDeferredCandidates = countLocalDeferredCandidates(toolCollection);
+        boolean shouldDefer = shouldDeferTools(localDeferredCandidates + deferredTools.size());
+        if (shouldDefer) {
+            List<DeferredToolEntry> catalogEntries = moveLocalDeferredTools(toolCollection);
+            for (McpToolInfo toolInfo : visible) {
                 toolCollection.addMcpTool(toolInfo);
             }
-            if (!"dataAgent".equals(request.getOutputStyle())) {
-                ToolSearchTool toolSearchTool = new ToolSearchTool();
-                addTool(toolCollection, toolSearchTool, agentContext, ToolSearchTool::setAgentContext);
+            for (McpToolInfo toolInfo : deferredTools) {
+                catalogEntries.add(DeferredToolCatalog.mcpEntry(toolInfo));
             }
-            log.info("{} MCP deferred mode: catalog={}, preloaded={}",
-                    agentContext.getRequestId(), catalog.size(), catalog.listActivated().size());
+            DeferredToolCatalog catalog = new DeferredToolCatalog(catalogEntries);
+            if (catalog.size() > 0) {
+                toolCollection.setDeferredToolCatalog(catalog);
+                addTool(toolCollection, new ToolSearchTool(), agentContext, ToolSearchTool::setAgentContext);
+                addTool(toolCollection, new ToolDescribeTool(), agentContext, ToolDescribeTool::setAgentContext);
+                addTool(toolCollection, new ToolCallTool(), agentContext, ToolCallTool::setAgentContext);
+            }
+            log.info("{} MCP deferred mode: catalog={}, alwaysLoad={}",
+                    agentContext.getRequestId(), catalog.size(), visible.size());
         } else {
-            for (McpToolInfo toolInfo : discovered) {
+            for (McpToolInfo toolInfo : visible) {
+                toolCollection.addMcpTool(toolInfo);
+            }
+            for (McpToolInfo toolInfo : deferredTools) {
                 toolCollection.addMcpTool(toolInfo);
             }
         }
 
-        if (!"dataAgent".equals(request.getOutputStyle())) {
+        boolean dataAgent = request != null && "dataAgent".equals(request.getOutputStyle());
+        if (!dataAgent) {
             registerMcpResourceTools(toolCollection, agentContext);
         }
+    }
+
+    private static boolean isDisabledMcp(AgentContext agentContext, McpToolInfo toolInfo) {
+        if (agentContext == null || agentContext.getDisabledMcpIds() == null
+                || agentContext.getDisabledMcpIds().isEmpty()) {
+            return false;
+        }
+        String mcpId = toolInfo.getMcpId() != null ? toolInfo.getMcpId() : toolInfo.getServerKey();
+        return mcpId != null && agentContext.getDisabledMcpIds().contains(mcpId);
     }
 
     private void registerMcpResourceTools(ToolCollection toolCollection, AgentContext agentContext) {
@@ -418,9 +440,9 @@ public class AgentToolCollectionFactory {
     }
 
     /**
-     * always → 延迟；standard → 全量；auto → 超过阈值才延迟。
+     * always → 有 deferred 才延迟；standard/off → 全量；auto → deferred 数超过阈值才延迟。
      */
-    private boolean shouldDeferMcpTools(int discoveredCount) {
+    private boolean shouldDeferTools(int deferredCount) {
         String mode = reactorConfig.getMcpToolSearchMode();
         if (mode == null || mode.isBlank()) {
             mode = "always";
@@ -429,14 +451,48 @@ public class AgentToolCollectionFactory {
         if ("standard".equals(mode) || "false".equals(mode) || "off".equals(mode)) {
             return false;
         }
+        if (deferredCount <= 0) {
+            return false;
+        }
         if ("auto".equals(mode)) {
             int threshold = reactorConfig.getMcpToolSearchAutoThreshold() == null
                     ? 8
                     : Math.max(1, reactorConfig.getMcpToolSearchAutoThreshold());
-            return discoveredCount >= threshold;
+            return deferredCount >= threshold;
         }
         // always / true / 默认
         return true;
+    }
+
+    private static int countLocalDeferredCandidates(ToolCollection toolCollection) {
+        if (toolCollection == null || toolCollection.getToolMap() == null) {
+            return 0;
+        }
+        int count = 0;
+        for (String name : toolCollection.getToolMap().keySet()) {
+            if (LocalToolDeferralPolicy.isCandidate(name)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static List<DeferredToolEntry> moveLocalDeferredTools(ToolCollection toolCollection) {
+        List<DeferredToolEntry> entries = new ArrayList<>();
+        if (toolCollection == null || toolCollection.getToolMap() == null) {
+            return entries;
+        }
+        List<String> names = new ArrayList<>();
+        for (Map.Entry<String, BaseTool> entry : toolCollection.getToolMap().entrySet()) {
+            if (LocalToolDeferralPolicy.isCandidate(entry.getKey())) {
+                entries.add(DeferredToolCatalog.localEntry(entry.getValue(), "reactor"));
+                names.add(entry.getKey());
+            }
+        }
+        for (String name : names) {
+            toolCollection.getToolMap().remove(name);
+        }
+        return entries;
     }
 
     private static List<String> parseToolNames(String value) {
@@ -576,40 +632,44 @@ public class AgentToolCollectionFactory {
         addTool(toolCollection, sqlQueryTool, agentContext, SqlQueryTool::setAgentContext);
     }
 
-    private void registerBrowserTools(ToolCollection toolCollection, AgentContext agentContext, AgentRequest request) {
+    private void registerBrowserTool(ToolCollection toolCollection, AgentContext agentContext, AgentRequest request) {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
             return;
         }
-        var port = agentContext.getRuntimeDependencies().getOptionalBrowserRelayPort();
+        ReactorRuntimeDependencies deps = agentContext.getRuntimeDependencies();
+        var properties = deps.getOpenCliProperties();
+        var cli = deps.getOptionalCliExecutionPort();
+        var port = deps.getOptionalBrowserRelayPort();
+        if (properties == null || !properties.isEnabled() || cli == null || !cli.isResolvable(properties.getCommand())) {
+            return;
+        }
         if (port == null || request == null || StringUtils.isBlank(request.getVisitorId()) || !port.isOnline(request.getVisitorId())) {
             return;
         }
-        addTool(toolCollection, new BrowserTabsTool(), agentContext, BrowserTabsTool::setAgentContext);
-        addTool(toolCollection, new BrowserNavigateTool(), agentContext, BrowserNavigateTool::setAgentContext);
-        addTool(toolCollection, new BrowserSnapshotTool(), agentContext, BrowserSnapshotTool::setAgentContext);
-        addTool(toolCollection, new BrowserClickTool(), agentContext, BrowserClickTool::setAgentContext);
-        addTool(toolCollection, new BrowserTypeTool(), agentContext, BrowserTypeTool::setAgentContext);
-        addTool(toolCollection, new BrowserScrollTool(), agentContext, BrowserScrollTool::setAgentContext);
-        addTool(toolCollection, new BrowserScreenshotTool(), agentContext, BrowserScreenshotTool::setAgentContext);
-        addTool(toolCollection, new BrowserWaitTool(), agentContext, BrowserWaitTool::setAgentContext);
-        addTool(toolCollection, new BrowserBackTool(), agentContext, BrowserBackTool::setAgentContext);
-        addTool(toolCollection, new BrowserHoverTool(), agentContext, BrowserHoverTool::setAgentContext);
-        addTool(toolCollection, new BrowserFillTool(), agentContext, BrowserFillTool::setAgentContext);
-        addTool(toolCollection, new BrowserSelectTool(), agentContext, BrowserSelectTool::setAgentContext);
-        addTool(toolCollection, new BrowserKeysTool(), agentContext, BrowserKeysTool::setAgentContext);
-        addTool(toolCollection, new BrowserFindTool(), agentContext, BrowserFindTool::setAgentContext);
-        addTool(toolCollection, new BrowserFocusTool(), agentContext, BrowserFocusTool::setAgentContext);
-        addTool(toolCollection, new BrowserDblClickTool(), agentContext, BrowserDblClickTool::setAgentContext);
-        addTool(toolCollection, new BrowserCheckTool(), agentContext, BrowserCheckTool::setAgentContext);
-        addTool(toolCollection, new BrowserUncheckTool(), agentContext, BrowserUncheckTool::setAgentContext);
-        addTool(toolCollection, new BrowserDragTool(), agentContext, BrowserDragTool::setAgentContext);
-        addTool(toolCollection, new BrowserGetTool(), agentContext, BrowserGetTool::setAgentContext);
-        addTool(toolCollection, new BrowserExtractTool(), agentContext, BrowserExtractTool::setAgentContext);
-        addTool(toolCollection, new BrowserHtmlTreeTool(), agentContext, BrowserHtmlTreeTool::setAgentContext);
-        addTool(toolCollection, new BrowserAutoScrollTool(), agentContext, BrowserAutoScrollTool::setAgentContext);
-        addTool(toolCollection, new BrowserNetworkTool(), agentContext, BrowserNetworkTool::setAgentContext);
-        addTool(toolCollection, new BrowserFramesTool(), agentContext, BrowserFramesTool::setAgentContext);
-        addTool(toolCollection, new BrowserSiteTool(), agentContext, BrowserSiteTool::setAgentContext);
+        addTool(toolCollection, new BrowserTool(), agentContext, BrowserTool::setAgentContext);
+    }
+
+    private void registerHostCliTool(ToolCollection toolCollection, AgentContext agentContext) {
+        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
+            return;
+        }
+        ReactorRuntimeDependencies deps = agentContext.getRuntimeDependencies();
+        var properties = deps.getHostCliProperties();
+        var cli = deps.getOptionalCliExecutionPort();
+        if (properties == null || !properties.isEnabled() || cli == null
+                || properties.getAllow() == null || properties.getAllow().isEmpty()) {
+            return;
+        }
+        List<String> available = new ArrayList<>();
+        for (String tool : properties.getAllow()) {
+            if (StringUtils.isNotBlank(tool) && cli.isResolvable(tool.trim())) {
+                available.add(tool.trim());
+            }
+        }
+        if (available.isEmpty()) {
+            return;
+        }
+        addTool(toolCollection, new HostCliTool(available), agentContext, HostCliTool::setAgentContext);
     }
 
     /** 统一完成工具上下文绑定和注册，避免遗漏其中任一步骤。 */
@@ -640,8 +700,17 @@ public class AgentToolCollectionFactory {
 
     private void registerSkillTools(ToolCollection toolCollection, AgentContext agentContext) {
         // skill 读写：workspace_* 虚拟路径 skills/ → runtime 库；执行：bash 沙箱物化 + skills/** sync-back
-        SkillTool skillTool = new SkillTool(skillRegistry, skillRuntimeLayout);
-        addTool(toolCollection, skillTool, agentContext, SkillTool::setAgentContext);
+        if (!(skillRegistry instanceof SkillCatalog catalog)) {
+            return;
+        }
+        SkillViewTool skillViewTool = new SkillViewTool(
+                catalog,
+                skillLoader,
+                skillRuntimeLayout,
+                skillScriptDiscoverer);
+        addTool(toolCollection, skillViewTool, agentContext, SkillViewTool::setAgentContext);
+        SkillsSearchTool skillsSearchTool = new SkillsSearchTool(catalog);
+        addTool(toolCollection, skillsSearchTool, agentContext, SkillsSearchTool::setAgentContext);
 
         if (skillRuntimeOptions.isSandboxBashEnabled() && workspaceService.isEnabled()) {
             // 只发 HTTP 到 reactor-tool /v1/tool/bash；本机不执行
@@ -652,7 +721,7 @@ public class AgentToolCollectionFactory {
 
     /**
      * 会话级能力差集：禁用的 MCP 工具从本轮 ToolCollection 移除；
-     * skill 禁用由 SkillTool + AgentContext.disabledSkillNames 在执行期拦截。
+     * skill 禁用由 SkillViewTool + AgentContext.disabledSkillNames 在执行期拦截。
      */
     private void applySessionCapabilityFilter(ToolCollection toolCollection, AgentContext agentContext) {
         if (toolCollection == null || agentContext == null) {
@@ -674,6 +743,11 @@ public class AgentToolCollectionFactory {
         });
         for (String name : toRemove) {
             toolCollection.getMcpToolMap().remove(name);
+        }
+        if (toolCollection.getDeferredToolCatalog() != null) {
+            DeferredToolCatalog filtered = toolCollection.getDeferredToolCatalog().filter(entry ->
+                    entry.isLocal() || !isDisabledMcp(agentContext, entry.getMcpToolInfo()));
+            toolCollection.setDeferredToolCatalog(filtered.size() == 0 ? null : filtered);
         }
         if (!toRemove.isEmpty()) {
             log.info("{} session capability filtered mcp tools: {}",

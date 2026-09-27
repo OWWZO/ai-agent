@@ -44,6 +44,17 @@ public final class SessionPromptFreeze {
         return SYSTEM_BY_KEY.get(key);
     }
 
+    /**
+     * 显式 skill reload 时清掉该会话冻结的 system，下一轮组装使用新索引。
+     */
+    public static void clearSession(String sessionId) {
+        if (StringUtils.isBlank(sessionId)) {
+            return;
+        }
+        String prefix = sessionId + "|";
+        SYSTEM_BY_KEY.keySet().removeIf(key -> key.startsWith(prefix));
+    }
+
     private static void trimIfNeeded() {
         if (SYSTEM_BY_KEY.size() <= MAX_KEYS) {
             return;

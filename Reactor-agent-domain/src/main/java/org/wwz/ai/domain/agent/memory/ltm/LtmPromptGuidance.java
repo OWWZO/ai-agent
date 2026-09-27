@@ -99,10 +99,10 @@ public final class LtmPromptGuidance {
             "You can only call the memory tool. Other tools remain listed for request parity "
                     + "but will be denied at runtime — do not attempt them.";
 
-    /** Review fork：memory + skill 策展工具（workspace_*、skill_tool、bash）。 */
+    /** Review fork：memory + skill 策展工具（workspace_*、skill_view、bash）。 */
     public static final String FORK_RUNTIME_TOOL_NOTE_CURATOR =
             "You may only call curator tools that succeed at runtime: memory, workspace_*, "
-                    + "skill_tool, and bash (Skill Creator / skill scripts). "
+                    + "skill_view, skills_search, and bash (Skill Creator / skill scripts). "
                     + "Other tools remain listed for request parity but will be denied — do not attempt them.";
 
     /** @deprecated 使用 {@link #FORK_RUNTIME_TOOL_NOTE_MEMORY} / {@link #FORK_RUNTIME_TOOL_NOTE_CURATOR} */
@@ -113,7 +113,7 @@ public final class LtmPromptGuidance {
             "Also update the skill library when warranted. Be ACTIVE — reusable workflows belong in "
                     + "skills, not memory.\n"
                     + "How (Reactor):\n"
-                    + "  • Inspect with skill_tool / workspace_list|glob|grep|read under skills/\n"
+                    + "  • Inspect with skill_view / skills_search / workspace_list|glob|grep|read under skills/\n"
                     + "  • Create or patch via workspace_write|edit on skills/<name>/SKILL.md "
                     + "(and scripts/, references/, templates/ as needed)\n"
                     + "  • Or run Skill Creator via bash when that is the established workflow\n"

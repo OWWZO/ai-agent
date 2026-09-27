@@ -1,6 +1,5 @@
 package org.wwz.ai.trigger.http.agent;
 
-import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -8,12 +7,17 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.wwz.ai.api.response.Response;
 import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
-import org.wwz.ai.domain.agent.ledger.model.ConversationHistoryDetail;
+import org.wwz.ai.domain.agent.ledger.model.ConversationHistoryPage;
+import org.wwz.ai.domain.agent.ledger.model.ConversationRunReplay;
+import org.wwz.ai.domain.agent.ledger.model.ConversationRunSummary;
+import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionView;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerQueryService;
 import org.wwz.ai.domain.agent.ledger.replay.ConversationHistoryReplayService;
-import org.wwz.ai.trigger.http.agent.vo.ConversationHistoryDetailRespVO;
+import org.wwz.ai.trigger.http.agent.vo.ConversationHistoryPageRespVO;
+import org.wwz.ai.trigger.http.agent.vo.ConversationRunReplayRespVO;
+import org.wwz.ai.trigger.http.agent.vo.ConversationRunSummaryRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationSessionRespVO;
 import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
 import org.wwz.ai.types.enums.ResponseCode;
@@ -26,7 +30,7 @@ import java.util.stream.Collectors;
  * 会话历史恢复接口。
  */
 @RestController
-@RequestMapping("/api/agent/conversation/sessions")
+@RequestMapping("/api/agent/conversation")
 public class AgentConversationHistoryController {
 
     @Resource
@@ -38,7 +42,7 @@ public class AgentConversationHistoryController {
     @Resource
     private ConversationSessionOwnershipApplicationService conversationSessionOwnershipApplicationService;
 
-    @GetMapping
+    @GetMapping("/sessions")
     public Response<List<ConversationSessionRespVO>> list(
             @RequestParam(name = "limit", defaultValue = "20") Integer limit) {
         String visitorId = VisitorRequestContext.requireVisitorId();
@@ -54,27 +58,62 @@ public class AgentConversationHistoryController {
                 .build();
     }
 
-    @GetMapping("/{sessionId}")
-    public Response<ConversationHistoryDetailRespVO> detail(@PathVariable("sessionId") String sessionId) {
+    @GetMapping("/sessions/{sessionId}")
+    public Response<ConversationHistoryPageRespVO> detail(
+            @PathVariable("sessionId") String sessionId,
+            @RequestParam(name = "limit", defaultValue = "20") Integer limit,
+            @RequestParam(name = "after", required = false) String after) {
         try {
-            // 历史详情先校验 visitor 对 session 的所有权，再读取 ledger 并执行 replay；
-            // replay 只生成展示视图，不把历史事件重新写回运行账本。
             conversationSessionOwnershipApplicationService.ensureExistingSessionAccessible(
                     VisitorRequestContext.requireVisitorId(),
                     sessionId
             );
+            ConversationHistoryPage page = conversationHistoryReplayService.queryConversationHistoryPage(
+                    sessionId,
+                    limit,
+                    after
+            );
+            return Response.<ConversationHistoryPageRespVO>builder()
+                    .code(ResponseCode.SUCCESS.getCode())
+                    .info(ResponseCode.SUCCESS.getInfo())
+                    .data(toPageRespVO(page))
+                    .build();
         } catch (Exception e) {
-            return Response.<ConversationHistoryDetailRespVO>builder()
+            return Response.<ConversationHistoryPageRespVO>builder()
                     .code(ResponseCode.UN_ERROR.getCode())
                     .info(e.getMessage())
                     .build();
         }
-        ConversationHistoryDetail detail = conversationHistoryReplayService.queryConversationHistory(sessionId);
-        return Response.<ConversationHistoryDetailRespVO>builder()
-                .code(ResponseCode.SUCCESS.getCode())
-                .info(ResponseCode.SUCCESS.getInfo())
-                .data(toDetailRespVO(detail))
-                .build();
+    }
+
+    @GetMapping("/runs/{requestId}/replay")
+    public Response<ConversationRunReplayRespVO> replay(
+            @PathVariable("requestId") String requestId) {
+        try {
+            DialogueRunView run = executionLedgerQueryService.queryRunSummary(requestId);
+            if (run == null || run.getSessionId() == null) {
+                throw new IllegalArgumentException("requestId 对应的 run 不存在");
+            }
+            // 先由 requestId 定位 session，再校验当前 visitor，最后才加载 replay 明细。
+            conversationSessionOwnershipApplicationService.ensureExistingSessionAccessible(
+                    VisitorRequestContext.requireVisitorId(),
+                    run.getSessionId()
+            );
+            ConversationRunReplay replay = conversationHistoryReplayService.queryRunReplay(requestId);
+            if (replay == null) {
+                throw new IllegalArgumentException("run replay 不可用");
+            }
+            return Response.<ConversationRunReplayRespVO>builder()
+                    .code(ResponseCode.SUCCESS.getCode())
+                    .info(ResponseCode.SUCCESS.getInfo())
+                    .data(toReplayRespVO(replay))
+                    .build();
+        } catch (Exception e) {
+            return Response.<ConversationRunReplayRespVO>builder()
+                    .code(ResponseCode.UN_ERROR.getCode())
+                    .info(e.getMessage())
+                    .build();
+        }
     }
 
     private ConversationSessionRespVO toSessionRespVO(DialogueSessionView session) {
@@ -94,36 +133,74 @@ public class AgentConversationHistoryController {
                 .build();
     }
 
-    private ConversationHistoryDetailRespVO toDetailRespVO(ConversationHistoryDetail detail) {
-        if (detail == null) {
+    private ConversationHistoryPageRespVO toPageRespVO(ConversationHistoryPage page) {
+        if (page == null) {
             return null;
         }
-        List<ConversationHistoryDetailRespVO.RunDetailRespVO> runs = CollectionUtils.isEmpty(detail.getRuns())
-                ? List.of()
-                : detail.getRuns().stream()
-                .map(run -> ConversationHistoryDetailRespVO.RunDetailRespVO.builder()
-                        .requestId(run.getRequestId())
-                        .status(resolveStatusLabel(run.getStatus()))
-                        .queryText(run.getQueryText())
-                        .finalSummaryText(run.getFinalSummaryText())
-                        .startedAt(run.getStartedAt())
-                        .finishedAt(run.getFinishedAt())
-                        .contextUsage(run.getContextUsage())
-                        .replayFrames(run.getReplayFrames() == null ? List.of() : run.getReplayFrames())
-                        .build())
-                .collect(Collectors.toList());
+        return ConversationHistoryPageRespVO.builder()
+                .sessionId(page.getSessionId())
+                .title(page.getTitle())
+                .status(resolveStatusLabel(page.getStatus()))
+                .deepThink(page.getDeepThink())
+                .latestRequestId(page.getLatestRequestId())
+                .latestQueryPreview(page.getLatestQueryPreview())
+                .latestSummaryPreview(page.getLatestSummaryPreview())
+                .runCount(page.getRunCount())
+                .finishedRunCount(page.getFinishedRunCount())
+                .failedRunCount(page.getFailedRunCount())
+                .startedAt(page.getStartedAt())
+                .lastActiveAt(page.getLastActiveAt())
+                .runs(page.getRuns() == null ? List.of() : page.getRuns().stream()
+                        .map(this::toRunSummaryRespVO)
+                .collect(Collectors.toList()))
+                .nextCursor(page.getNextCursor())
+                .hasMore(page.isHasMore())
+                .build();
+    }
 
-        return ConversationHistoryDetailRespVO.builder()
-                .sessionId(detail.getSessionId())
-                .title(detail.getTitle())
-                .status(resolveStatusLabel(detail.getStatus()))
-                .deepThink(detail.getDeepThink())
-                .runCount(detail.getRunCount())
-                .finishedRunCount(detail.getFinishedRunCount())
-                .failedRunCount(detail.getFailedRunCount())
-                .startedAt(detail.getStartedAt())
-                .lastActiveAt(detail.getLastActiveAt())
-                .runs(runs)
+    private ConversationRunSummaryRespVO toRunSummaryRespVO(ConversationRunSummary run) {
+        if (run == null) {
+            return null;
+        }
+        return ConversationRunSummaryRespVO.builder()
+                .requestId(run.getRequestId())
+                .entryAgent(run.getEntryAgent())
+                .status(resolveStatusLabel(run.getStatus()))
+                .queryPreview(run.getQueryPreview())
+                .finalSummaryPreview(run.getFinalSummaryPreview())
+                .llmCallCount(run.getLlmCallCount())
+                .toolCallCount(run.getToolCallCount())
+                .artifactCount(run.getArtifactCount())
+                .startedAt(run.getStartedAt())
+                .finishedAt(run.getFinishedAt())
+                .durationMs(run.getDurationMs())
+                .hasReplay(run.getHasReplay())
+                .build();
+    }
+
+    private ConversationRunReplayRespVO toReplayRespVO(ConversationRunReplay replay) {
+        DialogueRunView run = replay == null ? null : replay.getRun();
+        if (run == null) {
+            return null;
+        }
+        return ConversationRunReplayRespVO.builder()
+                .runUid(run.getRunUid())
+                .requestId(run.getRequestId())
+                .sessionId(run.getSessionId())
+                .entryAgent(run.getEntryAgent())
+                .status(resolveStatusLabel(run.getStatus()))
+                .queryText(run.getQueryText())
+                .finalSummaryText(run.getFinalSummaryText())
+                .llmCallCount(run.getLlmCallCount())
+                .toolCallCount(run.getToolCallCount())
+                .artifactCount(run.getArtifactCount())
+                .errorCode(run.getErrorCode())
+                .errorMsg(run.getErrorMsg())
+                .startedAt(run.getStartedAt())
+                .finishedAt(run.getFinishedAt())
+                .durationMs(run.getDurationMs())
+                .contextUsage(replay.getContextUsage())
+                .replayFrames(replay.getReplayFrames() == null ? List.of() : replay.getReplayFrames())
                 .build();
     }
 

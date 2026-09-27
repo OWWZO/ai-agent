@@ -10,6 +10,7 @@ import org.wwz.ai.domain.agent.ledger.entity.LlmInvocation;
 import org.wwz.ai.domain.agent.ledger.entity.ToolInvocation;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionView;
+import org.wwz.ai.domain.agent.ledger.model.RunCursor;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 import org.wwz.ai.infrastructure.dao.reactor.IArtifactLedgerDao;
 import org.wwz.ai.infrastructure.dao.reactor.IDialogueRunLedgerDao;
@@ -38,6 +39,11 @@ public class ExecutionLedgerReadRepository implements IExecutionLedgerReadReposi
     public DialogueRun queryRunByRequestId(String requestId) {
         // requestId 是运行时外部关联键，先定位 run，再由调用方按 runId 查询 LLM、tool 和 artifact 事实。
         return dialogueRunLedgerDao.queryByRequestId(requestId);
+    }
+
+    @Override
+    public DialogueRun queryRunSummaryByRequestId(String requestId) {
+        return dialogueRunLedgerDao.querySummaryByRequestId(requestId);
     }
 
     @Override
@@ -84,13 +90,34 @@ public class ExecutionLedgerReadRepository implements IExecutionLedgerReadReposi
     }
 
     @Override
+    public List<DialogueRunView> queryRunsBySessionId(String sessionId, RunCursor after, int limit) {
+        int normalizedLimit = limit <= 0 ? 1 : Math.min(limit, 101);
+        return dialogueRunLedgerDao.queryBySessionIdAfter(
+                sessionId,
+                after == null ? null : after.getCreateTime(),
+                after == null ? null : after.getId(),
+                normalizedLimit
+        );
+    }
+
+    @Override
     public DialogueSession querySessionEntity(String sessionId) {
         return dialogueSessionLedgerDao.queryBySessionId(sessionId);
     }
 
     @Override
+    public DialogueSession querySessionOwnership(String sessionId) {
+        return dialogueSessionLedgerDao.querySessionOwnership(sessionId);
+    }
+
+    @Override
     public DialogueSessionView querySession(String sessionId) {
         return dialogueSessionLedgerDao.querySessionView(sessionId);
+    }
+
+    @Override
+    public DialogueSessionView querySessionHistorySummary(String sessionId) {
+        return dialogueSessionLedgerDao.querySessionHistoryView(sessionId);
     }
 
     @Override

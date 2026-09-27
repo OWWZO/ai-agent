@@ -31,7 +31,7 @@ import org.wwz.ai.domain.agent.runtime.tool.common.docgen.SlidesGenerateTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.docgen.TemplateFillerTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.docgen.ThemeDesignerTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.docread.PdfReaderTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.skill.SkillTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.skill.SkillViewTool;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.RegistryBackedToolCallback;
 import org.wwz.ai.domain.agent.runtime.util.ToolSchemaNormalizer;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
@@ -121,7 +121,7 @@ public class ToolSchemaNormalizerTest {
     @Test
     public void test_validSkillToolSchemasShouldNotEmitIncompleteSchemaWarning() {
         assertNoIncompleteSchemaWarning(
-                new SkillTool(null, null),
+                new SkillViewTool(null, null, null, null),
                 new WorkspaceReadTool(null, null),
                 new WorkspaceGrepTool(null, null)
         );

@@ -3,10 +3,12 @@ package org.wwz.ai.domain.agent.runtime.planmode;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.common.AgentDispatchTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.mcp.McpToolNames;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskToolNames;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
+import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolCatalog;
 
 import java.util.Locale;
 import java.util.Map;
@@ -34,10 +36,14 @@ public final class PlanModeToolPolicy {
             "workspace_list",
             "workspace_glob",
             "workspace_grep",
-            "skill_tool",
+            "skill_view",
+            "skills_search",
             "get_html_canvas_guide",
             "get_genui_guide",
-            "list_ui_components"
+            "list_ui_components",
+            McpToolNames.TOOL_SEARCH,
+            McpToolNames.TOOL_DESCRIBE,
+            McpToolNames.TOOL_CALL
     );
 
     private static final Set<String> SEARCH_TOOLS = Set.of(
@@ -47,9 +53,9 @@ public final class PlanModeToolPolicy {
             "web_fetch",
             "WebFetch",
             "session_search",
-            "twitter",
-            "reddit",
-            "xueqiu"
+            "host_cli",
+            "browser",
+            "opencli"
     );
 
     private static final Set<String> MUTATING = Set.of(
@@ -95,7 +101,7 @@ public final class PlanModeToolPolicy {
                 || lower.contains("search")
                 || lower.contains("web_fetch")
                 || lower.equals("fetch")) {
-            return "Plan mode: 禁止调用搜索或网页抓取工具「" + name + "」。"
+            return "Plan mode: 禁止调用搜索、外部命令或网页抓取工具「" + name + "」。"
                     + " 请只使用本地工作区只读工具，退出 plan mode 并获用户批准后再进行外部检索。";
         }
         if (ALWAYS_ALLOWED.contains(name)) {
@@ -148,11 +154,18 @@ public final class PlanModeToolPolicy {
                 }
             }
         }
+        DeferredToolCatalog catalog = tools.getDeferredToolCatalog();
+        if (catalog != null) {
+            filtered.setDeferredToolCatalog(catalog);
+        }
         return filtered;
     }
 
     private static boolean isSearchTool(String toolName) {
         if (toolName == null) {
+            return false;
+        }
+        if (McpToolNames.isBridge(toolName)) {
             return false;
         }
         String name = toolName.trim();

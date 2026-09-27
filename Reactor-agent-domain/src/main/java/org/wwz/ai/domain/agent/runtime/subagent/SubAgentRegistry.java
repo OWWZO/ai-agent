@@ -127,6 +127,10 @@ public class SubAgentRegistry {
                 .disallowedTools(definition.getDisallowedTools() == null
                         ? Set.of()
                         : definition.getDisallowedTools())
+                .toolPolicyMode(definition.getToolPolicyMode())
+                .deferredTools(definition.getDeferredTools() == null
+                        ? Set.of()
+                        : definition.getDeferredTools())
                 .maxSteps(definition.getMaxSteps())
                 .build();
     }
@@ -143,6 +147,8 @@ public class SubAgentRegistry {
                         """)
                 .allowedTools(Set.of("*"))
                 .disallowedTools(Set.of())
+                .toolPolicyMode(SubAgentDefinition.TOOL_POLICY_INHERIT)
+                .deferredTools(Set.of())
                 .maxSteps(200)
                 .build();
     }

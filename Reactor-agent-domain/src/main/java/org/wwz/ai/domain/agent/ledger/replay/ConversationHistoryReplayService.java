@@ -4,11 +4,15 @@ import lombok.RequiredArgsConstructor;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.ledger.model.ConversationHistoryDetail;
+import org.wwz.ai.domain.agent.ledger.model.ConversationHistoryPage;
+import org.wwz.ai.domain.agent.ledger.model.ConversationRunReplay;
+import org.wwz.ai.domain.agent.ledger.model.ConversationRunSummary;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionView;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionRunDetail;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationView;
+import org.wwz.ai.domain.agent.ledger.model.RunCursor;
 import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
 import org.wwz.ai.domain.agent.ledger.model.replay.ReplayFactBundle;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerQueryService;
@@ -20,18 +24,108 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 会话历史详情聚合服务。
+ * 会话历史摘要与回放聚合服务。
  * <p>
- * 查询只读取 Execution Ledger，再交给 ReplayProjector 生成前端事件；working memory
- * 仅服务下一轮 prompt，不参与用户可见历史回放。
+ * 摘要只读取 Execution Ledger 的 session/run 主表；单 run replay 再交给
+ * ReplayProjector 生成前端事件。working memory 仅服务下一轮 prompt，不参与用户可见历史回放。
  */
 @RequiredArgsConstructor
 public class ConversationHistoryReplayService {
+
+    public static final int DEFAULT_HISTORY_PAGE_SIZE = 20;
+    public static final int MAX_HISTORY_PAGE_SIZE = 100;
+    private static final int SUMMARY_PREVIEW_LENGTH = 240;
 
     private final ExecutionLedgerQueryService executionLedgerQueryService;
     private final ReplayProjector replayProjector;
     private final HistoryReplayPrinter historyReplayPrinter;
     private final LlmModelCatalog llmModelCatalog;
+
+    /**
+     * 读取会话轻量摘要。该路径只访问 session/run 主账本，不触发 replay projector、
+     * tool output reader 或 artifact 详情查询。
+     */
+    public ConversationHistoryPage queryConversationHistoryPage(String sessionId,
+                                                                 Integer limit,
+                                                                 String after) {
+        if (StringUtils.isBlank(sessionId) || executionLedgerQueryService == null) {
+            return null;
+        }
+        DialogueSessionView session = executionLedgerQueryService.querySessionHistorySummary(sessionId);
+        if (session == null) {
+            return null;
+        }
+
+        int pageSize = normalizeHistoryPageSize(limit);
+        RunCursor cursor = StringUtils.isBlank(after) ? null : RunCursor.decode(after);
+        if (cursor != null && !StringUtils.equals(sessionId, cursor.getSessionId())) {
+            throw new IllegalArgumentException("cursor 不属于当前 session");
+        }
+
+        List<DialogueRunView> pageRuns = executionLedgerQueryService.querySessionRuns(
+                sessionId,
+                cursor,
+                pageSize + 1
+        );
+        boolean hasMore = pageRuns.size() > pageSize;
+        if (hasMore) {
+            pageRuns = new ArrayList<>(pageRuns.subList(0, pageSize));
+        }
+
+        DialogueRunView latestRun = resolveLatestRun(session, pageRuns);
+        return ConversationHistoryPage.builder()
+                .sessionId(session.getSessionId())
+                .title(session.getTitle())
+                .status(resolveSessionStatus(session, pageRuns))
+                .deepThink(resolveDeepThink(latestRun))
+                .latestRequestId(session.getLatestRequestId())
+                .latestQueryPreview(preview(session.getLatestQueryText()))
+                .latestSummaryPreview(preview(session.getLatestSummaryText()))
+                .runCount(session.getRunCount())
+                .finishedRunCount(session.getFinishedRunCount())
+                .failedRunCount(session.getFailedRunCount())
+                .startedAt(session.getStartedAt())
+                .lastActiveAt(session.getLastActiveAt())
+                .runs(pageRuns.stream().map(this::toRunSummary).toList())
+                .nextCursor(hasMore && !pageRuns.isEmpty()
+                        ? RunCursor.from(pageRuns.get(pageRuns.size() - 1)).encode()
+                        : null)
+                .hasMore(hasMore)
+                .build();
+    }
+
+    /**
+     * 单 run 完整回放。只有该路径允许加载账本明细、rich output 和 artifact，
+     * 最终事件仍由现有 ReplayProjector/HistoryReplayPrinter 生成。
+     */
+    public ConversationRunReplay queryRunReplay(String requestId) {
+        if (StringUtils.isBlank(requestId) || executionLedgerQueryService == null) {
+            return null;
+        }
+        ExecutionRunDetail runDetail = executionLedgerQueryService.queryRunDetail(requestId);
+        if (runDetail == null || runDetail.getRun() == null) {
+            return null;
+        }
+        DialogueRunView run = runDetail.getRun();
+        if (run.getArtifactSummaries() == null && runDetail.getArtifacts() != null) {
+            run.setArtifactSummaries(runDetail.getArtifacts());
+        }
+        ReplayFactBundle bundle = ReplayFactBundle.builder()
+                .run(run)
+                .llmInvocations(runDetail.getLlmInvocations())
+                .toolInvocations(runDetail.getToolInvocations())
+                .artifacts(runDetail.getArtifacts())
+                .build();
+        List<GptProcessResult> frames =
+                replayProjector == null ? List.of() : replayProjector.projectHistoryFrames(bundle);
+        return ConversationRunReplay.builder()
+                .run(run)
+                .contextUsage(resolveContextUsage(runDetail.getLlmInvocations()))
+                .replayFrames(historyReplayPrinter == null
+                        ? frames
+                        : historyReplayPrinter.ensureReadableConclusion(run, frames))
+                .build();
+    }
 
     public ConversationHistoryDetail queryConversationHistory(String sessionId) {
         if (StringUtils.isBlank(sessionId) || executionLedgerQueryService == null) {
@@ -107,6 +201,56 @@ public class ConversationHistoryReplayService {
                 .lastActiveAt(session.getLastActiveAt())
                 .runs(runDetails)
                 .build();
+    }
+
+    private int normalizeHistoryPageSize(Integer limit) {
+        if (limit == null || limit <= 0) {
+            return DEFAULT_HISTORY_PAGE_SIZE;
+        }
+        return Math.min(limit, MAX_HISTORY_PAGE_SIZE);
+    }
+
+    private DialogueRunView resolveLatestRun(DialogueSessionView session,
+                                             List<DialogueRunView> pageRuns) {
+        if (session != null && StringUtils.isNotBlank(session.getLatestRequestId())) {
+            DialogueRunView latest = executionLedgerQueryService.queryRunSummary(session.getLatestRequestId());
+            if (latest != null) {
+                return latest;
+            }
+        }
+        return CollectionUtils.isEmpty(pageRuns) ? null : pageRuns.get(pageRuns.size() - 1);
+    }
+
+    private ConversationRunSummary toRunSummary(DialogueRunView run) {
+        if (run == null) {
+            return null;
+        }
+        return ConversationRunSummary.builder()
+                .requestId(run.getRequestId())
+                .entryAgent(run.getEntryAgent())
+                .status(run.getStatus())
+                .queryPreview(preview(run.getQueryText()))
+                .finalSummaryPreview(preview(run.getFinalSummaryText()))
+                .llmCallCount(run.getLlmCallCount())
+                .toolCallCount(run.getToolCallCount())
+                .artifactCount(run.getArtifactCount())
+                .startedAt(run.getStartedAt())
+                .finishedAt(run.getFinishedAt())
+                .durationMs(run.getDurationMs())
+                .hasReplay(StringUtils.isNotBlank(run.getRequestId()))
+                .build();
+    }
+
+    private String preview(String value) {
+        if (StringUtils.isBlank(value)) {
+            return null;
+        }
+        return StringUtils.abbreviate(StringUtils.trim(value), SUMMARY_PREVIEW_LENGTH);
+    }
+
+    private Boolean resolveDeepThink(DialogueRunView run) {
+        return run != null && ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE.equals(
+                StringUtils.trimToEmpty(run.getEntryAgent()));
     }
 
     private ContextUsagePayload resolveContextUsage(List<LlmInvocationView> invocations) {

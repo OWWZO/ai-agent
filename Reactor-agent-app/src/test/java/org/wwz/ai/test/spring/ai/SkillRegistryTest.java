@@ -5,6 +5,7 @@ import org.junit.Test;
 import org.springframework.core.io.ClassPathResource;
 import org.wwz.ai.domain.agent.runtime.tool.skill.DefaultSkillRegistry;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillDefinition;
+import org.wwz.ai.domain.agent.runtime.tool.skill.SkillDescriptor;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillLoadException;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillMarkdownParser;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillPathGuard;
@@ -31,8 +32,10 @@ public class SkillRegistryTest {
         SkillDefinition skillDefinition = skillRegistry.getRequiredSkill("sql-analysis");
         Assert.assertEquals("sql-analysis", skillDefinition.getName());
         Assert.assertTrue(skillDefinition.getBasePath().isAbsolute());
-        Assert.assertTrue(skillDefinition.getScripts().containsKey("summarize"));
-        Assert.assertEquals("python", skillDefinition.getScripts().get("summarize").getRuntime());
+        Assert.assertNull(skillDefinition.getContent());
+        Assert.assertTrue(skillDefinition.getScripts() == null || skillDefinition.getScripts().isEmpty());
+        SkillDescriptor descriptor = skillRegistry.getRequired("sql-analysis");
+        Assert.assertTrue(descriptor.getFiles().stream().anyMatch(file -> "references/metrics.md".equals(file.path())));
     }
 
     @Test
@@ -59,14 +62,23 @@ public class SkillRegistryTest {
         Assert.assertTrue(skillRegistry.isEnabled());
     }
 
-    @Test(expected = SkillLoadException.class)
-    public void shouldFailWhenSkillNamesDuplicate() throws Exception {
+    @Test
+    public void shouldKeepCatalogWhenSkillNamesDuplicate() throws Exception {
         Path rootDirectory = Files.createTempDirectory("skill-registry-duplicate");
         createSkillDirectory(rootDirectory.resolve("skill-a"), "duplicate-skill", "说明 A");
         createSkillDirectory(rootDirectory.resolve("skill-b"), "duplicate-skill", "说明 B");
 
         DefaultSkillRegistry skillRegistry = createRegistry(true, rootDirectory.toString());
         skillRegistry.refresh();
+
+        Assert.assertEquals(2, skillRegistry.list().size());
+        try {
+            skillRegistry.getRequired("duplicate-skill");
+            Assert.fail("expected ambiguous skill name");
+        } catch (SkillLoadException e) {
+            Assert.assertTrue(e.getMessage().contains("Ambiguous skill name"));
+        }
+        Assert.assertEquals("duplicate-skill", skillRegistry.getRequired("builtin:skill-a").getName());
     }
 
     private DefaultSkillRegistry createRegistry(boolean enabled, String... directories) {

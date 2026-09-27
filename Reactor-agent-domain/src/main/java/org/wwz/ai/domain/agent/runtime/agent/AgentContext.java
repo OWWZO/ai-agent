@@ -18,7 +18,7 @@ import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionTaskListStore;
 import org.wwz.ai.domain.agent.runtime.tasklist.TasklistPersistencePort;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.DeferredMcpCatalog;
+import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolCatalog;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceFileReadState;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.llm.ContextTokenTracker;
@@ -138,12 +138,18 @@ public class AgentContext {
     ToolCollection subAgentToolCollection;
 
     /**
-     * 本 run MCP 延迟加载目录（ToolSearch 激活源）。
-     * 与 toolCollection.mcpToolMap 解耦：目录可含全量，map 仅含已激活。
+     * 读取当前 toolCollection 上的不可变延迟工具目录。
+     * 目录跟 collection 走；主/子 Agent 通过过滤或重绑定生成各自的 catalog 视图。
      */
-    @ToString.Exclude
-    @JSONField(serialize = false)
-    DeferredMcpCatalog deferredMcpCatalog;
+    public DeferredToolCatalog getDeferredToolCatalog() {
+        return toolCollection == null ? null : toolCollection.getDeferredToolCatalog();
+    }
+
+    public void setDeferredToolCatalog(DeferredToolCatalog catalog) {
+        if (toolCollection != null) {
+            toolCollection.setDeferredToolCatalog(catalog);
+        }
+    }
 
     /**
      * Reactor 运行时依赖包。

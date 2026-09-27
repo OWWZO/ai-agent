@@ -99,6 +99,8 @@ public class SubAgentDefinitionRepository implements ISubAgentDefinitionReposito
                 .systemPrompt(record.getSystemPrompt())
                 .allowedTools(record.getAllowedTools())
                 .disallowedTools(record.getDisallowedTools())
+                .toolPolicyMode(record.getToolPolicyMode())
+                .deferredTools(record.getDeferredTools())
                 .maxSteps(record.getMaxSteps())
                 .build();
     }
@@ -118,6 +120,8 @@ public class SubAgentDefinitionRepository implements ISubAgentDefinitionReposito
                 .systemPrompt(StringUtils.defaultString(po.getSystemPrompt()))
                 .allowedTools(parseToolSet(po.getAllowedToolsJson()))
                 .disallowedTools(parseToolSet(po.getDisallowedToolsJson()))
+                .toolPolicyMode(StringUtils.defaultIfBlank(po.getToolPolicyMode(), SubAgentDefinition.TOOL_POLICY_INHERIT))
+                .deferredTools(parseToolSet(po.getDeferredToolsJson()))
                 .maxSteps(po.getMaxSteps())
                 .status(po.getStatus())
                 .build();
@@ -132,6 +136,8 @@ public class SubAgentDefinitionRepository implements ISubAgentDefinitionReposito
                 .systemPrompt(command.getSystemPrompt())
                 .allowedToolsJson(toToolJson(command.getAllowedTools()))
                 .disallowedToolsJson(toToolJson(command.getDisallowedTools()))
+                .toolPolicyMode(StringUtils.defaultIfBlank(command.getToolPolicyMode(), SubAgentDefinition.TOOL_POLICY_INHERIT))
+                .deferredToolsJson(toToolJson(command.getDeferredTools()))
                 .maxSteps(command.getMaxSteps())
                 .status(status)
                 .deleted(0)

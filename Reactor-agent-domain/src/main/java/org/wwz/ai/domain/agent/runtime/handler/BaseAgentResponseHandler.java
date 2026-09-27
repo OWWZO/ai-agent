@@ -8,8 +8,10 @@ import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
 import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
 import org.wwz.ai.domain.agent.ledger.model.replay.ProjectedReplayEvent;
+import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
 import org.wwz.ai.domain.agent.ledger.replay.ReplayProjector;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -94,6 +96,7 @@ public class BaseAgentResponseHandler {
             return null;
         }
         appendPlannerRoundId(payload, eventResult == null ? null : eventResult.getPlannerRoundId());
+        ReplayTiming timing = resolveRuntimeTiming(agentResponse);
 
         switch (agentResponse.getMessageType()) {
             case "plan_thought":
@@ -107,6 +110,7 @@ public class BaseAgentResponseHandler {
                         .messageType("plan_thought")
                         .messageOrder(eventResult.getAndIncrOrder("plan_thought"))
                         .resultMap(payload)
+                        .timing(timing)
                         .build();
             case "plan":
                 if (eventResult.isInitPlan()) {
@@ -120,6 +124,7 @@ public class BaseAgentResponseHandler {
                             .messageType("plan")
                             .messageOrder(1)
                             .resultMap(buildPlanPayload(agentResponse, eventResult == null ? null : eventResult.getPlannerRoundId()))
+                            .timing(timing)
                             .build();
                 }
                 return buildTaskEvent(eventResult, agentResponse, payload, isFinal);
@@ -137,6 +142,7 @@ public class BaseAgentResponseHandler {
                         .messageType("task")
                         .messageOrder(1)
                         .resultMap(payload)
+                        .timing(timing)
                         .build();
             default:
                 return buildTaskEvent(eventResult, agentResponse, payload, isFinal && !isFilterFinal);
@@ -155,6 +161,7 @@ public class BaseAgentResponseHandler {
         if (appendToState) {
             eventResult.setResultMapSubTask(payload);
         }
+        ReplayTiming timing = resolveRuntimeTiming(agentResponse);
         return ProjectedReplayEvent.builder()
                 .taskId(taskId)
                 .taskOrder(eventResult.getTaskOrder().getAndIncrement())
@@ -162,7 +169,88 @@ public class BaseAgentResponseHandler {
                 .messageType("task")
                 .messageOrder(messageOrder)
                 .resultMap(payload)
+                .timing(timing)
                 .build();
+    }
+
+    private ReplayTiming resolveRuntimeTiming(AgentResponse agentResponse) {
+        if (agentResponse == null) {
+            return null;
+        }
+        if (agentResponse.getTiming() != null) {
+            return agentResponse.getTiming();
+        }
+        if (agentResponse.getResultMap() == null) {
+            return null;
+        }
+        return toReplayTiming(findTiming(agentResponse.getResultMap(), 0));
+    }
+
+    private Object findTiming(Object value, int depth) {
+        if (value == null || depth > 4) {
+            return null;
+        }
+        if (value instanceof ReplayTiming) {
+            return value;
+        }
+        if (!(value instanceof Map<?, ?> map)) {
+            return null;
+        }
+        Object timing = map.get("timing");
+        if (timing != null) {
+            return timing;
+        }
+        return findTiming(map.get("resultMap"), depth + 1);
+    }
+
+    private ReplayTiming toReplayTiming(Object value) {
+        if (value instanceof ReplayTiming timing) {
+            return timing;
+        }
+        if (!(value instanceof Map<?, ?> map)) {
+            return null;
+        }
+        LocalDateTime startedAt = toLocalDateTime(map.get("startedAt"));
+        LocalDateTime finishedAt = toLocalDateTime(map.get("finishedAt"));
+        Long durationMs = toLong(map.get("durationMs"));
+        String source = map.get("source") == null ? null : String.valueOf(map.get("source"));
+        if (startedAt == null && finishedAt == null && durationMs == null && StringUtils.isBlank(source)) {
+            return null;
+        }
+        return ReplayTiming.builder()
+                .startedAt(startedAt)
+                .finishedAt(finishedAt)
+                .durationMs(durationMs)
+                .source(source)
+                .build();
+    }
+
+    private LocalDateTime toLocalDateTime(Object value) {
+        if (value instanceof LocalDateTime localDateTime) {
+            return localDateTime;
+        }
+        if (value == null) {
+            return null;
+        }
+        try {
+            return LocalDateTime.parse(String.valueOf(value));
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private Long toLong(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Long.valueOf(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private Map<String, Object> buildPlanPayload(AgentResponse agentResponse, String fallbackPlannerRoundId) {

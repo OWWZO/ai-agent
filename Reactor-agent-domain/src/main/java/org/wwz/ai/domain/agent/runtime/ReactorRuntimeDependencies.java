@@ -4,6 +4,7 @@ import lombok.Builder;
 import lombok.Value;
 import org.springframework.core.env.Environment;
 import org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort;
+import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteStreamPort;
@@ -18,6 +19,8 @@ import org.wwz.ai.domain.agent.memory.ltm.MemoryFlushService;
 import org.wwz.ai.domain.agent.memory.ltm.SessionSearchService;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
+import org.wwz.ai.types.agent.config.HostCliProperties;
+import org.wwz.ai.types.agent.config.OpenCliProperties;
 import org.springframework.scheduling.TaskScheduler;
 
 import java.util.HashMap;
@@ -51,6 +54,13 @@ public class ReactorRuntimeDependencies {
 
     /** 可选：用户本机浏览器遥控 */
     BrowserRelayPort browserRelayPort;
+
+    /** 可选：本机进程 CLI（opencli / host_cli） */
+    CliExecutionPort cliExecutionPort;
+
+    OpenCliProperties openCliProperties;
+
+    HostCliProperties hostCliProperties;
 
     //预留给之后并发调用llm
     Executor llmExecutor;
@@ -122,6 +132,10 @@ public class ReactorRuntimeDependencies {
 
     public BrowserRelayPort getOptionalBrowserRelayPort() {
         return browserRelayPort;
+    }
+
+    public CliExecutionPort getOptionalCliExecutionPort() {
+        return cliExecutionPort;
     }
 
     public Executor requireLlmExecutor() {

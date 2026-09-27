@@ -30,6 +30,10 @@ public class SubAgentDefinitionPO {
 
     private String disallowedToolsJson;
 
+    private String toolPolicyMode;
+
+    private String deferredToolsJson;
+
     private Integer maxSteps;
 
     private Integer status;

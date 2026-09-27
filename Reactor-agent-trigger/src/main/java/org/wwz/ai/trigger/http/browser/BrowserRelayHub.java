@@ -15,7 +15,10 @@ import org.wwz.ai.types.agent.config.BrowserRelayProperties;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,6 +31,11 @@ import java.util.concurrent.TimeoutException;
 public class BrowserRelayHub implements BrowserRelaySocketBridge {
 
     private static final long LATE_RESULT_GRACE_SECONDS = 30;
+    private static final Set<String> ALLOWED_ACTIONS = Set.of(
+            "exec", "navigate", "tabs", "cookies", "screenshot", "close-window",
+            "set-file-input", "insert-text", "bind", "network-capture-start",
+            "network-capture-read", "wait-download", "cdp", "frames"
+    );
 
     private final BrowserRelayProperties properties;
     private final ConcurrentHashMap<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
@@ -93,11 +101,12 @@ public class BrowserRelayHub implements BrowserRelaySocketBridge {
                 .error(frame.getString("error"))
                 .errorCode(frame.getString("errorCode"))
                 .page(frame.getString("page"))
-                .data(asMap(frame.get("data")))
+                .data(frame.get("data"))
                 .build();
-        if (result.getData() != null) {
-            Object url = result.getData().get("url");
-            Object title = result.getData().get("title");
+        Map<String, Object> dataMap = asMap(result.getData());
+        if (!dataMap.isEmpty()) {
+            Object url = dataMap.get("url");
+            Object title = dataMap.get("title");
             if (url != null || title != null) {
                 updateTabMeta(visitorId,
                         url == null ? null : String.valueOf(url),
@@ -125,13 +134,20 @@ public class BrowserRelayHub implements BrowserRelaySocketBridge {
 
     @Override
     public BrowserRpcResult call(String visitorId, String action, Map<String, Object> params, Duration timeout) {
+        if ("lease-release".equalsIgnoreCase(StringUtils.defaultString(action))) {
+            return BrowserRpcResult.builder().ok(true).data(Map.of()).build();
+        }
         if (!isOnline(visitorId)) {
             return BrowserRpcResult.builder().ok(false).errorCode("browser_offline").error("浏览器未连接").build();
+        }
+        if (!ALLOWED_ACTIONS.contains(StringUtils.defaultString(action).toLowerCase(Locale.ROOT))) {
+            return BrowserRpcResult.builder().ok(false).errorCode("unsupported_action").error("不允许的浏览器动作").build();
         }
         if (inflightVisitor.putIfAbsent(visitorId, action) != null) {
             return BrowserRpcResult.builder().ok(false).errorCode("browser_busy").error("浏览器忙").build();
         }
-        String id = "rpc-" + UUID.randomUUID();
+        String requestedId = params != null && params.get("id") instanceof String text ? text.trim() : "";
+        String id = StringUtils.isNotBlank(requestedId) ? requestedId : "rpc-" + UUID.randomUUID();
         CompletableFuture<BrowserRpcResult> future = new CompletableFuture<>();
         PendingRpc rpc = new PendingRpc(visitorId, action, future);
         pending.put(id, rpc);
@@ -144,6 +160,8 @@ public class BrowserRelayHub implements BrowserRelaySocketBridge {
         long timeoutMillis = timeout == null
                 ? Math.max(1, properties.getRpcTimeoutSeconds()) * 1000L
                 : Math.max(1, timeout.toMillis());
+        long capMillis = capMillis(action, params);
+        timeoutMillis = Math.min(timeoutMillis, capMillis);
         // The extension derives its CDP budget from this absolute deadline,
         // leaving the Hub a small window to deliver the final RPC frame.
         long defaultDeadlineAt = System.currentTimeMillis() + timeoutMillis;
@@ -225,21 +243,51 @@ public class BrowserRelayHub implements BrowserRelaySocketBridge {
         });
     }
 
+    private static long capMillis(String action, Map<String, Object> params) {
+        if ("screenshot".equals(action)) {
+            return 30_000L;
+        }
+        if ("wait-download".equals(action)) {
+            Object timeoutMs = params == null ? null : params.get("timeoutMs");
+            if (timeoutMs instanceof Number number && number.longValue() > 0) {
+                return Math.min(Math.max(1L, number.longValue()), 180_000L);
+            }
+            return 60_000L;
+        }
+        return 60_000L;
+    }
+
     private static String visitorIdOf(WebSocketSession session) {
         Object value = session.getAttributes().get("visitorId");
         return value == null ? null : String.valueOf(value);
     }
 
-    @SuppressWarnings("unchecked")
     private static Map<String, Object> asMap(Object data) {
-        if (data instanceof Map<?, ?> map) {
-            return (Map<String, Object>) map;
-        }
         if (data == null) {
             return Map.of();
         }
-        JSONObject object = JSON.parseObject(JSON.toJSONString(data));
-        return object == null ? Map.of() : object;
+        if (data instanceof Map<?, ?> map) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (entry.getKey() != null) {
+                    result.put(String.valueOf(entry.getKey()), entry.getValue());
+                }
+            }
+            return result;
+        }
+        if (data instanceof String text) {
+            String trimmed = text.trim();
+            if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
+                return Map.of();
+            }
+            try {
+                JSONObject object = JSON.parseObject(trimmed);
+                return object == null ? Map.of() : object;
+            } catch (RuntimeException ignored) {
+                return Map.of();
+            }
+        }
+        return Map.of();
     }
 
     private record TabMeta(String url, String title) {

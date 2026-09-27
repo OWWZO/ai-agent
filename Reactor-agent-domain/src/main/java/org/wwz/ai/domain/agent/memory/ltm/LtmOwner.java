@@ -2,6 +2,8 @@ package org.wwz.ai.domain.agent.memory.ltm;
 
 import lombok.Value;
 
+import java.util.Locale;
+
 /**
  * 策展记忆主身份键。
  */
@@ -26,5 +28,9 @@ public class LtmOwner {
 
     public static LtmOwner visitor(String visitorId) {
         return of(LtmOwnerType.VISITOR, visitorId);
+    }
+
+    public String asOwnerKey() {
+        return type.name().toLowerCase(Locale.ROOT) + ":" + id;
     }
 }

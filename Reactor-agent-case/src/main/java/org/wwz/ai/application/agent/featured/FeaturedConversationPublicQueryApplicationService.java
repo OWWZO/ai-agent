@@ -7,6 +7,8 @@ import org.wwz.ai.domain.agent.ledger.ExecutionLedgerQueryService;
 import org.wwz.ai.domain.agent.ledger.IFeaturedConversationRepository;
 import org.wwz.ai.domain.agent.ledger.entity.FeaturedConversation;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionView;
+import org.wwz.ai.domain.agent.ledger.model.ConversationRunReplay;
+import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 import org.wwz.ai.domain.agent.ledger.model.FeaturedConversationCardView;
 import org.wwz.ai.domain.agent.ledger.model.FeaturedConversationPageResult;
 import org.wwz.ai.domain.agent.ledger.model.FeaturedConversationPublicDetail;
@@ -24,6 +26,7 @@ public class FeaturedConversationPublicQueryApplicationService {
 
     private static final String ONLINE_STATUS = "ONLINE";
     private static final String CONTENT_UNAVAILABLE_REASON = "session_history_missing";
+    private static final int DEFAULT_HISTORY_PAGE_SIZE = 20;
 
     private final IFeaturedConversationRepository featuredConversationRepository;
     private final ExecutionLedgerQueryService executionLedgerQueryService;
@@ -63,9 +66,10 @@ public class FeaturedConversationPublicQueryApplicationService {
         }
 
         LocalDateTime contentLastActiveAt = resolveContentLastActiveAt(featured.getSessionId());
-        var historyDetail = conversationHistoryReplayService == null
+        var historyPage = conversationHistoryReplayService == null
                 ? null
-                : conversationHistoryReplayService.queryConversationHistory(featured.getSessionId());
+                : conversationHistoryReplayService.queryConversationHistoryPage(
+                featured.getSessionId(), DEFAULT_HISTORY_PAGE_SIZE, null);
 
         return FeaturedConversationPublicDetail.builder()
                 .featuredId(featured.getFeaturedId())
@@ -77,10 +81,33 @@ public class FeaturedConversationPublicQueryApplicationService {
                 .status(featured.getStatus())
                 .publishedAt(featured.getPublishedAt())
                 .contentLastActiveAt(contentLastActiveAt)
-                .contentAvailable(historyDetail != null)
-                .contentUnavailableReason(historyDetail == null ? CONTENT_UNAVAILABLE_REASON : null)
-                .historyDetail(historyDetail)
+                .contentAvailable(historyPage != null)
+                .contentUnavailableReason(historyPage == null ? CONTENT_UNAVAILABLE_REASON : null)
+                .historyPage(historyPage)
                 .build();
+    }
+
+    /**
+     * 精品 replay 只允许访问已上线精品绑定的 session run。
+     * 先查轻量 run 归属，再进入完整 projector，避免 requestId 横向读取其它 session。
+     */
+    public ConversationRunReplay queryRunReplay(String featuredId, String requestId) {
+        if (StringUtils.isBlank(featuredId) || StringUtils.isBlank(requestId)) {
+            throw new IllegalArgumentException("featuredId 和 requestId 不能为空");
+        }
+        FeaturedConversation featured = featuredConversationRepository.queryByFeaturedId(featuredId);
+        if (featured == null || !ONLINE_STATUS.equalsIgnoreCase(StringUtils.trimToEmpty(featured.getStatus()))) {
+            throw new IllegalArgumentException("精品会话不存在或未上线");
+        }
+        DialogueRunView run = executionLedgerQueryService.queryRunSummary(requestId);
+        if (run == null || !StringUtils.equals(featured.getSessionId(), run.getSessionId())) {
+            throw new IllegalArgumentException("requestId 不属于该精品会话");
+        }
+        ConversationRunReplay replay = conversationHistoryReplayService.queryRunReplay(requestId);
+        if (replay == null) {
+            throw new IllegalArgumentException("run replay 不可用");
+        }
+        return replay;
     }
 
     private FeaturedConversationCardView toCardView(FeaturedConversation featured) {
@@ -103,7 +130,7 @@ public class FeaturedConversationPublicQueryApplicationService {
         if (StringUtils.isBlank(sessionId) || executionLedgerQueryService == null) {
             return null;
         }
-        DialogueSessionView session = executionLedgerQueryService.querySession(sessionId);
+        DialogueSessionView session = executionLedgerQueryService.querySessionHistorySummary(sessionId);
         return session == null ? null : session.getLastActiveAt();
     }
 }

@@ -18,7 +18,7 @@ public class DigitalEmployeePromptFormattingTest {
     public void shouldOnlyKeepConciseToolDescriptionsForDigitalEmployeePrompt() {
         ToolCollection toolCollection = new ToolCollection();
         toolCollection.addTool(mockTool(
-                "skill_tool",
+                "skill_view",
                 "这是一个 skill 读取工具，用于按技能名称加载 SKILL.md 正文。\n当前可用 skills：\n- demo: 超长细节说明"
         ));
         toolCollection.addTool(mockTool(
@@ -40,7 +40,7 @@ public class DigitalEmployeePromptFormattingTest {
         String prompt = ReflectionTestUtils.invokeMethod(agent, "formatSystemPrompt", "生成报告");
 
         Assert.assertNotNull(prompt);
-        Assert.assertTrue(prompt, prompt.contains("工具名：skill_tool 工具描述：这是一个 skill 读取工具"));
+        Assert.assertTrue(prompt, prompt.contains("工具名：skill_view 工具描述：这是一个 skill 读取工具"));
         Assert.assertFalse(prompt, prompt.contains("当前可用 skills"));
         Assert.assertFalse(prompt, prompt.contains("超长细节说明"));
         Assert.assertFalse(prompt, prompt.contains("很多额外实现细节很多额外实现细节很多额外实现细节很多额外实现细节很多额外实现细节"));

@@ -66,6 +66,20 @@ public class AgentSessionStreamHub implements AgentSessionEventBus {
         }
     }
 
+    @Override
+    public void completeSession(String sessionId) {
+        if (StringUtils.isBlank(sessionId)) {
+            return;
+        }
+        CopyOnWriteArrayList<Conn> conns = bySession.get(sessionId);
+        if (conns == null) {
+            return;
+        }
+        for (Conn conn : conns) {
+            conn.close(true);
+        }
+    }
+
     public StreamReservation reserve(String ownerKey) {
         acquireSlot(ownerKey);
         return new StreamReservation(ownerKey);
@@ -93,6 +107,9 @@ public class AgentSessionStreamHub implements AgentSessionEventBus {
             );
             SseLifecycleSupport.registerLifecycle(emitter, sessionId, heartbeatFuture, log);
             conn.attachHeartbeat(heartbeatFuture);
+            // 客户端断开可能只触发协议适配器的 abort 回调，不一定触发 emitter completion。
+            // 无论连接当前处于 pending 还是 attached，都必须回收 owner 并发槽位。
+            conn.stream.onAbort(() -> conn.close(false));
 
             emitter.onCompletion(() -> conn.close(false));
             emitter.onTimeout(() -> conn.close(true));
@@ -151,6 +168,7 @@ public class AgentSessionStreamHub implements AgentSessionEventBus {
             }
         }, Instant.now().plusMillis(FOLLOW_PARK_INTERVAL_MS), Duration.ofMillis(FOLLOW_PARK_INTERVAL_MS));
         futureRef.set(future);
+        conn.attachPark(future);
         conn.stream.onAbort(() -> cancelPark(futureRef));
     }
 
@@ -222,6 +240,7 @@ public class AgentSessionStreamHub implements AgentSessionEventBus {
         private final Object lock = new Object();
         private final ArrayDeque<Object> queued = new ArrayDeque<>();
         private final AtomicBoolean closed = new AtomicBoolean(false);
+        private final AtomicReference<ScheduledFuture<?>> parkedAttach = new AtomicReference<>();
         private boolean live;
         private long lastSeq;
         private ScheduledFuture<?> heartbeat;
@@ -238,6 +257,17 @@ public class AgentSessionStreamHub implements AgentSessionEventBus {
 
         private void attachHeartbeat(ScheduledFuture<?> heartbeat) {
             this.heartbeat = heartbeat;
+        }
+
+        private void attachPark(ScheduledFuture<?> park) {
+            if (closed.get()) {
+                park.cancel(false);
+                return;
+            }
+            parkedAttach.set(park);
+            if (closed.get()) {
+                cancelPark(parkedAttach);
+            }
         }
 
         private void offer(Object frame) {
@@ -304,6 +334,7 @@ public class AgentSessionStreamHub implements AgentSessionEventBus {
                 }
             }
             byEmitter.remove(emitter, this);
+            cancelPark(parkedAttach);
             if (heartbeat != null) {
                 heartbeat.cancel(false);
             }

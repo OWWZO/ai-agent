@@ -18,4 +18,24 @@ public class SkillPathGuard {
         }
         return normalizedCandidate;
     }
+
+    public boolean hasTraversal(String relativePath) {
+        if (relativePath == null || relativePath.isBlank()) {
+            return true;
+        }
+        String normalized = relativePath.trim().replace('\\', '/');
+        if (normalized.startsWith("/") || normalized.contains(":")) {
+            return true;
+        }
+        Path path = Path.of(normalized);
+        if (path.isAbsolute()) {
+            return true;
+        }
+        for (Path part : path) {
+            if ("..".equals(part.toString())) {
+                return true;
+            }
+        }
+        return false;
+    }
 }
