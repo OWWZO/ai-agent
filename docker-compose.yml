@@ -39,6 +39,8 @@ services:
       SQLITE_DB_PATH: /data/autobots.db
       SQLITE_PATH: /data/mrag_sqlite.db
       LOG_PATH: /data/logs/reactor-sandbox.log
+      E2B_FULL_PAUSE_DEBOUNCE_SEC: ${E2B_FULL_PAUSE_DEBOUNCE_SEC:-3}
+      E2B_FS_ONLY_IDLE_SEC: ${E2B_FS_ONLY_IDLE_SEC:-1200}
     volumes:
       - reactor-data:/data
     healthcheck:
@@ -105,6 +107,9 @@ services:
       REACTOR_TOOL_BASE_URL: http://reactor-tool:1601
       WORKSPACE_ROOT: /data/skilloutput
       SKILL_DIR: /app/runtime/skills
+      REACTOR_OPENCLI_COMMAND: node
+      REACTOR_OPENCLI_MAIN: /opt/opencli/dist/src/main.js
+      ADAPTER_HOST_SECRET: ${ADAPTER_HOST_SECRET:?ADAPTER_HOST_SECRET is required}
     volumes:
       - reactor-data:/data
       - reactor-data:/app/data

@@ -9,7 +9,7 @@ description: >
 
 # Agent Reach Public Sources
 
-这个 skill 把公开内容请求路由到上游命令。先用 `skill_tool` 加载本文件，再用 `bash` 在沙箱中执行命令；不要把下面的命令当作 Java、Python 或 MCP API 来调用。
+这个 skill 把公开内容请求路由到上游命令。先用 `skill_view` 加载本文件，再用 `bash` 在沙箱中执行命令；不要把下面的命令当作 Java、Python 或 MCP API 来调用。
 
 ## 统一入口
 

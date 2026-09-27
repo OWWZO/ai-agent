@@ -108,3 +108,6 @@ Thumbs.db
 /.codegraph/
 /.codegraph/
 /plans/
+/browser-extension/
+/adapter-host/
+/adapter-host/

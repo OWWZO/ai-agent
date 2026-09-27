@@ -285,7 +285,7 @@ Reactor 将“搜索”视为一个可以继续执行的研究过程，而不是
 
 工具不是一次性全塞进模型上下文，而是按需发现、按层扩展。
 
-- **ToolSearch**：MCP 工具默认延迟加载，system 里只列工具名。Agent 先用 `ToolSearch` 按关键词或 `select:name` 激活完整 schema，再调用对应 MCP 工具，避免工具膨胀挤占上下文。
+- **ToolSearch / ToolDescribe / ToolCall**：MCP 工具默认延迟加载，不进 `tools[]`。一次 run 内工具签名冻结。Agent 用 `ToolSearch` 按关键词或 `select:name` 发现，用 `ToolDescribe` 取完整 schema，用 `ToolCall` 执行；ledger / SSE 记录真实 `mcp__*` 名。
 - **工具生态**：
   - **内置工具**：检索（`deepsearch`、`web_fetch`、`web_search`、Reddit/X/雪球）、知识库（`mragQuery`）、问数（`table_rag`、`nl2sql`）、代码与分析（`code_interpreter`、`data_analysis`、`dataprep`）、产物（`document_generate`、`slides_generate`、`chart_generator`、`image_generation`、`canvas`）、工作区（`workspace_*`）、记忆（`memory`、`session_search`）、协作（`Agent`、Task / Plan Mode、`AskUserQuestion`）。
   - **Skill Runtime**：从 `runtime/skills/<skill-name>/` 加载 `SKILL.md`、参考资料和脚本；支持目录扫描、脚本发现、会话物化、路径防护和超时控制。内置架构图、报告页、学霸笔记、PPT、前端设计等 skill，也可自行安装。
@@ -397,9 +397,10 @@ flowchart LR
 
 - JDK 21
 - Maven 3.8+
-- Node.js 18+ 与 pnpm
+- Node.js 20+ 与 pnpm
 - Python 3.11+ 与 uv
 - MySQL 8
+- Twitter/Reddit CLI：`twitter-cli` 与 `rdt-cli`（供 Java `host_cli` 调用）
 - 一个 OpenAI-compatible LLM API
 - Qdrant、Elasticsearch、图像模型、搜索服务和 E2B 沙箱均为可选能力
 
@@ -409,6 +410,15 @@ flowchart LR
 git clone https://github.com/OWWZO/ai-agent.git
 cd ai-agent
 ```
+
+安装供 Java `host_cli` 调用的宿主 CLI：
+
+```powershell
+uv tool install twitter-cli
+uv tool install rdt-cli
+```
+
+确认 `twitter` 和 `rdt` 位于运行 Java Backend 的 PATH 中。
 
 ### 2. 初始化数据库
 
@@ -467,6 +477,24 @@ Backend 默认监听 `http://127.0.0.1:8100`。浏览器遥控扩展连接 `ws:/
 curl http://127.0.0.1:8100/web/health
 ```
 
+浏览器遥控由 Java 后端直接 spawn 仓库内 `adapter-host/`（OpenCLI 1.8.8）。先构建 OpenCLI，再设入口路径：
+
+```bash
+cd adapter-host
+npm install
+npm run build
+```
+
+Windows PowerShell：
+
+```powershell
+$env:REACTOR_OPENCLI_COMMAND = "node"
+$env:REACTOR_OPENCLI_MAIN = "D:\Java Code\ai-agent\Reactor-agent\adapter-host\dist\src\main.js"
+$env:ADAPTER_HOST_SECRET = "..."
+```
+
+插件在线时 Agent 会装配 `opencli` 工具，进程带 `OPENCLI_RELAY_URL=http://127.0.0.1:8100/internal/browser/rpc`。Chrome 加载 unpacked 扩展 `browser-extension/`（先 `cd browser-extension && npm install && npm run build`）。用户电脑不要再装 OpenCLI daemon。
+
 ### 5. 启动 React 工作台
 
 ```bash
@@ -479,7 +507,7 @@ pnpm dev
 
 ### Docker Compose 部署
 
-仓库根目录的 `Dockerfile` 与 `docker-compose.yml` 是当前唯一的容器部署入口，包含 MySQL、Java Backend、`reactor-tool` API/sandbox 进程和 Nginx 前端反代。
+仓库根目录的 `Dockerfile` 与 `docker-compose.yml` 是当前唯一的容器部署入口，包含 MySQL、Java Backend（内嵌 OpenCLI）、`reactor-tool` API/sandbox 进程和 Nginx 前端反代。Compose 需要设置 `ADAPTER_HOST_SECRET`（Java Hub 内部 RPC）。
 
 ```bash
 cp reactor-tool/.env_template reactor-tool/.env
@@ -496,7 +524,7 @@ docker compose --env-file reactor-tool/.env up -d
 
 启动后访问 [http://localhost:3000](http://localhost:3000)，探活接口为 [http://localhost:3000/web/health](http://localhost:3000/web/health)。也可以从 `Reactor-agent-app` 目录执行 `./build.sh` 构建全部镜像。
 
-Java 生产配置模板是 [`application-prod.yml`](Reactor-agent-app/src/main/resources/application-prod.yml)，以静态配置为主，已清除真实密钥和密码；部署者需要按实际环境填写空缺凭证和地址。MySQL 初始化脚本只会在首次创建 `mysql-data` 卷时执行；修改 `schema.sql` 或 `data.sql` 后需要按实际情况迁移已有数据库。已有库请执行 [`db/migrations/20260918_dialogue_session_event_seq.sql`](db/migrations/20260918_dialogue_session_event_seq.sql) 为 `ai_agent_dialogue_session` 补 `event_seq`。
+Java 生产配置模板是 [`application-prod.yml`](Reactor-agent-app/src/main/resources/application-prod.yml)，以静态配置为主，已清除真实密钥和密码；部署者需要按实际环境填写空缺凭证和地址。MySQL 初始化脚本只会在首次创建 `mysql-data` 卷时执行；修改 `schema.sql` 或 `data.sql` 后需要按实际情况迁移已有数据库。已有库请执行 [`db/migrations/20260918_dialogue_session_event_seq.sql`](db/migrations/20260918_dialogue_session_event_seq.sql) 为 `ai_agent_dialogue_session` 补 `event_seq`；执行 [`db/migrations/20260925_sub_agent_tool_loading_policy.sql`](db/migrations/20260925_sub_agent_tool_loading_policy.sql) 为子 Agent 定义增加工具继承/自定义与 deferred 工具配置字段。
 
 Compose 部署时，`WORKSPACE_ROOT` 应保持为 `/data/skilloutput`，Backend 与 `reactor-tool` 会通过 `reactor-data` 卷共享会话工作区和文件产物。
 
@@ -507,6 +535,3 @@ Compose 部署时，`WORKSPACE_ROOT` 应保持为 `/data/skilloutput`，Backend 
 ```text
 你是本仓库的部署代理。请先阅读 README.md、CLAUDE.md 以及相关模块说明，默认使用源码部署，不要默认使用 Docker Compose；只有用户明确要求容器部署时才切换到 Docker。开始前检查 JDK 21、Maven 3.8+、MySQL 8、Python 3.11+、uv、Node.js 18+ 和 pnpm，检查 Git 工作区并保留用户已有改动，禁止 reset、checkout 或覆盖未提交文件。按照 README 的顺序配置并启动 MySQL、reactor-tool、Reactor-agent-app 和 ui：没有 reactor-tool/.env 时从 reactor-tool/.env_template 创建，但不要覆盖已有 .env；首次启动执行 `uv run python -m reactor_tool.db.db_engine` 初始化 autobots.db；创建或确认 MySQL 数据库后导入 db/schema.sql 和 db/data.sql；使用 application-prod.yml 作为无真实凭证的部署配置，保留源码部署所需的 127.0.0.1 服务地址，不要把 application-dev.yml 中的真实密钥复制到生产配置。只使用用户明确提供的 LLM、搜索、E2B、Qdrant、ES、OCR、对象存储和登录态凭证，绝不能猜测、生成或输出这些凭证；如果缺少 MySQL 密码、LLM_BASE_URL/OPENAI_BASE_URL、OPENAI_API_KEY、模型名或其他必需配置，停止启动并列出变量名、用途和示例格式。先启动 reactor-tool，再用 `mvn -pl Reactor-agent-app -am package '-Dmaven.test.skip=true'` 构建并启动 Java Backend，最后在 ui 执行 `pnpm install` 和 `pnpm dev`。启动后检查 reactor-tool、`http://127.0.0.1:8100/web/health` 和 `http://localhost:3000`，失败时读取日志并修复配置后重试。只有健康检查通过、SQLite 初始化完成且没有把敏感信息写入 README、日志或 Git 跟踪文件时，才报告部署成功；最后列出实际执行命令、访问地址、数据库和 SQLite 文件位置、仍未配置的可选能力以及需要用户后续处理的事项。不要修改业务代码或删除数据，除非用户明确授权。
 ```
-
-
-

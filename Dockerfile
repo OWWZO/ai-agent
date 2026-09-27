@@ -8,14 +8,36 @@ RUN mvn -B -pl Reactor-agent-app -am package \
     -DskipTests \
     -Dmaven.test.skip=true
 
+FROM node:22-bookworm-slim AS opencli-build
+
+WORKDIR /opt/opencli
+COPY adapter-host/package.json adapter-host/package-lock.json ./
+COPY adapter-host/scripts ./scripts
+RUN npm ci
+COPY adapter-host/ ./
+RUN npm run build && npm prune --omit=dev
+
 FROM eclipse-temurin:21-jre AS backend
 
 WORKDIR /app
 COPY --from=backend-build /workspace/Reactor-agent-app/target/Reactor-agent-app.jar /app/app.jar
 COPY runtime/skills /app/runtime/skills
+COPY --from=node:22-bookworm-slim /usr/local /usr/local
+COPY --from=opencli-build /opt/opencli/dist /opt/opencli/dist
+COPY --from=opencli-build /opt/opencli/clis /opt/opencli/clis
+COPY --from=opencli-build /opt/opencli/cli-manifest.json /opt/opencli/cli-manifest.json
+COPY --from=opencli-build /opt/opencli/package.json /opt/opencli/package.json
+COPY --from=opencli-build /opt/opencli/node_modules /opt/opencli/node_modules
 RUN mkdir -p /app/data/log /data/skilloutput
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 python3-pip \
+    && python3 -m pip install --no-cache-dir --break-system-packages \
+        twitter-cli==0.8.6 rdt-cli==0.4.1 \
+    && rm -rf /var/lib/apt/lists/*
 
-ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -Dfile.encoding=UTF-8 -Duser.timezone=Asia/Shanghai"
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -Dfile.encoding=UTF-8 -Duser.timezone=Asia/Shanghai" \
+    REACTOR_OPENCLI_COMMAND=node \
+    REACTOR_OPENCLI_MAIN=/opt/opencli/dist/src/main.js
 EXPOSE 8100
 
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar --spring.profiles.active=${SPRING_PROFILES_ACTIVE:-prod}"]
