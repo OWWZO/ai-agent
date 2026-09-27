@@ -1,4 +1,11 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { ActionViewItemEnum } from "@/utils";
 import querySSE from "@/utils/querySSE";
 import { buildConversationTaskData, getStableTaskIdentity } from "@/utils/chat";
@@ -41,7 +48,9 @@ import {
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import {
+  ChevronUp,
   FolderOpen,
+  LoaderCircle,
   PanelRightClose,
   PanelRightOpen,
 } from "lucide-react";
@@ -86,6 +95,9 @@ type Props = {
   onTaskListChange?: (
     taskList: ReturnType<typeof collectSessionFileTasks>
   ) => void;
+  onRequestRunReplay?: (requestId: string) => Promise<unknown> | void;
+  onLoadMoreHistory?: () => Promise<void> | void;
+  historyLoading?: boolean;
   onRegisterApi?: (api: ChatViewApi | null) => void;
   onOpenTaskFiles?: () => void;
   /** 沉浸模式变化：Home 用来收起/展开左侧会话栏 */
@@ -156,6 +168,9 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     onConversationChange,
     onInputConsumed,
     onTaskListChange,
+    onRequestRunReplay,
+    onLoadMoreHistory,
+    historyLoading = false,
     onRegisterApi,
     onOpenTaskFiles,
     onFocusModeChange,
@@ -218,6 +233,9 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   const conversationRef = useRef(conversation);
   const lastAutoOpenedCanvasPreviewKeyRef = useRef("");
   const [dataLoading, setDataLoading] = useState(false);
+  const [replayLoadingIds, setReplayLoadingIds] = useState<Set<string>>(
+    () => new Set()
+  );
   const {
     taskList,
     workspaceStreamTask,
@@ -235,6 +253,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     undoLastUserTurn,
   } = useConversationStream({
     conversation,
+    readOnly,
     onConversationChange,
     onPrepareStreamingWorkspace: () => {
       // 新一轮请求开始后，工作区恢复自动跟随，避免仍停留在上一轮手动点开的旧任务上。
@@ -255,6 +274,29 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       });
     },
   });
+
+  const requestReplay = useCallback(
+    async (requestId: string) => {
+      if (!onRequestRunReplay || replayLoadingIds.has(requestId)) {
+        return;
+      }
+      setReplayLoadingIds((previous) => {
+        const next = new Set(previous);
+        next.add(requestId);
+        return next;
+      });
+      try {
+        await onRequestRunReplay(requestId);
+      } finally {
+        setReplayLoadingIds((previous) => {
+          const next = new Set(previous);
+          next.delete(requestId);
+          return next;
+        });
+      }
+    },
+    [onRequestRunReplay, replayLoadingIds]
+  );
 
   useEffect(() => {
     conversationRef.current = conversation;
@@ -1077,6 +1119,24 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       deferredChatList[deferredChatList.length - 1]?.requestId;
     return (
       <>
+        {onLoadMoreHistory && conversation.historyHasMore ? (
+          <div className="flex justify-center py-2">
+            <button
+              type="button"
+              onClick={() => void onLoadMoreHistory()}
+              disabled={historyLoading}
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] text-[var(--chat-text-muted)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)] disabled:cursor-wait disabled:opacity-60"
+              data-testid="load-more-history"
+            >
+              {historyLoading ? (
+                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <ChevronUp className="h-3.5 w-3.5" />
+              )}
+              <span>{historyLoading ? "加载中..." : "加载更早记录"}</span>
+            </button>
+          </div>
+        ) : null}
         {deferredChatList.map((chat) => (
           <Dialogue
             key={chat.requestId}
@@ -1100,6 +1160,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             onOpenToolDiff={openToolDiffPanel}
             onOpenAgent={openAgentPanel}
             onOpenWorkspaceFiles={onOpenTaskFiles}
+            onRequestReplay={onRequestRunReplay ? requestReplay : undefined}
+            replayLoading={replayLoadingIds.has(chat.requestId)}
           />
         ))}
         {streamLoading ? (

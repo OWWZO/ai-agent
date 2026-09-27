@@ -5,6 +5,7 @@ import {
   createConversationDraftController,
   isSessionControlPackage,
   resolveLatestContextUsage,
+  resolveRunReplayState,
 } from "./useConversationStream";
 import { resolveActionPanelVisibility } from "./streamState";
 import { parseAgentAnswer } from "@/utils/sseParsers";
@@ -185,5 +186,204 @@ describe("useConversationStream helpers", () => {
       "req-old",
       "req-new",
     ]);
+  });
+
+  it("续跑首帧可按 Run A requestId 替换，并让后续事件按 Run B requestId 更新", () => {
+    let latest: CHAT.ConversationHistory = {
+      id: "c1",
+      sessionId: "s1",
+      chatList: [
+        {
+          requestId: "run-a",
+          query: "需要确认",
+          loading: false,
+          metrics: { status: "WAITING_INPUT" },
+        } as CHAT.ChatItem,
+      ],
+    } as CHAT.ConversationHistory;
+    const controller = createConversationDraftController<CHAT.ChatItem>(
+      "c1",
+      latest,
+      "chatList",
+      (_id, next) => {
+        latest = next;
+      },
+      () => latest
+    );
+
+    const resumed = controller.replaceItem(
+      {
+        requestId: "resume-b",
+        query: "需要确认",
+        loading: true,
+        tip: "正在推进任务…",
+        metrics: { status: "RUNNING" },
+      } as CHAT.ChatItem,
+      "run-a"
+    );
+    controller.commit(resumed);
+
+    expect(latest.chatList.map((item) => item.requestId)).toEqual(["resume-b"]);
+    expect(latest.chatList[0].metrics?.status).toBe("RUNNING");
+
+    const next = controller.replaceLastItem({
+      requestId: "resume-b",
+      query: "需要确认",
+      loading: false,
+      conclusion: {
+        messageType: "result",
+        result: "已完成",
+      },
+      metrics: { status: "SUCCESS" },
+    } as CHAT.ChatItem);
+
+    expect(next.chatList).toHaveLength(1);
+    expect(next.chatList[0].requestId).toBe("resume-b");
+    expect(next.chatList[0].conclusion?.result).toBe("已完成");
+  });
+
+  it("Run B replay 会恢复 context_usage、工具过程和最终结果", () => {
+    const event = (
+      messageId: string,
+      resultMap: Record<string, unknown>,
+      finished = false
+    ): MESSAGE.EventData => ({
+      messageType: "task",
+      taskId: "task-1",
+      taskOrder: 1,
+      messageOrder: 1,
+      messageId,
+      resultMap: resultMap as unknown as MESSAGE.Task,
+      finish: finished,
+      isFinal: finished,
+    } as unknown as MESSAGE.EventData);
+    const frame = (eventData: MESSAGE.EventData, finished = false) => ({
+      reqId: "resume-b",
+      status: "success",
+      finished,
+      resultMap: { eventData },
+    });
+    const conversation = {
+      id: "c1",
+      sessionId: "s1",
+      deepThink: false,
+      chatList: [
+        {
+          sessionId: "s1",
+          requestId: "resume-b",
+          query: "需要确认",
+          loading: true,
+          multiAgent: { tasks: [] },
+          metrics: { status: "RUNNING" },
+        } as unknown as CHAT.ChatItem,
+      ],
+    } as CHAT.ConversationHistory;
+
+    const { chat, status } = resolveRunReplayState(conversation, {
+      requestId: "resume-b",
+      status: "SUCCESS",
+      queryText: "需要确认",
+      replayFrames: [
+        frame(
+          event("context-1", {
+            messageType: "context_usage",
+            max: 200000,
+            promptTokens: 1234,
+          })
+        ),
+        frame(
+          event("thought-1", {
+            messageType: "tool_thought",
+            toolThought: "先读取资料",
+          })
+        ),
+        frame(
+          event("reasoning-1", {
+            messageType: "llm_reasoning",
+            reasoningContent: "正在判断下一步",
+          })
+        ),
+        frame(
+          event("call-1", {
+            messageType: "tool_call",
+            toolName: "read_file",
+            toolCallId: "call-1",
+            status: "running",
+          })
+        ),
+        frame(
+          event("result-1", {
+            messageType: "tool_result",
+            toolName: "read_file",
+            toolCallId: "call-1",
+            status: "success",
+            toolResult: {
+              toolName: "read_file",
+              toolResult: "已读取",
+            },
+          })
+        ),
+        frame(
+          event("answer-1", {
+            messageType: "result",
+            result: "已完成",
+            taskSummary: "已完成",
+            isFinal: true,
+          }, true),
+          true
+        ),
+      ],
+    });
+
+    expect(status).toBe("SUCCESS");
+    expect(chat?.requestId).toBe("resume-b");
+    expect(chat?.loading).toBe(false);
+    expect(chat?.contextUsage).toEqual({
+      max: 200000,
+      promptTokens: 1234,
+    });
+    expect(chat?.conclusion?.result).toBe("已完成");
+    expect(
+      chat?.multiAgent.tasks.flat().map((task) => task.messageType)
+    ).toEqual(
+      expect.arrayContaining([
+        "tool_thought",
+        "llm_reasoning",
+        "tool_result",
+        "result",
+      ])
+    );
+    expect(chat?.tip).not.toBe("需要你的帮助");
+  });
+
+  it("SUCCESS replay 会清除 HITL 等待状态", () => {
+    const conversation = {
+      id: "c1",
+      sessionId: "s1",
+      chatList: [
+        {
+          sessionId: "s1",
+          requestId: "resume-b",
+          query: "需要确认",
+          loading: true,
+          tip: "需要你的帮助",
+          multiAgent: { tasks: [] },
+          metrics: { status: "RUNNING" },
+        } as unknown as CHAT.ChatItem,
+      ],
+    } as CHAT.ConversationHistory;
+
+    const { chat, status } = resolveRunReplayState(conversation, {
+      requestId: "resume-b",
+      status: "SUCCESS",
+      queryText: "需要确认",
+      finalSummaryText: "完成",
+      replayFrames: [],
+    });
+
+    expect(status).toBe("SUCCESS");
+    expect(chat?.loading).toBe(false);
+    expect(chat?.metrics?.status).toBe("SUCCESS");
+    expect(chat?.tip).not.toBe("需要你的帮助");
   });
 });

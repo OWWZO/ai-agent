@@ -112,6 +112,8 @@ declare global {
       steps: string[]
     }
 
+    type ReplayTiming = import("./agentRuntime").ReplayTiming;
+
     interface Task {
       messageTime: string
       task?: string
@@ -133,6 +135,11 @@ declare global {
       planThought?: string
       plannerRoundId?: string
       id: string
+      timing?: ReplayTiming
+      durationMs?: number
+      duration_ms?: number
+      elapsedMs?: number
+      subAgentElapsedMs?: number
     }
 
     interface EventData {
@@ -143,6 +150,7 @@ declare global {
       messageId: string
       taskId: string
       taskOrder: number
+      timing?: ReplayTiming
     }
 
     interface ArtifactReference {
@@ -246,6 +254,9 @@ declare global {
        */
       subAgentProgressKind?: 'heartbeat' | 'text' | 'line' | string
       subAgentPhase?: string
+      durationMs?: number
+      duration_ms?: number
+      elapsedMs?: number
       subAgentElapsedMs?: number
       subAgentLiveText?: string
       subAgentProgressLines?: string[]

@@ -108,6 +108,7 @@ export function taskToToolCall(task: CHAT.Task): ToolCall {
     arg: resolveTaskToolArg(task),
     status,
     timing: timing || undefined,
+    timingData: task.timing,
     output: resolveTaskToolOutput(task),
     runInBackground: isRunInBackgroundAgent(task),
     sourceTaskId: task.id || task.messageId,

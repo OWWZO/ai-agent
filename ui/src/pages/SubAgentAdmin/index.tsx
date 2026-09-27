@@ -23,6 +23,8 @@ const EMPTY_DRAFT = (): Draft => ({
   systemPrompt: "",
   allowedTools: ["*"],
   disallowedTools: [],
+  toolPolicyMode: "inherit",
+  deferredTools: [],
   maxSteps: 10,
   status: 1,
 });
@@ -39,6 +41,8 @@ function recordToDraft(record: SubAgentDefinitionRecord): Draft {
       ? [...record.allowedTools]
       : ["*"],
     disallowedTools: record.disallowedTools ? [...record.disallowedTools] : [],
+    toolPolicyMode: record.toolPolicyMode || "inherit",
+    deferredTools: record.deferredTools ? [...record.deferredTools] : [],
     maxSteps: record.maxSteps ?? null,
     status: record.status ?? 1,
   };
@@ -132,6 +136,11 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
         disallowedTools: draft.disallowedTools?.length
           ? draft.disallowedTools
           : undefined,
+        toolPolicyMode: draft.toolPolicyMode || "inherit",
+        deferredTools:
+          draft.toolPolicyMode === "custom" && draft.deferredTools?.length
+            ? draft.deferredTools
+            : undefined,
         maxSteps: draft.maxSteps ?? null,
         status: draft.status ?? 1,
       };
@@ -195,6 +204,20 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
       value: name
     })),
     [catalog],
+  );
+
+  const deferredToolOptions = useMemo(
+    () => {
+      const allowed = draft.allowedTools || [];
+      const allowAll = allowed.length === 0 || allowed.includes("*");
+      return catalog
+        .filter((name) => name !== "*" && (allowAll || allowed.includes(name)))
+        .map((name) => ({
+          label: name,
+          value: name,
+        }));
+    },
+    [catalog, draft.allowedTools],
   );
 
   return (
@@ -368,6 +391,59 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
                           }))
                         }
                         placeholder="代码审查"
+                      />
+                    </label>
+                  </div>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <label>
+                      <span className="workspace-admin-field-label">
+                        工具装配方式
+                      </span>
+                      <Select
+                        className="workspace-admin-multi-select w-full"
+                        disabled={saving}
+                        value={draft.toolPolicyMode || "inherit"}
+                        options={[
+                          {
+                            label: "继承主 Agent 工具策略",
+                            value: "inherit",
+                          },
+                          {
+                            label: "自定义工具装配",
+                            value: "custom",
+                          },
+                        ]}
+                        onChange={(value) =>
+                          setDraft((d) => ({
+                            ...d,
+                            toolPolicyMode: value as "inherit" | "custom",
+                            deferredTools:
+                              value === "custom" ? d.deferredTools : [],
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span className="workspace-admin-field-label">
+                        延迟加载工具
+                      </span>
+                      <Select
+                        mode="multiple"
+                        className="workspace-admin-multi-select w-full"
+                        disabled={saving || draft.toolPolicyMode !== "custom"}
+                        options={deferredToolOptions}
+                        value={draft.deferredTools || []}
+                        onChange={(value) =>
+                          setDraft((d) => ({
+                            ...d,
+                            deferredTools: value as string[],
+                          }))
+                        }
+                        placeholder={
+                          draft.toolPolicyMode === "custom"
+                            ? "选择进入 ToolSearch 的工具"
+                            : "切换为自定义后可配置"
+                        }
                       />
                     </label>
                   </div>

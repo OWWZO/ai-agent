@@ -53,18 +53,42 @@ export interface ConversationContextUsage {
   promptTokens?: number;
 }
 
-export interface ConversationHistoryRunDetail {
+export interface ConversationRunSummary {
   requestId: string;
   status: string;
-  queryText: string;
-  finalSummaryText?: string;
+  queryPreview?: string;
+  finalSummaryPreview?: string;
+  entryAgent?: string;
+  llmCallCount?: number;
+  toolCallCount?: number;
+  artifactCount?: number;
   startedAt?: string;
   finishedAt?: string;
+  durationMs?: number | null;
+  hasReplay: boolean;
+}
+
+export interface ConversationRunReplay {
+  runUid?: string;
+  requestId: string;
+  sessionId?: string;
+  entryAgent?: string;
+  status: string;
+  queryText?: string;
+  finalSummaryText?: string;
+  llmCallCount?: number;
+  toolCallCount?: number;
+  artifactCount?: number;
+  errorCode?: string;
+  errorMsg?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  durationMs?: number | null;
   contextUsage?: ConversationContextUsage;
   replayFrames: ConversationReplayFrame[];
 }
 
-export interface ConversationHistoryDetail {
+export interface ConversationHistoryPage {
   sessionId: string;
   title: string;
   status: string;
@@ -72,9 +96,27 @@ export interface ConversationHistoryDetail {
   runCount: number;
   finishedRunCount: number;
   failedRunCount: number;
+  latestRequestId?: string;
+  latestQueryPreview?: string;
+  latestSummaryPreview?: string;
   startedAt?: string;
   lastActiveAt?: string;
+  runs: ConversationRunSummary[];
+  nextCursor?: string | null;
+  hasMore?: boolean;
+}
+
+export type ConversationHistoryRunDetail = ConversationRunReplay;
+
+/** 旧 rich detail 的类型别名，保留给已有 replay 测试和调用方。 */
+export interface ConversationHistoryDetail
+  extends Omit<ConversationHistoryPage, "runs"> {
   runs: ConversationHistoryRunDetail[];
+}
+
+export interface ConversationHistoryQuery {
+  limit?: number;
+  after?: string | null;
 }
 
 export const visitorApi = {
@@ -89,8 +131,13 @@ export const conversationHistoryApi = {
     api.get<ConversationSessionItem[]>(
       `/api/agent/conversation/sessions?limit=${limit}`
     ) as unknown as Promise<ConversationSessionItem[]>,
-  getSessionDetail: (sessionId: string) =>
-    api.get<ConversationHistoryDetail>(
-      `/api/agent/conversation/sessions/${sessionId}`
-    ) as unknown as Promise<ConversationHistoryDetail>,
+  getSessionDetail: (sessionId: string, params: ConversationHistoryQuery = {}) =>
+    api.get<ConversationHistoryPage>(
+      `/api/agent/conversation/sessions/${encodeURIComponent(sessionId)}`,
+      params
+    ) as unknown as Promise<ConversationHistoryPage>,
+  getRunReplay: (requestId: string) =>
+    api.get<ConversationRunReplay>(
+      `/api/agent/conversation/runs/${encodeURIComponent(requestId)}/replay`
+    ) as unknown as Promise<ConversationRunReplay>,
 };

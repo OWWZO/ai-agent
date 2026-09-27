@@ -13,6 +13,13 @@ export default function BrowserRelayChip({ disabled }: Props) {
   const [pairing, setPairing] = useState<BrowserPairing | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const sendPairingToExtension = useCallback((data: BrowserPairing) => {
+    window.postMessage(
+      { source: "reactor", type: "browser-pair", token: data.token, relayUrl: data.relayUrl },
+      window.location.origin
+    );
+  }, []);
+
   const refresh = useCallback(async () => {
     try {
       const data = await browserRelayApi.status();
@@ -29,7 +36,8 @@ export default function BrowserRelayChip({ disabled }: Props) {
     const onMessage = (event: MessageEvent) => {
       if (event.source !== window) return;
       const msg = event.data as { source?: string; type?: string; ok?: boolean; error?: string } | null;
-      if (msg?.source !== "reactor-extension" || msg?.type !== "browser-pair-result") return;
+      if (msg?.source !== "reactor-extension") return;
+      if (msg.type !== "browser-pair-result") return;
       if (msg.ok) {
         void refresh();
         return;
@@ -57,10 +65,7 @@ export default function BrowserRelayChip({ disabled }: Props) {
         return;
       }
       setPairing(data);
-      window.postMessage(
-        { source: "reactor", type: "browser-pair", token: data.token, relayUrl: data.relayUrl },
-        window.location.origin
-      );
+      sendPairingToExtension(data);
     } catch (error) {
       showMessage({ content: error instanceof Error ? error.message : "发起配对失败", type: "error" });
     } finally {

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildAction,
   buildConversationTaskData,
+  buildTaskFromEventData,
   combineData,
   getStableTaskIdentity,
   handleTaskData,
@@ -488,6 +489,93 @@ function createToolResultEvent(options?: {
     } as unknown as MESSAGE.Task,
   } as unknown as MESSAGE.EventData;
 }
+
+describe("replay timing", () => {
+  it("copies event timing and keeps legacy duration fields", () => {
+    const timing: MESSAGE.ReplayTiming = {
+      startedAt: "2026-09-26T10:00:00Z",
+      finishedAt: "2026-09-26T10:00:02Z",
+      durationMs: 2000,
+      source: "payload",
+    };
+    const eventData = {
+      messageType: "task",
+      messageId: "timing-msg-1",
+      taskId: "timing-task-1",
+      taskOrder: 1,
+      messageOrder: 1,
+      timing,
+      resultMap: {
+        requestId: "timing-request-1",
+        messageId: "timing-msg-1",
+        messageType: "tool_result",
+        messageTime: "1714041600777",
+        finish: true,
+        isFinal: true,
+        durationMs: 11,
+        duration_ms: 12,
+        elapsedMs: 13,
+        subAgentElapsedMs: 14,
+      },
+    } as unknown as MESSAGE.EventData;
+
+    const task = buildTaskFromEventData(eventData);
+
+    expect(task.timing).toEqual(timing);
+    expect(task.durationMs).toBe(11);
+    expect(task.duration_ms).toBe(12);
+    expect(task.elapsedMs).toBe(13);
+    expect(task.subAgentElapsedMs).toBe(14);
+  });
+
+  it("merges timing when tool_call is replaced by tool_result", () => {
+    const currentChat = {
+      sessionId: "session-timing-merge-1",
+      requestId: "req-timing-merge-1",
+      query: "运行工具",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+    const toolCall = createToolCallEvent({
+      taskId: "task-timing-merge-1",
+      messageId: "call-timing-merge-1",
+      toolCallId: "call-timing-merge-1",
+      status: "running",
+    });
+    toolCall.timing = {
+      startedAt: "2026-09-26T10:00:00Z",
+      source: "runtime",
+    };
+    (toolCall.resultMap as MESSAGE.Task).durationMs = 1000;
+    const toolResult = createToolResultEvent({
+      taskId: "task-timing-merge-1",
+      messageId: "result-timing-merge-1",
+      toolCallId: "call-timing-merge-1",
+    });
+    toolResult.timing = {
+      finishedAt: "2026-09-26T10:00:02Z",
+      durationMs: 2000,
+      source: "payload",
+    };
+
+    combineData(toolCall, currentChat);
+    combineData(toolResult, currentChat);
+
+    const task = currentChat.multiAgent.tasks[0]?.[0];
+    expect(task?.messageType).toBe("tool_result");
+    expect(task?.timing).toEqual({
+      startedAt: "2026-09-26T10:00:00Z",
+      finishedAt: "2026-09-26T10:00:02Z",
+      durationMs: 2000,
+      source: "payload",
+    });
+    expect(task?.durationMs).toBe(1000);
+  });
+});
 
 describe("workspace file list events", () => {
   it("does not replace the ordinary tool result or open the workspace", () => {

@@ -1,10 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getMock = vi.fn();
 
 vi.mock("./index", () => ({default: {get: getMock,},}));
 
 describe("featuredConversation service", () => {
+  beforeEach(() => {
+    getMock.mockReset();
+  });
+
   it("requests home cards from the dedicated public endpoint", async () => {
     getMock.mockResolvedValueOnce([]);
     const { featuredConversationApi } = await import("./featuredConversation");
@@ -30,5 +34,19 @@ describe("featuredConversation service", () => {
       pageNo: 2,
       pageSize: 12,
     });
+  });
+
+  it("requests featured replay by featuredId and requestId", async () => {
+    getMock.mockResolvedValueOnce({});
+    const { featuredConversationApi } = await import("./featuredConversation");
+
+    await featuredConversationApi.getFeaturedRunReplay(
+      "featured-001",
+      "request-001"
+    );
+
+    expect(getMock).toHaveBeenCalledWith(
+      "/api/agent/featured-conversations/featured-001/runs/request-001/replay"
+    );
   });
 });

@@ -20,6 +20,7 @@ export type ConversationDraftController<TItem> = {
   conversationId: string;
   getSnapshot: () => CHAT.ConversationHistory;
   replaceLastItem: (item: TItem) => CHAT.ConversationHistory;
+  replaceItem: (item: TItem, targetRequestId: string) => CHAT.ConversationHistory;
   commit: (nextConversation: CHAT.ConversationHistory) => void;
 };
 

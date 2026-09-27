@@ -5,6 +5,13 @@
 
 export type ToolStatus = "ok" | "running" | "error";
 
+export type ReplayTiming = {
+  startedAt?: string;
+  finishedAt?: string;
+  durationMs?: number;
+  source?: "ledger" | "runtime" | "payload" | "inferred";
+};
+
 export type ToolMedia = {
   kind: "image" | "video" | "audio";
   url: string;
@@ -22,7 +29,10 @@ export type ToolCall = {
   /** JSON 字符串化的工具入参 */
   arg: string;
   status: ToolStatus;
+  /** 已格式化的展示时长，保留给工具 chip / Dock。 */
   timing?: string;
+  /** 原始 invocation timing，供需要区间语义的运行时视图使用。 */
+  timingData?: ReplayTiming;
   /** 展开区按行展示的输出 */
   output?: string[];
   media?: ToolMedia;

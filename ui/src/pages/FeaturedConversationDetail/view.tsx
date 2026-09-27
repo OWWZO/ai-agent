@@ -15,6 +15,7 @@ type FeaturedConversationDetailViewProps = {
   loading: boolean;
   detail: FeaturedConversationDetail | null;
   onBack?: () => void;
+  onRequestRunReplay?: (requestId: string) => Promise<unknown> | void;
 };
 
 function resolveUnavailableReason(detail: FeaturedConversationDetail) {
@@ -109,6 +110,7 @@ export function FeaturedConversationDetailView(
             conversation={conversation!}
             readOnly
             onConversationChange={() => {}}
+            onRequestRunReplay={props.onRequestRunReplay}
           />
         </div>
       )}

@@ -20,13 +20,13 @@ import {
   normalizeEventData,
 } from "@/utils/chat";
 import { resolveParentToolUseId } from "@/utils/chat/subagent";
-import {
-  hydrateConversationFromReplayFrames,
-} from "@/utils/conversationHistory";
-import { restoreHitlForSession } from "@/utils/hitlRestore";
+import { mergeRunReplayIntoConversation } from "@/utils/conversationHistory";
 import querySSE from "@/utils/querySSE";
 import { parseAgentAnswer } from "@/utils/sseParsers";
-import { conversationHistoryApi } from "@/services/agentConversation";
+import {
+  conversationHistoryApi,
+  type ConversationRunReplay,
+} from "@/services/agentConversation";
 import {
   AgentQuerySubmitError,
   buildAgentSessionStreamUrl,
@@ -54,6 +54,7 @@ import {
   getLatestRenderableTask,
   hasPendingAskUserQuestion,
   hasRunningBackgroundTask,
+  isChatItemFollowable,
   isChatItemRunning,
   isHitlYieldEvent,
   isParentLoopLive,
@@ -90,6 +91,7 @@ export function isSessionControlPackage(packageType?: string): boolean {
 
 type UseConversationStreamOptions = {
   conversation: CHAT.ConversationHistory;
+  readOnly?: boolean;
   onConversationChange: (
     conversationId: string,
     nextConversation: CHAT.ConversationHistory
@@ -230,15 +232,15 @@ function getItemRequestId(item: unknown): string | undefined {
 function replaceConversationListItem<TItem>(
   conversation: CHAT.ConversationHistory,
   key: ConversationListKey,
-  item: TItem
+  item: TItem,
+  targetRequestId = getItemRequestId(item)
 ) {
   const prevList = [...((conversation[key] as unknown as TItem[]) || [])];
-  const requestId = getItemRequestId(item);
-  if (requestId) {
+  if (targetRequestId) {
     const nextList: TItem[] = [];
     let replaced = false;
     for (const candidate of prevList) {
-      if (getItemRequestId(candidate) === requestId) {
+      if (getItemRequestId(candidate) === targetRequestId) {
         if (!replaced) {
           nextList.push(item);
           replaced = true;
@@ -280,6 +282,11 @@ export function createConversationDraftController<TItem>(
     replaceLastItem: (item) => {
       const base = getLatest?.() || snapshot;
       snapshot = replaceConversationListItem(base, listKey, item);
+      return snapshot;
+    },
+    replaceItem: (item, targetRequestId) => {
+      const base = getLatest?.() || snapshot;
+      snapshot = replaceConversationListItem(base, listKey, item, targetRequestId);
       return snapshot;
     },
     commit: (nextConversation) => {
@@ -325,6 +332,7 @@ function createRunningChat(
     taskStatus: 0,
     tip: "",
     multiAgent: { tasks: [] },
+    replayLoaded: true,
     metrics: { status: "RUNNING" },
   };
 }
@@ -383,11 +391,34 @@ export function applyGuardError(
   };
 }
 
+export type RunReplayState = {
+  history: CHAT.ConversationHistory;
+  chat?: CHAT.ChatItem;
+  status: string;
+};
+
+/** 将单 run rich replay 统一转换成当前会话快照和目标 chat。 */
+export function resolveRunReplayState(
+  conversation: CHAT.ConversationHistory,
+  replay: ConversationRunReplay
+): RunReplayState {
+  const history = mergeRunReplayIntoConversation(conversation, replay);
+  const chat = (history.chatList || []).find(
+    (item) => item.requestId === replay.requestId
+  );
+  return {
+    history,
+    chat,
+    status: String(chat?.metrics?.status || replay.status || "").toUpperCase(),
+  };
+}
+
 export function useConversationStream(
   options: UseConversationStreamOptions
 ): UseConversationStreamResult {
   const {
     conversation,
+    readOnly = false,
     onConversationChange,
     onPrepareStreamingWorkspace,
     onTokenUseUp,
@@ -414,6 +445,9 @@ export function useConversationStream(
     new Map()
   );
   const lastEventSeqRef = useRef<Map<string, number>>(new Map());
+  const runReplayRequestsRef = useRef<Map<string, Promise<ConversationRunReplay>>>(
+    new Map()
+  );
   const skipInjectRef = useRef(false);
 
   const clearFollowReconnectTimer = useMemoizedFn((requestId?: string) => {
@@ -587,6 +621,39 @@ export function useConversationStream(
     });
   });
 
+  const requestRunReplay = useMemoizedFn((requestId: string) => {
+    const inFlight = runReplayRequestsRef.current.get(requestId);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const request = conversationHistoryApi
+      .getRunReplay(requestId)
+      .finally(() => {
+        // 失败也释放锁，下一次 follow_idle 或重新进入会话可以重试。
+        runReplayRequestsRef.current.delete(requestId);
+      });
+    runReplayRequestsRef.current.set(requestId, request);
+    return request;
+  });
+
+  const resyncAfterFollowIdle = useMemoizedFn(
+    async (
+      conversationId: string,
+      requestId: string,
+      getFallbackSnapshot: () => CHAT.ConversationHistory
+    ) => {
+      const replay = await requestRunReplay(requestId);
+      const snapshot =
+        conversationSnapshotsRef.current.get(conversationId) ||
+        getFallbackSnapshot();
+      return {
+        replay,
+        ...resolveRunReplayState(snapshot, replay),
+      };
+    }
+  );
+
   useEffect(() => {
     conversationSnapshotsRef.current.set(conversation.id, conversation);
   }, [conversation]);
@@ -658,14 +725,17 @@ export function useConversationStream(
   ]);
 
   const runningFollowKey = useMemo(() => {
+    if (readOnly) {
+      return null;
+    }
     const latestRunningChat = [...conversation.chatList]
       .reverse()
-      .find((chat) => isChatItemRunning(chat) && chat.requestId);
+      .find((chat) => isChatItemFollowable(chat) && chat.requestId);
     if (!latestRunningChat?.requestId) {
       return null;
     }
     return `${conversation.id}::${latestRunningChat.requestId}`;
-  }, [conversation.chatList, conversation.id]);
+  }, [conversation.chatList, conversation.id, readOnly]);
 
   useEffect(() => {
     if (!conversation.chatList.length || loading) {
@@ -739,6 +809,9 @@ export function useConversationStream(
     targetRequestId: string,
     reconnectContext?: FollowReconnectContext
   ) => {
+    if (readOnly) {
+      return;
+    }
     const cached = reconnectContext || followReconnectContextsRef.current.get(targetRequestId);
     const baseConversation = conversationRef.current;
     const conversationId = cached?.conversationId || baseConversation.id;
@@ -946,10 +1019,9 @@ export function useConversationStream(
 
     /**
      * follow_idle 表示进程内已无该 requestId。
-     * 不能直接标 FAILED：任务可能已在后端跑完，只是观察流断了；刷新能好就是因为重新 hydrate ledger。
-     * 这里主动拉 session detail 同步终态；若仍 RUNNING 则继续 follow。
+     * 只补拉当前 run 的 rich replay，不能用整个 session detail 覆盖其它 run 的最新状态。
      */
-    const resyncAfterFollowIdle = async () => {
+    const applyFollowIdleReplay = async () => {
       const streamStillActive = isActiveStream();
       clearFollowReconnectTimer(requestId);
       unbindLiveStream(conversationId, abortController);
@@ -961,12 +1033,10 @@ export function useConversationStream(
       scheduleNonChatFlush(true);
 
       try {
-        const detail = await conversationHistoryApi.getSessionDetail(sessionId);
-        const history = await restoreHitlForSession(
-          hydrateConversationFromReplayFrames(detail)
-        );
-        const hydrated = (history.chatList || []).find(
-          (item) => item.requestId === requestId
+        const { history, chat: hydrated } = await resyncAfterFollowIdle(
+          conversationId,
+          requestId,
+          draftController.getSnapshot
         );
         if (!hydrated) {
           markFollowEnded(
@@ -987,13 +1057,55 @@ export function useConversationStream(
           if (streamStillActive) {
             setLoading(false);
           }
-          draftController.commit(draftController.replaceLastItem({ ...currentChat }));
+          commitConversation(conversationId, {
+            ...history,
+            chatList: (history.chatList || []).map((item) =>
+              item.requestId === requestId ? { ...currentChat } : item
+            ),
+          });
+          if (streamStillActive) {
+            const taskData = handleTaskData(
+              currentChat,
+              normalizedDeepThink,
+              currentChat.multiAgent
+            );
+            setTaskList(taskData.taskList);
+            setPlan(taskData.plan);
+            setShowAction(
+              resolveActionPanelVisibility({
+                plan: taskData.plan,
+                taskList: taskData.taskList,
+              })
+            );
+            const latestTask = getLatestRenderableTask(taskData.currentChat);
+            setWorkspaceStreamTask(latestTask ? cloneWorkspaceTask(latestTask) : undefined);
+          }
           return;
         }
 
         const hydratedStatus = String(hydrated.metrics?.status || "").toUpperCase();
-        // follow_idle 已表示进程内无 run 且 ledger 非 RUNNING。hydrate 若仍像 RUNNING，
-        // 只是回放滞后，不能再当成断线重连。
+        if (hydratedStatus === "RUNNING") {
+          // ledger 仍显示运行中时，follow_idle 只是观察流暂时脱离 registry；保留
+          // RUNNING 状态并继续 follow，不能把一个未完成 run 误收口成 SUCCESS。
+          currentChat = {
+            ...hydrated,
+            loading: true,
+            tip: CONNECTION_LOST_HINT,
+          };
+          commitConversation(conversationId, {
+            ...history,
+            id: conversationId,
+            chatList: (history.chatList || []).map((item) =>
+              item.requestId === requestId ? { ...currentChat } : item
+            ),
+          });
+          if (streamStillActive) {
+            setLoading(true);
+          }
+          scheduleFollowReconnect(conversationId, requestId);
+          return;
+        }
+
         clearFollowReconnectTimer(requestId);
         followReconnectAttemptsRef.current.delete(requestId);
         followReconnectContextsRef.current.delete(requestId);
@@ -1004,28 +1116,18 @@ export function useConversationStream(
           tip: "",
           metrics: {
             ...(hydrated.metrics || {}),
-            status: ["SUCCESS", "FAILED", "STOPPED"].includes(hydratedStatus)
+            status: ["SUCCESS", "FAILED", "STOPPED", "TIMEOUT"].includes(hydratedStatus)
               ? hydrated.metrics?.status
               : "SUCCESS",
           },
         };
-        const snapshot = conversationSnapshotsRef.current.get(conversationId);
-        const baseList =
-          snapshot?.chatList ||
-          draftController.getSnapshot().chatList ||
-          [];
-        const nextList = baseList.map((item) =>
+        const nextList = (history.chatList || []).map((item) =>
           item.requestId === requestId ? { ...currentChat } : item
         );
-        const hasItem = nextList.some((item) => item.requestId === requestId);
-        const mergedList = hasItem
-          ? nextList
-          : [...nextList, { ...currentChat }];
         commitConversation(conversationId, {
-          ...(snapshot || draftController.getSnapshot()),
           ...history,
           id: conversationId,
-          chatList: mergedList,
+          chatList: nextList,
         });
         if (streamStillActive) {
           setLoading(false);
@@ -1042,6 +1144,8 @@ export function useConversationStream(
               taskList: taskData.taskList,
             })
           );
+          const latestTask = getLatestRenderableTask(taskData.currentChat);
+          setWorkspaceStreamTask(latestTask ? cloneWorkspaceTask(latestTask) : undefined);
         }
       } catch (error) {
         console.warn("resync after follow_idle failed", error);
@@ -1084,7 +1188,7 @@ export function useConversationStream(
       const streamStillActive = isActiveStream();
 
       if (packageType === "follow_idle") {
-        void resyncAfterFollowIdle();
+        void applyFollowIdleReplay();
         return;
       }
 
@@ -1408,7 +1512,7 @@ export function useConversationStream(
   });
 
   useEffect(() => {
-    if (!runningFollowKey) {
+    if (readOnly || !runningFollowKey) {
       return;
     }
     const [conversationId, requestId] = runningFollowKey.split("::");
@@ -1420,7 +1524,7 @@ export function useConversationStream(
       return;
     }
     followActiveRun(requestId);
-  }, [followActiveRun, hasLiveStream, runningFollowKey]);
+  }, [followActiveRun, hasLiveStream, readOnly, runningFollowKey]);
 
   const resumeHitlRun = useMemoizedFn((
     detail: AskUserResumeEventDetail | PlanApprovalResumeEventDetail,
@@ -1448,7 +1552,8 @@ export function useConversationStream(
           chat.loading ||
           String(chat.metrics?.status || "").toUpperCase() === "WAITING_INPUT"
       ) || baseConversation.chatList[baseConversation.chatList.length - 1];
-    if (!seedChat) {
+    const seedRequestId = seedChat?.requestId;
+    if (!seedChat || !seedRequestId) {
       console.warn(`${options.errorLabel} resume skipped: empty chatList`);
       return;
     }
@@ -1488,15 +1593,14 @@ export function useConversationStream(
       {
         ...baseConversation,
         sessionId,
-        chatList: baseConversation.chatList.map((item, index) =>
-          index === baseConversation.chatList.length - 1 ? currentChat : item
-        ),
       },
       "chatList",
       commitConversation,
       () => conversationSnapshotsRef.current.get(conversationId)
     );
-    draftController.commit(draftController.replaceLastItem({ ...currentChat }));
+    draftController.commit(
+      draftController.replaceItem({ ...currentChat }, seedRequestId)
+    );
 
     const isActiveStream = () =>
       conversationRef.current.id === conversationId &&
@@ -1562,6 +1666,141 @@ export function useConversationStream(
       scheduleFollowReconnect(conversationId, resumeRequestId, delay);
     };
 
+    const commitResumeReplay = (
+      history: CHAT.ConversationHistory,
+      nextChat: CHAT.ChatItem
+    ) => {
+      draftController.commit({
+        ...history,
+        id: conversationId,
+        sessionId,
+        chatList: (history.chatList || []).map((item) =>
+          item.requestId === resumeRequestId ? { ...nextChat } : item
+        ),
+      });
+    };
+
+    const settleResumeReplay = (
+      history: CHAT.ConversationHistory,
+      nextChat: CHAT.ChatItem,
+      status: string,
+      tip = ""
+    ) => {
+      if (resumeSettled) {
+        return;
+      }
+      const streamStillActive = isActiveStream();
+      resumeSettled = true;
+      clearActiveRun(resumeRequestId);
+      followReconnectContextsRef.current.delete(resumeRequestId);
+      clearFollowReconnectTimer(resumeRequestId);
+      unbindLiveStream(conversationId, abortController);
+      currentChat = {
+        ...nextChat,
+        loading: false,
+        tip,
+        metrics: {
+          ...(nextChat.metrics || {}),
+          status,
+        },
+      };
+      if (streamStillActive) {
+        setLoading(false);
+      }
+      commitResumeReplay(history, currentChat);
+      if (streamStillActive) {
+        const taskData = handleTaskData(
+          currentChat,
+          Boolean(baseConversation.deepThink),
+          currentChat.multiAgent
+        );
+        setTaskList(taskData.taskList);
+        setPlan(taskData.plan);
+        setShowAction(
+          resolveActionPanelVisibility({
+            plan: taskData.plan,
+            taskList: taskData.taskList,
+          })
+        );
+        const latestTask = getLatestRenderableTask(taskData.currentChat);
+        setWorkspaceStreamTask(latestTask ? cloneWorkspaceTask(latestTask) : undefined);
+      }
+    };
+
+    let resumeReplayInFlight = false;
+    const resyncAfterResumeDisconnect = async () => {
+      if (resumeSettled || resumeReplayInFlight) {
+        return;
+      }
+      const live = liveStreamsRef.current.get(conversationId);
+      if (live && live.controller !== abortController) {
+        return;
+      }
+      resumeReplayInFlight = true;
+      try {
+        const { replay, history, chat: hydrated, status } =
+          await resyncAfterFollowIdle(
+            conversationId,
+            resumeRequestId,
+            draftController.getSnapshot
+          );
+        if (resumeSettled) {
+          return;
+        }
+        if (!hydrated) {
+          parkResumeStream();
+          return;
+        }
+
+        if (status === "RUNNING") {
+          currentChat = {
+            ...hydrated,
+            loading: true,
+            tip: CONNECTION_LOST_HINT,
+            metrics: {
+              ...(hydrated.metrics || {}),
+              status: "RUNNING",
+            },
+          };
+          commitResumeReplay(history, currentChat);
+          parkResumeStream();
+          return;
+        }
+
+        if (status === "WAITING_INPUT") {
+          settleResumeReplay(
+            history,
+            applyWaitingUserInputState(hydrated),
+            "WAITING_INPUT",
+            WAITING_USER_HELP_HINT
+          );
+          return;
+        }
+
+        if (["SUCCESS", "FAILED", "STOPPED", "TIMEOUT"].includes(status)) {
+          const failureTip =
+            replay.errorMsg ||
+            (status === "FAILED"
+              ? "本轮未能完成"
+              : status === "STOPPED"
+                ? "已停止"
+                : status === "TIMEOUT"
+                  ? "任务执行超时"
+                  : "");
+          settleResumeReplay(history, hydrated, status, failureTip);
+          return;
+        }
+
+        // 未知状态不能擅自判定成功，继续观察同一个 Run B。
+        parkResumeStream();
+      } catch (error) {
+        console.warn(`${options.errorLabel} replay resync failed`, error);
+        parkResumeStream();
+      } finally {
+        resumeReplayInFlight = false;
+      }
+    };
+
     const handleMessage = (data: MESSAGE.Answer) => {
       const live = liveStreamsRef.current.get(conversationId);
       if (!live || live.controller !== abortController) {
@@ -1587,8 +1826,21 @@ export function useConversationStream(
         return;
       }
       followReconnectAttemptsRef.current.set(resumeRequestId, 0);
-      if (packageType === "heartbeat" || packageType === "follow_idle" || packageType === "follow_pending") {
-        if (packageType === "heartbeat" && currentChat.loading && isActiveStream()) {
+      if (packageType === "follow_idle") {
+        void resyncAfterResumeDisconnect();
+        return;
+      }
+
+      if (packageType === "follow_pending") {
+        const retryMs = Number(data.retryMs);
+        parkResumeStream(
+          Number.isFinite(retryMs) && retryMs > 0 ? retryMs : undefined
+        );
+        return;
+      }
+
+      if (packageType === "heartbeat") {
+        if (currentChat.loading && isActiveStream()) {
           const presence = resolveRunPresence({
             loading: true,
             chat: currentChat,
@@ -1654,7 +1906,8 @@ export function useConversationStream(
       // 与主链路一致：任意 finished 帧都应收口，不能只认 packageType=result
       // 业务 finished 后仍可能短暂保持 SSE（后端 markAnswered 后再关流），勿重复 settle。
       if (finished) {
-        if (isHitlYieldEvent(eventData) || hasPendingAskUserQuestion(currentChat)) {
+        if (isHitlYieldEvent(eventData)) {
+          resumeSettled = true;
           currentChat = applyWaitingUserInputState(currentChat);
           clearActiveRun(resumeRequestId);
           followReconnectContextsRef.current.delete(resumeRequestId);
@@ -1725,7 +1978,7 @@ export function useConversationStream(
               if (resumeSettled) {
                 return;
               }
-              parkResumeStream();
+              void resyncAfterResumeDisconnect();
             });
           },
           handleClose: () => {
@@ -1733,7 +1986,7 @@ export function useConversationStream(
               if (resumeSettled) {
                 return;
               }
-              parkResumeStream(300);
+              void resyncAfterResumeDisconnect();
             });
           },
         },
@@ -1780,6 +2033,9 @@ export function useConversationStream(
 
   // 页签恢复 / 网络恢复时，立即对所有仍 RUNNING 的断流 run 触发 follow。
   useEffect(() => {
+    if (readOnly) {
+      return;
+    }
     const kickReconnect = () => {
       followReconnectContextsRef.current.forEach((ctx, requestId) => {
         if (hasConversationLiveStream(ctx.conversationId)) {
@@ -1805,6 +2061,7 @@ export function useConversationStream(
   }, [
     clearFollowReconnectTimer,
     hasConversationLiveStream,
+    readOnly,
     scheduleFollowReconnect,
   ]);
 

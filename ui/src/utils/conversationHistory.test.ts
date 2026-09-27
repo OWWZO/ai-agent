@@ -5,8 +5,13 @@ import type {
 } from "@/services/agentConversation";
 
 import {
+  hydrateConversationFromSummaryPage,
   hydrateConversationFromReplayFrames,
+  hydrateRunReplay,
+  hydrateRunSummary,
   isHistoryDetailEmpty,
+  mergeConversationHistoryPage,
+  mergeRunReplayIntoConversation,
   toConversationHistoryTitle,
 } from "./conversationHistory";
 import { buildConversationTaskData } from "./chat";
@@ -167,6 +172,173 @@ function createResultEvent(result: string): MESSAGE.EventData {
 }
 
 describe("conversationHistory hydrate", () => {
+  it("summary hydrate keeps a lightweight shell", () => {
+    const history = hydrateConversationFromSummaryPage({
+      sessionId: "session-summary-001",
+      title: "摘要会话",
+      status: "SUCCESS",
+      deepThink: false,
+      runCount: 1,
+      finishedRunCount: 1,
+      failedRunCount: 0,
+      runs: [
+        {
+          requestId: "req-summary-001",
+          status: "SUCCESS",
+          queryPreview: "查看摘要",
+          finalSummaryPreview: "这是摘要结论",
+          hasReplay: true,
+        },
+      ],
+      nextCursor: "cursor-001",
+      hasMore: true,
+    });
+
+    expect(history.historyNextCursor).toBe("cursor-001");
+    expect(history.historyHasMore).toBe(true);
+    expect(history.chatList[0].replayLoaded).toBe(false);
+    expect(history.chatList[0].multiAgent.plan).toBeUndefined();
+    expect(history.chatList[0].conclusion?.result).toBe("这是摘要结论");
+  });
+
+  it("hydrates ledger run duration for summary and replay shells", () => {
+    const detail = {
+      sessionId: "session-timing-001",
+      title: "时间信息",
+      status: "SUCCESS",
+      deepThink: false,
+      runCount: 1,
+      finishedRunCount: 1,
+      failedRunCount: 0,
+      runs: [],
+    };
+    const summaryChat = hydrateRunSummary(detail, {
+      requestId: "req-timing-summary-001",
+      status: "SUCCESS",
+      queryPreview: "摘要",
+      hasReplay: true,
+      durationMs: 4200,
+    });
+    expect(summaryChat.runDurationMs).toBe(4200);
+    expect(summaryChat.runTimingSource).toBe("ledger");
+
+    const replayEvent = createResultEvent("回放结论");
+    replayEvent.timing = {
+      startedAt: "2026-09-26T10:00:00Z",
+      finishedAt: "2026-09-26T10:00:02Z",
+      durationMs: 2000,
+      source: "ledger",
+    };
+    const replayChat = hydrateRunReplay(detail, {
+      requestId: "req-timing-replay-001",
+      status: "SUCCESS",
+      queryText: "回放",
+      durationMs: 6200,
+      replayFrames: [createReplayFrame(replayEvent)],
+    });
+    expect(replayChat.runDurationMs).toBe(6200);
+    expect(replayChat.runTimingSource).toBe("ledger");
+    expect(replayChat.multiAgent.tasks[0]?.[0]?.timing).toEqual(
+      replayEvent.timing
+    );
+  });
+
+  it("merges summary pages by requestId without replacing loaded runs", () => {
+    const initial = hydrateConversationFromReplayFrames({
+      sessionId: "session-page-001",
+      title: "分页会话",
+      status: "SUCCESS",
+      deepThink: false,
+      runCount: 1,
+      finishedRunCount: 1,
+      failedRunCount: 0,
+      runs: [
+        {
+          requestId: "req-page-001",
+          status: "SUCCESS",
+          queryText: "第一轮",
+          finalSummaryText: "第一轮结论",
+          replayFrames: [createReplayFrame(createResultEvent("第一轮结论"))],
+        },
+      ],
+    });
+    const loadedRun = initial.chatList[0];
+
+    const merged = mergeConversationHistoryPage(initial, {
+      sessionId: "session-page-001",
+      title: "分页会话",
+      status: "SUCCESS",
+      deepThink: false,
+      runCount: 2,
+      finishedRunCount: 2,
+      failedRunCount: 0,
+      runs: [
+        {
+          requestId: "req-page-001",
+          status: "SUCCESS",
+          queryPreview: "第一轮旧摘要",
+          finalSummaryPreview: "不应覆盖 rich replay",
+          hasReplay: true,
+        },
+        {
+          requestId: "req-page-002",
+          status: "SUCCESS",
+          queryPreview: "第二轮",
+          finalSummaryPreview: "第二轮结论",
+          hasReplay: true,
+        },
+      ],
+      nextCursor: null,
+      hasMore: false,
+    });
+
+    expect(merged.chatList.map((item) => item.requestId)).toEqual([
+      "req-page-001",
+      "req-page-002",
+    ]);
+    expect(merged.chatList[0]).toBe(loadedRun);
+    expect(merged.chatList[1].replayLoaded).toBe(false);
+    expect(merged.historyHasMore).toBe(false);
+  });
+
+  it("replaces only the target run and appends a replay missing from summaries", () => {
+    const conversation = hydrateConversationFromSummaryPage({
+      sessionId: "session-merge-001",
+      title: "单 run 回放",
+      status: "SUCCESS",
+      deepThink: false,
+      runCount: 1,
+      finishedRunCount: 1,
+      failedRunCount: 0,
+      runs: [
+        {
+          requestId: "req-merge-001",
+          status: "SUCCESS",
+          queryPreview: "已有摘要",
+          finalSummaryPreview: "旧摘要",
+          hasReplay: true,
+        },
+      ],
+    });
+
+    const replay = {
+      requestId: "req-merge-002",
+      status: "SUCCESS",
+      queryText: "漏掉的 run",
+      finalSummaryText: "完整结论",
+      replayFrames: [createReplayFrame(createResultEvent("完整结论"))],
+    };
+    const merged = mergeRunReplayIntoConversation(conversation, replay);
+
+    expect(merged.chatList.map((item) => item.requestId)).toEqual([
+      "req-merge-001",
+      "req-merge-002",
+    ]);
+    expect(merged.chatList[0].conclusion?.result).toBe("旧摘要");
+    expect(merged.chatList[1].replayLoaded).toBe(true);
+    expect(merged.chatList[1].conclusion?.result).toBe("完整结论");
+  });
+
   it("rebuilds chat list from replay frames and restores conclusion", () => {
     const history = hydrateConversationFromReplayFrames({
       sessionId: "session-history-001",

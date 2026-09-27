@@ -160,12 +160,58 @@ export function buildTaskFromEventData(eventData: MESSAGE.EventData): MESSAGE.Ta
     taskId: eventData.taskId,
     ...(artifactRefs?.length ? { artifactRefs } : {}),
     ...eventData.resultMap,
+    ...(eventData.timing ? { timing: eventData.timing } : {}),
   } as MESSAGE.Task;
   const toolResult = resolveTaskToolResult(task);
   if (toolResult && !task.toolResult) {
     task.toolResult = toolResult as MESSAGE.ToolResult;
   }
   return task;
+}
+
+type LegacyTimingTaskKey =
+  | "durationMs"
+  | "duration_ms"
+  | "elapsedMs"
+  | "subAgentElapsedMs";
+
+const LEGACY_TIMING_TASK_KEYS: LegacyTimingTaskKey[] = [
+  "durationMs",
+  "duration_ms",
+  "elapsedMs",
+  "subAgentElapsedMs",
+];
+
+function mergeTaskTiming(
+  previous?: MESSAGE.ReplayTiming,
+  next?: MESSAGE.ReplayTiming
+) {
+  if (!previous && !next) {
+    return undefined;
+  }
+  return {
+    ...(previous || {}),
+    ...(next || {}),
+  };
+}
+
+function preserveTaskTiming(
+  previous: Pick<MESSAGE.Task, "timing" | LegacyTimingTaskKey>,
+  next: MESSAGE.Task
+): MESSAGE.Task {
+  const timing = mergeTaskTiming(previous.timing, next.timing);
+  const legacyTimingFields: Partial<Pick<MESSAGE.Task, LegacyTimingTaskKey>> = {};
+  for (const key of LEGACY_TIMING_TASK_KEYS) {
+    const value = next[key] !== undefined ? next[key] : previous[key];
+    if (value !== undefined) {
+      legacyTimingFields[key] = value;
+    }
+  }
+  return {
+    ...next,
+    ...legacyTimingFields,
+    ...(timing ? { timing } : {}),
+  };
 }
 
 /**
@@ -1451,10 +1497,12 @@ function mergeToolCallStreamingTask(
     previous.messageId ||
     (prevMap as { messageId?: string }).messageId ||
     next.messageId;
+  const timing = mergeTaskTiming(previous.timing, next.timing);
 
   return {
     ...previous,
     ...next,
+    ...(timing ? { timing } : {}),
     messageId: stableMessageId,
     messageType: "tool_call",
     resultMap: mergedResultMap,
@@ -1691,7 +1739,7 @@ function handleNonStreamingMessage(
             prevMap.runInBackground,
         };
       }
-      taskGroup[placeholderIndex] = nextTask;
+      taskGroup[placeholderIndex] = preserveTaskTiming(previous, nextTask);
       return;
     }
 

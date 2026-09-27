@@ -159,12 +159,24 @@ export function resolveAssistantReplyText(tool: CHAT.Task): string {
   return asText(tool.toolThought);
 }
 
-export function parseMessageTimeMs(value?: string): number | undefined {
-  if (!value) {
+export function parseMessageTimeMs(value?: unknown): number | undefined {
+  if (value == null || value === "") {
     return undefined;
   }
+
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || value < 0) {
+      return undefined;
+    }
+    return value < 1e12 ? value * 1000 : value;
+  }
+
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
   const numeric = Number(value);
-  if (Number.isFinite(numeric) && numeric > 0) {
+  if (Number.isFinite(numeric) && numeric >= 0) {
     // 兼容秒级时间戳
     return numeric < 1e12 ? numeric * 1000 : numeric;
   }
@@ -365,52 +377,284 @@ function resolveStepTitle(tool: CHAT.Task, kind: ProcessStepKind): {
   };
 }
 
+type TimeInterval = {
+  startedAtMs: number;
+  finishedAtMs: number;
+};
+
+type TimingRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): TimingRecord | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as TimingRecord)
+    : undefined;
+}
+
+function resolveDurationMs(value: unknown): number | undefined {
+  if (value == null || (typeof value === "string" && !value.trim())) {
+    return undefined;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value >= 0 ? value : undefined;
+  }
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : undefined;
+}
+
+function firstDurationMs(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    const durationMs = resolveDurationMs(value);
+    if (durationMs != null) {
+      return durationMs;
+    }
+  }
+  return undefined;
+}
+
+function firstTimestampMs(
+  source: TimingRecord | undefined,
+  ...keys: string[]
+): number | undefined {
+  if (!source) {
+    return undefined;
+  }
+  for (const key of keys) {
+    if (!(key in source)) {
+      continue;
+    }
+    const timestampMs = parseMessageTimeMs(source[key]);
+    if (timestampMs != null) {
+      return timestampMs;
+    }
+  }
+  return undefined;
+}
+
+function resolveTaskRecordParts(tool: CHAT.Task): {
+  task: TimingRecord;
+  timing?: TimingRecord;
+  resultMap?: TimingRecord;
+  nestedResultMap?: TimingRecord;
+} {
+  const task = tool as unknown as TimingRecord;
+  const timing = asRecord(task.timing);
+  const resultMap = asRecord(task.resultMap);
+  const nestedResultMap = asRecord(resultMap?.resultMap);
+  return { task, timing, resultMap, nestedResultMap };
+}
+
+function resolveTimingDurationMs(tool: CHAT.Task): number | undefined {
+  const { timing } = resolveTaskRecordParts(tool);
+  return firstDurationMs(timing?.durationMs);
+}
+
+/**
+ * 事件 resultMap 在实时路径会被展开到 task 顶层，在历史路径通常仍嵌在
+ * resultMap 中；两种形态都属于同一层级，必须保持相同优先级。
+ */
+function resolveResultMapDurationMs(tool: CHAT.Task): number | undefined {
+  const { task, resultMap, nestedResultMap } = resolveTaskRecordParts(tool);
+  return firstDurationMs(
+    resultMap?.durationMs,
+    resultMap?.duration_ms,
+    nestedResultMap?.durationMs,
+    nestedResultMap?.duration_ms,
+    task.durationMs,
+    task.duration_ms
+  );
+}
+
+function resolveLegacyDurationMs(tool: CHAT.Task): number | undefined {
+  const { task, resultMap, nestedResultMap } = resolveTaskRecordParts(tool);
+  return firstDurationMs(
+    task.elapsedMs,
+    task.subAgentElapsedMs,
+    resultMap?.elapsedMs,
+    resultMap?.subAgentElapsedMs,
+    nestedResultMap?.elapsedMs,
+    nestedResultMap?.subAgentElapsedMs
+  );
+}
+
+function resolveSubAgentDurationMs(tool: CHAT.Task): number | undefined {
+  if (!isAgentDispatchTask(tool)) {
+    return undefined;
+  }
+  return resolveDurationMs(resolveSubAgentDisplay(tool).totalDurationMs);
+}
+
+function durationFromInterval(interval?: TimeInterval): number | undefined {
+  if (!interval) {
+    return undefined;
+  }
+  return Math.max(interval.finishedAtMs - interval.startedAtMs, 0);
+}
+
+function resolveExplicitInterval(tool: CHAT.Task): TimeInterval | undefined {
+  const { task, timing, resultMap, nestedResultMap } = resolveTaskRecordParts(tool);
+  const sources = [timing, task, resultMap, nestedResultMap];
+
+  for (const source of sources) {
+    if (!source) {
+      continue;
+    }
+    const startedAtMs = firstTimestampMs(source, "startedAt", "started_at");
+    const finishedAtMs = firstTimestampMs(source, "finishedAt", "finished_at");
+
+    if (startedAtMs != null && finishedAtMs != null && finishedAtMs >= startedAtMs) {
+      return { startedAtMs, finishedAtMs };
+    }
+  }
+
+  return undefined;
+}
+
+function resolveTaskStartedAtMs(tool: CHAT.Task): number | undefined {
+  const explicitInterval = resolveExplicitInterval(tool);
+  if (explicitInterval) {
+    return explicitInterval.startedAtMs;
+  }
+
+  const { task, timing, resultMap, nestedResultMap } = resolveTaskRecordParts(tool);
+  return (
+    firstTimestampMs(timing, "startedAt", "started_at") ??
+    firstTimestampMs(task, "startedAt", "started_at") ??
+    firstTimestampMs(resultMap, "startedAt", "started_at") ??
+    firstTimestampMs(nestedResultMap, "startedAt", "started_at") ??
+    firstTimestampMs(task, "messageTime") ??
+    firstTimestampMs(resultMap, "messageTime") ??
+    firstTimestampMs(nestedResultMap, "messageTime")
+  );
+}
+
+function resolveTaskInterval(
+  tool: CHAT.Task,
+  options: { loading: boolean; nowMs: number }
+): TimeInterval | undefined {
+  const explicitInterval = resolveExplicitInterval(tool);
+  if (explicitInterval) {
+    return explicitInterval;
+  }
+
+  const startedAtMs = resolveTaskStartedAtMs(tool);
+  if (
+    options.loading &&
+    startedAtMs != null &&
+    (isTimelineToolActive(tool) || !isStepCompleted(tool))
+  ) {
+    return {
+      startedAtMs,
+      finishedAtMs: Math.max(options.nowMs, startedAtMs),
+    };
+  }
+
+  return undefined;
+}
+
+function resolveSingleToolDuration(
+  step: { tool: CHAT.Task; startedAtMs?: number },
+  nextStartedAtMs: number | undefined,
+  options: { loading: boolean; nowMs: number }
+): number | undefined {
+  // 新回放 timing 是最可信的单 invocation 事实。
+  const timingDurationMs = resolveTimingDurationMs(step.tool);
+  if (timingDurationMs != null) {
+    return timingDurationMs;
+  }
+
+  const resultMapDurationMs = resolveResultMapDurationMs(step.tool);
+  if (resultMapDurationMs != null) {
+    return resultMapDurationMs;
+  }
+
+  const subAgentDurationMs = resolveSubAgentDurationMs(step.tool);
+  if (subAgentDurationMs != null) {
+    return subAgentDurationMs;
+  }
+
+  const explicitIntervalDurationMs = durationFromInterval(
+    resolveExplicitInterval(step.tool)
+  );
+  if (explicitIntervalDurationMs != null) {
+    return explicitIntervalDurationMs;
+  }
+
+  const legacyDurationMs = resolveLegacyDurationMs(step.tool);
+  if (legacyDurationMs != null) {
+    return legacyDurationMs;
+  }
+
+  // 旧实时事件只有 messageTime 时，只能用下一个明确事件时间作为保守边界。
+  // 整轮 finishedAt 不在这里使用，避免把 run 尾部伪装成工具耗时。
+  if (
+    step.startedAtMs != null &&
+    nextStartedAtMs != null &&
+    nextStartedAtMs >= step.startedAtMs
+  ) {
+    return nextStartedAtMs - step.startedAtMs;
+  }
+
+  if (
+    options.loading &&
+    step.startedAtMs != null &&
+    (isTimelineToolActive(step.tool) || !isStepCompleted(step.tool))
+  ) {
+    return Math.max(options.nowMs - step.startedAtMs, 0);
+  }
+
+  return undefined;
+}
+
+function mergeIntervals(intervals: TimeInterval[]): number | undefined {
+  if (!intervals.length) {
+    return undefined;
+  }
+
+  const sorted = [...intervals].sort(
+    (left, right) => left.startedAtMs - right.startedAtMs
+  );
+  let totalMs = 0;
+  let current = sorted[0];
+
+  for (const interval of sorted.slice(1)) {
+    if (interval.startedAtMs <= current.finishedAtMs) {
+      current = {
+        startedAtMs: current.startedAtMs,
+        finishedAtMs: Math.max(current.finishedAtMs, interval.finishedAtMs),
+      };
+      continue;
+    }
+    totalMs += Math.max(current.finishedAtMs - current.startedAtMs, 0);
+    current = interval;
+  }
+
+  return totalMs + Math.max(current.finishedAtMs - current.startedAtMs, 0);
+}
+
+function resolveGroupDurationMs(
+  steps: ProcessStepRow[],
+  options: { loading: boolean; nowMs: number }
+): number | undefined {
+  const intervals = steps
+    .map((step) => resolveTaskInterval(step.tool, options))
+    .filter((interval): interval is TimeInterval => interval != null);
+  return mergeIntervals(intervals);
+}
+
 function estimateDurations(
   steps: Array<{ tool: CHAT.Task; startedAtMs?: number }>,
-  options: {
-    loading: boolean;
-    nowMs: number;
-    finishedAtMs?: number;
-  }
+  options: { loading: boolean; nowMs: number }
 ): Array<number | undefined> {
-  // 事件通常只有开始时间，没有单独的结束事件，因此按“下一步开始时间 ->
-  // 当前时间/整轮结束时间 -> 保守下限”的优先级估算。这样流式阶段会持续增长，
-  // 历史回放阶段也不会因为缺少结束时间而显示空耗时。
-  const times = steps.map((step) => step.startedAtMs);
-  return steps.map((step, index) => {
-    const tool = step.tool;
-    if (isAgentDispatchTask(tool)) {
-      const sub = resolveSubAgentDisplay(tool);
-      if (sub.totalDurationMs != null) {
-        return sub.totalDurationMs;
-      }
-    }
-
-    const start = times[index];
-    if (start == null) {
-      return undefined;
-    }
-
-    const nextStart = times.slice(index + 1).find((value) => value != null);
-    if (nextStart != null && nextStart >= start) {
-      return Math.max(nextStart - start, 0);
-    }
-
-    if (isTimelineToolActive(tool) || (options.loading && !isStepCompleted(tool))) {
-      return Math.max(options.nowMs - start, 0);
-    }
-
-    if (options.finishedAtMs != null && options.finishedAtMs >= start) {
-      return Math.max(options.finishedAtMs - start, 0);
-    }
-
-    // 无可靠结束时间时，给已完成步骤一个保守下限，避免空白
-    if (isStepCompleted(tool)) {
-      return 400;
-    }
-
-    return undefined;
-  });
+  return steps.map((step, index) =>
+    resolveSingleToolDuration(
+      step,
+      steps.slice(index + 1).find((next) => next.startedAtMs != null)?.startedAtMs,
+      options
+    )
+  );
 }
 
 function flattenGroupChildren(container: CHAT.Task): CHAT.Task[] {
@@ -424,12 +668,11 @@ function buildStepRows(
   options: {
     loading: boolean;
     nowMs: number;
-    finishedAtMs?: number;
   }
 ): ProcessStepRow[] {
   const prepared = tools.map((tool, index) => ({
     tool,
-    startedAtMs: parseMessageTimeMs(tool.messageTime),
+    startedAtMs: resolveTaskStartedAtMs(tool),
     index,
   }));
   const durations = estimateDurations(prepared, options);
@@ -503,6 +746,7 @@ export function segmentProcessSteps(
     isPlanSolve: boolean;
     container?: CHAT.Task;
     groupIndexBase?: number;
+    nowMs?: number;
   }
 ): ProcessSegment[] {
   // 这里把后端任务事件转换成 UI 语义：思考和工具先进入缓冲区，助手过程回复、
@@ -547,7 +791,10 @@ export function segmentProcessSteps(
     const active =
       Boolean(forceActive) || ordered.some((step) => step.active);
     const completed = ordered.every((step) => step.completed) && !active;
-    const durationMs = sumDurations(ordered.map((step) => step.durationMs));
+    const durationMs = resolveGroupDurationMs(ordered, {
+      loading: options.loading,
+      nowMs: options.nowMs ?? Date.now(),
+    });
     groupSerial += 1;
     segments.push({
       type: "group",
@@ -659,6 +906,32 @@ function extractIntentLine(thoughtText?: string, tip?: string): string | undefin
   return `${firstLine.slice(0, 77)}…`;
 }
 
+function resolveRunDurationMs(
+  chat: CHAT.ChatItem,
+  startedAtMs: number | undefined,
+  nowMs: number
+): number | undefined {
+  const recordedDurationMs = resolveDurationMs(chat.runDurationMs);
+  if (recordedDurationMs != null) {
+    return recordedDurationMs;
+  }
+
+  const runFinishedAtMs = parseMessageTimeMs(chat.finishedAt);
+  if (
+    startedAtMs != null &&
+    runFinishedAtMs != null &&
+    runFinishedAtMs >= startedAtMs
+  ) {
+    return runFinishedAtMs - startedAtMs;
+  }
+
+  if (chat.loading && startedAtMs != null) {
+    return Math.max(nowMs - startedAtMs, 0);
+  }
+
+  return undefined;
+}
+
 export type DeriveAgentProcessModelInput = {
   chat: CHAT.ChatItem;
   isPlanSolve: boolean;
@@ -694,7 +967,7 @@ export function deriveAgentProcessModel(
 
   const loading = Boolean(chat.loading);
   const finishedAtMs =
-    parseMessageTimeMs(chat.finishedAt) ||
+    parseMessageTimeMs(chat.finishedAt) ??
     (loading ? undefined : nowMs);
   const startedAtMs = parseMessageTimeMs(chat.startedAt);
 
@@ -764,7 +1037,6 @@ export function deriveAgentProcessModel(
     const steps = buildStepRows(slice.children, {
       loading,
       nowMs,
-      finishedAtMs,
     });
     if (!steps.length) {
       continue;
@@ -775,6 +1047,7 @@ export function deriveAgentProcessModel(
       isPlanSolve,
       container: slice.container,
       groupIndexBase: groupSerial,
+      nowMs,
     });
     for (const segment of sliced) {
       if (segment.type === "group") {
@@ -845,13 +1118,7 @@ export function deriveAgentProcessModel(
     thought.durationLabel = formatProcessDuration(thought.durationMs);
   }
 
-  const totalDurationMs =
-    startedAtMs != null && (finishedAtMs != null || loading)
-      ? Math.max((finishedAtMs ?? nowMs) - startedAtMs, 0)
-      : sumDurations([
-        thought?.durationMs,
-        ...groups.map((group) => group.durationMs),
-      ]);
+  const totalDurationMs = resolveRunDurationMs(chat, startedAtMs, nowMs);
 
   const intentLine = extractIntentLine(thoughtText, chat.tip);
 
@@ -872,14 +1139,4 @@ export function deriveAgentProcessModel(
     totalDurationMs,
     totalDurationLabel: formatProcessDuration(totalDurationMs),
   };
-}
-
-function sumDurations(values: Array<number | undefined>): number | undefined {
-  const valid = values.filter(
-    (value): value is number => value != null && Number.isFinite(value) && value >= 0
-  );
-  if (!valid.length) {
-    return undefined;
-  }
-  return valid.reduce((sum, value) => sum + value, 0);
 }

@@ -28,6 +28,12 @@ declare global {
         contextUsage?: ContextUsage;
         startedAt?: string;
         finishedAt?: string;
+        runDurationMs?: number;
+        runTimingSource?: MESSAGE.ReplayTiming["source"];
+        /** 当前 chat 是否已经用单 run replay 补齐过过程事件。 */
+        replayLoaded?: boolean;
+        /** 后端是否允许从该摘要进入单 run replay。 */
+        replayAvailable?: boolean;
       }
     >;
 
@@ -191,6 +197,8 @@ declare global {
       chatTitle: string;
       chatList: ChatItem[];
       dataChatList: DataChatItem[];
+      historyNextCursor?: string | null;
+      historyHasMore?: boolean;
     };
 
     export type ModelInfo = {
@@ -200,6 +208,9 @@ declare global {
     };
     export type ConversationSessionItem = import("@/services/agentConversation").ConversationSessionItem;
     export type ConversationHistoryDetail = import("@/services/agentConversation").ConversationHistoryDetail;
+    export type ConversationHistoryPage = import("@/services/agentConversation").ConversationHistoryPage;
+    export type ConversationRunSummary = import("@/services/agentConversation").ConversationRunSummary;
+    export type ConversationRunReplay = import("@/services/agentConversation").ConversationRunReplay;
     export type ConversationHistoryRunDetail = import("@/services/agentConversation").ConversationHistoryRunDetail;
     export type ConversationReplayFrame = import("@/services/agentConversation").ConversationReplayFrame;
   }

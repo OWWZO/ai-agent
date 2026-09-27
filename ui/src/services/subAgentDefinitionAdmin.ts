@@ -8,6 +8,8 @@ export interface SubAgentDefinitionRecord {
   systemPrompt: string;
   allowedTools?: string[];
   disallowedTools?: string[];
+  toolPolicyMode?: "inherit" | "custom";
+  deferredTools?: string[];
   maxSteps?: number | null;
   status?: number;
 }
@@ -19,6 +21,8 @@ export interface SubAgentDefinitionUpsertPayload {
   systemPrompt: string;
   allowedTools?: string[];
   disallowedTools?: string[];
+  toolPolicyMode?: "inherit" | "custom";
+  deferredTools?: string[];
   maxSteps?: number | null;
   status?: number;
 }

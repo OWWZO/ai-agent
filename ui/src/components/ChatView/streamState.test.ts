@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyWaitingUserInputState,
   hasPendingAskUserQuestion,
+  isChatItemFollowable,
   isChatItemRunning,
   isParentLoopLive,
   isHitlYieldEvent,
@@ -24,6 +25,36 @@ describe("streamState presence & attention", () => {
         metrics: { status: "RUNNING" },
       } as CHAT.ChatItem)
     ).toBe(true);
+  });
+
+  it("WAITING_INPUT 不应自动建立观察流", () => {
+    expect(
+      isChatItemFollowable({
+        loading: false,
+        tip: "需要你的帮助",
+        metrics: { status: "WAITING_INPUT" },
+      } as CHAT.ChatItem)
+    ).toBe(false);
+    expect(
+      isChatItemFollowable({
+        loading: true,
+        metrics: { status: "RUNNING" },
+      } as CHAT.ChatItem)
+    ).toBe(true);
+    expect(
+      isChatItemFollowable({
+        loading: true,
+        metrics: { status: "RUNNING" },
+        multiAgent: {
+          tasks: [[
+            {
+              messageType: "ask_user_question",
+              resultMap: { status: "pending" },
+            },
+          ]],
+        },
+      } as CHAT.ChatItem)
+    ).toBe(false);
   });
 
   it("主结论已出后父循环不再 live，第二句应 POST 而非 inject", () => {

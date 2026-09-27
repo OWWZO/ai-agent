@@ -23,6 +23,7 @@ import {
   subscribeGenUiLocalTree,
 } from "@/components/genui/genUiLocalTreeStore";
 import ConclusionSection from "./ConclusionSection";
+import ReplayDisclosure, { type ReplayRequestHandler } from "./ReplayDisclosure";
 
 type Props = {
   chat: CHAT.ChatItem;
@@ -40,6 +41,8 @@ type Props = {
   onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
   onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
   onOpenWorkspaceFiles?: () => void;
+  onRequestReplay?: ReplayRequestHandler;
+  replayLoading?: boolean;
 };
 
 const DialogueComponent: FC<Props> = (props) => {
@@ -58,6 +61,8 @@ const DialogueComponent: FC<Props> = (props) => {
     onOpenToolDiff,
     onOpenAgent,
     onOpenWorkspaceFiles,
+    onRequestReplay,
+    replayLoading = false,
   } = props;
   const isPlanSolveMessage = isPlanSolveConversation(chat.agentType, deepThink);
   const isReactType = !isPlanSolveMessage;
@@ -246,6 +251,20 @@ const DialogueComponent: FC<Props> = (props) => {
         />
       </div>
 
+      {onRequestReplay &&
+        chat.requestId &&
+        chat.replayAvailable !== false &&
+        !chat.replayLoaded &&
+        !chat.loading ? (
+          <div className="mt-2 w-full">
+            <ReplayDisclosure
+              chat={chat}
+              onRequestReplay={onRequestReplay}
+              replayLoading={replayLoading}
+            />
+          </div>
+        ) : null}
+
       {/* AI 回复（Markdown） */}
       {showStandaloneResponse ? (
         <div className="mt-7 w-full max-w-[94%]">
@@ -340,7 +359,9 @@ const Dialogue = memo(
     prev.onSyncThinking === next.onSyncThinking &&
     prev.onOpenToolDiff === next.onOpenToolDiff &&
     prev.onOpenAgent === next.onOpenAgent &&
-    prev.onOpenWorkspaceFiles === next.onOpenWorkspaceFiles
+    prev.onOpenWorkspaceFiles === next.onOpenWorkspaceFiles &&
+    prev.onRequestReplay === next.onRequestReplay &&
+    prev.replayLoading === next.replayLoading
 );
 
 export default Dialogue;

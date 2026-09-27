@@ -47,6 +47,20 @@ export function isChatItemRunning(chat?: CHAT.ChatItem | null): boolean {
   return hasRunningBackgroundTask(chat);
 }
 
+/**
+ * 只有实际执行中的 run 才需要自动建立观察流。
+ * WAITING_INPUT 是 AskUser/PlanApproval 的业务停驻态，不应被当作断线任务续绑。
+ */
+export function isChatItemFollowable(chat?: CHAT.ChatItem | null): boolean {
+  if (!isChatItemRunning(chat)) {
+    return false;
+  }
+  if (String(chat?.metrics?.status || "").toUpperCase() === "WAITING_INPUT") {
+    return false;
+  }
+  return !hasPendingAskUserQuestion(chat);
+}
+
 /** 父 ReAct 循环仍可 inject；根 result 后即使后台子 Agent 还在跑也返回 false。 */
 export function isParentLoopLive(chat?: CHAT.ChatItem | null): boolean {
   if (!chat) {

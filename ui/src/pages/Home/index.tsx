@@ -44,8 +44,10 @@ import {
   type FeaturedConversationAdminRecord,
 } from "@/services/featuredConversationAdmin";
 import {
-  hydrateConversationFromReplayFrames,
+  hydrateConversationFromSummaryPage,
   isHistoryDetailEmpty,
+  mergeConversationHistoryPage,
+  mergeRunReplayIntoConversation,
 } from "@/utils/conversationHistory";
 import { restoreHitlForSession } from "@/utils/hitlRestore";
 import { readActiveRun } from "@/utils/activeRunStorage";
@@ -111,6 +113,8 @@ const EMPTY_FEATURED_FORM: FeaturedConversationFormState = {
   sortOrder: "100",
   operator: "ui-featured-manager",
 };
+
+const HISTORY_PAGE_SIZE = 20;
 
 const getRecentSessionSummaryKey = (
   conversation?: CHAT.ConversationHistory
@@ -220,6 +224,10 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   const [visitorNamingLoading, setVisitorNamingLoading] = useState(false);
   const [conversationBootstrapLoading, setConversationBootstrapLoading] =
     useState(false);
+  const [historyPageLoading, setHistoryPageLoading] = useState(false);
+  const historyPageRequestsRef = useRef<Map<string, Promise<void>>>(new Map());
+  const runReplayRequestsRef = useRef<Map<string, Promise<void>>>(new Map());
+  const sessionSelectionVersionRef = useRef(0);
 
   const visitorWorkspaceStage = resolveVisitorWorkspaceStage({
     bootstrapLoaded: visitorBootstrapLoaded,
@@ -365,12 +373,12 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
         }
 
         return conversationHistoryApi
-          .getSessionDetail(initialSessionId)
+          .getSessionDetail(initialSessionId, { limit: HISTORY_PAGE_SIZE })
           .then(async (detail) => {
             if (disposed || !detail || isHistoryDetailEmpty(detail)) {
               return;
             }
-            const hydrated = hydrateConversationFromReplayFrames(detail);
+            const hydrated = hydrateConversationFromSummaryPage(detail);
             const restored = await restoreHitlForSession(hydrated);
             if (disposed) {
               return;
@@ -459,6 +467,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
   const createNewChat = useCallback(
     (override?: Partial<CHAT.ConversationHistory>) => {
+      sessionSelectionVersionRef.current += 1;
       // 创建新会话同时清空输入、任务文件和视图壳状态；override 只用于恢复
       // 已存在的 session 元数据，默认路径始终生成新的 sessionId。
       const nextSessionId = override?.sessionId || createSessionId();
@@ -494,39 +503,122 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
   const handleSelectRecentSession = useCallback(
     (session: ConversationSessionItem) => {
+      const selectionVersion = ++sessionSelectionVersionRef.current;
       // 先切换壳状态，再异步加载详情；本地草稿优先，避免已在内存中的流式会话
       // 被历史接口返回的旧快照覆盖。
       const localConversation = localRecentConversationsRef.current.find(
         (item) => item.sessionId === session.sessionId
       );
       if (localConversation) {
+        setHistoryPageLoading(false);
         setCurrentConversation(localConversation);
         setActiveView("chat");
         resetInput();
         void restoreHitlForSession(localConversation).then((restored) => {
-          setCurrentConversation(restored);
+          if (selectionVersion === sessionSelectionVersionRef.current) {
+            setCurrentConversation(restored);
+          }
         });
         return;
       }
 
+      setHistoryPageLoading(false);
+      setActiveView("chat");
       conversationHistoryApi
-        .getSessionDetail(session.sessionId)
+        .getSessionDetail(session.sessionId, { limit: HISTORY_PAGE_SIZE })
         .then(async (detail) => {
-          if (!detail || isHistoryDetailEmpty(detail)) {
+          if (
+            selectionVersion !== sessionSelectionVersionRef.current ||
+            !detail ||
+            isHistoryDetailEmpty(detail)
+          ) {
             return;
           }
-          const hydrated = hydrateConversationFromReplayFrames(detail);
+          const hydrated = hydrateConversationFromSummaryPage(detail);
           const restored = await restoreHitlForSession(hydrated);
+          if (selectionVersion !== sessionSelectionVersionRef.current) {
+            return;
+          }
           setCurrentConversation(restored);
-          setActiveView("chat");
           resetInput();
         })
         .catch((error) => {
-          console.error("加载历史会话详情失败", error);
+          if (selectionVersion === sessionSelectionVersionRef.current) {
+            console.error("加载历史会话详情失败", error);
+          }
         });
     },
     [resetInput]
   );
+
+  const requestRunReplay = useCallback(
+    (requestId: string) => {
+      const sessionId = currentConversation.sessionId;
+      const key = `${sessionId}::${requestId}`;
+      const inFlight = runReplayRequestsRef.current.get(key);
+      if (inFlight) {
+        return inFlight;
+      }
+
+      const request = conversationHistoryApi
+        .getRunReplay(requestId)
+        .then((replay) => {
+          setCurrentConversation((previous) =>
+            previous.sessionId === sessionId
+              ? mergeRunReplayIntoConversation(previous, replay)
+              : previous
+          );
+        })
+        .catch((error) => {
+          // 删除 in-flight 后允许下一次选中/展示同一 run 时重试。
+          console.error("加载会话 run 回放失败", error);
+        })
+        .finally(() => {
+          runReplayRequestsRef.current.delete(key);
+        });
+
+      runReplayRequestsRef.current.set(key, request);
+      return request;
+    },
+    [currentConversation.sessionId]
+  );
+
+  const loadMoreHistory = useCallback(() => {
+    const { sessionId, historyNextCursor, historyHasMore } = currentConversation;
+    if (!sessionId || !historyHasMore || !historyNextCursor) {
+      return Promise.resolve();
+    }
+
+    const key = `${sessionId}::${historyNextCursor}`;
+    const inFlight = historyPageRequestsRef.current.get(key);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    setHistoryPageLoading(true);
+    const request = conversationHistoryApi
+      .getSessionDetail(sessionId, {
+        limit: HISTORY_PAGE_SIZE,
+        after: historyNextCursor,
+      })
+      .then((page) => {
+        setCurrentConversation((previous) =>
+          previous.sessionId === sessionId
+            ? mergeConversationHistoryPage(previous, page)
+            : previous
+        );
+      })
+      .catch((error) => {
+        console.error("加载更早会话记录失败", error);
+      })
+      .finally(() => {
+        historyPageRequestsRef.current.delete(key);
+        setHistoryPageLoading(false);
+      });
+
+    historyPageRequestsRef.current.set(key, request);
+    return request;
+  }, [currentConversation]);
 
   useEffect(() => {
     if (
@@ -555,9 +647,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
   const changeInputInfo = useCallback(
     (info: CHAT.TInputInfo) => {
-      const nextMeta = deriveConversationMetaFromInput(info, {
-        productType: product.type,
-      });
+      const nextMeta = deriveConversationMetaFromInput(info, { productType: product.type });
 
       updateCurrentConversationMeta(nextMeta);
 
@@ -803,6 +893,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
   const handleSidebarChangeView = useCallback(
     (view: SidebarView) => {
+      sessionSelectionVersionRef.current += 1;
       if (view === "featured") {
         setFeaturedEntryId("");
       }
@@ -815,6 +906,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   );
 
   const handleSidebarOpenTaskFiles = useCallback(() => {
+    sessionSelectionVersionRef.current += 1;
     setActiveView("chat");
     setWorkspaceImmersive(false);
     setSidebarPanel("task-files");
@@ -988,6 +1080,9 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
                       product={product}
                       conversation={currentConversation}
                       onConversationChange={updateConversation}
+                      onRequestRunReplay={requestRunReplay}
+                      onLoadMoreHistory={loadMoreHistory}
+                      historyLoading={historyPageLoading}
                       onInputConsumed={onInputConsumed}
                       onTaskListChange={setWorkspaceTaskList}
                       onRegisterApi={(api) => {

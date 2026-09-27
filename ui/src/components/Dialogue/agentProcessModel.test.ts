@@ -7,6 +7,8 @@ import {
   resolveProcessStepKind,
 } from "./agentProcessModel";
 
+const BASE_TIME_MS = 1714041600000;
+
 function createChat(overrides?: Partial<CHAT.ChatItem>): CHAT.ChatItem {
   return {
     sessionId: "process-session",
@@ -45,6 +47,19 @@ function tool(
     toolResult: partial.toolResult,
     children: partial.children,
   } as CHAT.Task;
+}
+
+function timedInterval(startOffsetMs: number, endOffsetMs: number) {
+  return {
+    startedAt: String(BASE_TIME_MS + startOffsetMs),
+    finishedAt: String(BASE_TIME_MS + endOffsetMs),
+    durationMs: endOffsetMs - startOffsetMs,
+    source: "ledger" as const,
+  };
+}
+
+function workGroup(children: CHAT.Task[]): CHAT.ChatItem["tasks"] {
+  return [[{ id: "container", children } as unknown as CHAT.Task]];
 }
 
 describe("agentProcessModel", () => {
@@ -597,5 +612,213 @@ describe("agentProcessModel", () => {
     expect(model.segments).toHaveLength(1);
     expect(model.segments[0].type).toBe("assistant_reply");
     expect(model.finalReply).toBeUndefined();
+  });
+
+  it("uses the task timing priority for step duration", () => {
+    const chat = createChat({
+      tasks: workGroup([
+        tool({
+          id: "priority-tool",
+          messageType: "tool_call",
+          finish: true,
+          isFinal: true,
+          timing: { durationMs: 1000 },
+          resultMap: { toolName: "Agent", duration_ms: 2000 },
+          toolResult: {
+            toolName: "Agent",
+            toolResult: "status=completed\ntotalDurationMs=3000\n\nfinished",
+          },
+          elapsedMs: 4000,
+        }),
+      ]),
+    });
+
+    const model = deriveAgentProcessModel({ chat, isPlanSolve: false });
+    expect(model.groups[0].steps[0].durationMs).toBe(1000);
+  });
+
+  it("merges three concurrent invocation intervals into ten seconds", () => {
+    const chat = createChat({
+      tasks: workGroup([
+        tool({
+          id: "concurrent-1",
+          messageType: "tool_call",
+          timing: timedInterval(0, 10_000),
+          finish: true,
+          isFinal: true,
+        }),
+        tool({
+          id: "concurrent-2",
+          messageType: "tool_call",
+          timing: timedInterval(0, 10_000),
+          finish: true,
+          isFinal: true,
+        }),
+        tool({
+          id: "concurrent-3",
+          messageType: "tool_call",
+          timing: timedInterval(0, 10_000),
+          finish: true,
+          isFinal: true,
+        }),
+      ]),
+    });
+
+    const model = deriveAgentProcessModel({ chat, isPlanSolve: false });
+    expect(model.groups[0].durationMs).toBe(10_000);
+  });
+
+  it("merges partially overlapping invocation intervals", () => {
+    const chat = createChat({
+      tasks: workGroup([
+        tool({
+          id: "partial-1",
+          messageType: "tool_call",
+          timing: timedInterval(0, 6_000),
+          finish: true,
+          isFinal: true,
+        }),
+        tool({
+          id: "partial-2",
+          messageType: "tool_call",
+          timing: timedInterval(4_000, 10_000),
+          finish: true,
+          isFinal: true,
+        }),
+        tool({
+          id: "partial-3",
+          messageType: "tool_call",
+          timing: timedInterval(9_000, 12_000),
+          finish: true,
+          isFinal: true,
+        }),
+      ]),
+    });
+
+    const model = deriveAgentProcessModel({ chat, isPlanSolve: false });
+    expect(model.groups[0].durationMs).toBe(12_000);
+  });
+
+  it("uses the overall span for serial invocation intervals", () => {
+    const chat = createChat({
+      tasks: workGroup([
+        tool({
+          id: "serial-1",
+          messageType: "tool_call",
+          timing: timedInterval(0, 3_000),
+          finish: true,
+          isFinal: true,
+        }),
+        tool({
+          id: "serial-2",
+          messageType: "tool_call",
+          timing: timedInterval(3_000, 7_000),
+          finish: true,
+          isFinal: true,
+        }),
+        tool({
+          id: "serial-3",
+          messageType: "tool_call",
+          timing: timedInterval(7_000, 10_000),
+          finish: true,
+          isFinal: true,
+        }),
+      ]),
+    });
+
+    const model = deriveAgentProcessModel({ chat, isPlanSolve: false });
+    expect(model.groups[0].durationMs).toBe(10_000);
+  });
+
+  it("does not fabricate a tool tail from the run finish", () => {
+    const chat = createChat({
+      startedAt: String(BASE_TIME_MS),
+      finishedAt: String(BASE_TIME_MS + 20_000),
+      tasks: workGroup([
+        tool({
+          id: "legacy-tool",
+          messageType: "tool_call",
+          messageTime: String(BASE_TIME_MS + 1_000),
+          finish: true,
+          isFinal: true,
+        }),
+      ]),
+    });
+
+    const model = deriveAgentProcessModel({ chat, isPlanSolve: false });
+    expect(model.groups[0].steps[0].durationMs).toBeUndefined();
+    expect(model.groups[0].durationMs).toBeUndefined();
+    expect(model.totalDurationMs).toBe(20_000);
+  });
+
+  it("prefers runDurationMs over the run timestamp span", () => {
+    const chat = createChat({
+      startedAt: String(BASE_TIME_MS),
+      finishedAt: String(BASE_TIME_MS + 20_000),
+      runDurationMs: 7_500,
+      tasks: workGroup([
+        tool({
+          id: "timed-tool",
+          messageType: "tool_call",
+          timing: timedInterval(0, 12_000),
+          finish: true,
+          isFinal: true,
+        }),
+      ]),
+    });
+
+    const model = deriveAgentProcessModel({ chat, isPlanSolve: false });
+    expect(model.totalDurationMs).toBe(7_500);
+  });
+
+  it("does not double-count thought time that overlaps a tool", () => {
+    const chat = createChat({
+      startedAt: String(BASE_TIME_MS),
+      finishedAt: String(BASE_TIME_MS + 10_000),
+      tasks: workGroup([
+        tool({
+          id: "thought-overlap",
+          messageType: "llm_reasoning",
+          timing: timedInterval(0, 5_000),
+          finish: true,
+          isFinal: true,
+          toolThought: "分析中",
+        }),
+        tool({
+          id: "tool-overlap",
+          messageType: "tool_call",
+          timing: timedInterval(4_000, 10_000),
+          finish: true,
+          isFinal: true,
+        }),
+      ]),
+    });
+
+    const model = deriveAgentProcessModel({
+      chat,
+      isPlanSolve: false,
+      thoughtText: "分析中",
+    });
+    expect(model.groups[0].durationMs).toBe(10_000);
+    expect(model.totalDurationMs).toBe(10_000);
+  });
+
+  it("keeps rendering old tasks without timing metadata", () => {
+    const chat = createChat({
+      tasks: workGroup([
+        tool({
+          id: "old-tool",
+          messageType: "tool_call",
+          resultMap: { toolName: "Read", isFinal: true },
+          finish: true,
+          isFinal: true,
+        }),
+      ]),
+    });
+
+    const model = deriveAgentProcessModel({ chat, isPlanSolve: false });
+    expect(model.hasProcess).toBe(true);
+    expect(model.groups[0].steps[0].title).toContain("读取");
+    expect(model.totalDurationMs).toBe(12_000);
   });
 });
