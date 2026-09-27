@@ -1,3 +1,4 @@
+import ast
 import contextlib
 import io
 import os
@@ -12,13 +13,18 @@ from reactor_tool.tool.python_sandbox_executor import (
     PythonSandboxExecutionError,
     PythonSandboxExecutor,
 )
+from reactor_tool.tool.user_sandbox_manager import (
+    UserSandboxManager,
+    reset_user_sandbox_manager,
+)
 
-_REMOTE_ROOT = "/home/user/workspace"
+_REMOTE_ROOT = "/home/user/workspace/sessions/anonymous"
 
 
 class _FakeFiles:
     def __init__(self, store: dict[str, bytes]):
         self.store = store
+        self.write_files_count = 0
 
     def write(self, path: str, data, **kwargs):
         if hasattr(data, "read"):
@@ -28,8 +34,12 @@ class _FakeFiles:
         self.store[str(path).replace("\\", "/")] = bytes(data)
 
     def write_files(self, files, **kwargs):
+        self.write_files_count += 1
         for item in files:
             self.write(item["path"], item["data"])
+
+    def remove(self, path: str):
+        self.store.pop(str(path).replace("\\", "/"), None)
 
     def read(self, path: str, format: str | None = None):
         data = self.store.get(str(path).replace("\\", "/"), b"")
@@ -42,13 +52,21 @@ class _FakeSandbox:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
         self.files = _FakeFiles({})
+        self.sandbox_id = "fake-sandbox"
         self.killed = False
+        self.pauses: list[bool] = []
+        self._remote_root = _REMOTE_ROOT
         self._kernel: dict[str, object] = {"__remote_writes__": {}}
 
     def run_code(self, code: str, timeout: int = 60):
-        if "__SANDBOX_SNAPSHOT__" in code or "__reactor_sandbox_snapshot__" in code:
+        if (
+            "__SESSION_SNAPSHOT__" in code
+            or "__SANDBOX_SNAPSHOT__" in code
+            or "__reactor_sandbox_snapshot__" in code
+        ):
+            self._set_remote_root_from_code(code)
             files = {}
-            prefix = _REMOTE_ROOT.rstrip("/") + "/"
+            prefix = self._remote_root.rstrip("/") + "/"
             for path, data in self.files.store.items():
                 norm = path.replace("\\", "/")
                 if not norm.startswith(prefix):
@@ -71,6 +89,7 @@ class _FakeSandbox:
                 text=None,
             )
 
+        self._set_remote_root_from_code(code)
         local_ns = dict(self._kernel)
         local_ns.setdefault("__remote_writes__", {})
         from pathlib import Path as PathCls
@@ -84,20 +103,20 @@ class _FakeSandbox:
             text = str(path_obj).replace("\\", "/")
             if text.startswith("home/user/workspace"):
                 text = "/" + text
-            if text.startswith(_REMOTE_ROOT):
+            if text.startswith(self._remote_root):
                 return text
-            marker = _REMOTE_ROOT.rstrip("/") + "/"
+            marker = self._remote_root.rstrip("/") + "/"
             if marker in text:
-                return f"{_REMOTE_ROOT}/{text.split(marker, 1)[1]}"
+                return f"{self._remote_root}/{text.split(marker, 1)[1]}"
             return text
 
         def _rel(path_obj: Path) -> str:
             text = _norm_remote(path_obj)
-            marker = _REMOTE_ROOT.rstrip("/") + "/"
+            marker = self._remote_root.rstrip("/") + "/"
             if text.startswith(marker):
                 return text[len(marker) :]
-            if text.startswith(_REMOTE_ROOT.rstrip("/")):
-                return text[len(_REMOTE_ROOT.rstrip("/")) :].lstrip("/")
+            if text.startswith(self._remote_root.rstrip("/")):
+                return text[len(self._remote_root.rstrip("/")) :].lstrip("/")
             return Path(text).name
 
         def _write_text(self, data, encoding="utf-8", errors="strict", newline=None):
@@ -149,7 +168,7 @@ class _FakeSandbox:
                 exec(code, local_ns, local_ns)
             self._kernel = local_ns
             for rel, content in dict(local_ns.get("__remote_writes__") or {}).items():
-                self.files.write(f"{_REMOTE_ROOT}/{rel}", content)
+                self.files.write(f"{self._remote_root}/{rel}", content)
             return SimpleNamespace(
                 logs=SimpleNamespace(
                     stdout=[stdout_buf.getvalue()], stderr=[stderr_buf.getvalue()]
@@ -179,8 +198,47 @@ class _FakeSandbox:
     def kill(self):
         self.killed = True
 
+    def pause(self, keep_memory=True):
+        self.pauses.append(bool(keep_memory))
+        return True
+
+    def _set_remote_root_from_code(self, code: str):
+        try:
+            tree = ast.parse(code)
+        except SyntaxError:
+            return
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                if (
+                    any(
+                        isinstance(target, ast.Name) and target.id == "workspace_root"
+                        for target in node.targets
+                    )
+                    and isinstance(node.value, ast.Constant)
+                    and isinstance(node.value.value, str)
+                ):
+                    self._remote_root = node.value.value
+                    return
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            if isinstance(node.func, ast.Name) and node.func.id == "Path":
+                value = node.args[0]
+            elif isinstance(node.func, ast.Attribute) and node.func.attr == "chdir":
+                value = node.args[0]
+            else:
+                continue
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                self._remote_root = value.value
+                return
+
 
 class E2BSandboxBackendTest(unittest.TestCase):
+    @staticmethod
+    def _close_test_executor(executor):
+        executor.close()
+        implementation = getattr(executor, "_impl", executor)
+        implementation._manager.shutdown()
+
     def test_executor_passes_configured_proxy_to_sandbox_factory(self):
         with tempfile.TemporaryDirectory() as workspace:
             workspace_root = Path(workspace)
@@ -211,7 +269,7 @@ class E2BSandboxBackendTest(unittest.TestCase):
                 executor.execute("print('done')")
                 self.assertEqual("http://e2b-proxy.test:7890", captured["proxy"])
             finally:
-                executor.close()
+                self._close_test_executor(executor)
                 if previous_e2b_proxy is None:
                     os.environ.pop("E2B_PROXY", None)
                 else:
@@ -256,8 +314,8 @@ class E2BSandboxBackendTest(unittest.TestCase):
                     ["hello.txt"], [item["name"] for item in result.produced_files]
                 )
             finally:
-                executor.close()
-            self.assertTrue(fake.killed)
+                self._close_test_executor(executor)
+            self.assertFalse(fake.killed)
 
     def test_e2b_keeps_kernel_state_across_executes(self):
         with tempfile.TemporaryDirectory() as workspace:
@@ -283,7 +341,7 @@ class E2BSandboxBackendTest(unittest.TestCase):
                 self.assertIn("42", second.stdout)
                 self.assertTrue(executor._bootstrapped)
             finally:
-                executor.close()
+                self._close_test_executor(executor)
 
     def test_e2b_raises_execution_error(self):
         with tempfile.TemporaryDirectory() as workspace:
@@ -305,7 +363,7 @@ class E2BSandboxBackendTest(unittest.TestCase):
                 with self.assertRaises(PythonSandboxExecutionError):
                     executor.execute("raise RuntimeError('boom')\n")
             finally:
-                executor.close()
+                self._close_test_executor(executor)
 
     def test_missing_api_key_fails_fast_without_factory(self):
         with tempfile.TemporaryDirectory() as workspace:
@@ -318,12 +376,14 @@ class E2BSandboxBackendTest(unittest.TestCase):
                 output_dir=str(output_dir),
                 input_files=[],
             )
-            executor = E2BPythonSandboxExecutor(policy, timeout_seconds=5)
+            reset_user_sandbox_manager()
             old = os.environ.pop("E2B_API_KEY", None)
+            executor = E2BPythonSandboxExecutor(policy, timeout_seconds=5)
             try:
                 with self.assertRaisesRegex(RuntimeError, "E2B_API_KEY"):
                     executor.execute("print(1)")
             finally:
+                reset_user_sandbox_manager()
                 if old is not None:
                     os.environ["E2B_API_KEY"] = old
                 executor.close()
@@ -354,7 +414,86 @@ class E2BSandboxBackendTest(unittest.TestCase):
                 self.assertIn("__main__", result.stdout)
                 self.assertIn("demo_run.py", result.stdout)
             finally:
-                executor.close()
+                self._close_test_executor(executor)
+
+    def test_same_owner_executes_reuse_one_sandbox_from_shared_manager(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            workspace_root = Path(workspace)
+            output_dir = workspace_root / "output"
+            output_dir.mkdir()
+            policy = build_permission_policy(
+                profile="analysis",
+                workspace_root=str(workspace_root),
+                output_dir=str(output_dir),
+                input_files=[],
+            )
+            manager_dir = workspace_root / ".reactor"
+            manager_dir.mkdir()
+            created: list[dict[str, object]] = []
+            fake = _FakeSandbox()
+
+            def factory(**kwargs):
+                created.append(kwargs)
+                return fake
+
+            manager = UserSandboxManager(
+                db_path=str(manager_dir / "manager.sqlite"),
+                create_fn=factory,
+                start_reaper=False,
+            )
+            first = E2BPythonSandboxExecutor(
+                policy,
+                timeout_seconds=15,
+                owner_key="visitor:shared",
+                session_id="shared-session",
+                manager=manager,
+            )
+            second = E2BPythonSandboxExecutor(
+                policy,
+                timeout_seconds=15,
+                owner_key="visitor:shared",
+                session_id="shared-session",
+                manager=manager,
+            )
+            try:
+                first.execute("print('first')")
+                first.close()
+                second.execute("print('second')")
+                self.assertEqual(1, len(created))
+                self.assertFalse(fake.killed)
+            finally:
+                first.close()
+                second.close()
+                manager.shutdown()
+
+    def test_second_execute_without_local_changes_skips_workspace_upload(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            workspace_root = Path(workspace)
+            output_dir = workspace_root / "output"
+            output_dir.mkdir()
+            (workspace_root / "unchanged.txt").write_text("same", encoding="utf-8")
+            policy = build_permission_policy(
+                profile="analysis",
+                workspace_root=str(workspace_root),
+                output_dir=str(output_dir),
+                input_files=[],
+            )
+            fake = _FakeSandbox()
+            executor = E2BPythonSandboxExecutor(
+                policy,
+                timeout_seconds=15,
+                sandbox_factory=lambda **kwargs: fake,
+            )
+            try:
+                executor.execute(
+                    "from pathlib import Path\n"
+                    "Path(build_output_path('generated.txt')).write_text('same', encoding='utf-8')"
+                )
+                writes_after_first = fake.files.write_files_count
+                executor.execute("print('second')")
+                self.assertEqual(writes_after_first, fake.files.write_files_count)
+            finally:
+                self._close_test_executor(executor)
 
     def test_uploads_local_input_files(self):
         with tempfile.TemporaryDirectory() as workspace:
@@ -391,7 +530,7 @@ class E2BSandboxBackendTest(unittest.TestCase):
                 remote_seed = fake.files.store.get(f"{_REMOTE_ROOT}/input/seed.csv")
                 self.assertEqual(b"a,1\n", remote_seed)
             finally:
-                executor.close()
+                self._close_test_executor(executor)
 
     def test_workspace_profile_wrap_chdirs_to_workspace_root(self):
         with tempfile.TemporaryDirectory() as workspace:
@@ -416,7 +555,7 @@ class E2BSandboxBackendTest(unittest.TestCase):
                 self.assertNotIn("def build_output_path", wrapped)
                 self.assertNotIn("def resolve_input_path", wrapped)
             finally:
-                executor.close()
+                self._close_test_executor(executor)
 
 
 if __name__ == "__main__":

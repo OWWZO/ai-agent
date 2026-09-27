@@ -1,7 +1,7 @@
 """E2B cloud sandbox backend for code_interpreter / code_execution.
 
-Flow: create sandbox → upload local workspace → run_code (persistent kernel) →
-diff remote files → download produced files to local workspace → kill sandbox.
+Flow: acquire a user sandbox → incrementally sync the session workspace →
+run_code (persistent kernel) → download produced files → release the lease.
 """
 
 from __future__ import annotations
@@ -9,56 +9,30 @@ from __future__ import annotations
 import base64
 import json
 import mimetypes
+import os
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
 
 from reactor_tool.tool.code_interpreter_policy import CodeInterpreterPermissionPolicy
+from reactor_tool.tool.e2b_session_sync import (
+    download_changed_files,
+    mkdir_remote,
+    push_workspace,
+    record_uploaded,
+    session_remote_root,
+    snapshot_remote_files,
+)
 from reactor_tool.tool.python_sandbox_executor import (
     PythonSandboxExecutionError,
     PythonSandboxExecutionResult,
 )
-from reactor_tool.tool.sandbox_backend_config import (
-    get_e2b_sandbox_timeout_seconds,
-    get_e2b_proxy,
-    get_e2b_template,
-    get_e2b_workdir,
-    require_e2b_api_key,
+from reactor_tool.tool.sandbox_backend_config import require_e2b_api_key
+from reactor_tool.tool.user_sandbox_manager import (
+    UserSandboxManager,
+    get_user_sandbox_manager,
 )
-from reactor_tool.tool.e2b_file_upload import write_e2b_files
-
-_EXCLUDED_TOP_DIRS = frozenset({"input"})
-_EXCLUDED_FILE_NAMES = frozenset({"__last_source__.py"})
-_SNAPSHOT_SCRIPT = r"""
-def __reactor_sandbox_snapshot__():
-    import json
-    from pathlib import Path
-    root = Path(%(workspace_root)s)
-    exclude_tops = set(%(exclude_tops)s)
-    exclude_names = set(%(exclude_names)s)
-    files = {}
-    if root.is_dir():
-        for path in root.rglob("*"):
-            if not path.is_file() or path.is_symlink():
-                continue
-            try:
-                rel = path.resolve().relative_to(root.resolve())
-            except ValueError:
-                continue
-            parts = rel.parts
-            if not parts or any(part.startswith(".") for part in parts):
-                continue
-            if parts[0] in exclude_tops:
-                continue
-            if rel.name in exclude_names or rel.name.startswith("__last_source__"):
-                continue
-            st = path.stat()
-            files[rel.as_posix()] = [int(st.st_size), int(st.st_mtime_ns)]
-    print("__SANDBOX_SNAPSHOT__" + json.dumps(files, ensure_ascii=True))
-
-__reactor_sandbox_snapshot__()
-del __reactor_sandbox_snapshot__
-"""
 
 
 class E2BPythonSandboxExecutor:
@@ -71,152 +45,166 @@ class E2BPythonSandboxExecutor:
         initial_variables: dict[str, Any] | None = None,
         *,
         sandbox_factory: Any | None = None,
+        owner_key: str | None = None,
+        session_id: str | None = None,
+        manager: UserSandboxManager | None = None,
     ):
         self._policy = policy
         self._timeout_seconds = float(timeout_seconds)
         self._initial_variables = dict(initial_variables or {})
         self._sandbox_factory = sandbox_factory
-        self._sandbox: Any | None = None
-        self._bootstrapped = False
-        self._started = False
-        self._produced_by_path: dict[str, dict[str, Any]] = {}
-        self._remote_workspace = get_e2b_workdir()
+        self._owner_key = (owner_key or "").strip() or "visitor:anonymous"
+        self._session_id = (session_id or "").strip() or "anonymous"
+        self._manager_injected = manager is not None
         self._local_workspace = Path(policy.workspace_root).resolve()
         self._local_output = Path(policy.output_dir).resolve()
+        self._remote_workspace = session_remote_root(self._session_id)
         self._remote_output = self._to_remote(self._local_output)
         self._remote_input_map = {
             name: self._to_remote(Path(path))
             for name, path in policy.input_file_paths.items()
         }
+        self._manager = (
+            manager if manager is not None else self._build_manager(sandbox_factory)
+        )
+        self._sandbox: Any | None = None
+        self._lease: Any | None = None
+        self._bootstrapped = False
+        self._started = False
+        self._produced_by_path: dict[str, dict[str, Any]] = {}
+        self._sandbox_id = ""
+        self._generation = 0
 
     def execute(
         self, code: str, source_file: str | None = None
     ) -> PythonSandboxExecutionResult:
         self._ensure_started()
         assert self._sandbox is not None
-        self._sync_workspace_to_remote()
-        before = self._snapshot_remote_files()
-        started_at = time.monotonic()
-        wrapped = self._wrap_user_code(
-            code,
-            include_bootstrap=not self._bootstrapped,
-            source_file=source_file,
-        )
-        self._bootstrapped = True
-        try:
-            execution = self._sandbox.run_code(
-                wrapped,
-                timeout=max(1, int(self._timeout_seconds)),
+        with self._manager.session_gate(self._owner_key, self._session_id):
+            self._sync_workspace_to_remote()
+            before = self._snapshot_remote_files()
+            started_at = time.monotonic()
+            wrapped = self._wrap_user_code(
+                code,
+                include_bootstrap=not self._bootstrapped,
+                source_file=source_file,
             )
-        except Exception as exc:
-            # Surface timeout-like failures consistently for callers.
-            message = str(exc).lower()
-            if "timeout" in message or "timed out" in message:
-                raise TimeoutError(
-                    f"Python sandbox exceeded {self._timeout_seconds:.0f}s"
-                ) from exc
-            raise
+            self._bootstrapped = True
+            try:
+                execution = self._sandbox.run_code(
+                    wrapped,
+                    timeout=max(1, int(self._timeout_seconds)),
+                )
+            except Exception as exc:
+                # Surface timeout-like failures consistently for callers.
+                message = str(exc).lower()
+                if "timeout" in message or "timed out" in message:
+                    raise TimeoutError(
+                        f"Python sandbox exceeded {self._timeout_seconds:.0f}s"
+                    ) from exc
+                raise
 
-        duration_ms = int((time.monotonic() - started_at) * 1000)
-        stdout, stderr = _extract_logs(execution)
-        error_obj = getattr(execution, "error", None)
-        result_value = _extract_text_result(execution)
-        chart_files = self._materialize_chart_results(execution)
+            duration_ms = int((time.monotonic() - started_at) * 1000)
+            stdout, stderr = _extract_logs(execution)
+            error_obj = getattr(execution, "error", None)
+            result_value = _extract_text_result(execution)
+            chart_files = self._materialize_chart_results(execution)
 
-        after = self._snapshot_remote_files()
-        produced = self._download_produced_files(before, after)
-        for item in chart_files:
-            produced.append(item)
-            self._produced_by_path[item["file_path"]] = item
-        for item in produced:
-            path = str(item.get("file_path") or "")
-            if path:
-                self._produced_by_path[path] = item
+            produced = self._download_produced_files(before)
+            for item in chart_files:
+                produced.append(item)
+                self._produced_by_path[item["file_path"]] = item
+            for item in produced:
+                path = str(item.get("file_path") or "")
+                if path:
+                    self._produced_by_path[path] = item
 
-        if error_obj is not None:
-            error_text = _format_execution_error(error_obj)
-            if stderr:
-                stderr = f"{stderr}\n{error_text}".strip()
-            else:
-                stderr = error_text
-            raise PythonSandboxExecutionError(
-                {
-                    "stdout": stdout,
-                    "stderr": stderr,
-                    "error": error_text,
-                    "produced_files": produced,
-                    "result": result_value,
-                    "duration_ms": duration_ms,
-                    "returncode": 1,
-                }
+            if error_obj is not None:
+                error_text = _format_execution_error(error_obj)
+                if stderr:
+                    stderr = f"{stderr}\n{error_text}".strip()
+                else:
+                    stderr = error_text
+                raise PythonSandboxExecutionError(
+                    {
+                        "stdout": stdout,
+                        "stderr": stderr,
+                        "error": error_text,
+                        "produced_files": produced,
+                        "result": result_value,
+                        "duration_ms": duration_ms,
+                        "returncode": 1,
+                    }
+                )
+
+            return PythonSandboxExecutionResult(
+                stdout=stdout,
+                stderr=stderr,
+                produced_files=produced,
+                result=result_value,
+                duration_ms=duration_ms,
+                stdout_truncated=False,
+                stderr_truncated=False,
+                returncode=0,
             )
-
-        return PythonSandboxExecutionResult(
-            stdout=stdout,
-            stderr=stderr,
-            produced_files=produced,
-            result=result_value,
-            duration_ms=duration_ms,
-            stdout_truncated=False,
-            stderr_truncated=False,
-            returncode=0,
-        )
 
     def produced_files(self) -> list[dict[str, Any]]:
         return list(self._produced_by_path.values())
 
     def close(self) -> None:
-        sandbox = self._sandbox
+        lease = self._lease
+        self._lease = None
         self._sandbox = None
         self._started = False
         self._bootstrapped = False
-        if sandbox is None:
+        self._sandbox_id = ""
+        self._generation = 0
+        if lease is None:
             return
-        kill = getattr(sandbox, "kill", None)
-        if callable(kill):
-            try:
-                kill()
-            except Exception:
-                pass
+        self._manager.release(self._owner_key)
 
     def _ensure_started(self) -> None:
         if self._started and self._sandbox is not None:
             return
-        create_kwargs: dict[str, Any] = {
-            "timeout": get_e2b_sandbox_timeout_seconds(self._timeout_seconds),
-        }
-        template = get_e2b_template()
-        if template:
-            create_kwargs["template"] = template
-        proxy = get_e2b_proxy()
-        if proxy:
-            create_kwargs["proxy"] = proxy
-
-        factory = self._sandbox_factory
-        if factory is None:
-            from e2b_code_interpreter import Sandbox
-
-            create_kwargs["api_key"] = require_e2b_api_key()
-            factory = Sandbox.create
-        else:
-            # Injected factory (unit tests): do not require a real E2B_API_KEY.
-            create_kwargs.setdefault("api_key", "test-key")
-
-        self._sandbox = factory(**create_kwargs)
+        if self._sandbox_factory is None and not self._manager_injected:
+            require_e2b_api_key()
+        lease = self._manager.acquire(
+            self._owner_key, max(1, int(self._timeout_seconds))
+        )
+        self._lease = lease
+        self._sandbox = lease.sandbox
+        self._sandbox_id = lease.sandbox_id
+        self._generation = lease.generation
+        self._remote_workspace = session_remote_root(self._session_id)
         self._started = True
         self._prepare_remote_layout()
         self._sync_workspace_to_remote()
 
     def _prepare_remote_layout(self) -> None:
         assert self._sandbox is not None
-        # Ensure workspace / output / input exist before first upload.
-        mkdir_script = (
-            "from pathlib import Path\n"
-            f"Path({self._remote_workspace!r}).mkdir(parents=True, exist_ok=True)\n"
-            f"Path({self._remote_output!r}).mkdir(parents=True, exist_ok=True)\n"
-            f"Path({self._remote_workspace!r}, 'input').mkdir(parents=True, exist_ok=True)\n"
+        mkdir_remote(self._sandbox, self._remote_workspace)
+
+    def _build_manager(self, sandbox_factory: Any | None) -> UserSandboxManager:
+        if sandbox_factory is None:
+            return get_user_sandbox_manager()
+
+        reactor_dir = self._local_workspace / ".reactor"
+        reactor_dir.mkdir(parents=True, exist_ok=True)
+        fd, db_path = tempfile.mkstemp(
+            prefix="e2b-sandbox-",
+            suffix=".sqlite",
+            dir=str(reactor_dir),
         )
-        self._sandbox.run_code(mkdir_script, timeout=30)
+        os.close(fd)
+
+        def create_for_test(*_args: Any, **kwargs: Any) -> Any:
+            return sandbox_factory(**kwargs)
+
+        return UserSandboxManager(
+            db_path=db_path,
+            create_fn=create_for_test,
+            start_reaper=False,
+        )
 
     def _to_remote(self, local_path: Path) -> str:
         local_resolved = local_path.resolve()
@@ -228,80 +216,54 @@ class E2BPythonSandboxExecutor:
         remote = f"{self._remote_workspace}/{relative.as_posix()}".rstrip("/")
         return remote if remote else self._remote_workspace
 
-    def _to_local(self, remote_relative: str) -> Path:
-        rel = remote_relative.replace("\\", "/").lstrip("/")
-        return (self._local_workspace / rel).resolve()
-
     def _sync_workspace_to_remote(self) -> None:
         assert self._sandbox is not None
-        if not self._local_workspace.is_dir():
-            return
-        batch: list[dict[str, Any]] = []
-        for path in self._local_workspace.rglob("*"):
-            if not path.is_file() or path.is_symlink():
-                continue
-            try:
-                relative = path.resolve().relative_to(self._local_workspace)
-            except ValueError:
-                continue
-            if any(part.startswith(".") for part in relative.parts):
-                continue
-            remote_path = f"{self._remote_workspace}/{relative.as_posix()}"
-            batch.append({"path": remote_path, "data": path.read_bytes()})
-            if len(batch) >= 32:
-                self._write_files(batch)
-                batch = []
-        if batch:
-            self._write_files(batch)
-
-    def _write_files(self, files: list[dict[str, Any]]) -> None:
-        assert self._sandbox is not None
-        write_e2b_files(self._sandbox.files, files, label="code_execution")
+        push_workspace(
+            self._sandbox,
+            self._local_workspace,
+            self._session_id,
+            owner_key=self._owner_key,
+            sandbox_id=self._sandbox_id,
+            generation=self._generation,
+        )
 
     def _snapshot_remote_files(self) -> dict[str, tuple[int, int]]:
         assert self._sandbox is not None
-        script = _SNAPSHOT_SCRIPT % {
-            "workspace_root": repr(self._remote_workspace),
-            "exclude_tops": repr(sorted(_EXCLUDED_TOP_DIRS)),
-            "exclude_names": repr(sorted(_EXCLUDED_FILE_NAMES)),
-        }
-        execution = self._sandbox.run_code(script, timeout=60)
-        stdout, _ = _extract_logs(execution)
-        marker = "__SANDBOX_SNAPSHOT__"
-        for line in reversed(stdout.splitlines()):
-            if marker in line:
-                payload = line.split(marker, 1)[1].strip()
-                raw = json.loads(payload or "{}")
-                return {
-                    str(key).replace("\\", "/"): (int(value[0]), int(value[1]))
-                    for key, value in raw.items()
-                }
-        return {}
+        return snapshot_remote_files(
+            self._sandbox,
+            self._remote_workspace,
+            skip_top=("input",),
+        )
 
     def _download_produced_files(
         self,
         before: dict[str, tuple[int, int]],
-        after: dict[str, tuple[int, int]],
     ) -> list[dict[str, Any]]:
         assert self._sandbox is not None
+        downloaded: list[Path] = []
+        download_changed_files(
+            self._sandbox,
+            self._remote_workspace,
+            self._local_workspace,
+            before,
+            produced_paths=downloaded,
+            skip_top=("input", "skills"),
+        )
         produced: list[dict[str, Any]] = []
-        for rel, meta in sorted(after.items(), key=lambda item: item[0].lower()):
-            if meta == before.get(rel):
-                continue
-            remote_path = f"{self._remote_workspace}/{rel}"
+        for local_path in downloaded:
             try:
-                content = self._sandbox.files.read(remote_path, format="bytes")
-            except TypeError:
-                content = self._sandbox.files.read(remote_path)
-            if isinstance(content, str):
-                data = content.encode("utf-8")
-            elif isinstance(content, (bytes, bytearray)):
-                data = bytes(content)
-            else:
-                data = bytes(content)
-            local_path = self._to_local(rel)
-            local_path.parent.mkdir(parents=True, exist_ok=True)
-            local_path.write_bytes(data)
+                rel = local_path.resolve().relative_to(self._local_workspace).as_posix()
+            except ValueError:
+                continue
+            data = local_path.read_bytes()
+            record_uploaded(
+                self._local_workspace,
+                rel,
+                local_path,
+                owner_key=self._owner_key,
+                sandbox_id=self._sandbox_id,
+                generation=self._generation,
+            )
             mime_type, _ = mimetypes.guess_type(local_path.name)
             produced.append(
                 {
@@ -348,7 +310,7 @@ class E2BPythonSandboxExecutor:
         source_file: str | None = None,
     ) -> str:
         # Kernel is persistent: inject path helpers + variables on first execute only.
-        # cwd is always the workspace root (bash-aligned).
+        # cwd is always the current session workspace (bash-aligned).
         remote_inputs = {
             name: self._remote_input_map.get(name, path)
             for name, path in self._policy.input_file_paths.items()

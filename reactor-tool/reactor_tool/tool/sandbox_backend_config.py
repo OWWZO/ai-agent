@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import os
-from typing import Literal
+from typing import Any, Literal
 
 SandboxBackendName = Literal["local", "e2b"]
 
 _DEFAULT_E2B_WORKDIR = "/home/user/workspace"
 _DEFAULT_BACKEND: SandboxBackendName = "local"
+_DEFAULT_FULL_PAUSE_DEBOUNCE_SEC = 3
+_DEFAULT_FS_ONLY_IDLE_SEC = 1200
 
 
 def get_sandbox_backend() -> SandboxBackendName:
@@ -65,3 +67,92 @@ def get_e2b_proxy() -> str | None:
         return value
     fallback = (os.getenv("REACTOR_WEB_FETCH_PROXY") or "").strip()
     return fallback or None
+
+
+def get_e2b_full_pause_debounce_sec() -> float:
+    raw = (os.getenv("E2B_FULL_PAUSE_DEBOUNCE_SEC") or "").strip()
+    if raw:
+        return max(0.05, float(raw))
+    return float(_DEFAULT_FULL_PAUSE_DEBOUNCE_SEC)
+
+
+def get_e2b_fs_only_idle_sec() -> float:
+    raw = (os.getenv("E2B_FS_ONLY_IDLE_SEC") or "").strip()
+    if raw:
+        return max(1.0, float(raw))
+    return float(_DEFAULT_FS_ONLY_IDLE_SEC)
+
+
+def get_e2b_sandbox_db_path() -> str:
+    raw = (os.getenv("E2B_SANDBOX_DB_PATH") or "").strip()
+    if raw:
+        return raw
+    return (os.getenv("SQLITE_DB_PATH") or "").strip() or "autobots.db"
+
+
+def build_e2b_create_kwargs(exec_timeout_seconds: float) -> dict[str, Any]:
+    """Create 参数沿用当前 template / timeout / proxy，不改沙箱规格。"""
+    kwargs: dict[str, Any] = {
+        "timeout": get_e2b_sandbox_timeout_seconds(exec_timeout_seconds),
+        "lifecycle": {"on_timeout": "pause"},
+    }
+    template = get_e2b_template()
+    if template:
+        kwargs["template"] = template
+    proxy = get_e2b_proxy()
+    if proxy:
+        kwargs["proxy"] = proxy
+    return kwargs
+
+
+def create_e2b_sandbox(
+    exec_timeout_seconds: float,
+    *,
+    factory: Any | None = None,
+    api_key: str | None = None,
+) -> Any:
+    kwargs = build_e2b_create_kwargs(exec_timeout_seconds)
+    if factory is None:
+        from e2b_code_interpreter import Sandbox
+
+        kwargs["api_key"] = api_key or require_e2b_api_key()
+        return Sandbox.create(**kwargs)
+    kwargs.setdefault("api_key", api_key or "test-key")
+    return factory(**kwargs)
+
+
+def connect_e2b_sandbox(
+    sandbox_id: str,
+    *,
+    timeout_sec: int | None = None,
+    factory: Any | None = None,
+    api_key: str | None = None,
+) -> Any:
+    if factory is not None:
+        try:
+            return factory(sandbox_id, timeout=timeout_sec)
+        except TypeError:
+            return factory(sandbox_id=sandbox_id, timeout=timeout_sec)
+    from e2b_code_interpreter import Sandbox
+
+    kwargs: dict[str, Any] = {"api_key": api_key or require_e2b_api_key()}
+    proxy = get_e2b_proxy()
+    if proxy:
+        kwargs["proxy"] = proxy
+    return Sandbox._cls_connect_sandbox(sandbox_id, timeout=timeout_sec, **kwargs)
+
+
+def pause_e2b_sandbox(sandbox: Any, keep_memory: bool = True) -> bool:
+    pause = getattr(sandbox, "pause", None)
+    if not callable(pause):
+        return False
+    try:
+        return bool(pause(keep_memory=keep_memory))
+    except TypeError:
+        return bool(pause())
+
+
+def set_e2b_sandbox_timeout(sandbox: Any, timeout_sec: int) -> None:
+    setter = getattr(sandbox, "set_timeout", None)
+    if callable(setter):
+        setter(timeout_sec)

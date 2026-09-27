@@ -7,7 +7,7 @@ from reactor_tool.tool.web_fetcher import DownloadedPage, WebFetcher
 
 
 class WebFetcherTest(unittest.IsolatedAsyncioTestCase):
-    async def test_should_forward_configured_proxy_to_http_request(self):
+    async def test_should_forward_configured_proxy_without_login_state(self):
         captured = {}
 
         class FakeResponse:
@@ -45,23 +45,25 @@ class WebFetcherTest(unittest.IsolatedAsyncioTestCase):
             "os.environ",
             {
                 "REACTOR_WEB_FETCH_PROXY": "http://127.0.0.1:7890",
-                "REACTOR_REDDIT_SESSION": "reddit-session-secret",
             },
         ):
-            with patch("reactor_tool.tool.web_fetcher.aiohttp.ClientSession", FakeSession):
-                page = await WebFetcher()._download_page("https://www.reddit.com/post", 30)
+            with patch(
+                "reactor_tool.tool.web_fetcher.aiohttp.ClientSession", FakeSession
+            ):
+                page = await WebFetcher()._download_page(
+                    "https://www.reddit.com/post", 30
+                )
 
         self.assertEqual("http://127.0.0.1:7890", captured["request"]["proxy"])
-        self.assertEqual(
-            "reddit-session-secret",
-            captured["request"]["cookies"]["reddit_session"],
-        )
+        self.assertNotIn("cookies", captured["request"])
         self.assertEqual("https://www.reddit.com/post", captured["url"])
         self.assertEqual("text/html; charset=utf-8", page.content_type)
 
     async def test_should_extract_markdown_content_with_trafilatura(self):
         fetcher = WebFetcher()
-        request = WebFetchRequest(requestId="req-web-001", url="https://example.com/article")
+        request = WebFetchRequest(
+            requestId="req-web-001", url="https://example.com/article"
+        )
         page = DownloadedPage(
             final_url="https://example.com/article",
             raw_content="<html><head><title>测试标题</title></head><body><article>正文</article></body></html>",
@@ -83,9 +85,13 @@ class WebFetcherTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("测试标题.md", result.file_name)
         self.assertGreater(result.word_count, 0)
 
-    async def test_should_fallback_to_beautifulsoup_when_trafilatura_returns_empty(self):
+    async def test_should_fallback_to_beautifulsoup_when_trafilatura_returns_empty(
+        self,
+    ):
         fetcher = WebFetcher()
-        request = WebFetchRequest(requestId="req-web-002", url="https://example.com/fallback")
+        request = WebFetchRequest(
+            requestId="req-web-002", url="https://example.com/fallback"
+        )
         page = DownloadedPage(
             final_url="https://example.com/fallback",
             raw_content="""
@@ -104,7 +110,9 @@ class WebFetcherTest(unittest.IsolatedAsyncioTestCase):
         )
 
         with patch.object(fetcher, "_download_page", new=AsyncMock(return_value=page)):
-            with patch("reactor_tool.tool.web_fetcher.trafilatura.extract", return_value=""):
+            with patch(
+                "reactor_tool.tool.web_fetcher.trafilatura.extract", return_value=""
+            ):
                 result = await fetcher.fetch(request)
 
         self.assertEqual("beautifulsoup", result.content_source)
@@ -113,7 +121,9 @@ class WebFetcherTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_should_truncate_inline_content_without_affecting_full_content(self):
         fetcher = WebFetcher(inline_content_limit=10)
-        request = WebFetchRequest(requestId="req-web-003", url="https://example.com/long")
+        request = WebFetchRequest(
+            requestId="req-web-003", url="https://example.com/long"
+        )
         page = DownloadedPage(
             final_url="https://example.com/long",
             raw_content="<html><head><title>Long 页面</title></head><body><article>很长的正文</article></body></html>",

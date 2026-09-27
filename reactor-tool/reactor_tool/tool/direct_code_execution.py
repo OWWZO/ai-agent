@@ -70,7 +70,13 @@ async def execute_code(request: CodeExecutionRequest) -> dict:
         input_files=[item for item in imported_files if item.get("file_path")],
     )
     # 权限策略和超时在执行器创建时固化，执行阶段只负责运行代码并收集结果。
-    executor = PythonSandboxExecutor(policy, request.timeout_seconds, request.inputs)
+    executor = PythonSandboxExecutor(
+        policy,
+        request.timeout_seconds,
+        request.inputs,
+        owner_key=request.owner_key or "visitor:anonymous",
+        session_id=request.session_id or request.request_id,
+    )
     execution_result = None
     execution_error = None
     try:

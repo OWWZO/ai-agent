@@ -23,17 +23,6 @@ DEFAULT_USER_AGENT = "ReactorToolWebFetch/1.0"
 TRUNCATED_SUFFIX = "\n\n[内容已截断，完整正文请查看附件文件。]"
 
 
-def _reddit_session_cookie(raw: str) -> str:
-    value = raw.strip()
-    if "=" not in value:
-        return value
-    for part in value.split(";"):
-        name, separator, item = part.strip().partition("=")
-        if separator and name.strip() == "reddit_session":
-            return item.strip()
-    return value
-
-
 @dataclass
 class DownloadedPage:
     """下载后的网页原始信息。"""
@@ -95,7 +84,6 @@ class WebFetcher:
             DEFAULT_INLINE_CONTENT_CHARS,
         )
         self.proxy = os.getenv("REACTOR_WEB_FETCH_PROXY", "").strip()
-        self.reddit_session = _reddit_session_cookie(os.getenv("REACTOR_REDDIT_SESSION", ""))
 
     async def fetch(self, request: WebFetchRequest) -> WebFetchResult:
         """抓取网页、提取正文，并生成统一返回结果。"""
@@ -124,17 +112,16 @@ class WebFetcher:
     async def _download_page(self, url: str, timeout_seconds: int) -> DownloadedPage:
         """下载网页或文本内容，供后续按内容类型分流处理。"""
         # 下载阶段只负责状态码、内容类型和空响应校验，不在这里混入 HTML/Markdown 的正文提取规则。
-        client_timeout = aiohttp.ClientTimeout(total=timeout_seconds or DEFAULT_TIMEOUT_SECONDS)
+        client_timeout = aiohttp.ClientTimeout(
+            total=timeout_seconds or DEFAULT_TIMEOUT_SECONDS
+        )
         headers = {"User-Agent": DEFAULT_USER_AGENT}
-        async with aiohttp.ClientSession(timeout=client_timeout, headers=headers) as session:
+        async with aiohttp.ClientSession(
+            timeout=client_timeout, headers=headers
+        ) as session:
             request_kwargs: dict[str, Any] = {"allow_redirects": True}
             if self.proxy:
                 request_kwargs["proxy"] = self.proxy
-            hostname = (urlparse(url).hostname or "").casefold()
-            if self.reddit_session and (
-                hostname == "reddit.com" or hostname.endswith(".reddit.com")
-            ):
-                request_kwargs["cookies"] = {"reddit_session": self.reddit_session}
             async with session.get(url, **request_kwargs) as response:
                 response.raise_for_status()
                 content_type = (response.headers.get("Content-Type") or "").lower()
@@ -154,7 +141,9 @@ class WebFetcher:
         # 内容类型决定解析器：HTML 需要去导航噪声，纯文本/Markdown 应保留原始语义和格式。
         if self._is_html_content_type(page.content_type):
             return self._extract_html_content(page.raw_content, page.final_url)
-        return self._extract_text_content(page.raw_content, page.final_url, page.content_type)
+        return self._extract_text_content(
+            page.raw_content, page.final_url, page.content_type
+        )
 
     def _extract_html_content(self, html: str, final_url: str) -> ExtractedContent:
         """优先使用 trafilatura 提取 HTML 正文，失败时回退到 BeautifulSoup。"""
@@ -231,7 +220,9 @@ class WebFetcher:
             "siteName": self._extract_meta_content(soup, "property", "og:site_name"),
         }
 
-    def _extract_meta_content(self, soup: BeautifulSoup, attr_name: str, attr_value: str) -> str:
+    def _extract_meta_content(
+        self, soup: BeautifulSoup, attr_name: str, attr_value: str
+    ) -> str:
         tag = soup.find("meta", attrs={attr_name: attr_value})
         content = tag.get("content") if tag else ""
         return content.strip() if content else ""
@@ -250,7 +241,8 @@ class WebFetcher:
         if not content_type:
             return True
         return self._is_html_content_type(content_type) or any(
-            marker in content_type for marker in ("text/plain", "text/markdown", "text/x-markdown")
+            marker in content_type
+            for marker in ("text/plain", "text/markdown", "text/x-markdown")
         )
 
     def _is_html_content_type(self, content_type: str) -> bool:

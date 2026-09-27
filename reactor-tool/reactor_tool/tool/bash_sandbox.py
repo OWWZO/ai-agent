@@ -3,25 +3,16 @@
 
 - skills：从 skillLibraryRoot（runtime/skills）直传沙箱，不经 workspace copytree
 - local：workspace/skills 目录链接到库
-- e2b 双路径：
-  - 默认（命令不含 skills/ 且 session 未升级）：一次性建→推 workspace→exec→kill（对齐 code_execution）
-  - skill 会话池：命令含 skills/ 首次升级后强粘性；复用沙箱 + workspace 增量推送
-    + 仅推命令引用的 skills/<name> + skills 回写；
-    每次访问刷新 idle TTL（默认 5min）；in_use>0 的会话不被 reaper 回收
+- e2b：UserSandboxManager 按 ownerKey 复用沙箱；远程 cwd=sessions/{sessionId}/
 """
 
 from __future__ import annotations
 
-import atexit
 import asyncio
-import hashlib
-import json
 import os
 import re
 import shutil
-import threading
 import time
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -29,22 +20,28 @@ from loguru import logger
 
 from reactor_tool.model.protocal import BashSandboxRequest, BashSandboxResponse
 from reactor_tool.util.file_util import upload_file_by_path
-from reactor_tool.tool.sandbox_backend_config import (
-    get_e2b_sandbox_timeout_seconds,
-    get_e2b_proxy,
-    get_e2b_template,
-    get_e2b_workdir,
-    get_sandbox_backend,
-    require_e2b_api_key,
+from reactor_tool.tool.sandbox_backend_config import get_sandbox_backend
+from reactor_tool.tool.e2b_session_sync import (
+    SKILLS_DIR,
+    download_changed_files,
+    e2b_path_component_ok as _e2b_path_component_ok,
+    e2b_remote_path_ok as _e2b_remote_path_ok,
+    file_sha256 as _file_sha256,
+    file_sig as _file_sig,
+    mkdir_remote,
+    push_workspace,
+    record_uploaded,
+    session_remote_root,
+    should_skip_rel as _should_skip_rel,
+    snapshot_remote_files,
+    utf8_len as _utf8_len,
+    write_files as _sync_write_files,
 )
-from reactor_tool.tool.e2b_file_upload import write_e2b_files
+from reactor_tool.tool.user_sandbox_manager import get_user_sandbox_manager
 
-SKILLS_DIR = "skills"
-_DEFAULT_IDLE_TTL_SEC = 300  # 5 minutes，对齐「会话复用 + 空闲回收」
 # 增量推送时跳过的顶层/任意段目录名（对齐常见构建产物，避免拖垮 sync）
 _SKIP_DIR_NAMES = frozenset(
     {
-        SKILLS_DIR,  # workspace 树扫描时跳过；skills 走独立增量通道
         ".venv",
         "venv",
         "node_modules",
@@ -60,14 +57,6 @@ _SKIP_DIR_NAMES = frozenset(
 # Linux NAME_MAX=255 **字节**；中文 UTF-8 约 3B/字，任务描述当文件名极易超限
 _E2B_MAX_NAME_BYTES = 200
 _E2B_MAX_PATH_BYTES = 1000
-
-
-def _idle_ttl_sec() -> int:
-    raw = (os.getenv("BASH_SANDBOX_IDLE_TTL_SEC") or "").strip()
-    if raw:
-        return max(30, int(raw))
-    return _DEFAULT_IDLE_TTL_SEC
-
 
 _SKILL_PATH_RE = re.compile(
     r"(?:^|[^\w.-])(?:\./)?skills[/\\]+([A-Za-z0-9._-]+)",
@@ -133,9 +122,12 @@ async def run_bash_sandbox(body: BashSandboxRequest) -> BashSandboxResponse:
 
     try:
         if backend == "e2b":
-            use_skill_session = _ensure_skill_mode(body.request_id, body.command)
-            if use_skill_session and lib_root is not None and lib_root.is_dir():
+            if lib_root is not None and lib_root.is_dir():
                 skill_names = _resolve_skills_to_push(body.command, lib_root, disabled)
+            session_id = (
+                body.session_id or body.request_id or ""
+            ).strip() or "anonymous"
+            owner_key = (body.owner_key or "").strip() or "visitor:anonymous"
             (
                 exit_code,
                 stdout,
@@ -145,15 +137,16 @@ async def run_bash_sandbox(body: BashSandboxRequest) -> BashSandboxResponse:
                 synced,
             ) = await asyncio.to_thread(
                 _exec_e2b,
-                body.request_id,
+                session_id,
                 body.command,
                 workspace,
                 lib_root,
                 disabled,
                 int(body.timeout_seconds),
                 int(body.max_output_chars),
-                use_skill_session,
+                None,
                 produced_paths,
+                owner_key,
             )
         else:
             if lib_root is not None and lib_root.is_dir():
@@ -404,230 +397,6 @@ async def _exec_local_shell(
     return code, stdout, stderr, t1 or t2, timed_out
 
 
-# ── e2b backend：默认一次性；skill 强粘性后会话级复用 ───────────────────────
-
-
-@dataclass
-class _SessionSandbox:
-    session_id: str
-    sandbox: Any
-    remote_root: str
-    # remote_path -> (size, mtime_ns)；会话内增量推送的已上传指纹
-    uploaded: Dict[str, Tuple[int, int]] = field(default_factory=dict)
-    last_used_at: float = field(default_factory=time.time)
-    lock: threading.Lock = field(default_factory=threading.Lock)
-    in_use: int = 0
-
-
-_pool_guard = threading.Lock()
-_pool: Dict[str, _SessionSandbox] = {}
-# 强粘性：一旦本进程内某 session 的 bash 命令命中 skills/，后续全部走会话池+skill 推送
-_skill_mode_guard = threading.Lock()
-_skill_mode_sessions: set[str] = set()
-_reaper_started = False
-_reaper_lock = threading.Lock()
-
-
-def _normalize_session_id(session_id: str) -> str:
-    return (session_id or "").strip() or "anonymous"
-
-
-def _session_in_skill_mode(session_id: str) -> bool:
-    sid = _normalize_session_id(session_id)
-    with _skill_mode_guard:
-        return sid in _skill_mode_sessions
-
-
-def _mark_skill_mode(session_id: str) -> bool:
-    """标记 session 进入 skill 强粘性。返回是否为首次升级。"""
-    sid = _normalize_session_id(session_id)
-    with _skill_mode_guard:
-        if sid in _skill_mode_sessions:
-            return False
-        _skill_mode_sessions.add(sid)
-        return True
-
-
-def _ensure_skill_mode(session_id: str, command: str) -> bool:
-    """若已粘性或本次命令引用 skills/，则进入/保持 skill 模式并返回 True。"""
-    if _session_in_skill_mode(session_id):
-        return True
-    if not _command_needs_skills(command):
-        return False
-    first = _mark_skill_mode(session_id)
-    if first:
-        logger.info(
-            "[bash_sandbox] skill-mode upgrade session={} commandHint={!r}",
-            _normalize_session_id(session_id),
-            (command or "")[:120],
-        )
-    return True
-
-
-def _clear_skill_mode_sessions() -> None:
-    with _skill_mode_guard:
-        _skill_mode_sessions.clear()
-
-
-def _ensure_reaper() -> None:
-    global _reaper_started
-    with _reaper_lock:
-        if _reaper_started:
-            return
-        _reaper_started = True
-
-        def _loop() -> None:
-            while True:
-                time.sleep(min(30, max(5, _idle_ttl_sec() // 10)))
-                try:
-                    _reap_idle_sessions()
-                except Exception:
-                    logger.exception("[bash_sandbox] session reaper failed")
-
-        t = threading.Thread(target=_loop, name="bash-sandbox-reaper", daemon=True)
-        t.start()
-
-
-def _reap_idle_sessions() -> None:
-    ttl = _idle_ttl_sec()
-    now = time.time()
-    expired: List[_SessionSandbox] = []
-    with _pool_guard:
-        for sid, entry in list(_pool.items()):
-            if entry.in_use > 0:
-                continue
-            if now - entry.last_used_at >= ttl:
-                expired.append(_pool.pop(sid))
-    for entry in expired:
-        _destroy_session_sandbox(entry, reason="idle-ttl")
-
-
-def _destroy_session_sandbox(entry: _SessionSandbox, reason: str) -> None:
-    logger.info(
-        "[bash_sandbox] destroy session={} reason={} idleAgeMs={}",
-        entry.session_id,
-        reason,
-        int((time.time() - entry.last_used_at) * 1000),
-    )
-    try:
-        kill = getattr(entry.sandbox, "kill", None)
-        if callable(kill):
-            kill()
-    except Exception:
-        pass
-
-
-def _shutdown_all_sessions() -> None:
-    with _pool_guard:
-        entries = list(_pool.values())
-        _pool.clear()
-    for entry in entries:
-        _destroy_session_sandbox(entry, reason="process-exit")
-    _clear_skill_mode_sessions()
-
-
-atexit.register(_shutdown_all_sessions)
-
-
-def _release_session_use(entry: _SessionSandbox) -> None:
-    with _pool_guard:
-        entry.in_use = max(0, entry.in_use - 1)
-        entry.last_used_at = time.time()
-
-
-def _create_e2b_sandbox(timeout_sec: int) -> Any:
-    from e2b_code_interpreter import Sandbox
-
-    idle = _idle_ttl_sec()
-    # 沙箱云端 lifetime 必须盖住空闲 TTL，否则未到我们的 reap 就被 E2B 杀掉
-    lifetime = max(
-        get_e2b_sandbox_timeout_seconds(float(timeout_sec)),
-        idle + int(timeout_sec) + 120,
-    )
-    create_kwargs: dict[str, Any] = {
-        "api_key": require_e2b_api_key(),
-        "timeout": lifetime,
-    }
-    template = get_e2b_template()
-    if template:
-        create_kwargs["template"] = template
-    proxy = get_e2b_proxy()
-    if proxy:
-        create_kwargs["proxy"] = proxy
-    return Sandbox.create(**create_kwargs)
-
-
-def _touch_e2b_timeout(sandbox: Any, timeout_sec: int) -> None:
-    """复用时尽量续命，避免云端先于 idle TTL 回收。"""
-    idle = _idle_ttl_sec()
-    lifetime = max(
-        get_e2b_sandbox_timeout_seconds(float(timeout_sec)),
-        idle + int(timeout_sec) + 120,
-    )
-    setter = getattr(sandbox, "set_timeout", None)
-    if callable(setter):
-        try:
-            setter(lifetime)
-        except Exception as exc:
-            logger.debug("[bash_sandbox] set_timeout skipped: {}", exc)
-
-
-def _acquire_session_sandbox(
-    session_id: str, timeout_sec: int
-) -> Tuple[_SessionSandbox, bool]:
-    """返回 (entry, created)。同 session 复用 RUNNING 实例。"""
-    _ensure_reaper()
-    _reap_idle_sessions()
-    sid = (session_id or "").strip() or "anonymous"
-
-    with _pool_guard:
-        entry = _pool.get(sid)
-        if entry is None:
-            entry = _SessionSandbox(
-                session_id=sid,
-                sandbox=None,
-                remote_root=get_e2b_workdir(),
-            )
-            _pool[sid] = entry
-        entry.in_use += 1
-        entry.last_used_at = time.time()
-
-    with entry.lock:
-        if entry.sandbox is not None:
-            _touch_e2b_timeout(entry.sandbox, timeout_sec)
-            entry.last_used_at = time.time()
-            logger.info("[bash_sandbox] reuse session={}", sid)
-            return entry, False
-
-        try:
-            sandbox = _create_e2b_sandbox(timeout_sec)
-            entry.sandbox = sandbox
-            entry.remote_root = get_e2b_workdir()
-            entry.uploaded.clear()
-            entry.last_used_at = time.time()
-            _e2b_mkdir(sandbox, entry.remote_root)
-            logger.info(
-                "[bash_sandbox] create session={} remote={}", sid, entry.remote_root
-            )
-            return entry, True
-        except Exception:
-            with _pool_guard:
-                entry.in_use = max(0, entry.in_use - 1)
-                cur = _pool.get(sid)
-                if cur is entry and entry.sandbox is None and entry.in_use == 0:
-                    _pool.pop(sid, None)
-            raise
-
-
-def _mark_session_dead(session_id: str) -> None:
-    sid = (session_id or "").strip() or "anonymous"
-    with _pool_guard:
-        entry = _pool.pop(sid, None)
-    if entry is not None:
-        with entry.lock:
-            _destroy_session_sandbox(entry, reason="mark-dead")
-
-
 def _exec_e2b(
     session_id: str,
     command: str,
@@ -638,204 +407,110 @@ def _exec_e2b(
     max_output_chars: int,
     use_skill_session: bool | None = None,
     produced_paths: Optional[List[Path]] = None,
+    owner_key: str | None = None,
 ) -> Tuple[Optional[int], str, str, bool, bool, List[str]]:
-    """按 skill 模式分流：一次性建跑杀 vs 会话池+skills。"""
-    if use_skill_session is None:
-        use_skill_session = _ensure_skill_mode(session_id, command)
-    if use_skill_session:
-        return _exec_e2b_skill_session(
-            session_id,
-            command,
-            workspace,
-            lib_root,
-            disabled,
-            timeout_sec,
-            max_output_chars,
-            produced_paths,
-        )
-    return _exec_e2b_ephemeral(
-        session_id, command, workspace, timeout_sec, max_output_chars, produced_paths
-    )
-
-
-def _create_ephemeral_e2b_sandbox(timeout_sec: int) -> Any:
-    """一次性沙箱：lifetime 只盖住本次命令，不按 idle TTL 拉长。"""
-    from e2b_code_interpreter import Sandbox
-
-    create_kwargs: dict[str, Any] = {
-        "api_key": require_e2b_api_key(),
-        "timeout": get_e2b_sandbox_timeout_seconds(float(timeout_sec)),
-    }
-    template = get_e2b_template()
-    if template:
-        create_kwargs["template"] = template
-    proxy = get_e2b_proxy()
-    if proxy:
-        create_kwargs["proxy"] = proxy
-    return Sandbox.create(**create_kwargs)
-
-
-def _exec_e2b_ephemeral(
-    session_id: str,
-    command: str,
-    workspace: Path,
-    timeout_sec: int,
-    max_output_chars: int,
-    produced_paths: Optional[List[Path]] = None,
-) -> Tuple[Optional[int], str, str, bool, bool, List[str]]:
-    """无 skill：create → 推 workspace → exec → kill（对齐 code_execution）。"""
-    sid = _normalize_session_id(session_id)
-    sandbox = _create_ephemeral_e2b_sandbox(timeout_sec)
-    remote_root = get_e2b_workdir()
-    uploaded: Dict[str, Tuple[int, int]] = {}
+    """复用 owner 沙箱，在会话目录内增量同步并执行命令。"""
+    owner = (owner_key or "").strip() or "visitor:anonymous"
+    sid = (session_id or "").strip() or "anonymous"
+    manager = get_user_sandbox_manager()
+    lease = manager.acquire(owner, timeout_sec=timeout_sec)
     try:
-        _e2b_mkdir(sandbox, remote_root)
-        ws_up, ws_skip = _e2b_push_workspace_incremental(
-            sandbox, workspace, remote_root, uploaded
-        )
-        before = _e2b_snapshot_workspace_files(sandbox, remote_root)
-        logger.info(
-            "[bash_sandbox] ephemeral push session={} workspace(up={},skip={}) skills=skipped",
-            sid,
-            ws_up,
-            ws_skip,
-        )
-        exit_code, stdout, stderr, timed_out = _e2b_run_command(
-            sandbox, command, remote_root, timeout_sec
-        )
-        _e2b_download_changed_files(
-            sandbox, remote_root, workspace, before, produced_paths, uploaded
-        )
-        stdout, t1 = _truncate_text(stdout, max_output_chars)
-        stderr, t2 = _truncate_text(stderr, max_output_chars)
-        logger.info(
-            "[bash_sandbox] ephemeral done session={} exit={} timedOut={}",
-            sid,
-            exit_code,
-            timed_out,
-        )
-        return exit_code, stdout, stderr, t1 or t2, timed_out, []
-    finally:
-        try:
-            kill = getattr(sandbox, "kill", None)
-            if callable(kill):
-                kill()
-        except Exception:
-            logger.debug("[bash_sandbox] ephemeral kill failed session={}", sid)
+        with manager.session_gate(owner, sid):
+            sandbox = lease.sandbox
+            remote_root = session_remote_root(sid)
+            mkdir_remote(sandbox, remote_root)
+            _, _, _, manifest = push_workspace(
+                sandbox,
+                workspace,
+                sid,
+                owner_key=owner,
+                sandbox_id=lease.sandbox_id,
+                generation=lease.generation,
+                extra_files={},
+            )
+            uploaded = {
+                f"{remote_root}/{rel}": (item.size, item.mtime_ns)
+                for rel, item in manifest.files.items()
+            }
 
-
-def _exec_e2b_skill_session(
-    session_id: str,
-    command: str,
-    workspace: Path,
-    lib_root: Optional[Path],
-    disabled: set[str],
-    timeout_sec: int,
-    max_output_chars: int,
-    produced_paths: Optional[List[Path]] = None,
-) -> Tuple[Optional[int], str, str, bool, bool, List[str]]:
-    """skill 强粘性会话：懒建/复用 → workspace/skills 增量推送 → exec → skills 增量回写。"""
-    entry, created = _acquire_session_sandbox(session_id, timeout_sec)
-    synced: List[str] = []
-    try:
-        with entry.lock:
-            sandbox = entry.sandbox
-            remote_root = entry.remote_root
-            assert sandbox is not None
-            try:
-                ws_up, ws_skip = _e2b_push_workspace_incremental(
-                    sandbox, workspace, remote_root, entry.uploaded
-                )
-                sk_up, sk_skip = (0, 0)
-                if lib_root is not None and lib_root.is_dir():
-                    only_names = set(
-                        _resolve_skills_to_push(command, lib_root, disabled)
-                    )
-                    sk_up, sk_skip = _e2b_push_skills_incremental(
-                        sandbox,
-                        lib_root,
-                        remote_root,
-                        disabled,
-                        entry.uploaded,
-                        only_names=only_names,
-                    )
-                before = _e2b_snapshot_workspace_files(sandbox, remote_root)
-                logger.info(
-                    "[bash_sandbox] skill-session push session={} created={} workspace(up={},skip={}) skills(up={},skip={})",
-                    entry.session_id,
-                    created,
-                    ws_up,
-                    ws_skip,
-                    sk_up,
-                    sk_skip,
-                )
-
-                exit_code, stdout, stderr, timed_out = _e2b_run_command(
-                    sandbox, command, remote_root, timeout_sec
-                )
-                _e2b_download_changed_files(
+            if lib_root is not None and lib_root.is_dir():
+                only_names = set(_resolve_skills_to_push(command, lib_root, disabled))
+                _e2b_push_skills_incremental(
                     sandbox,
+                    lib_root,
                     remote_root,
-                    workspace,
-                    before,
-                    produced_paths,
-                    entry.uploaded,
+                    disabled,
+                    uploaded,
+                    only_names=only_names,
                 )
-                stdout, t1 = _truncate_text(stdout, max_output_chars)
-                stderr, t2 = _truncate_text(stderr, max_output_chars)
+                for skill_name in only_names:
+                    skill_dir = lib_root / skill_name
+                    if not skill_dir.is_dir():
+                        continue
+                    for path in skill_dir.rglob("*"):
+                        if not path.is_file() or path.is_symlink():
+                            continue
+                        try:
+                            rel = path.resolve().relative_to(skill_dir.resolve())
+                        except ValueError:
+                            continue
+                        if any(part.startswith(".") for part in rel.parts):
+                            continue
+                        if any(part in _SKIP_DIR_NAMES for part in rel.parts):
+                            continue
+                        record_uploaded(
+                            workspace,
+                            f"{SKILLS_DIR}/{skill_name}/{rel.as_posix()}",
+                            path,
+                            owner_key=owner,
+                            sandbox_id=lease.sandbox_id,
+                            generation=lease.generation,
+                        )
 
-                if lib_root is not None:
-                    synced = _e2b_incremental_sync_skills(
-                        sandbox, remote_root, lib_root, entry.uploaded
+            before = snapshot_remote_files(
+                sandbox, remote_root, skip_top=("input", "skills")
+            )
+            exit_code, stdout, stderr, timed_out = _e2b_run_command(
+                sandbox, command, remote_root, timeout_sec
+            )
+            changed = download_changed_files(
+                sandbox,
+                remote_root,
+                workspace,
+                before,
+                produced_paths,
+                skip_top=("input", "skills"),
+            )
+            for rel in changed:
+                local_path = workspace / rel
+                if local_path.is_file():
+                    record_uploaded(
+                        workspace,
+                        rel,
+                        local_path,
+                        owner_key=owner,
+                        sandbox_id=lease.sandbox_id,
+                        generation=lease.generation,
                     )
 
-                entry.last_used_at = time.time()
-                logger.info(
-                    "[bash_sandbox] skill-session done session={} created={} exit={} timedOut={} synced={}",
-                    entry.session_id,
-                    created,
-                    exit_code,
-                    timed_out,
-                    synced,
+            synced: List[str] = []
+            if lib_root is not None:
+                synced = _e2b_incremental_sync_skills(
+                    sandbox, remote_root, lib_root, uploaded
                 )
-                return exit_code, stdout, stderr, t1 or t2, timed_out, synced
-            except Exception:
-                # 通道异常：置 dead，下次重建（对齐 kimicode markDead）
-                logger.exception(
-                    "[bash_sandbox] exec channel failed session={}", entry.session_id
-                )
-                entry.sandbox = None
-                entry.uploaded.clear()
-                try:
-                    kill = getattr(sandbox, "kill", None)
-                    if callable(kill):
-                        kill()
-                except Exception:
-                    pass
-                with _pool_guard:
-                    if _pool.get(entry.session_id) is entry:
-                        _pool.pop(entry.session_id, None)
-                raise
+
+            stdout, truncated_stdout = _truncate_text(stdout, max_output_chars)
+            stderr, truncated_stderr = _truncate_text(stderr, max_output_chars)
+            return (
+                exit_code,
+                stdout,
+                stderr,
+                truncated_stdout or truncated_stderr,
+                timed_out,
+                synced,
+            )
     finally:
-        _release_session_use(entry)
-
-
-def _file_sig(path: Path) -> Tuple[int, int]:
-    st = path.stat()
-    return int(st.st_size), int(
-        getattr(st, "st_mtime_ns", int(st.st_mtime * 1_000_000_000))
-    )
-
-
-def _file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        while True:
-            chunk = handle.read(65536)
-            if not chunk:
-                break
-            digest.update(chunk)
-    return digest.hexdigest()
+        manager.release(owner)
 
 
 def _snapshot_local_workspace(workspace: Path) -> Dict[str, Tuple[int, int]]:
@@ -870,190 +545,6 @@ def _relative_workspace_path(path: Path, workspace: Path) -> str:
         return path.resolve().relative_to(workspace.resolve()).as_posix()
     except ValueError:
         return path.name
-
-
-def _e2b_snapshot_workspace_files(
-    sandbox: Any, remote_root: str
-) -> Dict[str, Tuple[int, int]]:
-    if not callable(getattr(sandbox, "run_code", None)):
-        return {}
-    script = f"""
-import json
-from pathlib import Path
-root = Path({remote_root!r})
-files = {{}}
-if root.is_dir():
-    for path in root.rglob('*'):
-        if not path.is_file() or path.is_symlink():
-            continue
-        try:
-            rel = path.resolve().relative_to(root.resolve())
-        except ValueError:
-            continue
-        parts = rel.parts
-        if not parts or parts[0] in ('skills', 'input') or any(p.startswith('.') for p in parts):
-            continue
-        if any(p in {sorted(_SKIP_DIR_NAMES)!r} for p in parts):
-            continue
-        st = path.stat()
-        files[rel.as_posix()] = [int(st.st_size), int(st.st_mtime_ns)]
-print('__BASH_WORKSPACE_SNAPSHOT__' + json.dumps(files, ensure_ascii=True))
-"""
-    execution = sandbox.run_code(script, timeout=60)
-    stdout, _ = _extract_e2b_logs(execution)
-    for line in reversed(stdout.splitlines()):
-        if "__BASH_WORKSPACE_SNAPSHOT__" in line:
-            raw = json.loads(
-                line.split("__BASH_WORKSPACE_SNAPSHOT__", 1)[1].strip() or "{}"
-            )
-            return {str(k): (int(v[0]), int(v[1])) for k, v in raw.items()}
-    return {}
-
-
-def _e2b_download_changed_files(
-    sandbox: Any,
-    remote_root: str,
-    workspace: Path,
-    before: Dict[str, Tuple[int, int]],
-    produced_paths: Optional[List[Path]],
-    uploaded: Optional[Dict[str, Tuple[int, int]]] = None,
-) -> None:
-    if produced_paths is None:
-        return
-    after = _e2b_snapshot_workspace_files(sandbox, remote_root)
-    files_api = getattr(sandbox, "files", None)
-    if files_api is None:
-        return
-    for rel, signature in sorted(after.items()):
-        if before.get(rel) == signature:
-            continue
-        remote_path = f"{remote_root}/{rel}"
-        try:
-            try:
-                content = files_api.read(remote_path, format="bytes")
-            except TypeError:
-                content = files_api.read(remote_path)
-            data = (
-                content.encode("utf-8") if isinstance(content, str) else bytes(content)
-            )
-            local_path = workspace / rel
-            local_path.parent.mkdir(parents=True, exist_ok=True)
-            local_path.write_bytes(data)
-            produced_paths.append(local_path)
-            if uploaded is not None:
-                uploaded[remote_path] = _file_sig(local_path)
-        except Exception as exc:
-            logger.warning(
-                "[bash_sandbox] e2b download produced file {} failed: {}",
-                remote_path,
-                exc,
-            )
-
-
-def _should_skip_rel(rel: Path, *, skip_top: set[str] | None = None) -> bool:
-    if not rel.parts:
-        return True
-    if skip_top and rel.parts[0] in skip_top:
-        return True
-    for part in rel.parts:
-        if part.startswith("."):
-            return True
-        if part in _SKIP_DIR_NAMES:
-            return True
-    return False
-
-
-def _e2b_mkdir(sandbox: Any, remote_root: str) -> None:
-    commands = getattr(sandbox, "commands", None)
-    if commands is not None and callable(getattr(commands, "run", None)):
-        commands.run(f"mkdir -p {remote_root}/skills {remote_root}/input", timeout=30)
-        return
-    sandbox.run_code(
-        "from pathlib import Path\n"
-        f"Path({remote_root!r}).mkdir(parents=True, exist_ok=True)\n"
-        f"Path({remote_root!r}, 'skills').mkdir(parents=True, exist_ok=True)\n"
-        f"Path({remote_root!r}, 'input').mkdir(parents=True, exist_ok=True)\n",
-        timeout=30,
-    )
-
-
-def _utf8_len(text: str) -> int:
-    return len((text or "").encode("utf-8"))
-
-
-def _e2b_path_component_ok(name: str) -> bool:
-    """单段文件/目录名是否可安全写入 E2B（按 UTF-8 字节，不是 Unicode 字符数）。"""
-    if not name or name in {".", ".."}:
-        return False
-    if _utf8_len(name) > _E2B_MAX_NAME_BYTES:
-        return False
-    # 拒绝 NUL / 路径分隔渗入单段
-    if "\x00" in name or "/" in name or "\\" in name:
-        return False
-    return True
-
-
-def _e2b_remote_path_ok(remote_path: str) -> bool:
-    if not remote_path or _utf8_len(remote_path) > _E2B_MAX_PATH_BYTES:
-        return False
-    # 必须按 POSIX 分段：Windows 上 Path("/home/...") 会把首段弄成 "\\home" 导致误杀
-    normalized = remote_path.replace("\\", "/").strip()
-    for part in normalized.split("/"):
-        if not part or part == ".":
-            continue
-        if not _e2b_path_component_ok(part):
-            return False
-    return True
-
-
-def _e2b_push_workspace_incremental(
-    sandbox: Any,
-    workspace: Path,
-    remote_root: str,
-    uploaded: Dict[str, Tuple[int, int]],
-) -> Tuple[int, int]:
-    """宿主机 workspace → 沙箱：只推新增/变更（跳过 skills/、构建缓存、超长非法文件名）。"""
-    if not workspace.is_dir():
-        return 0, 0
-    batch: list[dict[str, Any]] = []
-    pending_sigs: Dict[str, Tuple[int, int]] = {}
-    uploaded_n = 0
-    skipped_n = 0
-    for path in workspace.rglob("*"):
-        if not path.is_file() or path.is_symlink():
-            continue
-        try:
-            rel = path.resolve().relative_to(workspace.resolve())
-        except ValueError:
-            continue
-        if _should_skip_rel(rel, skip_top={SKILLS_DIR}):
-            continue
-        remote_path = f"{remote_root}/{rel.as_posix()}"
-        if not _e2b_remote_path_ok(remote_path):
-            logger.warning(
-                "[bash_sandbox] skip unsafe workspace path for e2b (name too long or invalid): "
-                "bytes={} name={!r}",
-                _utf8_len(path.name),
-                path.name[:120],
-            )
-            skipped_n += 1
-            continue
-        sig = _file_sig(path)
-        if uploaded.get(remote_path) == sig:
-            skipped_n += 1
-            continue
-        batch.append({"path": remote_path, "data": path.read_bytes()})
-        pending_sigs[remote_path] = sig
-        uploaded_n += 1
-        if len(batch) >= 32:
-            _e2b_write_files(sandbox, batch)
-            uploaded.update(pending_sigs)
-            batch = []
-            pending_sigs = {}
-    if batch:
-        _e2b_write_files(sandbox, batch)
-        uploaded.update(pending_sigs)
-    return uploaded_n, skipped_n
 
 
 def _e2b_push_skills_incremental(
@@ -1161,24 +652,7 @@ def _e2b_upload_tree(
 
 
 def _e2b_write_files(sandbox: Any, files: list[dict[str, Any]]) -> None:
-    files_api = getattr(sandbox, "files", None)
-    if files_api is None:
-        raise RuntimeError("E2B sandbox has no files API")
-    safe: list[dict[str, Any]] = []
-    for item in files:
-        path = str(item.get("path") or "")
-        if not _e2b_remote_path_ok(path):
-            logger.warning(
-                "[bash_sandbox] drop unsafe e2b write path bytes={} path={!r}",
-                _utf8_len(Path(path).name),
-                Path(path).name[:120],
-            )
-            continue
-        safe.append(item)
-    if not safe:
-        return
-
-    write_e2b_files(files_api, safe, label="bash_sandbox")
+    _sync_write_files(sandbox, files, label="bash_sandbox")
 
 
 def _e2b_run_command(

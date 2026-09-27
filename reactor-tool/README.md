@@ -64,25 +64,28 @@ cd reactor-tool
 
 ## 登录态只读平台
 
-Reactor 内置了三个独立的只读工具，不依赖 Agent Reach。先在 `.env` 中配置环境变量，真实值不要提交到仓库：
+登录态平台不再由 `reactor-tool` 读取 Cookie 或 token。认证由 Java 侧的 CLI 工具负责：
 
-```dotenv
-REACTOR_TWITTER_AUTH_TOKEN=
-REACTOR_TWITTER_CT0=
-REACTOR_REDDIT_SESSION=
-REACTOR_XUEQIU_COOKIE=
+```powershell
+uv tool install twitter-cli
+uv tool install rdt-cli
 ```
 
-Twitter 需要本机安装 `twitter-cli`（例如 `uv tool install twitter-cli`）；Reddit 和雪球由 Reactor Python 直接发起 HTTP 请求。三者都不会读取浏览器 Cookie、`rdt-cli` credential 文件或 Agent Reach 配置。
+Agent 使用 `host_cli(tool="twitter", ...)` 或 `host_cli(tool="rdt", ...)`，不会把凭据放入工具参数。
+雪球通过浏览器扩展连接后的 `opencli` 调用，例如：
 
-如果 Twitter 初始化时报 `ClientTransaction` 超时，需要为 `REACTOR_TWITTER_PROXY` 配置能访问 `x.com` 的 HTTP 或 SOCKS5 代理；普通 `HTTPS_PROXY` 不一定会被 `twitter-cli` 使用。
+```json
+{"args":["xueqiu","stock","SH600519"]}
+```
 
-Java Agent 默认不暴露这些登录态工具。需要使用时，在 `autobots.autoagent.tool_list` 的 `default` 列表中显式加入 `twitter,reddit,xueqiu`，例如：
+启动 OpenCLI 前先让浏览器扩展在线，并在浏览器中完成对应站点登录。
+
+Java Agent 默认通过 `reactor.host-cli.allow` 暴露 Twitter 和 Reddit CLI；不要再把这些站点写入 `autobots.autoagent.tool_list`：
 
 ```yaml
-autobots:
-  autoagent:
-    tool_list: '{"default":"search,web_fetch,twitter,reddit,xueqiu"}'
+reactor:
+  host-cli:
+    allow: [twitter, rdt]
 ```
 
 只支持读取：搜索/详情/时间线、Reddit 帖子评论，以及雪球行情和社区榜单；不支持发帖、评论、点赞、投票、收藏、交易或账户修改。

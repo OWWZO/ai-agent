@@ -82,6 +82,8 @@ class CodeExecutionRequest(BaseModel):
     workspace_file: Optional[str] = Field(default=None, alias="workspaceFile")
     # 会话工作区绝对路径（与 Java skilloutput/{sessionId} 对齐）；缺省时落 reactor-tool/skilloutput/{sessionId}
     workspace_root: Optional[str] = Field(default=None, alias="workspaceRoot")
+    owner_key: Optional[str] = Field(default=None, alias="ownerKey")
+    session_id: Optional[str] = Field(default=None, alias="sessionId")
     files: List[Dict[str, Any]] = Field(default_factory=list)
 
 
@@ -314,6 +316,12 @@ class BashSandboxRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     request_id: str = Field(alias="requestId", description="会话/请求 ID")
+    owner_key: Optional[str] = Field(
+        default=None, alias="ownerKey", description="user:{erp} 或 visitor:{id}"
+    )
+    session_id: Optional[str] = Field(
+        default=None, alias="sessionId", description="会话 ID；缺省用 requestId"
+    )
     command: str = Field(
         min_length=1, description="shell 命令（相对 cwd=workspaceRoot）"
     )

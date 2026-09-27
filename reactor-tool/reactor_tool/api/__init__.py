@@ -28,14 +28,12 @@ def build_api_router() -> APIRouter:
         return api_router
 
     from .tool import router as tool_router
-    from .social import router as social_router
     from .file_manage import router as file_router
     from .sop import router as sop_router
     from reactor_tool.tool.mrag.api.routes.document import router as document_router
     from reactor_tool.tool.mrag.api.routes.history import router as mrag_history_router
 
     api_router.include_router(tool_router, prefix="/tool", tags=["tool"])
-    api_router.include_router(social_router, prefix="/tool", tags=["social"])
     api_router.include_router(file_router, prefix="/file_tool", tags=["file_manage"])
     api_router.include_router(sop_router, tags=["sop"])
     api_router.include_router(document_router, tags=["documents"])
@@ -44,7 +42,9 @@ def build_api_router() -> APIRouter:
     if role == "api":
         from .sandbox_proxy import router as sandbox_proxy_router
 
-        api_router.include_router(sandbox_proxy_router, prefix="/tool", tags=["sandbox-proxy"])
+        api_router.include_router(
+            sandbox_proxy_router, prefix="/tool", tags=["sandbox-proxy"]
+        )
     else:
         from .sandbox_routes import router as sandbox_router
 

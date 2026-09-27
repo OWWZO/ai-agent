@@ -52,6 +52,9 @@ class PythonSandboxExecutor:
         *,
         backend: str | None = None,
         sandbox_factory: Any | None = None,
+        owner_key: str | None = None,
+        session_id: str | None = None,
+        manager: Any | None = None,
     ):
         backend_name = (backend or get_sandbox_backend()).strip().lower()
         if backend_name == "e2b":
@@ -63,6 +66,9 @@ class PythonSandboxExecutor:
                 timeout_seconds,
                 initial_variables,
                 sandbox_factory=sandbox_factory,
+                owner_key=owner_key,
+                session_id=session_id,
+                manager=manager,
             )
             self._local: _LocalPythonSandboxExecutor | None = None
         elif backend_name == "local":
