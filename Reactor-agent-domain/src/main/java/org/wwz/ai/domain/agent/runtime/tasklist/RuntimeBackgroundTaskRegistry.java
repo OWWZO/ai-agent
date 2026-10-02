@@ -11,6 +11,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
+import java.util.function.BooleanSupplier;
 
 /**
  * 后台运行任务注册表。
@@ -229,19 +230,21 @@ public class RuntimeBackgroundTaskRegistry {
         return Optional.of(task);
     }
 
-    public Optional<RuntimeBackgroundTask> awaitTerminal(String taskId, long timeoutMs) {
+    public Optional<RuntimeBackgroundTask> awaitUntilTerminal(String taskId) {
+        return awaitUntilTerminal(taskId, null);
+    }
+
+    public Optional<RuntimeBackgroundTask> awaitUntilTerminal(String taskId, BooleanSupplier abort) {
         Optional<RuntimeBackgroundTask> found = get(taskId);
         if (found.isEmpty()) {
             return Optional.empty();
         }
         RuntimeBackgroundTask task = found.get();
-        if (!RuntimeBackgroundTask.STATUS_RUNNING.equals(task.getStatus()) || timeoutMs <= 0) {
+        if (!RuntimeBackgroundTask.STATUS_RUNNING.equals(task.getStatus())) {
             return Optional.of(task);
         }
-        long deadline = System.currentTimeMillis() + timeoutMs;
         while (RuntimeBackgroundTask.STATUS_RUNNING.equals(task.getStatus())) {
-            long left = deadline - System.currentTimeMillis();
-            if (left <= 0) {
+            if (isAborted(abort)) {
                 break;
             }
             // 本进程无 Future 时轮询 DB（跨实例或仅落库场景）
@@ -267,11 +270,11 @@ public class RuntimeBackgroundTaskRegistry {
                 }
             }
             synchronized (task) {
-                if (!RuntimeBackgroundTask.STATUS_RUNNING.equals(task.getStatus())) {
+                if (!RuntimeBackgroundTask.STATUS_RUNNING.equals(task.getStatus()) || isAborted(abort)) {
                     break;
                 }
                 try {
-                    task.wait(Math.min(left, 250L));
+                    task.wait(250L);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break;
@@ -279,6 +282,22 @@ public class RuntimeBackgroundTaskRegistry {
             }
         }
         return Optional.of(task);
+    }
+
+    public Optional<RuntimeBackgroundTask> awaitTerminal(String taskId, long timeoutMs) {
+        Optional<RuntimeBackgroundTask> found = get(taskId);
+        if (found.isEmpty()) {
+            return Optional.empty();
+        }
+        if (timeoutMs <= 0 || !RuntimeBackgroundTask.STATUS_RUNNING.equals(found.get().getStatus())) {
+            return found;
+        }
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        return awaitUntilTerminal(taskId, () -> System.currentTimeMillis() >= deadline);
+    }
+
+    private static boolean isAborted(BooleanSupplier abort) {
+        return abort != null && abort.getAsBoolean();
     }
 
     public List<RuntimeBackgroundTask> listRunning() {

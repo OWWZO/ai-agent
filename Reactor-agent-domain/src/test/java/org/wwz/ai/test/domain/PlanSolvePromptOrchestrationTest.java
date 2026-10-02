@@ -18,9 +18,11 @@ public class PlanSolvePromptOrchestrationTest {
         Assert.assertTrue(once.contains("规模门控"));
         Assert.assertTrue(once.contains("## 7. Plan Mode"));
         Assert.assertTrue(once.contains("EnterPlanMode"));
-        Assert.assertTrue(once.contains("运行中禁止 Agent(resume_agent_id)"));
+        Assert.assertTrue(once.contains("只用于启动新 Worker"));
+        Assert.assertTrue(once.contains("不要传 resume_agent_id"));
         Assert.assertTrue(once.contains("禁止用 workspace_list 轮询子 Agent 是否完成"));
-        Assert.assertTrue(once.contains("已结束/失败才 resume；运行中用 SendMessage"));
+        Assert.assertTrue(once.contains("已结束/失败/停止时后台唤醒"));
+        Assert.assertTrue(once.contains("block=true（默认）等到终态"));
         Assert.assertTrue(once.contains("先 TaskOutput 等完成"));
         Assert.assertEquals(1, once.split(PlanSolvePrompt.ORCHESTRATION_MARKER, -1).length - 1);
     }
@@ -40,7 +42,7 @@ public class PlanSolvePromptOrchestrationTest {
         String upgraded = PlanSolvePrompt.ensureOrchestration(legacy);
         Assert.assertTrue(upgraded.contains(PlanSolvePrompt.ORCHESTRATION_MARKER));
         Assert.assertFalse(upgraded.contains("PLAN_SOLVE_ORCHESTRATION_V5"));
-        Assert.assertTrue(upgraded.contains("运行中禁止 Agent(resume_agent_id)"));
+        Assert.assertTrue(upgraded.contains("不要传 resume_agent_id"));
     }
 
     @Test

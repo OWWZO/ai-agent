@@ -11,6 +11,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 后台任务注册表（domain 纯单测；AgentDispatch 集成见 app 层环境）。
@@ -69,13 +70,40 @@ public class BackgroundAgentTaskTest {
                         .content("ok")
                         .build());
             });
-            RuntimeBackgroundTask waited = registry.awaitTerminal(task.getId(), 3000).orElseThrow();
+            RuntimeBackgroundTask waited = registry.awaitUntilTerminal(task.getId()).orElseThrow();
             Assert.assertEquals(RuntimeBackgroundTask.STATUS_COMPLETED, waited.getStatus());
             Assert.assertEquals("ok", waited.getOutput());
             f.get(2, TimeUnit.SECONDS);
         } finally {
             pool.shutdownNow();
         }
+    }
+
+    @Test
+    public void awaitUntilTerminalAbortsOnInterrupt() throws Exception {
+        RuntimeBackgroundTaskRegistry registry = new RuntimeBackgroundTaskRegistry();
+        RuntimeBackgroundTask task = registry.registerLocalAgent("wait", "general-purpose", "p");
+        Thread waiter = new Thread(() -> registry.awaitUntilTerminal(task.getId()));
+        waiter.start();
+        Thread.sleep(80);
+        waiter.interrupt();
+        waiter.join(2000);
+        Assert.assertFalse(waiter.isAlive());
+        Assert.assertEquals(RuntimeBackgroundTask.STATUS_RUNNING, task.getStatus());
+    }
+
+    @Test
+    public void awaitUntilTerminalAbortsOnSupplier() throws Exception {
+        RuntimeBackgroundTaskRegistry registry = new RuntimeBackgroundTaskRegistry();
+        RuntimeBackgroundTask task = registry.registerLocalAgent("wait", "general-purpose", "p");
+        AtomicBoolean abort = new AtomicBoolean(false);
+        Thread waiter = new Thread(() -> registry.awaitUntilTerminal(task.getId(), abort::get));
+        waiter.start();
+        Thread.sleep(80);
+        abort.set(true);
+        waiter.join(2000);
+        Assert.assertFalse(waiter.isAlive());
+        Assert.assertEquals(RuntimeBackgroundTask.STATUS_RUNNING, task.getStatus());
     }
 
     @Test

@@ -21,9 +21,6 @@ import java.util.Optional;
 @Data
 public class TaskOutputTool implements BaseTool {
 
-    private static final long DEFAULT_TIMEOUT_MS = 30_000L;
-    private static final long MAX_TIMEOUT_MS = 600_000L;
-
     private AgentContext agentContext;
 
     @Override
@@ -33,9 +30,9 @@ public class TaskOutputTool implements BaseTool {
 
     @Override
     public String getDescription() {
-        return "获取后台任务（Agent run_in_background / shell 等）的输出。"
-                + "block=true（默认）时等待完成或超时；timeout 为毫秒，默认 30000，最大 600000。"
-                + "task_id 来自 Agent 后台派发返回值。"
+        return "获取后台任务（Agent / SendMessage 续跑 / shell 等）的输出。"
+                + "block=true（默认）时等到 completed/failed/stopped；block=false 立即返回当前状态（可反复调用）。"
+                + "task_id 来自 Agent 后台派发或 SendMessage 续跑返回值。"
                 + "等待或查看子 Agent 结果必须用本工具，不要用 workspace_list 轮询文件。";
     }
 
@@ -49,14 +46,9 @@ public class TaskOutputTool implements BaseTool {
         block.put("type", "boolean");
         block.put("description", "是否等待任务结束，默认 true");
 
-        Map<String, Object> timeout = new LinkedHashMap<>();
-        timeout.put("type", "integer");
-        timeout.put("description", "最大等待毫秒数，默认 30000，最大 600000");
-
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("task_id", taskId);
         properties.put("block", block);
-        properties.put("timeout", timeout);
 
         Map<String, Object> parameters = new LinkedHashMap<>();
         parameters.put("type", "object");
@@ -89,7 +81,6 @@ public class TaskOutputTool implements BaseTool {
             boolean shouldBlock = params.containsKey("block")
                     ? coerceBoolean(params.get("block"), true)
                     : true;
-            long timeoutMs = coerceTimeout(params.get("timeout"));
 
             Optional<RuntimeBackgroundTask> found = agentContext.requireBackgroundTasks().get(taskId);
             if (found.isEmpty()) {
@@ -109,10 +100,10 @@ public class TaskOutputTool implements BaseTool {
             String retrieval = "success";
             if (shouldBlock && RuntimeBackgroundTask.STATUS_RUNNING.equals(task.getStatus())) {
                 task = agentContext.requireBackgroundTasks()
-                        .awaitTerminal(taskId, timeoutMs)
+                        .awaitUntilTerminal(taskId, agentContext::isRunCancelled)
                         .orElse(task);
                 if (RuntimeBackgroundTask.STATUS_RUNNING.equals(task.getStatus())) {
-                    retrieval = "timeout";
+                    retrieval = "not_ready";
                 }
             } else if (RuntimeBackgroundTask.STATUS_RUNNING.equals(task.getStatus())) {
                 retrieval = "not_ready";
@@ -156,11 +147,8 @@ public class TaskOutputTool implements BaseTool {
     }
 
     private static String buildMessage(String retrieval, RuntimeBackgroundTask task) {
-        if ("timeout".equals(retrieval)) {
-            return "任务仍在运行，等待超时。可再次 TaskOutput 或 TaskStop。";
-        }
         if ("not_ready".equals(retrieval)) {
-            return "任务仍在运行（未阻塞等待）。";
+            return "任务仍在运行。block=false 可再次查看；block=true 将等到终态。";
         }
         if (RuntimeBackgroundTask.STATUS_COMPLETED.equals(task.getStatus())) {
             return "任务已完成。";
@@ -204,25 +192,5 @@ public class TaskOutputTool implements BaseTool {
             return false;
         }
         return defaultValue;
-    }
-
-    private static long coerceTimeout(Object value) {
-        if (value == null) {
-            return DEFAULT_TIMEOUT_MS;
-        }
-        long parsed;
-        if (value instanceof Number number) {
-            parsed = number.longValue();
-        } else {
-            try {
-                parsed = Long.parseLong(String.valueOf(value).trim());
-            } catch (NumberFormatException e) {
-                return DEFAULT_TIMEOUT_MS;
-            }
-        }
-        if (parsed < 0) {
-            return 0;
-        }
-        return Math.min(parsed, MAX_TIMEOUT_MS);
     }
 }

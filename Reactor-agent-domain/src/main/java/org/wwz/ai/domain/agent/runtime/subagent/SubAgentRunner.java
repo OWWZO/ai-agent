@@ -71,6 +71,19 @@ public class SubAgentRunner {
         this.sessionWorkingMemoryService = sessionWorkingMemoryService;
     }
 
+    public boolean hasPersistedMemory(String sessionId, String agentId) {
+        if (sessionWorkingMemoryService == null
+                || StringUtils.isBlank(sessionId)
+                || StringUtils.isBlank(agentId)) {
+            return false;
+        }
+        List<Message> prior = sessionWorkingMemoryService.loadReadyMessages(
+                sessionId,
+                WorkingMemoryScopes.forSubAgent(agentId),
+                SubAgentContextFactory.newChildRequestId(agentId));
+        return prior != null && !prior.isEmpty();
+    }
+
     public SubAgentResult run(AgentContext parentContext,
                               String description,
                               String prompt,
@@ -281,7 +294,7 @@ public class SubAgentRunner {
                             .totalToolUseCount(toolUseCount)
                             .totalDurationMs(System.currentTimeMillis() - start)
                             .errorMsg("LLM think failed: " + reason
-                                    + "；请用 resume_agent_id=" + agentId + " 续跑"
+                                    + "；请用 SendMessage(to=\"" + agentId + "\", message=…) 续跑"
                                     + (memoryPersisted ? "" : "（注意：工作记忆未落库，resume 可能失败）"))
                             .memoryPersisted(memoryPersisted)
                             .build();
@@ -425,9 +438,9 @@ public class SubAgentRunner {
         if (StringUtils.isNotBlank(head)) {
             sb.append(head.trim());
         }
-        sb.append("\n\n请使用 Agent 工具并传入 resume_agent_id=\"")
+        sb.append("\n\n请使用 SendMessage(to=\"")
                 .append(StringUtils.defaultString(agentId))
-                .append("\" 唤醒该子 Agent 继续任务");
+                .append("\", message=…) 唤醒该子 Agent 继续任务");
         if (memoryPersisted) {
             sb.append("（工作记忆已尽量保留）。");
         } else {

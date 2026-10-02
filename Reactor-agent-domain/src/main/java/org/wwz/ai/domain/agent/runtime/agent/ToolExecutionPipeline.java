@@ -21,10 +21,13 @@ import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.canvas.CanvasPublishArgSalvage;
 import org.wwz.ai.domain.agent.runtime.tool.canvas.EmitUiTreeArgSalvage;
 import org.wwz.ai.domain.agent.runtime.askuser.UserInputRequiredException;
+import org.wwz.ai.domain.agent.runtime.desktopcontrol.DesktopControlRequiredException;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalRequiredException;
+import org.wwz.ai.domain.agent.runtime.subagent.BackgroundSubAgentExecutor;
 import org.wwz.ai.domain.agent.runtime.tool.common.AgentDispatchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.mcp.McpToolNames;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.AskUserQuestionTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.planmode.RequestDesktopControlTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskToolNames;
 import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolCatalog;
 import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolSource;
@@ -94,12 +97,18 @@ final class ToolExecutionPipeline {
         String soleYieldViolation = detectSoleYieldToolViolation(commands);
         if (soleYieldViolation != null) {
             Map<String, Integer> dispatchIndexMapping = buildDispatchIndexMapping(commands);
-            String code = "EXIT_PLAN_MODE".equals(soleYieldViolation)
-                    ? "EXIT_PLAN_MODE_MUST_BE_SOLE"
-                    : "ASK_USER_QUESTION_MUST_BE_SOLE";
-            String msg = "EXIT_PLAN_MODE".equals(soleYieldViolation)
-                    ? "ExitPlanMode 必须是本轮唯一 tool call，不能与其他工具并行"
-                    : "AskUserQuestion 必须是本轮唯一 tool call，不能与其他工具并行";
+            String code;
+            String msg;
+            if ("EXIT_PLAN_MODE".equals(soleYieldViolation)) {
+                code = "EXIT_PLAN_MODE_MUST_BE_SOLE";
+                msg = "ExitPlanMode 必须是本轮唯一 tool call，不能与其他工具并行";
+            } else if ("DESKTOP_CONTROL".equals(soleYieldViolation)) {
+                code = "DESKTOP_CONTROL_MUST_BE_SOLE";
+                msg = "RequestDesktopControl 必须是本轮唯一 tool call，不能与其他工具并行";
+            } else {
+                code = "ASK_USER_QUESTION_MUST_BE_SOLE";
+                msg = "AskUserQuestion 必须是本轮唯一 tool call，不能与其他工具并行";
+            }
             for (ToolCall command : commands) {
                 if (command == null || StringUtils.isBlank(command.getId())) {
                     continue;
@@ -151,6 +160,10 @@ final class ToolExecutionPipeline {
                         yieldSignal.compareAndSet(null, userInputRequired);
                         return null;
                     }
+                    if (root instanceof DesktopControlRequiredException desktopControlRequired) {
+                        yieldSignal.compareAndSet(null, desktopControlRequired);
+                        return null;
+                    }
                     if (root instanceof PlanApprovalRequiredException planApprovalRequired) {
                         yieldSignal.compareAndSet(null, planApprovalRequired);
                         return null;
@@ -168,7 +181,7 @@ final class ToolExecutionPipeline {
             }));
         }
 
-        awaitToolBatch(futures, executionFutures);
+        awaitToolBatch(futures, executionFutures, commands);
         if (yieldSignal.get() != null) {
             throw yieldSignal.get();
         }
@@ -381,6 +394,8 @@ final class ToolExecutionPipeline {
                     .setLedgerObservation(payload.getLedgerObservation());
         } catch (UserInputRequiredException yield) {
             throw yield;
+        } catch (DesktopControlRequiredException yield) {
+            throw yield;
         } catch (PlanApprovalRequiredException yield) {
             throw yield;
         } catch (Exception e) {
@@ -400,6 +415,7 @@ final class ToolExecutionPipeline {
     private String detectSoleYieldToolViolation(List<ToolCall> commands) {
         boolean hasAsk = false;
         boolean hasExit = false;
+        boolean hasDesktop = false;
         int total = 0;
         for (ToolCall command : commands) {
             if (command == null || command.getFunction() == null) {
@@ -410,23 +426,33 @@ final class ToolExecutionPipeline {
             if (AskUserQuestionTool.NAME.equals(name)) {
                 hasAsk = true;
             }
+            if (RequestDesktopControlTool.NAME.equals(name)) {
+                hasDesktop = true;
+            }
             if (TaskToolNames.EXIT_PLAN_MODE.equals(name)) {
                 hasExit = true;
             }
         }
-        if ((hasAsk || hasExit) && total > 1) {
-            return hasExit ? "EXIT_PLAN_MODE" : "ASK_USER";
+        if ((hasAsk || hasExit || hasDesktop) && total > 1) {
+            if (hasExit) {
+                return "EXIT_PLAN_MODE";
+            }
+            if (hasDesktop) {
+                return "DESKTOP_CONTROL";
+            }
+            return "ASK_USER";
         }
         return null;
     }
 
     private void awaitToolBatch(List<CompletableFuture<Void>> futures,
-                                List<CompletableFuture<?>> executionFutures) {
+                                List<CompletableFuture<?>> executionFutures,
+                                List<ToolCall> commands) {
         if (futures == null || futures.isEmpty()) {
             return;
         }
         CompletableFuture<Void> all = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
-        long timeoutSeconds = resolveToolBatchTimeoutSeconds();
+        long timeoutSeconds = containsTaskOutput(commands) ? 0L : resolveToolBatchTimeoutSeconds();
         AgentContext context = agent.getContext();
         try {
             if (timeoutSeconds > 0L) {
@@ -513,6 +539,21 @@ final class ToolExecutionPipeline {
             return resolveExecutor(ReactorRuntimeDependencies::requireTaskExecutor);
         }
         return resolveExecutor(ReactorRuntimeDependencies::requireToolExecutor);
+    }
+
+    private static boolean containsTaskOutput(List<ToolCall> commands) {
+        if (commands == null) {
+            return false;
+        }
+        for (ToolCall command : commands) {
+            if (command == null || command.getFunction() == null) {
+                continue;
+            }
+            if (TaskToolNames.TASK_OUTPUT.equals(command.getFunction().getName())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private long resolveToolBatchTimeoutSeconds() {
@@ -712,10 +753,13 @@ final class ToolExecutionPipeline {
                 .errorMsg(outcome == null ? null : outcome.getErrorMsg())
                 .finishedAt(finishedAt)
                 .build());
-        if (AgentDispatchTool.NAME.equals(command.getFunction().getName())) {
-            AgentDispatchTool.settleLedgerIfTerminal(
+        if (command.getFunction() != null
+                && (AgentDispatchTool.NAME.equals(command.getFunction().getName())
+                || TaskToolNames.SEND_MESSAGE.equals(command.getFunction().getName()))) {
+            BackgroundSubAgentExecutor.settleLedgerIfTerminal(
                     context,
                     command.getId(),
+                    command.getFunction().getName(),
                     outcome == null ? null : outcome.getLlmObservation());
         }
     }

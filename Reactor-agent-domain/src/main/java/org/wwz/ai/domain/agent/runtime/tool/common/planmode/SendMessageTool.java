@@ -5,7 +5,10 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.runtime.cancel.PendingInjectMessage;
+import org.wwz.ai.domain.agent.runtime.subagent.BackgroundSubAgentExecutor;
+import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRunner;
 import org.wwz.ai.domain.agent.runtime.tasklist.RuntimeBackgroundTask;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionAgentMailboxHub;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
@@ -17,14 +20,23 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 主 Agent → 运行中子 Agent 的指导消息。
- * 仅后台/仍在跑的子 Agent 可投递；同步阻塞派发期间主 Agent 无法调用本工具。
+ * 主 Agent → 子 Agent：运行中注入 mailbox；已结束则后台续跑。
  */
 @Slf4j
 @Data
 public class SendMessageTool implements BaseTool {
 
     private AgentContext agentContext;
+    private SubAgentRunner subAgentRunner;
+    private ActiveAgentRunRegistry activeAgentRunRegistry;
+
+    public SendMessageTool() {
+    }
+
+    public SendMessageTool(SubAgentRunner subAgentRunner, ActiveAgentRunRegistry activeAgentRunRegistry) {
+        this.subAgentRunner = subAgentRunner;
+        this.activeAgentRunRegistry = activeAgentRunRegistry;
+    }
 
     @Override
     public String getName() {
@@ -33,9 +45,10 @@ public class SendMessageTool implements BaseTool {
 
     @Override
     public String getDescription() {
-        return "向正在运行的后台子 Agent 发送中途指导。"
-                + " to 填 agentId 或 task_id（后台 Agent 返回值）。"
-                + " 仅 run_in_background 的子 Agent 可收信；已结束请用 Agent(resume_agent_id=…)。";
+        return "向后台子 Agent 发送消息。"
+                + " to 填 agentId 或 task_id。"
+                + " 目标仍在运行或邮箱仍活跃时注入指导，不新开任务。"
+                + " 目标已 completed/failed/stopped 时后台唤醒（同一 agentId、新 task_id），再用 TaskOutput 取结果。";
     }
 
     @Override
@@ -98,48 +111,11 @@ public class SendMessageTool implements BaseTool {
                 ));
             }
 
-            if (!SessionAgentMailboxHub.isActive(sessionId, target.agentId)
-                    && !isBackgroundRunning(target)) {
-                Map<String, Object> fields = new LinkedHashMap<>();
-                fields.put("ok", false);
-                fields.put("to", to);
-                fields.put("agentId", target.agentId);
-                if (StringUtils.isNotBlank(target.taskId)) {
-                    fields.put("task_id", target.taskId);
-                }
-                fields.put("message", "目标子 Agent 未在运行，无法投递中途指导。");
-                fields.put("hint", "请用 Agent(resume_agent_id=\"" + target.agentId
-                        + "\", prompt=\"…\") 续跑并带上新指导。");
-                return ToolResultPayload.softFailData(TaskToolNames.SEND_MESSAGE, fields);
+            if (SessionAgentMailboxHub.isActive(sessionId, target.agentId)
+                    || isBackgroundRunning(target)) {
+                return injectRunning(sessionId, to, target, message, summary);
             }
-
-            PendingInjectMessage inject = PendingInjectMessage.builder()
-                    .text(StringUtils.isNotBlank(summary)
-                            ? ("[" + summary + "] " + message)
-                            : message)
-                    .source(PendingInjectMessage.SOURCE_COORDINATOR)
-                    .createdAtMs(System.currentTimeMillis())
-                    .build();
-            int queued = SessionAgentMailboxHub.offer(sessionId, target.agentId, inject);
-            if (queued < 0) {
-                return ToolResultPayload.softFailData(TaskToolNames.SEND_MESSAGE, Map.of(
-                        "ok", false,
-                        "to", to,
-                        "agentId", target.agentId,
-                        "message", "目标子 Agent 邮箱已满，指导未投递。"
-                ));
-            }
-
-            Map<String, Object> fields = new LinkedHashMap<>();
-            fields.put("ok", true);
-            fields.put("to", to);
-            fields.put("agentId", target.agentId);
-            if (StringUtils.isNotBlank(target.taskId)) {
-                fields.put("task_id", target.taskId);
-            }
-            fields.put("queued", queued);
-            fields.put("message", "已投递指导，子 Agent 下一步可见。");
-            return ToolResultPayload.okData(TaskToolNames.SEND_MESSAGE, fields);
+            return resumeStopped(to, target, message, summary);
         } catch (Exception e) {
             log.warn("SendMessage failed", e);
             String msg = "SendMessage 失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
@@ -154,17 +130,101 @@ public class SendMessageTool implements BaseTool {
             RuntimeBackgroundTask task = byTask.get();
             return new ResolvedTarget(task.getAgentId(), task.getId(), task);
         }
-        // 再在后台任务列表里按 agentId 找
+        ResolvedTarget byAgentId = null;
         for (RuntimeBackgroundTask task : agentContext.requireBackgroundTasks().listAll()) {
-            if (task != null && to.equals(task.getAgentId())) {
+            if (task == null || !to.equals(task.getAgentId())) {
+                continue;
+            }
+            if (RuntimeBackgroundTask.STATUS_RUNNING.equals(task.getStatus())) {
                 return new ResolvedTarget(task.getAgentId(), task.getId(), task);
             }
+            if (byAgentId == null) {
+                byAgentId = new ResolvedTarget(task.getAgentId(), task.getId(), task);
+            }
+        }
+        if (byAgentId != null) {
+            return byAgentId;
         }
         // 直接当 agentId（mailbox 可能仍 active）
         if (SessionAgentMailboxHub.isActive(sessionId, to)) {
             return new ResolvedTarget(to, null, null);
         }
         return new ResolvedTarget(to, null, null);
+    }
+
+    private Object injectRunning(String sessionId,
+                                 String to,
+                                 ResolvedTarget target,
+                                 String message,
+                                 String summary) {
+        PendingInjectMessage inject = PendingInjectMessage.builder()
+                .text(StringUtils.isNotBlank(summary)
+                        ? ("[" + summary + "] " + message)
+                        : message)
+                .source(PendingInjectMessage.SOURCE_COORDINATOR)
+                .createdAtMs(System.currentTimeMillis())
+                .build();
+        int queued = SessionAgentMailboxHub.offer(sessionId, target.agentId, inject);
+        if (queued < 0) {
+            return ToolResultPayload.softFailData(TaskToolNames.SEND_MESSAGE, Map.of(
+                    "ok", false,
+                    "to", to,
+                    "agentId", target.agentId,
+                    "message", "目标子 Agent 邮箱已满，指导未投递。"
+            ));
+        }
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("ok", true);
+        fields.put("to", to);
+        fields.put("agentId", target.agentId);
+        if (StringUtils.isNotBlank(target.taskId)) {
+            fields.put("task_id", target.taskId);
+        }
+        fields.put("queued", queued);
+        fields.put("message", "已投递指导，子 Agent 下一步可见。");
+        return ToolResultPayload.okData(TaskToolNames.SEND_MESSAGE, fields);
+    }
+
+    private Object resumeStopped(String to, ResolvedTarget target, String message, String summary) {
+        if (subAgentRunner == null) {
+            return ToolResultPayload.softFailData(TaskToolNames.SEND_MESSAGE, Map.of(
+                    "ok", false,
+                    "to", to,
+                    "agentId", target.agentId,
+                    "message", "无法唤醒子 Agent：SubAgentRunner 未注入。"
+            ));
+        }
+        if (!subAgentRunner.hasPersistedMemory(agentContext.getSessionId(), target.agentId)) {
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("ok", false);
+            fields.put("to", to);
+            fields.put("agentId", target.agentId);
+            if (StringUtils.isNotBlank(target.taskId)) {
+                fields.put("task_id", target.taskId);
+            }
+            fields.put("message", "无法唤醒子 Agent：未找到 agentId=" + target.agentId
+                    + " 的工作记忆（可能已过期或从未成功结束）。");
+            return ToolResultPayload.softFailData(TaskToolNames.SEND_MESSAGE, fields);
+        }
+        String description = StringUtils.isNotBlank(summary)
+                ? summary
+                : "resume-" + target.agentId;
+        String parentToolUseId = null;
+        if (agentContext.getCurrentToolArtifactSource() != null) {
+            parentToolUseId = StringUtils.trimToNull(
+                    agentContext.getCurrentToolArtifactSource().getToolCallId());
+        }
+        String type = target.task == null ? null : target.task.getAgentType();
+        return BackgroundSubAgentExecutor.submit(
+                agentContext,
+                subAgentRunner,
+                activeAgentRunRegistry,
+                description,
+                message,
+                type,
+                target.agentId,
+                parentToolUseId,
+                TaskToolNames.SEND_MESSAGE);
     }
 
     private boolean isBackgroundRunning(ResolvedTarget target) {
