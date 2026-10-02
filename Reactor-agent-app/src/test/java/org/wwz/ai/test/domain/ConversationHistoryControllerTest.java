@@ -86,6 +86,30 @@ public class ConversationHistoryControllerTest {
     }
 
     @Test
+    public void shouldReturnFullFinalSummaryWithPreviewOnSessionHistoryPage() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        String fullSummary = "中秋最好的团圆是回家（约".repeat(25) + "全文末尾";
+        seedRun(ctx, "req-full-summary-001", "session-full-summary-001", "read_tool",
+                "读取完整终答", LocalDateTime.of(2026, 5, 2, 10, 0, 0),
+                ExecutionLedgerConstants.STATUS_SUCCESS, fullSummary, null);
+
+        AgentConversationHistoryController controller = new AgentConversationHistoryController();
+        ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
+        ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
+        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
+                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
+
+        Response<ConversationHistoryPageRespVO> response = controller.detail(
+                "session-full-summary-001", 20, null);
+
+        Assert.assertEquals(ResponseCode.SUCCESS.getCode(), response.getCode());
+        Assert.assertNotNull(response.getData());
+        String preview = response.getData().getRuns().get(0).getFinalSummaryPreview();
+        Assert.assertTrue(preview.length() < fullSummary.length());
+        Assert.assertEquals(fullSummary, response.getData().getRuns().get(0).getFinalSummaryText());
+    }
+
+    @Test
     public void shouldReplayOneRunOnlyAfterSessionOwnershipLookup() {
         ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
         seedRun(ctx, "req-replay-001", "session-replay-001", "file_tool",

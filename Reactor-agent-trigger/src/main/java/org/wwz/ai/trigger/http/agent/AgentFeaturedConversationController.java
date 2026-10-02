@@ -198,6 +198,7 @@ public class AgentFeaturedConversationController {
                 .status(resolveStatusLabel(run.getStatus()))
                 .queryPreview(run.getQueryText())
                 .finalSummaryPreview(run.getFinalSummaryText())
+                .finalSummaryText(run.getFinalSummaryText())
                 .startedAt(run.getStartedAt())
                 .finishedAt(run.getFinishedAt())
                 .build();
@@ -210,6 +211,7 @@ public class AgentFeaturedConversationController {
                 .status(resolveStatusLabel(run.getStatus()))
                 .queryPreview(run.getQueryPreview())
                 .finalSummaryPreview(run.getFinalSummaryPreview())
+                .finalSummaryText(run.getFinalSummaryText())
                 .llmCallCount(run.getLlmCallCount())
                 .toolCallCount(run.getToolCallCount())
                 .artifactCount(run.getArtifactCount())

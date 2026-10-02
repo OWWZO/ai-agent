@@ -71,7 +71,7 @@
     <sql id="dialogueRunSummaryViewColumns">
         id, run_uid, request_id, session_id, entry_agent, status,
         LEFT(query_text, 241) AS query_text,
-        LEFT(final_summary_text, 241) AS final_summary_text,
+        final_summary_text,
         llm_call_count, tool_call_count, artifact_count,
         started_at, finished_at, duration_ms, create_time
     </sql>

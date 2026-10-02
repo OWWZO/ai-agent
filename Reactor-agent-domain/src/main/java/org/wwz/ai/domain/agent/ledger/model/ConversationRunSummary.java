@@ -8,10 +8,10 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
- * Lightweight run summary used by history pages.
+ * Run summary used by history pages.
  *
- * <p>Text fields are previews. Rich tool output, artifacts and replay frames
- * are intentionally absent and are loaded by the single-run replay endpoint.</p>
+ * <p>The query is a preview; the final answer is complete. Rich tool output,
+ * artifacts and replay frames are loaded by the single-run replay endpoint.</p>
  */
 @Data
 @Builder
@@ -28,6 +28,8 @@ public class ConversationRunSummary {
     private String queryPreview;
 
     private String finalSummaryPreview;
+
+    private String finalSummaryText;
 
     private Integer llmCallCount;
 

@@ -231,6 +231,7 @@ public class ConversationHistoryReplayService {
                 .status(run.getStatus())
                 .queryPreview(preview(run.getQueryText()))
                 .finalSummaryPreview(preview(run.getFinalSummaryText()))
+                .finalSummaryText(run.getFinalSummaryText())
                 .llmCallCount(run.getLlmCallCount())
                 .toolCallCount(run.getToolCallCount())
                 .artifactCount(run.getArtifactCount())

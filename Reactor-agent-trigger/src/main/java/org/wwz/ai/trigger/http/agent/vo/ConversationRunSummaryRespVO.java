@@ -26,6 +26,8 @@ public class ConversationRunSummaryRespVO {
 
     private String finalSummaryPreview;
 
+    private String finalSummaryText;
+
     private Integer llmCallCount;
 
     private Integer toolCallCount;
