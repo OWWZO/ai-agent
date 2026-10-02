@@ -1,5 +1,5 @@
 import { buildDeepSearchExtendMarkdown, resolveDeepSearchStage } from "@/utils/deepSearch";
-import { buildSubAgentMarkdown, isAgentDispatchTask } from "@/utils/chat/subagent";
+import { buildSubAgentMarkdown, isSubAgentParentTask } from "@/utils/chat/subagent";
 import {
   resolveTaskResultMap,
   resolveTaskToolResultText,
@@ -36,7 +36,7 @@ export const resolveMarkdownContent = (taskItem?: PanelItemType) => {
 
   switch (messageType) {
     case "tool_result":
-      if (isAgentDispatchTask(taskItem as unknown as CHAT.Task)) {
+      if (isSubAgentParentTask(taskItem as unknown as CHAT.Task)) {
         markDownContent = buildSubAgentMarkdown(taskItem as unknown as CHAT.Task);
       } else {
         markDownContent = toolResultText;
@@ -53,7 +53,7 @@ export const resolveMarkdownContent = (taskItem?: PanelItemType) => {
       markDownContent = taskItem.toolThought || "";
       break;
     case "tool_call":
-      if (isAgentDispatchTask(taskItem as unknown as CHAT.Task)) {
+      if (isSubAgentParentTask(taskItem as unknown as CHAT.Task)) {
         markDownContent = buildSubAgentMarkdown(taskItem as unknown as CHAT.Task);
       } else {
         markDownContent = buildToolCallMarkdown(resultMap);

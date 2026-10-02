@@ -12,6 +12,7 @@ import {
 import MarkdownRenderer from "@/components/ActionPanel/MarkdownRenderer";
 import {
   buildComposerPlanModel,
+  isPlanApprovalApproved,
   type ComposerPlanModel,
 } from "./planComposerModel";
 import { cn } from "@/lib/utils";
@@ -93,6 +94,10 @@ const PlanComposerBarInner: FC<{
     title = "计划已批准";
   } else if (status === "rejected" || (status === "decided" && model.approved === false)) {
     title = "计划已拒绝";
+  }
+
+  if (isApprovalSkin && isPlanApprovalApproved(status, model.approved)) {
+    return null;
   }
 
   const approve = async () => {

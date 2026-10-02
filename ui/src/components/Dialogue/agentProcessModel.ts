@@ -1,7 +1,7 @@
 import { buildAction } from "@/utils/chat";
 import {
   formatSubAgentDuration,
-  isAgentDispatchTask,
+  isSubAgentParentTask,
   resolveSubAgentDisplay,
 } from "@/utils/chat/subagent";
 import { isTimelineToolActive } from "@/components/ChatView/streamState";
@@ -239,12 +239,13 @@ export function resolveProcessStepKind(tool: CHAT.Task): ProcessStepKind {
   }
   if (
     messageType === "ask_user_question" ||
+    messageType === "desktop_control" ||
     messageType === "plan_approval" ||
     messageType === "session_tasks"
   ) {
     return "interactive";
   }
-  if (isAgentDispatchTask(tool)) {
+  if (isSubAgentParentTask(tool)) {
     return "agent";
   }
   if (messageType === "browser") {
@@ -332,7 +333,7 @@ function resolveStepTitle(tool: CHAT.Task, kind: ProcessStepKind): {
     };
   }
 
-  if (isAgentDispatchTask(tool)) {
+  if (isSubAgentParentTask(tool)) {
     const sub = resolveSubAgentDisplay(tool);
     return {
       title: sub.status === "running" ? "派发子智能体" : "子智能体",
@@ -480,7 +481,7 @@ function resolveLegacyDurationMs(tool: CHAT.Task): number | undefined {
 }
 
 function resolveSubAgentDurationMs(tool: CHAT.Task): number | undefined {
-  if (!isAgentDispatchTask(tool)) {
+  if (!isSubAgentParentTask(tool)) {
     return undefined;
   }
   return resolveDurationMs(resolveSubAgentDisplay(tool).totalDurationMs);

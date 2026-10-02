@@ -42,6 +42,11 @@ import {
   submitPlanApprovalResume,
   type PlanApprovalResumeEventDetail,
 } from "@/services/planApproval";
+import {
+  DESKTOP_CONTROL_RESUME_EVENT,
+  submitDesktopControlResume,
+  type DesktopControlResumeEventDetail,
+} from "@/services/desktopControl";
 import type {
   ActiveRunState,
   ConversationDraftController,
@@ -59,6 +64,7 @@ import {
   isHitlYieldEvent,
   isParentLoopLive,
   markAskUserQuestionsAnswered,
+  markDesktopControlCompleted,
   markPlanApprovalsDecided,
   resolveActionPanelVisibility,
   resolveLatestRunState,
@@ -1527,7 +1533,7 @@ export function useConversationStream(
   }, [followActiveRun, hasLiveStream, readOnly, runningFollowKey]);
 
   const resumeHitlRun = useMemoizedFn((
-    detail: AskUserResumeEventDetail | PlanApprovalResumeEventDetail,
+    detail: AskUserResumeEventDetail | PlanApprovalResumeEventDetail | DesktopControlResumeEventDetail,
     options: {
       submit: (resumeRequestId: string) => Promise<unknown>;
       markDecided: (
@@ -2014,6 +2020,14 @@ export function useConversationStream(
     });
   });
 
+  const resumeDesktopControlRun = useMemoizedFn((detail: DesktopControlResumeEventDetail) => {
+    resumeHitlRun(detail, {
+      submit: submitDesktopControlResume,
+      markDecided: (chat) => markDesktopControlCompleted(chat, detail.controlId),
+      errorLabel: "desktop-control",
+    });
+  });
+
   useEffect(() => {
     const onAskResume = (event: Event) => {
       const detail = (event as CustomEvent<AskUserResumeEventDetail>).detail;
@@ -2023,13 +2037,19 @@ export function useConversationStream(
       const detail = (event as CustomEvent<PlanApprovalResumeEventDetail>).detail;
       resumePlanApprovalRun(detail);
     };
+    const onDesktopResume = (event: Event) => {
+      const detail = (event as CustomEvent<DesktopControlResumeEventDetail>).detail;
+      resumeDesktopControlRun(detail);
+    };
     window.addEventListener(ASK_USER_RESUME_EVENT, onAskResume as EventListener);
     window.addEventListener(PLAN_APPROVAL_RESUME_EVENT, onPlanResume as EventListener);
+    window.addEventListener(DESKTOP_CONTROL_RESUME_EVENT, onDesktopResume as EventListener);
     return () => {
       window.removeEventListener(ASK_USER_RESUME_EVENT, onAskResume as EventListener);
       window.removeEventListener(PLAN_APPROVAL_RESUME_EVENT, onPlanResume as EventListener);
+      window.removeEventListener(DESKTOP_CONTROL_RESUME_EVENT, onDesktopResume as EventListener);
     };
-  }, [resumeAskUserRun, resumePlanApprovalRun]);
+  }, [resumeAskUserRun, resumePlanApprovalRun, resumeDesktopControlRun]);
 
   // 页签恢复 / 网络恢复时，立即对所有仍 RUNNING 的断流 run 触发 follow。
   useEffect(() => {
@@ -2602,6 +2622,7 @@ export function useConversationStream(
           finished ||
           isLlmRetryEvent(eventData) ||
           eventData.messageType === "ask_user_question" ||
+          eventData.messageType === "desktop_control" ||
           eventData.messageType === "plan_approval" ||
           eventData.messageType === "tool_thought" ||
           eventData.messageType === "llm_reasoning" ||
@@ -2609,6 +2630,7 @@ export function useConversationStream(
           eventData.messageType === "tool_result" ||
           eventData.messageType === "subagent_progress" ||
           eventData.resultMap?.messageType === "ask_user_question" ||
+          eventData.resultMap?.messageType === "desktop_control" ||
           eventData.resultMap?.messageType === "plan_approval" ||
           eventData.resultMap?.messageType === "tool_call" ||
           eventData.resultMap?.messageType === "tool_result" ||

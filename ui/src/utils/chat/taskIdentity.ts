@@ -1,4 +1,4 @@
-import { isAgentDispatchTask } from "./subagent";
+import { isSubAgentParentTask } from "./subagent";
 import {
   pickFirstText,
   resolveTaskToolCallId,
@@ -180,7 +180,7 @@ export function findBestAgentTask(
   key: string
 ): CHAT.Task | undefined {
   return pickBestTaskByKey(
-    walkChatTasks(chat).filter((task) => isAgentDispatchTask(task)),
+    walkChatTasks(chat).filter((task) => isSubAgentParentTask(task)),
     key
   );
 }

@@ -5,7 +5,7 @@ import {
   resolveTaskToolResult,
   resolveTaskToolResultText,
 } from "@/utils/chat/toolCalls";
-import { isAgentDispatchTask } from "@/utils/chat/subagent";
+import { isSubAgentParentTask } from "@/utils/chat/subagent";
 import { isTimelineToolActive } from "@/components/ChatView/streamState";
 import { resolveTaskSummaryText } from "../contentHelpers";
 
@@ -54,7 +54,7 @@ export function resolveTaskToolName(tool: CHAT.Task): string {
     (typeof resolvedToolResult?.toolName === "string" &&
       resolvedToolResult.toolName) ||
     "";
-  if (isAgentDispatchTask(tool)) {
+  if (isSubAgentParentTask(tool)) {
     return fromResult || fromToolResult || "task";
   }
   return fromResult || fromToolResult || tool.messageType || "tool";

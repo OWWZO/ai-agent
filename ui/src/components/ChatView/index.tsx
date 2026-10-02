@@ -33,8 +33,13 @@ import BackgroundTasksDock, {
 } from "./BackgroundTasksDock";
 import PlanComposerBar from "./PlanComposerBar";
 import AskUserQuestionCard from "@/components/Dialogue/AskUserQuestionCard";
+import DesktopControlCard from "@/components/Dialogue/DesktopControlCard";
+import DesktopPreviewPanel from "@/components/ActionView/DesktopPreviewPanel";
+import { readDesktopStreamUrl } from "@/components/Dialogue/DesktopControlCard";
+import { DESKTOP_CONTROL_PREVIEW_EVENT } from "@/services/desktopControl";
 import {
   findLatestPendingAskUser,
+  findLatestPendingDesktopControl,
   resolveHitlDockSlot,
 } from "./hitlDockModel";
 import { hasPendingAskUserQuestion, isParentLoopLive } from "./streamState";
@@ -190,6 +195,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   const [workspaceBackTarget, setWorkspaceBackTarget] =
     useState<CHAT.AgentDetailTarget | null>(null);
   const agentPanelClosedRef = useRef(false);
+  const lastAutoOpenedDesktopControlRef = useRef("");
   const [composerDraft, setComposerDraft] = useState<string | null>(null);
   const {
     leftPanelWidth,
@@ -314,6 +320,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     agentPanelClosedRef.current = false;
     setAgentDetail(null);
     lastAutoOpenedCanvasPreviewKeyRef.current = "";
+    lastAutoOpenedDesktopControlRef.current = "";
   }, [conversation.id]);
 
   useEffect(() => {
@@ -912,28 +919,6 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     return next;
   }, [conversation.id, deferredChatList, sessionFileTasks]);
 
-  // 仅有产物注意力 / 手动打开 / 专属详情时才挂右侧；纯工具 taskList 不自动拉开空「动态」。
-  const hasWorkspaceContent = Boolean(
-    showAction ||
-      workspaceOpenRequested ||
-      thinkingDetail ||
-      toolDiffTask ||
-      agentDetail
-  );
-
-  const renderWorkspaceReopenTrigger = () =>
-    hasWorkspaceContent && isRightCollapsed ? (
-      <button
-        type="button"
-        onClick={toggleRightPanel}
-        className="reactor-mobile-workspace-trigger flex h-8 w-8 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
-        title="打开工作区"
-        aria-label="打开工作区"
-      >
-        <PanelRightOpen className="h-4 w-4" />
-      </button>
-    ) : null;
-
   const activeChat = conversation.chatList?.[conversation.chatList.length - 1];
   const sessionBusy = loading || isParentLoopLive(activeChat);
   const liveAgentDetail = useMemo(() => {
@@ -998,6 +983,73 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         : undefined,
     [activeChat, taskList, hitlDockSlot]
   );
+  const pendingDesktopTool = useMemo(
+    () =>
+      hitlDockSlot === "desktop"
+        ? findLatestPendingDesktopControl(activeChat, taskList)
+        : undefined,
+    [activeChat, taskList, hitlDockSlot]
+  );
+  const pendingDesktopStreamUrl = readDesktopStreamUrl(pendingDesktopTool);
+  const pendingDesktopPreviewKey = pendingDesktopStreamUrl
+    ? getStableTaskIdentity(pendingDesktopTool) || pendingDesktopStreamUrl
+    : "";
+
+  const openDesktopPreview = useMemoizedFn(() => {
+    if (!pendingDesktopStreamUrl) return;
+    setThinkingDetail(null);
+    setToolDiffTask(null);
+    setAgentDetail(null);
+    setPendingPreviewFile(undefined);
+    setActiveTask(undefined);
+    setWorkspaceBackTarget(null);
+    openRightWorkspace();
+  });
+
+  useEffect(() => {
+    if (!pendingDesktopPreviewKey) {
+      lastAutoOpenedDesktopControlRef.current = "";
+      return;
+    }
+    if (lastAutoOpenedDesktopControlRef.current === pendingDesktopPreviewKey) {
+      return;
+    }
+    lastAutoOpenedDesktopControlRef.current = pendingDesktopPreviewKey;
+    openDesktopPreview();
+  }, [openDesktopPreview, pendingDesktopPreviewKey]);
+
+  useEffect(() => {
+    if (!pendingDesktopStreamUrl) return;
+    window.addEventListener(DESKTOP_CONTROL_PREVIEW_EVENT, openDesktopPreview);
+    return () =>
+      window.removeEventListener(
+        DESKTOP_CONTROL_PREVIEW_EVENT,
+        openDesktopPreview
+      );
+  }, [openDesktopPreview, pendingDesktopStreamUrl]);
+
+  // 活动桌面控制优先显示在右侧；普通工具不自动拉开空「动态」工作区。
+  const hasWorkspaceContent = Boolean(
+    showAction ||
+      workspaceOpenRequested ||
+      thinkingDetail ||
+      toolDiffTask ||
+      agentDetail ||
+      pendingDesktopStreamUrl
+  );
+
+  const renderWorkspaceReopenTrigger = () =>
+    hasWorkspaceContent && isRightCollapsed ? (
+      <button
+        type="button"
+        onClick={toggleRightPanel}
+        className="reactor-mobile-workspace-trigger flex h-8 w-8 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+        title="打开工作区"
+        aria-label="打开工作区"
+      >
+        <PanelRightOpen className="h-4 w-4" />
+      </button>
+    ) : null;
 
   // 顶栏优先展示运行状态；空闲时回到会话标题，让工作区始终有明确上下文。
   const headerStatus = useMemo(() => {
@@ -1028,7 +1080,11 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         onOpenAgent={openAgentPanel}
       />
       <SessionTaskComposerBar chat={activeChat} taskList={taskList} />
-      {hitlDockSlot === "ask" && pendingAskTool ? (
+      {hitlDockSlot === "desktop" && pendingDesktopTool ? (
+        <div className="mb-1" data-testid="hitl-dock-desktop">
+          <DesktopControlCard tool={pendingDesktopTool} />
+        </div>
+      ) : hitlDockSlot === "ask" && pendingAskTool ? (
         <div className="mb-1" data-testid="hitl-dock-ask">
           <AskUserQuestionCard tool={pendingAskTool} />
         </div>
@@ -1378,7 +1434,12 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             className="reactor-workspace-panel flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg)]"
             data-workspace-collapsed="false"
           >
-            {thinkingDetail != null ? (
+            {pendingDesktopStreamUrl ? (
+              <DesktopPreviewPanel
+                streamUrl={pendingDesktopStreamUrl}
+                onClose={closeActionView}
+              />
+            ) : thinkingDetail != null ? (
               <ThinkingPanel
                 text={thinkingDetail}
                 onClose={() => {

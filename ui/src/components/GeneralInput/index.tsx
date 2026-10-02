@@ -48,6 +48,7 @@ import MarkdownBar from "./MarkdownBar";
 import ModelPicker from "./ModelPicker";
 import ThinkingToggle, { type ThinkingEffort } from "./ThinkingToggle";
 import BrowserRelayChip from "./BrowserRelayChip";
+import KernelBrowserChip from "./KernelBrowserChip";
 import { buildSubmitPayload } from "./inputMode";
 import { useAttachmentUploads } from "./useAttachmentUploads";
 
@@ -458,6 +459,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
               />
 
               <BrowserRelayChip disabled={disabled} />
+              <KernelBrowserChip disabled={disabled} />
 
               {showPlanToggle ? (
                 <button

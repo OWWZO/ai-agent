@@ -5,7 +5,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import { buildAction, getIcon } from "@/utils/chat";
 import {
   formatSubAgentDuration,
-  isAgentDispatchTask,
+  isSubAgentParentTask,
   resolveSubAgentDisplay,
 } from "@/utils/chat/subagent";
 import {
@@ -140,6 +140,25 @@ export const ToolItem: FC<ToolItemProps> = memo(({
         </div>
       );
     }
+    case "desktop_control": {
+      const resultMap = (tool.resultMap || {}) as Record<string, unknown>;
+      const nested = (resultMap.resultMap || resultMap) as Record<string, unknown>;
+      const status = String(nested.status || resultMap.status || "pending");
+      return (
+        <div className="kimi-ui-card kimi-qcard">
+          <div className="kimi-ui-card__head">
+            <span className="kimi-qcard-ic">🖥</span>
+            <span className="kimi-qcard-title">桌面控制</span>
+            <span className="kimi-appr-badge" style={{ marginLeft: "auto" }}>
+              {status === "completed" ? "已完成" : "待操作"}
+            </span>
+          </div>
+          <div className="kimi-ui-card__body">
+            {status === "completed" ? "用户已完成桌面操作" : "请在底部操作桌面后点完成"}
+          </div>
+        </div>
+      );
+    }
     case "ask_user_question": {
       if (isAnsweredAskUserTask(tool)) {
         return (
@@ -271,7 +290,7 @@ export const ToolItem: FC<ToolItemProps> = memo(({
       const isSummarizing =
         tool.messageType === "deep_search" && deepSearchStage === "report";
       const isDeepSearchInline = isSearching || isSummarizing;
-      const isSubAgent = isAgentDispatchTask(tool);
+      const isSubAgent = isSubAgentParentTask(tool);
       const subAgent = isSubAgent ? resolveSubAgentDisplay(tool) : null;
 
       if (isSubAgent && subAgent) {

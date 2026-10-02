@@ -2,10 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
   buildComposerPlanModel,
   findLatestPlanApproval,
+  isPlanApprovalApproved,
   pickPlanApprovalFields,
 } from "./planComposerModel";
 
 describe("planComposerModel", () => {
+  it("treats approved decisions as hidden plan summaries", () => {
+    expect(isPlanApprovalApproved("approved")).toBe(true);
+    expect(isPlanApprovalApproved("decided")).toBe(true);
+    expect(isPlanApprovalApproved("decided", false)).toBe(false);
+    expect(isPlanApprovalApproved("rejected", false)).toBe(false);
+  });
+
   it("picks planContent from nested resultMap", () => {
     const task = {
       messageType: "plan_approval",
@@ -46,11 +54,9 @@ describe("planComposerModel", () => {
     } as unknown as CHAT.Task;
 
     expect(pickPlanApprovalFields(task).planFilePath).toBe(planFilePath);
-    expect(
-      buildComposerPlanModel({
-        taskList: [task],
-      })?.planFilePath
-    ).toBe(planFilePath);
+    expect(buildComposerPlanModel({ taskList: [task] })?.planFilePath).toBe(
+      planFilePath
+    );
   });
 
   it("prefers latest plan_approval with body for composer", () => {

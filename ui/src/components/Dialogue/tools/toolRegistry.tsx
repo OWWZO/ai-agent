@@ -1,5 +1,6 @@
-import { isAgentDispatchTask } from "@/utils/chat/subagent";
+import { isSubAgentParentTask } from "@/utils/chat/subagent";
 import { AskUserToolCall } from "./AskUserToolCall";
+import DesktopControlCard from "../DesktopControlCard";
 import { EditToolCall } from "./EditToolCall";
 import {
   GenericToolCall,
@@ -25,7 +26,7 @@ export type ToolCallViewProps = {
   onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
 };
 
-export type ToolRendererKind = "edit" | "agent" | "askuser" | "generic";
+export type ToolRendererKind = "edit" | "agent" | "askuser" | "desktop" | "generic";
 
 /** 对齐 kimi toolRegistry.resolveToolRenderer */
 export function resolveToolRendererKind(tool: CHAT.Task): ToolRendererKind {
@@ -33,11 +34,14 @@ export function resolveToolRendererKind(tool: CHAT.Task): ToolRendererKind {
   if (name === "edit" || name === "write" || name === "multi_edit") {
     return "edit";
   }
-  if (name === "task" || isAgentDispatchTask(tool)) {
+  if (name === "task" || isSubAgentParentTask(tool)) {
     return "agent";
   }
   if (name === "askuserquestion" || tool.messageType === "ask_user_question") {
     return "askuser";
+  }
+  if (name === "requestdesktopcontrol" || tool.messageType === "desktop_control") {
+    return "desktop";
   }
   return "generic";
 }
@@ -60,6 +64,7 @@ export function ToolCallView(props: ToolCallViewProps) {
   if (kind === "edit") return <EditToolCall {...props} />;
   if (kind === "agent") return <SubAgentToolCall {...props} />;
   if (kind === "askuser") return <AskUserAdapter {...props} />;
+  if (kind === "desktop") return <DesktopControlCard tool={props.tool} />;
   return <GenericToolCall {...props} />;
 }
 

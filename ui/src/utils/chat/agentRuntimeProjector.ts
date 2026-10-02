@@ -5,7 +5,7 @@
 
 import {
   formatSubAgentDuration,
-  isAgentDispatchTask,
+  isSubAgentParentTask,
   isRunInBackgroundAgent,
   resolveSubAgentDisplay,
 } from "./subagent";
@@ -138,7 +138,7 @@ function mapAgentPhase(
 }
 
 export function projectAgentMember(task: CHAT.Task): AgentMember | null {
-  if (!isAgentDispatchTask(task)) {
+  if (!isSubAgentParentTask(task)) {
     return null;
   }
   const display = resolveSubAgentDisplay(task);
@@ -233,6 +233,7 @@ function isToolishTask(task: CHAT.Task): boolean {
     type === "tool_call" ||
     type === "tool_result" ||
     type === "ask_user_question" ||
+    type === "desktop_control" ||
     type === "plan_approval" ||
     type === "browser" ||
     type === "browser_viewport" ||
@@ -331,7 +332,7 @@ export function projectDockTasks(chat: CHAT.ChatItem): DockTaskItem[] {
   ];
 
   for (const task of candidates) {
-    if (!isAgentDispatchTask(task) || !isRunInBackgroundAgent(task)) {
+    if (!isRunInBackgroundAgent(task)) {
       continue;
     }
     const id =

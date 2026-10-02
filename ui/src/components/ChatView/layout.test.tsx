@@ -91,7 +91,9 @@ vi.mock("@/components/ai-elements/conversation", () => ({
 }));
 
 vi.mock("lucide-react", () => ({
+  ExternalLink: () => <span>external</span>,
   FolderOpen: () => <span>folder</span>,
+  Monitor: () => <span>monitor</span>,
   PanelLeftClose: () => <span>left</span>,
   PanelRightClose: () => <span>right</span>,
   PanelRightOpen: () => <span>right-open</span>,
@@ -407,6 +409,68 @@ describe("ChatView layout", () => {
       workspaceLayoutState.rightCollapsed = false;
       workspaceLayoutState.showAction = false;
     }
+  });
+
+  it("keeps desktop actions in chat and places the live preview in the workspace", () => {
+    const desktopUrl = "https://desktop.test/vnc.html?autoconnect=1";
+    const conversation = {
+      id: "conversation-desktop-control",
+      sessionId: "session-desktop-control",
+      title: "桌面控制会话",
+      productType: "task",
+      deepThink: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      chatTitle: "",
+      chatList: [
+        {
+          sessionId: "session-desktop-control",
+          requestId: "request-desktop-control",
+          query: "在桌面中打开页面",
+          files: [],
+          forceStop: false,
+          multiAgent: {},
+          loading: false,
+          tasks: [[
+            {
+              id: "desktop-task-1",
+              messageId: "control-1",
+              messageType: "desktop_control",
+              reason: "请检查桌面页面",
+              resultMap: {
+                controlId: "control-1",
+                streamUrl: desktopUrl,
+                status: "pending",
+              },
+            },
+          ]],
+          response: "",
+        },
+      ],
+      dataChatList: [],
+    } as unknown as CHAT.ConversationHistory;
+
+    const html = renderToStaticMarkup(
+      <ChatView
+        inputInfo={{
+          message: "",
+          deepThink: false,
+        }}
+        conversation={conversation}
+        onConversationChange={vi.fn()}
+      />
+    );
+
+    const actionsIndex = html.indexOf('data-testid="hitl-dock-desktop"');
+    const previewIndex = html.indexOf('data-testid="desktop-preview-panel"');
+    const iframeIndex = html.indexOf('title="E2B 桌面实时预览"');
+
+    expect(actionsIndex).toBeGreaterThanOrEqual(0);
+    expect(previewIndex).toBeGreaterThan(actionsIndex);
+    expect(iframeIndex).toBeGreaterThan(previewIndex);
+    expect(html).toContain("在工作区查看");
+    expect(html).toContain("我已完成");
+    expect(html).toContain(`src="${desktopUrl}"`);
   });
 
   it("read-only chat view hides the input while keeping the transcript shell", () => {

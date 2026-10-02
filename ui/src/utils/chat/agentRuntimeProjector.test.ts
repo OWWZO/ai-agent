@@ -155,6 +155,30 @@ describe("agentRuntimeProjector", () => {
     expect(dock[0].state).toBe("run");
   });
 
+  it("projects resumed SendMessage into dock", () => {
+    const sendTask = {
+      id: "sm-1",
+      messageId: "sm-1",
+      messageType: "tool_result",
+      resultMap: {
+        toolName: "SendMessage",
+        toolCallId: "tc-sm",
+        resumed: true,
+        run_in_background: true,
+        agentId: "agent-1",
+      },
+    } as unknown as CHAT.Task;
+    expect(isRunInBackgroundAgent(sendTask)).toBe(true);
+    const chat = emptyChat({
+      multiAgent: { tasks: [[sendTask as unknown as MESSAGE.Task]] },
+      tasks: [[{ messageType: "task", children: [sendTask] } as CHAT.Task]],
+    });
+    const dock = projectDockTasks(chat);
+    expect(dock).toHaveLength(1);
+    expect(dock[0].id).toBe("tc-sm");
+    expect(dock[0].runInBackground).toBe(true);
+  });
+
   it("combineData folds subagent_progress onto parent Agent card", () => {
     let chat = emptyChat();
     chat = combineData(

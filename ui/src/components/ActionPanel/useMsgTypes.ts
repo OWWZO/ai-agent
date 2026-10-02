@@ -1,5 +1,5 @@
 import { isHTML, isValidJSON } from "@/utils";
-import { isAgentDispatchTask } from "@/utils/chat/subagent";
+import { isSubAgentParentTask } from "@/utils/chat/subagent";
 import {
   buildDeepSearchResultItems,
   resolveDeepSearchStage,
@@ -159,7 +159,7 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
         messageType === "tool_result" &&
         !!toolResultText &&
         isValidJSON(toolResultText) &&
-        !isAgentDispatchTask(taskItem as unknown as CHAT.Task),
+        !isSubAgentParentTask(taskItem as unknown as CHAT.Task),
       isHtml,
       searchList,
       usePpt

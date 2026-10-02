@@ -340,7 +340,7 @@ function getRunQuery(run: ConversationRunSummary | ConversationRunReplay) {
 function getRunSummary(run: ConversationRunSummary | ConversationRunReplay) {
   return isRunReplay(run)
     ? String(run.finalSummaryText || "")
-    : String(run.finalSummaryPreview || "");
+    : String(run.finalSummaryText || run.finalSummaryPreview || "");
 }
 
 function getRunContextUsage(run: ConversationRunSummary | ConversationRunReplay) {

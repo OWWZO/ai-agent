@@ -222,6 +222,10 @@ declare global {
       seq?: number
       status?: string
       answers?: Record<string, string | true>
+      controlId?: string
+      streamUrl?: string
+      holdUntil?: number
+      reason?: string
       toolName?: string
       toolCallId?: string
       toolInvocationId?: string | number

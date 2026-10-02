@@ -201,6 +201,32 @@ describe("conversationHistory hydrate", () => {
     expect(history.chatList[0].conclusion?.result).toBe("这是摘要结论");
   });
 
+  it("hydrates the complete final answer from the summary page", () => {
+    const fullAnswer = `${"中秋最好的团圆是回家（约".repeat(25)}全文末尾`;
+    const history = hydrateConversationFromSummaryPage({
+      sessionId: "session-full-summary-001",
+      title: "完整终答",
+      status: "SUCCESS",
+      deepThink: false,
+      runCount: 1,
+      finishedRunCount: 1,
+      failedRunCount: 0,
+      runs: [
+        {
+          requestId: "req-full-summary-001",
+          status: "SUCCESS",
+          queryPreview: "读取完整终答",
+          finalSummaryPreview: `${fullAnswer.slice(0, 239)}…`,
+          finalSummaryText: fullAnswer,
+          hasReplay: true,
+        },
+      ],
+    });
+
+    expect(history.chatList[0].replayLoaded).toBe(false);
+    expect(resolveTaskSummaryText(history.chatList[0].conclusion)).toBe(fullAnswer);
+  });
+
   it("hydrates ledger run duration for summary and replay shells", () => {
     const detail = {
       sessionId: "session-timing-001",

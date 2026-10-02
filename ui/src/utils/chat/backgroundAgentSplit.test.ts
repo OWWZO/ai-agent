@@ -92,4 +92,63 @@ describe("foreground vs background agent split", () => {
       true
     );
   });
+
+  it("puts resumed SendMessage background children into dock", () => {
+    const sendTask = {
+      id: "tc-sm",
+      messageId: "tc-sm",
+      messageType: "tool_result",
+      resultMap: {
+        toolName: "SendMessage",
+        toolCallId: "tc-sm",
+        status: "running",
+        resumed: true,
+        run_in_background: true,
+        agentId: "agent-done",
+        task_id: "task-2",
+      },
+    } as unknown as CHAT.Task;
+
+    expect(isRunInBackgroundAgent(sendTask)).toBe(true);
+
+    const chat = emptyChat();
+    chat.multiAgent = { tasks: [[sendTask as unknown as MESSAGE.Task]] };
+    chat.tasks = [
+      [
+        {
+          messageType: "task",
+          children: [sendTask],
+        } as CHAT.Task,
+      ],
+    ];
+
+    const dock = projectDockTasks(chat);
+    expect(dock).toHaveLength(1);
+    expect(dock[0].id).toBe("tc-sm");
+    expect(dock[0].kind).toBe("subagent");
+    expect(dock[0].runInBackground).toBe(true);
+  });
+
+  it("keeps inject-only SendMessage out of dock", () => {
+    let chat = emptyChat();
+    chat = combineData(
+      taskEvent("tool_result", {
+        toolName: "SendMessage",
+        toolCallId: "tc-inject",
+        messageId: "tc-inject",
+        status: "success",
+        ok: true,
+        queued: 1,
+        agentId: "agent-live",
+        input: {
+          to: "agent-live",
+          message: "先列目录",
+        },
+      }),
+      chat
+    );
+    handleTaskData(chat, true, chat.multiAgent);
+
+    expect(projectDockTasks(chat)).toHaveLength(0);
+  });
 });

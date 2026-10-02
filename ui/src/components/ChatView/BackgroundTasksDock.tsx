@@ -9,7 +9,7 @@ import {
   projectAgentMemberByToolCallId,
 } from "@/utils/chat/agentRuntimeProjector";
 import {
-  isAgentDispatchTask,
+  isSubAgentParentTask,
   resolveSubAgentDisplay,
 } from "@/utils/chat/subagent";
 import { findBestAgentTask } from "@/utils/chat/taskIdentity";
@@ -38,7 +38,7 @@ export function findLatestRunningAgentTask(
   const visit = (task?: CHAT.Task) => {
     if (!task) return;
     if (
-      isAgentDispatchTask(task) &&
+      isSubAgentParentTask(task) &&
       resolveSubAgentDisplay(task).status === "running"
     ) {
       latest = task;

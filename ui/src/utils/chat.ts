@@ -54,7 +54,7 @@ import { ensureOriginalTree, mergeUiPatchIntoTasks } from "@/utils/chat/genuiSta
 import {
   AGENT_DISPATCH_TOOL_NAME,
   buildSubAgentAction,
-  isAgentDispatchTask,
+  isSubAgentParentTask,
   resolveParentToolUseId,
 } from "./chat/subagent";
 import type { SubAgentProgressKind } from "@/types/agentRuntime";
@@ -346,6 +346,7 @@ function handleTaskMessageByType(
       handleToolCallMessage(eventData, currentChat, taskIndex, toolIndex);
       break;
     case "ask_user_question":
+    case "desktop_control":
       handleNonStreamingMessage(eventData, currentChat, taskIndex);
       break;
     case "plan_mode_entered":
@@ -616,7 +617,7 @@ function findSubAgentProgressTarget(
       const toolName = asTextField(
         candidate.toolResult?.toolName || candidate.resultMap?.toolName
       );
-      const isAgent = isAgentDispatchTask(candidate as CHAT.Task);
+      const isAgent = isSubAgentParentTask(candidate as CHAT.Task);
       if (!isAgent && toolName && toolName !== AGENT_DISPATCH_TOOL_NAME) {
         continue;
       }
@@ -634,7 +635,7 @@ function findSubAgentProgressTarget(
     candidates,
     parentToolUseId,
     (item) => item.task as CHAT.Task,
-    (item) => isAgentDispatchTask(item.task as CHAT.Task)
+    (item) => isSubAgentParentTask(item.task as CHAT.Task)
   );
   return best ? { group: best.group, index: best.index } : undefined;
 }
@@ -1707,7 +1708,7 @@ function handleNonStreamingMessage(
         (nextTask as CHAT.Task).children = previous.children;
       }
       // 保留 subagent_progress 投影字段，避免终态覆盖丢掉直播进度
-      if (previous?.resultMap && isAgentDispatchTask(previous)) {
+      if (previous?.resultMap && isSubAgentParentTask(previous)) {
         const prevMap = previous.resultMap;
         const nextMap = (nextTask.resultMap || {}) as MESSAGE.ResultMap;
         nextTask.resultMap = {
@@ -1894,6 +1895,7 @@ export const handleTaskData = (
     "tool_call",
     "tool_result",
     "ask_user_question",
+    "desktop_control",
     "plan_approval",
     "session_tasks",
     "user_brief",
@@ -1969,7 +1971,7 @@ export const handleTaskData = (
       });
 
       for (const item of processedInfo) {
-        if (isAgentDispatchTask(item)) {
+        if (isSubAgentParentTask(item)) {
           registerAgentParentKeys(
             agentParentByToolCallId,
             pendingByParentId,
@@ -2100,6 +2102,7 @@ export const buildAction = (task: CHAT.Task) => {
     TOOL_CALL: "tool_call",
     TOOL_RESULT: "tool_result",
     ASK_USER_QUESTION: "ask_user_question",
+    DESKTOP_CONTROL: "desktop_control",
     PLAN_APPROVAL: "plan_approval",
     SESSION_TASKS: "session_tasks",
     CODE: "code",
@@ -2133,6 +2136,13 @@ export const buildAction = (task: CHAT.Task) => {
         action: "等待你的回答",
         tool: "AskUserQuestion",
         name: "选择题",
+      };
+
+    case MESSAGE_TYPES.DESKTOP_CONTROL:
+      return {
+        action: "等待你操作桌面",
+        tool: "RequestDesktopControl",
+        name: "桌面控制",
       };
 
     case MESSAGE_TYPES.PLAN_APPROVAL:
@@ -2258,7 +2268,7 @@ export const buildAction = (task: CHAT.Task) => {
       };
     }
 
-    if (toolName === AGENT_DISPATCH_TOOL_NAME || isAgentDispatchTask(task)) {
+    if (toolName === AGENT_DISPATCH_TOOL_NAME || isSubAgentParentTask(task)) {
       return buildSubAgentAction(task);
     }
 
@@ -2298,7 +2308,7 @@ export const buildAction = (task: CHAT.Task) => {
    * 工具下发阶段优先展示目标文件/路径，让用户立刻知道当前卡在“调用哪个工具做什么”。
    */
   function handleToolCallTask(task: CHAT.Task) {
-    if (isAgentDispatchTask(task) || task?.resultMap?.toolName === AGENT_DISPATCH_TOOL_NAME) {
+    if (isSubAgentParentTask(task) || task?.resultMap?.toolName === AGENT_DISPATCH_TOOL_NAME) {
       return buildSubAgentAction(task);
     }
     return {
@@ -2348,6 +2358,7 @@ export enum IconType {
   TOOL_CALL = 'tool_call',
   TOOL_RESULT = 'tool_result',
   ASK_USER_QUESTION = 'ask_user_question',
+  DESKTOP_CONTROL = 'desktop_control',
   PLAN_APPROVAL = 'plan_approval',
   SESSION_TASKS = 'session_tasks',
   BROWSER = 'browser',
@@ -2367,6 +2378,7 @@ const ICON_MAP: Record<IconType, string> = {
   [IconType.TOOL_CALL]: 'icon-tiaoshi',
   [IconType.TOOL_RESULT]: 'icon-tiaoshi',
   [IconType.ASK_USER_QUESTION]: 'icon-juli',
+  [IconType.DESKTOP_CONTROL]: 'icon-tiaoshi',
   [IconType.PLAN_APPROVAL]: 'icon-renwu',
   [IconType.SESSION_TASKS]: 'icon-renwu',
   [IconType.BROWSER]: 'icon-sousuo',

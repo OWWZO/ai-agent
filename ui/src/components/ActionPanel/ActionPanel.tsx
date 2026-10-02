@@ -153,6 +153,34 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
             </div>
           </ContentWrapper>
         );
+      case "desktop_control": {
+        const resultMap = (panelView.tool.resultMap || {}) as Record<string, unknown>;
+        const nested = (resultMap.resultMap || resultMap) as Record<string, unknown>;
+        const streamUrl = String(nested.streamUrl || resultMap.streamUrl || "");
+        const status = String(nested.status || resultMap.status || "pending");
+        return (
+          <ContentWrapper key="desktop_control">
+            <div className={classNames("flex h-full flex-col", !noPadding && "px-1 py-1")}>
+              {streamUrl && status === "pending" ? (
+                <iframe
+                  title="用户桌面"
+                  src={streamUrl}
+                  className="min-h-0 flex-1 w-full rounded-[8px] border border-[var(--color-line)] bg-black"
+                />
+              ) : (
+                <div className="kimi-ui-card kimi-qcard">
+                  <div className="kimi-ui-card__head">
+                    <span className="kimi-qcard-title">桌面控制</span>
+                  </div>
+                  <div className="kimi-ui-card__body">
+                    {status === "completed" ? "用户已完成桌面操作" : "请在底部完成桌面操作"}
+                  </div>
+                </div>
+              )}
+            </div>
+          </ContentWrapper>
+        );
+      }
       case "search":
         return (
           <ContentWrapper key="search">

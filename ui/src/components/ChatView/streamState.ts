@@ -4,7 +4,7 @@ import {
   shouldRenderDeepSearchWorkspace,
 } from "@/utils/deepSearch";
 import { buildAction } from "@/utils/chat";
-import { isAgentDispatchTask } from "@/utils/chat/subagent";
+import { isSubAgentParentTask } from "@/utils/chat/subagent";
 import {
   resolveTaskResultMap,
   resolveTaskToolResult,
@@ -126,6 +126,7 @@ const WORKSPACE_HIDDEN_MESSAGE_TYPES = new Set([
  * 只有真正“值得抢焦点”的产物才自动打开右侧工作区。
  * tool_call / 纯 tool_result 不自动抢焦点，但时间线点击后仍可查看结果。
  * ask_user_question / plan_approval 交互在底部 Dock，不抢右侧工作区。
+ * desktop_control 需要右侧 iframe 展示桌面。
  */
 const WORKSPACE_ATTENTION_MESSAGE_TYPES = new Set([
   "file",
@@ -137,6 +138,7 @@ const WORKSPACE_ATTENTION_MESSAGE_TYPES = new Set([
   "knowledge",
   "data_analysis",
   "deep_search",
+  "desktop_control",
 ]);
 
 const CRAFTING_MESSAGE_TYPES = new Set([
@@ -289,7 +291,7 @@ export function isStructuredDataOnlyTask(
   }
 
   // Agent 派发结果：右侧不渲染 JSON 观察值，禁止点开空白面板。
-  if (isAgentDispatchTask(task as CHAT.Task)) {
+  if (isSubAgentParentTask(task as CHAT.Task)) {
     return true;
   }
 
@@ -444,7 +446,11 @@ export function isTimelineToolActive(tool?: CHAT.Task) {
   ) {
     return false;
   }
-  if (tool.messageType === "ask_user_question" || tool.messageType === "plan_approval") {
+  if (
+    tool.messageType === "ask_user_question" ||
+    tool.messageType === "desktop_control" ||
+    tool.messageType === "plan_approval"
+  ) {
     return !isTaskFinal(tool);
   }
   if (tool.messageType === "tool_thought") {
@@ -676,8 +682,10 @@ export function isHitlYieldEvent(eventData?: MESSAGE.EventData | null): boolean 
   const nestedType = eventData?.resultMap?.messageType;
   return (
     type === "ask_user_question" ||
+    type === "desktop_control" ||
     type === "plan_approval" ||
     nestedType === "ask_user_question" ||
+    nestedType === "desktop_control" ||
     nestedType === "plan_approval"
   );
 }
@@ -699,6 +707,7 @@ export function hasPendingAskUserQuestion(chat?: CHAT.ChatItem | null): boolean 
     for (const tool of group || []) {
       if (
         tool?.messageType !== "ask_user_question" &&
+        tool?.messageType !== "desktop_control" &&
         tool?.messageType !== "plan_approval"
       ) {
         continue;
@@ -731,6 +740,49 @@ export function hasPendingAskUserQuestion(chat?: CHAT.ChatItem | null): boolean 
     }
   }
   return false;
+}
+
+export function markDesktopControlCompleted(
+  chat: CHAT.ChatItem,
+  controlId?: string
+): CHAT.ChatItem {
+  const tasks = (chat.multiAgent?.tasks || []).map((group) =>
+    (group || []).map((tool) => {
+      if (tool?.messageType !== "desktop_control") {
+        return tool;
+      }
+      const prevMap = (tool.resultMap || {}) as Record<string, unknown>;
+      const nestedMap = (prevMap.resultMap as Record<string, unknown> | undefined) || {};
+      const currentControlId = String(
+        nestedMap.controlId || prevMap.controlId || tool.messageId || ""
+      );
+      if (controlId && currentControlId && currentControlId !== controlId) {
+        return tool;
+      }
+      const nested = {
+        ...nestedMap,
+        status: "completed",
+      };
+      return {
+        ...tool,
+        finish: true,
+        isFinal: true,
+        resultMap: {
+          ...prevMap,
+          status: "completed",
+          isFinal: true,
+          resultMap: nested,
+        },
+      } as CHAT.Task;
+    })
+  );
+  return {
+    ...chat,
+    multiAgent: {
+      ...(chat.multiAgent || { tasks: [] }),
+      tasks: tasks as unknown as MESSAGE.Task[][],
+    },
+  };
 }
 
 /** 用户已提交答案后，把本地卡片标成 answered，避免 UI 仍停在等待态 */

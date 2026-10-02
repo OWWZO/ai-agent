@@ -4,6 +4,8 @@ import {
   buildSubAgentMarkdown,
   formatSubAgentDuration,
   isAgentDispatchTask,
+  isSendMessageResumeTask,
+  isSubAgentParentTask,
   parseAgentObservation,
   resolveSubAgentDisplay,
 } from "./subagent";
@@ -76,6 +78,35 @@ describe("subagent display", () => {
     expect(display.prompt).toBe("抓取主流媒体评论并总结");
     expect(display.description).toBe("调研主流媒体评论抓取");
     expect(display.status).toBe("running");
+  });
+
+  it("treats resumed SendMessage as a subagent parent, not inject-only", () => {
+    const resumed = {
+      messageType: "tool_result",
+      resultMap: {
+        toolName: "SendMessage",
+        toolCallId: "sm-1",
+        resumed: true,
+        run_in_background: true,
+        agentId: "agent-1",
+      },
+    } as unknown as CHAT.Task;
+    const injected = {
+      messageType: "tool_result",
+      resultMap: {
+        toolName: "SendMessage",
+        toolCallId: "sm-inject",
+        ok: true,
+        queued: 1,
+        agentId: "agent-1",
+      },
+    } as unknown as CHAT.Task;
+
+    expect(isSendMessageResumeTask(resumed)).toBe(true);
+    expect(isSubAgentParentTask(resumed)).toBe(true);
+    expect(isAgentDispatchTask(resumed)).toBe(false);
+    expect(isSendMessageResumeTask(injected)).toBe(false);
+    expect(isSubAgentParentTask(injected)).toBe(false);
   });
 
   it("buildAction text for running and completed", () => {

@@ -58,6 +58,7 @@ export interface ConversationRunSummary {
   status: string;
   queryPreview?: string;
   finalSummaryPreview?: string;
+  finalSummaryText?: string;
   entryAgent?: string;
   llmCallCount?: number;
   toolCallCount?: number;

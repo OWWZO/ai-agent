@@ -1865,6 +1865,63 @@ describe("chat file task title", () => {
     expect(timelineChildren[0].children?.[0].resultMap?.toolName).toBe("workspace_grep");
   });
 
+  it("SendMessage 续跑应作为父卡挂上子工具", () => {
+    const currentChat = {
+      sessionId: "session-sm-resume-1",
+      requestId: "req-sm-resume-1",
+      query: "继续",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(createToolCallEvent({
+      messageId: "sm-resume-1",
+      taskId: "task-sm-resume-1",
+      toolCallId: "sm-resume-call",
+      toolName: "SendMessage",
+      input: {
+        to: "agent-done",
+        message: "继续写报告",
+      },
+      status: "running",
+    }), currentChat);
+
+    const smTask = currentChat.multiAgent.tasks[0]?.[0] as CHAT.Task;
+    if (smTask?.resultMap) {
+      smTask.resultMap.resumed = true;
+      smTask.resultMap.run_in_background = true;
+      smTask.resultMap.agentId = "agent-done";
+    }
+
+    combineData(createToolCallEvent({
+      messageId: "child-grep-sm-1",
+      taskId: "task-sm-resume-1",
+      toolCallId: "child-grep-sm-call",
+      toolName: "workspace_grep",
+      input: { pattern: "Controller" },
+      status: "running",
+      parentToolUseId: "sm-resume-call",
+    }), currentChat);
+
+    const { taskList, currentChat: renderedChat } = handleTaskData(
+      currentChat,
+      false,
+      currentChat.multiAgent
+    );
+
+    expect(taskList).toHaveLength(1);
+    expect(taskList[0].resultMap?.toolName || taskList[0].toolResult?.toolName).toBe("SendMessage");
+    const timelineChildren = renderedChat.tasks[0]?.[0]?.children || [];
+    expect(timelineChildren).toHaveLength(1);
+    expect(timelineChildren[0].resultMap?.toolName).toBe("SendMessage");
+    expect(timelineChildren[0].children?.length).toBe(1);
+    expect(timelineChildren[0].children?.[0].resultMap?.toolName).toBe("workspace_grep");
+  });
+
   it("实时双层 resultMap 的 Agent tool_call 应识别父卡并挂上子工具与 prompt", () => {
     const currentChat = {
       sessionId: "session-subagent-live-wrap-1",

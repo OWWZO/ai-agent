@@ -10,7 +10,10 @@ import {
   planApprovalApi,
 } from "@/services/planApproval";
 import MarkdownRenderer from "@/components/ActionPanel/MarkdownRenderer";
-import { pickPlanApprovalFields } from "@/components/ChatView/planComposerModel";
+import {
+  isPlanApprovalApproved,
+  pickPlanApprovalFields,
+} from "@/components/ChatView/planComposerModel";
 import { cn } from "@/lib/utils";
 
 type PlanApprovalCardProps = {
@@ -182,6 +185,10 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
     return () => document.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitted, busy, minimized, feedbackOpen, approvalId, editedPlan, feedback]);
+
+  if (decision === "approved" || isPlanApprovalApproved(status, approved)) {
+    return null;
+  }
 
   if (!approvalId) {
     return (

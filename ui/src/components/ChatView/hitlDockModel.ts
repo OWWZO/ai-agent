@@ -7,7 +7,7 @@ import {
   pickPlanApprovalFields,
 } from "./planComposerModel";
 
-export type HitlDockSlot = "ask" | "approval" | "composer";
+export type HitlDockSlot = "ask" | "approval" | "desktop" | "composer";
 
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null
@@ -59,10 +59,13 @@ function readHitlId(task: CHAT.Task): string {
   return String(
     nested.questionId ||
       nested.approvalId ||
+      nested.controlId ||
       resultMap.questionId ||
       resultMap.approvalId ||
+      resultMap.controlId ||
       taskAny.questionId ||
       taskAny.approvalId ||
+      taskAny.controlId ||
       task.messageId ||
       task.id ||
       ""
@@ -79,6 +82,7 @@ function flattenCandidateTasks(
     if (!task) return;
     if (
       task.messageType === "ask_user_question" ||
+      task.messageType === "desktop_control" ||
       task.messageType === "plan_approval"
     ) {
       const id = readHitlId(task);
@@ -140,6 +144,21 @@ export function findLatestPendingAskUser(
   return undefined;
 }
 
+export function findLatestPendingDesktopControl(
+  chat?: CHAT.ChatItem | null,
+  taskList?: CHAT.Task[]
+): CHAT.Task | undefined {
+  const tasks = flattenCandidateTasks(chat, taskList);
+  for (let i = tasks.length - 1; i >= 0; i--) {
+    const task = tasks[i];
+    if (task?.messageType !== "desktop_control") continue;
+    if (isEffectivelyPending(task)) {
+      return task;
+    }
+  }
+  return undefined;
+}
+
 /** 最新未决 plan_approval（含正文优先，再回退任意 pending） */
 export function findLatestPendingPlanApproval(
   chat?: CHAT.ChatItem | null,
@@ -184,6 +203,9 @@ export function resolveHitlDockSlot(
   chat?: CHAT.ChatItem | null,
   taskList?: CHAT.Task[]
 ): HitlDockSlot {
+  if (findLatestPendingDesktopControl(chat, taskList)) {
+    return "desktop";
+  }
   if (findLatestPendingAskUser(chat, taskList)) {
     return "ask";
   }

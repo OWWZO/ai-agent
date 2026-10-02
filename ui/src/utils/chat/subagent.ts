@@ -10,6 +10,7 @@ import {
  */
 
 export const AGENT_DISPATCH_TOOL_NAME = "Agent";
+export const SEND_MESSAGE_TOOL_NAME = "SendMessage";
 
 export type SubAgentDisplay = {
   isAgent: boolean;
@@ -104,11 +105,15 @@ export function isAgentDispatchTask(task?: Partial<CHAT.Task> | Partial<MESSAGE.
   return false;
 }
 
-/** 是否后台子 Agent（Dock Tasks；前台仍走内联 Agent 卡） */
-export function isRunInBackgroundAgent(
+/** Agent 卡，或 SendMessage 后台续跑卡：可挂子工具 / 进度 */
+export function isSubAgentParentTask(
   task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>
 ) {
-  if (!task || !isAgentDispatchTask(task)) {
+  return isAgentDispatchTask(task) || isSendMessageResumeTask(task);
+}
+
+function hasBackgroundFlag(task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>) {
+  if (!task) {
     return false;
   }
   const input = pickInput(task) as Record<string, unknown>;
@@ -140,6 +145,70 @@ export function isRunInBackgroundAgent(
     // ignore
   }
   return false;
+}
+
+function hasResumeFlag(task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>) {
+  if (!task) {
+    return false;
+  }
+  const resultMap = resolveTaskResultMap(task) as Record<string, unknown>;
+  const nested = isRecord(resultMap.resultMap)
+    ? (resultMap.resultMap as Record<string, unknown>)
+    : {};
+  if (resultMap.resumed === true || nested.resumed === true) {
+    return true;
+  }
+  const observation = asText(resolveTaskToolResultText(task));
+  if (/["']?resumed["']?\s*[:=]\s*true/i.test(observation)) {
+    return true;
+  }
+  try {
+    const parsed = JSON.parse(observation) as Record<string, unknown>;
+    if (isRecord(parsed) && parsed.resumed === true) {
+      return true;
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
+function hasNestedSubAgentId(task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>) {
+  if (!task) {
+    return false;
+  }
+  const resultMap = resolveTaskResultMap(task) as Record<string, unknown>;
+  const nested = isRecord(resultMap.resultMap)
+    ? (resultMap.resultMap as Record<string, unknown>)
+    : {};
+  return Boolean(asText(resultMap.subAgentId) || asText(nested.subAgentId));
+}
+
+export function isSendMessageTool(task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>) {
+  return resolveToolName(task) === SEND_MESSAGE_TOOL_NAME;
+}
+
+/** SendMessage 后台续跑：新 task_id，挂 Dock */
+export function isSendMessageResumeTask(
+  task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>
+) {
+  if (!isSendMessageTool(task)) {
+    return false;
+  }
+  return hasResumeFlag(task) || hasBackgroundFlag(task) || hasNestedSubAgentId(task);
+}
+
+/** 是否后台子 Agent（Dock Tasks；前台仍走内联 Agent 卡） */
+export function isRunInBackgroundAgent(
+  task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>
+) {
+  if (!task) {
+    return false;
+  }
+  if (isAgentDispatchTask(task)) {
+    return hasBackgroundFlag(task);
+  }
+  return isSendMessageResumeTask(task);
 }
 
 /** 子 Agent 工具事件上的父 Agent tool_use id */
@@ -296,7 +365,7 @@ export function resolveSubAgentDisplay(
       : undefined;
 
   return {
-    isAgent: isAgentDispatchTask(task),
+    isAgent: isSubAgentParentTask(task),
     description,
     subagentType: parsed.agentType || subagentType,
     prompt,

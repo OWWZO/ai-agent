@@ -31,7 +31,7 @@ import MarkdownRenderer from "@/components/ActionPanel/MarkdownRenderer";
 import { resolveTaskSummaryText } from "./contentHelpers";
 import { ThinkingBlock } from "./ThinkingBlock";
 import {
-  isAgentDispatchTask,
+  isSubAgentParentTask,
   isRunInBackgroundAgent,
 } from "@/utils/chat/subagent";
 import {
@@ -64,6 +64,7 @@ type AgentStepTimelineProps = {
 
 const RICH_INLINE_TYPES = new Set([
   "ask_user_question",
+  "desktop_control",
   "plan_approval",
   "session_tasks",
   "ui_tree",
@@ -155,7 +156,7 @@ function isAgentStep(step: ProcessStepRow): boolean {
   return (
     step.kind === "agent" ||
     Boolean(step.tool.children?.length) ||
-    isAgentDispatchTask(step.tool)
+    isSubAgentParentTask(step.tool)
   );
 }
 

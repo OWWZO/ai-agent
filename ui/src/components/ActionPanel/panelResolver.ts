@@ -85,9 +85,15 @@ type AskUserQuestionPanelView = {
   tool: PanelItemType;
 };
 
+type DesktopControlPanelView = {
+  type: "desktop_control";
+  tool: PanelItemType;
+};
+
 export type PanelView =
   | EmptyPanelView
   | AskUserQuestionPanelView
+  | DesktopControlPanelView
   | SearchPanelView
   | DeepSearchChapterPanelView
   | HtmlPanelView
@@ -149,6 +155,13 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
   if (taskItem.messageType === "ask_user_question") {
     return {
       type: "ask_user_question",
+      tool: taskItem,
+    };
+  }
+
+  if (taskItem.messageType === "desktop_control") {
+    return {
+      type: "desktop_control",
       tool: taskItem,
     };
   }
