@@ -186,22 +186,48 @@ def scan_local_files(
 
 def mkdir_remote(sandbox: Any, remote_root: str) -> None:
     commands = getattr(sandbox, "commands", None)
-    if commands is not None and callable(getattr(commands, "run", None)):
-        commands.run(
-            f"mkdir -p {shlex.quote(remote_root)}/skills "
-            f"{shlex.quote(remote_root)}/input "
-            f"{shlex.quote(remote_root)}/output",
-            timeout=30,
-        )
-        return
-    sandbox.run_code(
-        "from pathlib import Path\n"
-        f"Path({remote_root!r}).mkdir(parents=True, exist_ok=True)\n"
-        f"Path({remote_root!r}, 'skills').mkdir(parents=True, exist_ok=True)\n"
-        f"Path({remote_root!r}, 'input').mkdir(parents=True, exist_ok=True)\n"
-        f"Path({remote_root!r}, 'output').mkdir(parents=True, exist_ok=True)\n",
+    run = getattr(commands, "run", None) if commands is not None else None
+    if not callable(run):
+        raise RuntimeError("E2B sandbox does not support commands.run")
+    result = run(
+        f"mkdir -p {shlex.quote(remote_root)}/skills "
+        f"{shlex.quote(remote_root)}/input "
+        f"{shlex.quote(remote_root)}/output",
         timeout=30,
     )
+    exit_code = getattr(result, "exit_code", None)
+    if exit_code not in (None, 0) or getattr(result, "error", None):
+        detail = " ".join(
+            part.strip()
+            for part in (
+                str(getattr(result, "stdout", "") or ""),
+                str(getattr(result, "stderr", "") or ""),
+            )
+            if part and part.strip()
+        )
+        raise RuntimeError(detail or f"E2B mkdir failed with exit code {exit_code}")
+
+
+def run_remote_python(sandbox: Any, script: str, *, timeout: int = 60) -> str:
+    commands = getattr(sandbox, "commands", None)
+    run = getattr(commands, "run", None) if commands is not None else None
+    if not callable(run):
+        raise RuntimeError("E2B sandbox does not support commands.run")
+    result = run(f"python -c {shlex.quote(script)}", timeout=timeout)
+    exit_code = getattr(result, "exit_code", None)
+    if exit_code not in (None, 0) or getattr(result, "error", None):
+        detail = " ".join(
+            part.strip()
+            for part in (
+                str(getattr(result, "stdout", "") or ""),
+                str(getattr(result, "stderr", "") or ""),
+            )
+            if part and part.strip()
+        )
+        raise RuntimeError(
+            detail or f"E2B Python CLI failed with exit code {exit_code}"
+        )
+    return str(getattr(result, "stdout", "") or "")
 
 
 def write_files(sandbox: Any, files: list[dict[str, Any]], *, label: str) -> None:
@@ -334,8 +360,6 @@ def snapshot_remote_files(
     *,
     skip_top: Iterable[str] = ("input",),
 ) -> Dict[str, Tuple[int, int]]:
-    if not callable(getattr(sandbox, "run_code", None)):
-        return {}
     skip = list(skip_top)
     script = f"""
 import json
@@ -361,8 +385,7 @@ if root.is_dir():
         files[rel.as_posix()] = [int(st.st_size), int(st.st_mtime_ns)]
 print('__SESSION_SNAPSHOT__' + json.dumps(files, ensure_ascii=True))
 """
-    execution = sandbox.run_code(script, timeout=60)
-    stdout = _extract_stdout(execution)
+    stdout = run_remote_python(sandbox, script, timeout=60)
     for line in reversed(stdout.splitlines()):
         if "__SESSION_SNAPSHOT__" in line:
             raw = json.loads(line.split("__SESSION_SNAPSHOT__", 1)[1].strip() or "{}")
@@ -375,7 +398,7 @@ print('__SESSION_SNAPSHOT__' + json.dumps(files, ensure_ascii=True))
         if "__SANDBOX_SNAPSHOT__" in line:
             raw = json.loads(line.split("__SANDBOX_SNAPSHOT__", 1)[1].strip() or "{}")
             return {str(k): (int(v[0]), int(v[1])) for k, v in raw.items()}
-    return {}
+    raise RuntimeError("E2B workspace snapshot output was missing its marker")
 
 
 def download_changed_files(
@@ -413,13 +436,3 @@ def download_changed_files(
         except Exception as exc:
             logger.warning("[e2b_sync] download {} failed: {}", remote_path, exc)
     return changed_rels
-
-
-def _extract_stdout(execution: Any) -> str:
-    logs = getattr(execution, "logs", None)
-    if logs is None:
-        return str(getattr(execution, "text", "") or "")
-    stdout_parts = getattr(logs, "stdout", None) or []
-    if isinstance(stdout_parts, str):
-        return stdout_parts
-    return "".join(str(x) for x in stdout_parts)

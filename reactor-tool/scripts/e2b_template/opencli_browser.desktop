@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Chromium (OpenCLI)
+Comment=Chromium browser controlled through OpenCLI
+Exec=/usr/local/bin/reactor-opencli-browser %U
+Icon=web-browser
+Terminal=false
+Type=Application
+Categories=Network;WebBrowser;
+MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;

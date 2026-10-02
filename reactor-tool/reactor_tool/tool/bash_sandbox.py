@@ -31,6 +31,7 @@ from reactor_tool.tool.e2b_session_sync import (
     mkdir_remote,
     push_workspace,
     record_uploaded,
+    run_remote_python,
     session_remote_root,
     should_skip_rel as _should_skip_rel,
     snapshot_remote_files,
@@ -662,85 +663,28 @@ def _e2b_run_command(
     timeout_sec: int,
 ) -> Tuple[Optional[int], str, str, bool]:
     commands = getattr(sandbox, "commands", None)
-    if commands is not None and callable(getattr(commands, "run", None)):
-        try:
-            result = commands.run(
-                command,
-                cwd=remote_root,
-                timeout=max(1, int(timeout_sec)),
-            )
-            exit_code = getattr(result, "exit_code", None)
-            if exit_code is None:
-                exit_code = getattr(result, "error", None) and 1 or 0
-            stdout = str(getattr(result, "stdout", "") or "")
-            stderr = str(getattr(result, "stderr", "") or "")
-            return int(exit_code) if exit_code is not None else 0, stdout, stderr, False
-        except Exception as exc:
-            message = str(exc).lower()
-            if "timeout" in message or "timed out" in message:
-                return None, "", f"execution timed out after {timeout_sec}s", True
-            logger.warning(
-                "[bash_sandbox] commands.run failed, fallback run_code: {}", exc
-            )
-
-    script = f"""
-import subprocess
-cmd = {command!r}
-try:
-    r = subprocess.run(
-        ["bash", "-lc", cmd],
-        cwd={remote_root!r},
-        capture_output=True,
-        text=True,
-        timeout={max(1, int(timeout_sec))},
-    )
-    print("__BASH_EXIT__" + str(r.returncode))
-    print("__BASH_STDOUT_BEGIN__")
-    print(r.stdout or "", end="")
-    print("__BASH_STDOUT_END__")
-    print("__BASH_STDERR_BEGIN__")
-    print(r.stderr or "", end="")
-    print("__BASH_STDERR_END__")
-except subprocess.TimeoutExpired:
-    print("__BASH_EXIT__timeout")
-    print("__BASH_STDOUT_BEGIN__")
-    print("__BASH_STDOUT_END__")
-    print("__BASH_STDERR_BEGIN__")
-    print("execution timed out after {timeout_sec}s")
-    print("__BASH_STDERR_END__")
-"""
+    run = getattr(commands, "run", None) if commands is not None else None
+    if not callable(run):
+        return 1, "", "E2B sandbox does not support commands.run", False
     try:
-        execution = sandbox.run_code(script, timeout=max(5, int(timeout_sec) + 10))
+        result = run(
+            command,
+            envs={"DISPLAY": ":0"},
+            cwd=remote_root,
+            timeout=max(1, int(timeout_sec)),
+        )
     except Exception as exc:
         message = str(exc).lower()
         if "timeout" in message or "timed out" in message:
             return None, "", f"execution timed out after {timeout_sec}s", True
+        logger.warning("[bash_sandbox] commands.run failed: {}", exc)
         return 1, "", str(exc), False
-
-    stdout_log, stderr_log = _extract_e2b_logs(execution)
-    combined = (stdout_log or "") + "\n" + (stderr_log or "")
-    exit_code: Optional[int] = 1
-    timed_out = False
-    out = ""
-    err = ""
-    if "__BASH_EXIT__timeout" in combined:
-        timed_out = True
-        exit_code = None
-        err = f"execution timed out after {timeout_sec}s"
-    else:
-        for line in combined.splitlines():
-            if line.startswith("__BASH_EXIT__"):
-                raw = line[len("__BASH_EXIT__") :].strip()
-                try:
-                    exit_code = int(raw)
-                except ValueError:
-                    exit_code = 1
-                break
-        out = _extract_between(combined, "__BASH_STDOUT_BEGIN__", "__BASH_STDOUT_END__")
-        err = _extract_between(combined, "__BASH_STDERR_BEGIN__", "__BASH_STDERR_END__")
-        if not out and not err and exit_code != 0:
-            err = combined or "bash failed in e2b"
-    return exit_code, out, err, timed_out
+    exit_code = getattr(result, "exit_code", None)
+    if exit_code is None:
+        exit_code = getattr(result, "error", None) and 1 or 0
+    stdout = str(getattr(result, "stdout", "") or "")
+    stderr = str(getattr(result, "stderr", "") or "")
+    return int(exit_code) if exit_code is not None else 0, stdout, stderr, False
 
 
 def _e2b_incremental_sync_skills(
@@ -782,12 +726,11 @@ if root.is_dir():
 print("__SKILLS_META__" + json.dumps(files, ensure_ascii=True))
 """
     try:
-        execution = sandbox.run_code(list_script, timeout=60)
+        stdout = run_remote_python(sandbox, list_script, timeout=60)
     except Exception as exc:
         logger.warning("[bash_sandbox] e2b list skills failed: {}", exc)
         return []
 
-    stdout, _ = _extract_e2b_logs(execution)
     remote_files: list[dict[str, Any]] = []
     for line in reversed((stdout or "").splitlines()):
         if "__SKILLS_META__" in line:
@@ -857,34 +800,6 @@ print("__SKILLS_META__" + json.dumps(files, ensure_ascii=True))
         synced,
     )
     return synced
-
-
-def _extract_e2b_logs(execution: Any) -> Tuple[str, str]:
-    logs = getattr(execution, "logs", None)
-    if logs is None:
-        return str(getattr(execution, "text", "") or ""), ""
-    stdout_parts = getattr(logs, "stdout", None) or []
-    stderr_parts = getattr(logs, "stderr", None) or []
-    if isinstance(stdout_parts, str):
-        stdout = stdout_parts
-    else:
-        stdout = "".join(str(x) for x in stdout_parts)
-    if isinstance(stderr_parts, str):
-        stderr = stderr_parts
-    else:
-        stderr = "".join(str(x) for x in stderr_parts)
-    return stdout, stderr
-
-
-def _extract_between(text: str, begin: str, end: str) -> str:
-    if begin not in text or end not in text:
-        return ""
-    start = text.index(begin) + len(begin)
-    stop = text.index(end, start)
-    chunk = text[start:stop]
-    if chunk.startswith("\n"):
-        chunk = chunk[1:]
-    return chunk
 
 
 def _decode_and_truncate(raw: Optional[bytes], max_chars: int) -> Tuple[str, bool]:

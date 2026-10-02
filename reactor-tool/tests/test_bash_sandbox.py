@@ -41,11 +41,16 @@ class _FakeFiles:
 
 class _FakeCommands:
     def __init__(self):
-        self.calls: list[tuple[str, str | None, int | None]] = []
+        self.calls: list[tuple[str, str | None, int | None, dict | None]] = []
 
-    def run(self, command, cwd=None, timeout=None):
-        self.calls.append((command, cwd, timeout))
-        return SimpleNamespace(exit_code=0, stdout="ok\n", stderr="")
+    def run(self, command, cwd=None, timeout=None, envs=None, user=None):
+        self.calls.append((command, cwd, timeout, envs))
+        stdout = "ok\n"
+        if "__SESSION_SNAPSHOT__" in command:
+            stdout = "__SESSION_SNAPSHOT__{}\n"
+        elif "__SKILLS_META__" in command:
+            stdout = "__SKILLS_META__[]\n"
+        return SimpleNamespace(exit_code=0, stdout=stdout, stderr="")
 
 
 class _FakeSandbox:
@@ -53,11 +58,13 @@ class _FakeSandbox:
         self.sandbox_id = sandbox_id
         self.files = _FakeFiles()
         self.commands = _FakeCommands()
+        self.run_code_calls = 0
         self.pause_calls: list[bool] = []
         self.kill_calls = 0
         self.timeout_calls: list[int] = []
 
     def run_code(self, script, timeout=None):
+        self.run_code_calls += 1
         return SimpleNamespace(
             logs=SimpleNamespace(stdout=[], stderr=[]), text="", error=None
         )
@@ -427,6 +434,70 @@ def test_e2b_reuses_manager_sandbox_without_kill(tmp_path):
         reset_user_sandbox_manager()
 
 
+def test_e2b_bash_uses_shell_and_files_without_code_interpreter(tmp_path):
+    sandbox = _FakeSandbox()
+    _install_manager(tmp_path, sandbox)
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+
+    try:
+        result = bash_sandbox._exec_e2b(
+            "session-readiness",
+            "echo ready",
+            workspace,
+            None,
+            set(),
+            30,
+            64000,
+            owner_key="visitor:readiness",
+        )
+
+        assert result[0] == 0
+        assert sandbox.run_code_calls == 0
+        assert any("__SESSION_SNAPSHOT__" in call[0] for call in sandbox.commands.calls)
+        assert not any(
+            "49999" in call[0] or "jupyter" in call[0]
+            for call in sandbox.commands.calls
+        )
+    finally:
+        reset_user_sandbox_manager()
+
+
+def test_e2b_bash_passes_desktop_display_to_commands_run():
+    sandbox = _FakeSandbox()
+
+    result = bash_sandbox._e2b_run_command(
+        sandbox,
+        "chromium --no-sandbox --new-window about:blank",
+        "/workspace",
+        30,
+    )
+
+    assert result[0] == 0
+    assert sandbox.commands.calls[-1][3] == {"DISPLAY": ":0"}
+
+
+def test_e2b_bash_command_failure_does_not_fallback_to_run_code():
+    class FailingSandbox:
+        run_code_calls = 0
+
+        class Commands:
+            def run(self, command, cwd=None, timeout=None, envs=None, user=None):
+                raise RuntimeError("commands unavailable")
+
+        commands = Commands()
+
+        def run_code(self, script, timeout=None):
+            self.run_code_calls += 1
+            raise AssertionError("Bash must not invoke run_code")
+
+    sandbox = FailingSandbox()
+    result = bash_sandbox._e2b_run_command(sandbox, "echo test", "/workspace", 30)
+
+    assert result == (1, "", "commands unavailable", False)
+    assert sandbox.run_code_calls == 0
+
+
 def test_e2b_commands_share_manager_sandbox(tmp_path):
     sandbox = _FakeSandbox()
     _, creates = _install_manager(tmp_path, sandbox)
@@ -549,21 +620,18 @@ def test_e2b_skill_sync_same_size_different_hash_downloads():
     sandbox = _FakeSandbox()
     sandbox.files.data[remote] = remote_data
 
-    def run_code(script, timeout=None):
-        return SimpleNamespace(
-            logs=SimpleNamespace(
-                stdout=[
-                    '__SKILLS_META__[{"rel": "demo/run.py", "size": 5, "sha256": "'
-                    + remote_hash
-                    + '"}]\n'
-                ],
-                stderr=[],
+    sandbox.commands.run = (
+        lambda command, cwd=None, timeout=None, envs=None, user=None: SimpleNamespace(
+            exit_code=0,
+            stdout=(
+                '__SKILLS_META__[{"rel": "demo/run.py", "size": 5, "sha256": "'
+                + remote_hash
+                + '"}]\n'
             ),
-            text="",
-            error=None,
+            stderr="",
         )
+    )
 
-    sandbox.run_code = run_code
     uploaded: dict = {}
     synced = bash_sandbox._e2b_incremental_sync_skills(
         sandbox, "/home/user/workspace/sessions/s1", lib, uploaded
@@ -588,17 +656,16 @@ def test_e2b_skill_sync_same_hash_skips_download():
         return b"aaaaa"
 
     sandbox.files.read = read
-    sandbox.run_code = lambda script, timeout=None: SimpleNamespace(
-        logs=SimpleNamespace(
-            stdout=[
+    sandbox.commands.run = (
+        lambda command, cwd=None, timeout=None, envs=None, user=None: SimpleNamespace(
+            exit_code=0,
+            stdout=(
                 '__SKILLS_META__[{"rel": "demo/run.py", "size": 5, "sha256": "'
                 + remote_hash
                 + '"}]\n'
-            ],
-            stderr=[],
-        ),
-        text="",
-        error=None,
+            ),
+            stderr="",
+        )
     )
 
     synced = bash_sandbox._e2b_incremental_sync_skills(

@@ -1,7 +1,9 @@
 import ast
 import contextlib
 import io
+import json
 import os
+import shlex
 import tempfile
 import unittest
 from pathlib import Path
@@ -53,6 +55,8 @@ class _FakeSandbox:
         self.kwargs = kwargs
         self.files = _FakeFiles({})
         self.sandbox_id = "fake-sandbox"
+        self.jupyter_ready = False
+        self.commands = _FakeCommands(self)
         self.killed = False
         self.pauses: list[bool] = []
         self._remote_root = _REMOTE_ROOT
@@ -232,6 +236,47 @@ class _FakeSandbox:
                 return
 
 
+class _FakeCommands:
+    def __init__(self, sandbox: _FakeSandbox):
+        self.sandbox = sandbox
+        self.calls: list[tuple[str, str | None, int | None]] = []
+
+    def run(self, command, cwd=None, timeout=None, user=None):
+        self.calls.append((command, cwd, timeout))
+        if (
+            "127.0.0.1:49999/health" in command
+            and "systemctl start jupyter" not in command
+        ):
+            code = 0 if self.sandbox.jupyter_ready else 7
+            return SimpleNamespace(exit_code=code, stdout="", stderr="")
+        if "systemctl start jupyter" in command:
+            self.sandbox.jupyter_ready = True
+            return SimpleNamespace(exit_code=0, stdout="", stderr="")
+        if "__SESSION_SNAPSHOT__" in command:
+            script = shlex.split(command)[2]
+            self.sandbox._set_remote_root_from_code(script)
+            prefix = self.sandbox._remote_root.rstrip("/") + "/"
+            files = {}
+            for path, data in self.sandbox.files.store.items():
+                norm = path.replace("\\", "/")
+                if not norm.startswith(prefix):
+                    continue
+                rel = norm[len(prefix) :]
+                if (
+                    not rel
+                    or rel.startswith("input/")
+                    or any(part.startswith(".") for part in rel.split("/"))
+                ):
+                    continue
+                files[rel] = [len(data), 1_000_000 + len(data)]
+            return SimpleNamespace(
+                exit_code=0,
+                stdout=f"__SESSION_SNAPSHOT__{json.dumps(files)}\n",
+                stderr="",
+            )
+        return SimpleNamespace(exit_code=0, stdout="", stderr="")
+
+
 class E2BSandboxBackendTest(unittest.TestCase):
     @staticmethod
     def _close_test_executor(executor):
@@ -340,6 +385,14 @@ class E2BSandboxBackendTest(unittest.TestCase):
                 self.assertIn("40", first.stdout)
                 self.assertIn("42", second.stdout)
                 self.assertTrue(executor._bootstrapped)
+                self.assertTrue(fake.jupyter_ready)
+                self.assertEqual(
+                    1,
+                    sum(
+                        "systemctl start jupyter" in call[0]
+                        for call in fake.commands.calls
+                    ),
+                )
             finally:
                 self._close_test_executor(executor)
 

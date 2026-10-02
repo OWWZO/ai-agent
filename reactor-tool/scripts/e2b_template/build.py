@@ -8,7 +8,7 @@ Usage:
 Then set in reactor-tool/.env:
   CODE_SANDBOX_BACKEND=e2b
   E2B_API_KEY=e2b_***
-  E2B_TEMPLATE=reactor-code-playwright
+  E2B_TEMPLATE=reactor-code-playwright-desktop
 """
 
 from __future__ import annotations

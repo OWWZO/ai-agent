@@ -18,6 +18,8 @@ from reactor_tool.tool.sandbox_backend_config import (
     get_e2b_full_pause_debounce_sec,
     get_e2b_fs_only_idle_sec,
     get_e2b_sandbox_db_path,
+    get_e2b_user_operating_hold_sec,
+    ensure_e2b_desktop_chromium_ready,
     pause_e2b_sandbox,
     set_e2b_sandbox_timeout,
 )
@@ -29,6 +31,7 @@ STATE_FULL_PAUSING = "FULL_PAUSING"
 STATE_FULL_PAUSED = "FULL_PAUSED"
 STATE_COMPACTING = "COMPACTING"
 STATE_FS_ONLY_PAUSED = "FS_ONLY_PAUSED"
+HOLD_MODE_USER_OPERATING = "user_operating"
 
 CreateFn = Callable[..., Any]
 ConnectFn = Callable[..., Any]
@@ -76,6 +79,7 @@ class UserSandboxManager:
         pause_fn: PauseFn | None = None,
         debounce_sec: float | None = None,
         idle_sec: float | None = None,
+        hold_sec: float | None = None,
         time_fn: TimeFn | None = None,
         start_reaper: bool = True,
     ):
@@ -92,6 +96,11 @@ class UserSandboxManager:
             get_e2b_fs_only_idle_sec()
             if idle_sec is None
             else max(1.0, float(idle_sec))
+        )
+        self._hold_sec = (
+            get_e2b_user_operating_hold_sec()
+            if hold_sec is None
+            else max(1.0, float(hold_sec))
         )
         self._time = time_fn or __import__("time").time
         self._db_lock = threading.Lock()
@@ -127,10 +136,17 @@ class UserSandboxManager:
             except Exception:
                 pass
 
-    def acquire(self, owner_key: str, timeout_sec: int = 120) -> SandboxLease:
+    def acquire(
+        self,
+        owner_key: str,
+        timeout_sec: int = 120,
+        *,
+        update_timeout: bool = True,
+    ) -> SandboxLease:
         owner = _normalize_owner(owner_key)
         lock = self._owner_lock(owner)
         with lock:
+            # 可取消 3 秒 debounce；禁止改写 hold_until（只有桌面 open 能刷新）
             self._pending_pause_at.pop(owner, None)
             row = self._load(owner)
             sandbox = self._live.get(owner)
@@ -175,13 +191,16 @@ class UserSandboxManager:
                 sandbox_id = _sandbox_id(sandbox)
                 generation = generation if row else 1
 
-            try:
-                set_e2b_sandbox_timeout(
-                    sandbox,
-                    int(build_e2b_create_kwargs(float(timeout_sec))["timeout"]),
-                )
-            except Exception as exc:
-                logger.debug("[user_sandbox] set_timeout skipped: {}", exc)
+            ensure_e2b_desktop_chromium_ready(sandbox)
+
+            if update_timeout:
+                try:
+                    set_e2b_sandbox_timeout(
+                        sandbox,
+                        int(build_e2b_create_kwargs(float(timeout_sec))["timeout"]),
+                    )
+                except Exception as exc:
+                    logger.debug("[user_sandbox] set_timeout skipped: {}", exc)
 
             in_flight = (int(row["in_flight"]) if row else 0) + 1
             self._live[owner] = sandbox
@@ -218,8 +237,17 @@ class UserSandboxManager:
                 in_flight=in_flight,
                 generation=int(row["generation"] or 1),
             )
-            if in_flight == 0:
-                self._pending_pause_at[owner] = self._time() + self._debounce_sec
+            if in_flight != 0:
+                return
+            now = self._time()
+            if _hold_active(row, now):
+                self._pending_pause_at.pop(owner, None)
+                return
+            if _hold_expired(row, now):
+                self._pending_pause_at.pop(owner, None)
+                self._full_pause(owner)
+                return
+            self._pending_pause_at[owner] = now + self._debounce_sec
 
     @contextmanager
     def session_gate(self, owner_key: str, session_id: str) -> Iterator[None]:
@@ -235,9 +263,76 @@ class UserSandboxManager:
         finally:
             lock.release()
 
+    def enter_user_operating(
+        self, owner_key: str, ttl_sec: float | None = None
+    ) -> Optional[float]:
+        owner = _normalize_owner(owner_key)
+        ttl = self._hold_sec if ttl_sec is None else max(1.0, float(ttl_sec))
+        lock = self._owner_lock(owner)
+        with lock:
+            row = self._load(owner)
+            if row is None:
+                return None
+            now = self._time()
+            hold_until = now + ttl
+            self._pending_pause_at.pop(owner, None)
+            self._upsert(
+                owner,
+                sandbox_id=str(row["sandbox_id"] or ""),
+                state=str(row["state"] or STATE_RUNNING),
+                keep_memory=int(row["keep_memory"] or 1),
+                last_used_at=float(row["last_used_at"] or now),
+                in_flight=int(row["in_flight"] or 0),
+                generation=int(row["generation"] or 1),
+                hold_mode=HOLD_MODE_USER_OPERATING,
+                hold_until=hold_until,
+                update_hold=True,
+            )
+            sandbox = self._live.get(owner)
+            if sandbox is not None:
+                remaining = max(0.0, hold_until - now)
+                try:
+                    set_e2b_sandbox_timeout(sandbox, int(max(120, remaining + 120)))
+                except Exception as exc:
+                    logger.debug("[user_sandbox] hold set_timeout skipped: {}", exc)
+            return hold_until
+
+    def exit_user_operating(self, owner_key: str) -> None:
+        owner = _normalize_owner(owner_key)
+        lock = self._owner_lock(owner)
+        with lock:
+            row = self._load(owner)
+            if row is None:
+                return
+            had_hold = _row_hold_mode(row) == HOLD_MODE_USER_OPERATING
+            self._upsert(
+                owner,
+                sandbox_id=str(row["sandbox_id"] or ""),
+                state=str(row["state"] or STATE_RUNNING),
+                keep_memory=int(row["keep_memory"] or 1),
+                last_used_at=float(row["last_used_at"] or self._time()),
+                in_flight=int(row["in_flight"] or 0),
+                generation=int(row["generation"] or 1),
+                hold_mode="",
+                hold_until=None,
+                update_hold=True,
+            )
+            if not had_hold or int(row["in_flight"] or 0) != 0:
+                return
+            state = str(row["state"] or "")
+            if state in {
+                STATE_FULL_PAUSED,
+                STATE_FS_ONLY_PAUSED,
+                STATE_COMPACTING,
+                STATE_FULL_PAUSING,
+            }:
+                return
+            self._pending_pause_at[owner] = self._time() + self._debounce_sec
+
     def process_due_pauses(self) -> None:
         now = self._time()
-        due = [owner for owner, at in list(self._pending_pause_at.items()) if at <= now]
+        due = {owner for owner, at in list(self._pending_pause_at.items()) if at <= now}
+        due.update(self._expired_hold_owners(now))
         for owner in due:
             self._full_pause(owner)
 
@@ -255,23 +350,52 @@ class UserSandboxManager:
             owner = str(row["owner_key"])
             self._compact_if_idle(owner, now)
 
+    def _expired_hold_owners(self, now: float) -> list[str]:
+        with self._db_lock:
+            rows = list(
+                self._conn.execute(
+                    """
+                    SELECT owner_key FROM e2b_user_sandbox
+                    WHERE hold_mode = ?
+                      AND hold_until IS NOT NULL
+                      AND hold_until <= ?
+                    """,
+                    (HOLD_MODE_USER_OPERATING, now),
+                ).fetchall()
+            )
+        return [str(row["owner_key"]) for row in rows]
+
     def _full_pause(self, owner: str) -> None:
         lock = self._owner_lock(owner)
         with lock:
-            if owner not in self._pending_pause_at:
-                return
+            now = self._time()
             row = self._load(owner)
             if row is None:
                 self._pending_pause_at.pop(owner, None)
                 return
+            hold_active = _hold_active(row, now)
+            hold_expired = _hold_expired(row, now)
+            pending_due = (
+                owner in self._pending_pause_at and self._pending_pause_at[owner] <= now
+            )
             if int(row["in_flight"] or 0) > 0:
+                # hold_until 是 deadline，busy 时不能 pop；只取消 3 秒 pending
                 self._pending_pause_at.pop(owner, None)
+                return
+            if hold_active:
+                self._pending_pause_at.pop(owner, None)
+                return
+            if not pending_due and not hold_expired:
                 return
             state = str(row["state"] or "")
             if state in {STATE_FULL_PAUSED, STATE_FS_ONLY_PAUSED, STATE_COMPACTING}:
                 self._pending_pause_at.pop(owner, None)
+                if hold_expired:
+                    self._clear_hold(owner, row)
                 return
             sandbox = self._live.get(owner)
+            if sandbox is None:
+                sandbox = self._connect_for_hold_pause(owner, row, hold_expired)
             if sandbox is None:
                 self._pending_pause_at.pop(owner, None)
                 return
@@ -280,7 +404,7 @@ class UserSandboxManager:
                 sandbox_id=str(row["sandbox_id"] or ""),
                 state=STATE_FULL_PAUSING,
                 keep_memory=1,
-                last_used_at=float(row["last_used_at"] or self._time()),
+                last_used_at=float(row["last_used_at"] or now),
                 in_flight=0,
                 generation=int(row["generation"] or 1),
             )
@@ -300,6 +424,8 @@ class UserSandboxManager:
                         in_flight=0,
                         generation=int(row["generation"] or 1),
                     )
+                    if hold_expired:
+                        return
                     self._pending_pause_at[owner] = self._time() + self._debounce_sec
                     return
                 logger.exception("[user_sandbox] pause failed owner={}", owner)
@@ -323,7 +449,54 @@ class UserSandboxManager:
                 last_used_at=float(row["last_used_at"] or self._time()),
                 in_flight=0,
                 generation=int(row["generation"] or 1),
+                hold_mode="",
+                hold_until=None,
+                update_hold=True,
             )
+
+    def _connect_for_hold_pause(
+        self, owner: str, row: sqlite3.Row, hold_expired: bool
+    ) -> Any | None:
+        if not hold_expired:
+            return None
+        sandbox_id = str(row["sandbox_id"] or "")
+        if not sandbox_id:
+            self._clear_hold(owner, row)
+            return None
+        try:
+            sandbox = self._connect(sandbox_id, 120)
+            self._live[owner] = sandbox
+            return sandbox
+        except Exception as exc:
+            if _is_gone(exc):
+                logger.warning(
+                    "[user_sandbox] hold pause connect gone owner={} id={}",
+                    owner,
+                    sandbox_id,
+                )
+                self._clear_hold(owner, row)
+                return None
+            logger.warning(
+                "[user_sandbox] hold pause connect failed owner={} id={}: {}",
+                owner,
+                sandbox_id,
+                exc,
+            )
+            return None
+
+    def _clear_hold(self, owner: str, row: sqlite3.Row) -> None:
+        self._upsert(
+            owner,
+            sandbox_id=str(row["sandbox_id"] or ""),
+            state=str(row["state"] or STATE_RUNNING),
+            keep_memory=int(row["keep_memory"] or 1),
+            last_used_at=float(row["last_used_at"] or self._time()),
+            in_flight=int(row["in_flight"] or 0),
+            generation=int(row["generation"] or 1),
+            hold_mode="",
+            hold_until=None,
+            update_hold=True,
+        )
 
     def _compact_if_idle(self, owner: str, now: float) -> None:
         lock = self._owner_lock(owner)
@@ -430,10 +603,26 @@ class UserSandboxManager:
                     last_used_at REAL,
                     in_flight INTEGER,
                     generation INTEGER,
-                    updated_at REAL
+                    updated_at REAL,
+                    hold_mode TEXT,
+                    hold_until REAL
                 )
                 """
             )
+            columns = {
+                row[1]
+                for row in self._conn.execute(
+                    "PRAGMA table_info(e2b_user_sandbox)"
+                ).fetchall()
+            }
+            if "hold_mode" not in columns:
+                self._conn.execute(
+                    "ALTER TABLE e2b_user_sandbox ADD COLUMN hold_mode TEXT"
+                )
+            if "hold_until" not in columns:
+                self._conn.execute(
+                    "ALTER TABLE e2b_user_sandbox ADD COLUMN hold_until REAL"
+                )
             self._conn.commit()
 
     def _load(self, owner: str) -> Optional[sqlite3.Row]:
@@ -453,15 +642,26 @@ class UserSandboxManager:
         last_used_at: float,
         in_flight: int,
         generation: int,
+        hold_mode: str | None = None,
+        hold_until: float | None = None,
+        update_hold: bool = False,
     ) -> None:
         now = self._time()
+        hold_sql = (
+            """,
+                    hold_mode = excluded.hold_mode,
+                    hold_until = excluded.hold_until"""
+            if update_hold
+            else ""
+        )
         with self._db_lock:
             self._conn.execute(
-                """
+                f"""
                 INSERT INTO e2b_user_sandbox (
                     owner_key, sandbox_id, state, keep_memory,
-                    last_used_at, in_flight, generation, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    last_used_at, in_flight, generation, updated_at,
+                    hold_mode, hold_until
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(owner_key) DO UPDATE SET
                     sandbox_id = excluded.sandbox_id,
                     state = excluded.state,
@@ -469,7 +669,7 @@ class UserSandboxManager:
                     last_used_at = excluded.last_used_at,
                     in_flight = excluded.in_flight,
                     generation = excluded.generation,
-                    updated_at = excluded.updated_at
+                    updated_at = excluded.updated_at{hold_sql}
                 """,
                 (
                     owner,
@@ -480,9 +680,46 @@ class UserSandboxManager:
                     in_flight,
                     generation,
                     now,
+                    hold_mode,
+                    hold_until,
                 ),
             )
             self._conn.commit()
+
+
+def _row_hold_mode(row: sqlite3.Row) -> str:
+    keys = row.keys()
+    if "hold_mode" not in keys:
+        return ""
+    return str(row["hold_mode"] or "")
+
+
+def _row_hold_until(row: sqlite3.Row) -> Optional[float]:
+    keys = row.keys()
+    if "hold_until" not in keys:
+        return None
+    value = row["hold_until"]
+    if value is None or value == "":
+        return None
+    return float(value)
+
+
+def _hold_active(row: sqlite3.Row, now: float) -> bool:
+    until = _row_hold_until(row)
+    return (
+        _row_hold_mode(row) == HOLD_MODE_USER_OPERATING
+        and until is not None
+        and until > now
+    )
+
+
+def _hold_expired(row: sqlite3.Row, now: float) -> bool:
+    until = _row_hold_until(row)
+    return (
+        _row_hold_mode(row) == HOLD_MODE_USER_OPERATING
+        and until is not None
+        and until <= now
+    )
 
 
 def _normalize_owner(owner_key: str) -> str:
@@ -517,7 +754,3 @@ def _sync_disk(sandbox: Any) -> None:
     run = getattr(commands, "run", None) if commands is not None else None
     if callable(run):
         run("sync", timeout=30)
-        return
-    run_code = getattr(sandbox, "run_code", None)
-    if callable(run_code):
-        run_code("import os\nos.sync()\n", timeout=30)

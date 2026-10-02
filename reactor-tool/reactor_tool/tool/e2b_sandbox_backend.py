@@ -28,7 +28,10 @@ from reactor_tool.tool.python_sandbox_executor import (
     PythonSandboxExecutionError,
     PythonSandboxExecutionResult,
 )
-from reactor_tool.tool.sandbox_backend_config import require_e2b_api_key
+from reactor_tool.tool.sandbox_backend_config import (
+    ensure_e2b_code_interpreter_ready,
+    require_e2b_api_key,
+)
 from reactor_tool.tool.user_sandbox_manager import (
     UserSandboxManager,
     get_user_sandbox_manager,
@@ -171,6 +174,11 @@ class E2BPythonSandboxExecutor:
         lease = self._manager.acquire(
             self._owner_key, max(1, int(self._timeout_seconds))
         )
+        try:
+            ensure_e2b_code_interpreter_ready(lease.sandbox)
+        except Exception:
+            self._manager.release(self._owner_key)
+            raise
         self._lease = lease
         self._sandbox = lease.sandbox
         self._sandbox_id = lease.sandbox_id

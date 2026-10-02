@@ -370,6 +370,31 @@ class BashSandboxResponse(BaseModel):
     cwd: str = Field(default=".", description="对 Agent 只暴露相对语义")
 
 
+class DesktopSessionOpenRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    request_id: str = Field(alias="requestId", min_length=1)
+    owner_key: Optional[str] = Field(default=None, alias="ownerKey")
+    session_id: Optional[str] = Field(default=None, alias="sessionId")
+    ttl_seconds: int = Field(default=600, alias="ttlSeconds", ge=1, le=3600)
+
+
+class DesktopSessionOpenResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    url: str
+    port: int = 6080
+    hold_until: float = Field(alias="holdUntil")
+
+
+class DesktopSessionCloseRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    request_id: str = Field(alias="requestId", min_length=1)
+    owner_key: Optional[str] = Field(default=None, alias="ownerKey")
+    session_id: Optional[str] = Field(default=None, alias="sessionId")
+
+
 class ScriptRunnerResponse(BaseModel):
     """script_runner 返回协议"""
 

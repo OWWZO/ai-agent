@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import os
+import shlex
+from pathlib import Path
 from typing import Any, Literal
+
+from reactor_tool.tool.e2b_file_upload import write_e2b_files
 
 SandboxBackendName = Literal["local", "e2b"]
 
@@ -11,6 +15,17 @@ _DEFAULT_E2B_WORKDIR = "/home/user/workspace"
 _DEFAULT_BACKEND: SandboxBackendName = "local"
 _DEFAULT_FULL_PAUSE_DEBOUNCE_SEC = 3
 _DEFAULT_FS_ONLY_IDLE_SEC = 1200
+_DEFAULT_USER_OPERATING_HOLD_SEC = 600
+_E2B_DESKTOP_CHROMIUM_COMMAND = "/usr/local/bin/ensure_desktop_chromium.sh"
+_E2B_DESKTOP_CHROMIUM_STAGING_PATH = "/tmp/reactor-ensure-desktop-chromium.sh"
+_E2B_DESKTOP_CHROMIUM_HEALTH_CHECK = (
+    "browser_pid=$(pgrep -u user -f "
+    "'^/usr/bin/chromium --no-sandbox --no-first-run "
+    "--disable-dev-shm-usage .*--user-data-dir=/home/user/.opencli/chromium-visible' "
+    "| head -n1); "
+    'test -n "$browser_pid" && kill -0 "$browser_pid" && '
+    "grep -z -q '^DISPLAY=:0$' \"/proc/$browser_pid/environ\""
+)
 
 
 def get_sandbox_backend() -> SandboxBackendName:
@@ -81,6 +96,13 @@ def get_e2b_fs_only_idle_sec() -> float:
     if raw:
         return max(1.0, float(raw))
     return float(_DEFAULT_FS_ONLY_IDLE_SEC)
+
+
+def get_e2b_user_operating_hold_sec() -> float:
+    raw = (os.getenv("E2B_USER_OPERATING_HOLD_SEC") or "").strip()
+    if raw:
+        return max(1.0, float(raw))
+    return float(_DEFAULT_USER_OPERATING_HOLD_SEC)
 
 
 def get_e2b_sandbox_db_path() -> str:
@@ -156,3 +178,164 @@ def set_e2b_sandbox_timeout(sandbox: Any, timeout_sec: int) -> None:
     setter = getattr(sandbox, "set_timeout", None)
     if callable(setter):
         setter(timeout_sec)
+
+
+def ensure_e2b_code_interpreter_ready(sandbox: Any) -> None:
+    """Restart Jupyter when a resumed E2B sandbox leaves its service stopped."""
+    commands = getattr(sandbox, "commands", None)
+    run = getattr(commands, "run", None) if commands is not None else None
+    if not callable(run):
+        raise RuntimeError("E2B sandbox does not support commands.run")
+
+    try:
+        health = run(
+            "curl -fsS --max-time 1 http://127.0.0.1:49999/health >/dev/null",
+            timeout=5,
+        )
+        if getattr(health, "exit_code", 0) in (None, 0) and not getattr(
+            health, "error", None
+        ):
+            return
+    except Exception:
+        pass
+
+    command = (
+        "sudo systemctl daemon-reload && sudo systemctl start jupyter && "
+        "for attempt in $(seq 1 15); do "
+        "if curl -fsS --max-time 1 http://127.0.0.1:49999/health >/dev/null; "
+        "then exit 0; fi; sleep 1; done; "
+        "echo 'Code Interpreter Jupyter service failed to start on port 49999' >&2; "
+        "exit 1"
+    )
+    try:
+        result = run(command, timeout=35)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Code Interpreter Jupyter service failed to start: {exc}"
+        ) from exc
+    exit_code = getattr(result, "exit_code", 0)
+    if exit_code not in (None, 0):
+        detail = " ".join(
+            part.strip()
+            for part in (
+                str(getattr(result, "stdout", "") or ""),
+                str(getattr(result, "stderr", "") or ""),
+            )
+            if part and part.strip()
+        )
+        raise RuntimeError(detail or "Code Interpreter Jupyter service failed to start")
+
+
+def ensure_e2b_desktop_chromium_ready(sandbox: Any) -> None:
+    """Ensure the shared visible Chromium profile has a headed browser."""
+    commands = getattr(sandbox, "commands", None)
+    run = getattr(commands, "run", None) if commands is not None else None
+    if not callable(run):
+        raise RuntimeError("E2B sandbox does not support commands.run")
+
+    try:
+        result = _run_desktop_chromium_launcher(sandbox, run)
+    except Exception as exc:
+        try:
+            health = run(_E2B_DESKTOP_CHROMIUM_HEALTH_CHECK, timeout=5)
+            if getattr(health, "exit_code", 0) in (None, 0) and not getattr(
+                health, "error", None
+            ):
+                return
+        except Exception:
+            pass
+        raise RuntimeError(f"Desktop Chromium failed to start: {exc}") from exc
+
+    exit_code = getattr(result, "exit_code", 0)
+    if exit_code in (None, 0) and not getattr(result, "error", None):
+        return
+    detail = " ".join(
+        part.strip()
+        for part in (
+            str(getattr(result, "stdout", "") or ""),
+            str(getattr(result, "stderr", "") or ""),
+        )
+        if part and part.strip()
+    )
+    raise RuntimeError(detail or "Desktop Chromium failed to start")
+
+
+def _run_desktop_chromium_launcher(sandbox: Any, run: Any) -> Any:
+    try:
+        result = run(_E2B_DESKTOP_CHROMIUM_COMMAND, user="root", timeout=120)
+    except Exception as exc:
+        if not _is_missing_desktop_chromium_launcher(exc):
+            raise
+        _install_desktop_chromium_launcher(sandbox, run)
+        return run(_E2B_DESKTOP_CHROMIUM_COMMAND, user="root", timeout=120)
+
+    detail = " ".join(
+        str(part or "")
+        for part in (
+            getattr(result, "stdout", ""),
+            getattr(result, "stderr", ""),
+            getattr(result, "error", ""),
+        )
+    )
+    exit_code = getattr(result, "exit_code", 0)
+    if (exit_code not in (None, 0) or getattr(result, "error", None)) and (
+        _is_missing_desktop_chromium_launcher(detail)
+    ):
+        _install_desktop_chromium_launcher(sandbox, run)
+        return run(_E2B_DESKTOP_CHROMIUM_COMMAND, user="root", timeout=120)
+    return result
+
+
+def _is_missing_desktop_chromium_launcher(error: Any) -> bool:
+    detail = str(error or "").casefold()
+    return _E2B_DESKTOP_CHROMIUM_COMMAND.casefold() in detail and (
+        "no such file" in detail or "not found" in detail
+    )
+
+
+def _install_desktop_chromium_launcher(sandbox: Any, run: Any) -> None:
+    launcher = (
+        Path(__file__).resolve().parents[2]
+        / "scripts"
+        / "e2b_template"
+        / "ensure_desktop_chromium.sh"
+    )
+    if not launcher.is_file():
+        raise RuntimeError(
+            "Desktop Chromium launcher is missing locally; rebuild the E2B template "
+            "or deploy scripts/e2b_template/ensure_desktop_chromium.sh"
+        )
+
+    files_api = getattr(sandbox, "files", None)
+    if files_api is None:
+        raise RuntimeError(
+            "E2B sandbox has no files API to restore its desktop launcher"
+        )
+    write_e2b_files(
+        files_api,
+        [
+            {
+                "path": _E2B_DESKTOP_CHROMIUM_STAGING_PATH,
+                "data": launcher.read_bytes(),
+            }
+        ],
+        label="e2b_desktop_chromium_bootstrap",
+    )
+    install = (
+        f"install -o root -g root -m 0755 "
+        f"{shlex.quote(_E2B_DESKTOP_CHROMIUM_STAGING_PATH)} "
+        f"{shlex.quote(_E2B_DESKTOP_CHROMIUM_COMMAND)} && "
+        f"rm -f {shlex.quote(_E2B_DESKTOP_CHROMIUM_STAGING_PATH)}"
+    )
+    result = run(install, user="root", timeout=30)
+    exit_code = getattr(result, "exit_code", 0)
+    if exit_code not in (None, 0) or getattr(result, "error", None):
+        detail = " ".join(
+            str(part or "")
+            for part in (
+                getattr(result, "stdout", ""),
+                getattr(result, "stderr", ""),
+                getattr(result, "error", ""),
+            )
+        )
+        raise RuntimeError(detail or "Failed to restore Desktop Chromium launcher")

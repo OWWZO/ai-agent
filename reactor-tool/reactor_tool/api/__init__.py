@@ -15,8 +15,8 @@ def build_api_router() -> APIRouter:
     """按进程角色组装 /v1 路由。
 
     - all：单进程全量（默认，兼容旧启动方式）
-    - sandbox：仅 bash + code_execution（应 workers=1）
-    - api：其余工具 + 把 bash/code_execution 反代到 REACTOR_SANDBOX_URL
+    - sandbox：仅 bash + code_execution + desktop_session（应 workers=1）
+    - api：其余工具 + 把 bash/code_execution/desktop_session 反代到 REACTOR_SANDBOX_URL
     """
     role = get_service_role()
     api_router = APIRouter(prefix="/v1")
