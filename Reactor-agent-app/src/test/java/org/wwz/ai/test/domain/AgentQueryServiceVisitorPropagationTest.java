@@ -23,14 +23,16 @@ public class AgentQueryServiceVisitorPropagationTest {
                 .requestId("req-visitor-001")
                 .query("帮我生成总结")
                 .deepThink(0)
-                .user("reactor")
                 .build();
 
+        factory.normalize(request);
+        Assert.assertEquals("reactor", request.getUser());
         VisitorRequestContext.bind("visitor-001");
         try {
             AgentRequest agentRequest = factory.build(request);
             Assert.assertNotNull(agentRequest);
             Assert.assertEquals("visitor-001", agentRequest.getVisitorId());
+            Assert.assertNull(agentRequest.getErp());
             Assert.assertFalse(Boolean.TRUE.equals(agentRequest.getForcePlanMode()));
         } finally {
             VisitorRequestContext.clear();

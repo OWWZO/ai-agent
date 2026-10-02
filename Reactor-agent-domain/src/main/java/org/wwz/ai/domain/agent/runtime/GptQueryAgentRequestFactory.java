@@ -50,7 +50,6 @@ public class GptQueryAgentRequestFactory {
         request.setRequestId(runRequestId);
         request.setSessionId(req.getSessionId());
         request.setVisitorId(VisitorRequestContext.currentVisitorId());
-        request.setErp(req.getUser());
         request.setQuery(req.getQuery());
         request.setOutputStyle("dataAgent".equals(req.getOutputStyle()) ? "dataAgent" : null);
         request.setSessionFiles(req.getSessionFiles());
