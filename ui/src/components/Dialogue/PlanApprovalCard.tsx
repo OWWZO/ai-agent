@@ -202,12 +202,7 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
     );
   }
 
-  const title =
-    decision === "approved"
-      ? "计划已批准"
-      : decision === "rejected"
-        ? "计划已拒绝"
-        : "按这份计划开始执行？";
+  const title = decision === "rejected" ? "计划已拒绝" : "按这份计划开始执行？";
 
   return (
     <div className={cn("kimi-ui-card kimi-appr", minimized && "is-minimized")}>

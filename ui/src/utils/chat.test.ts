@@ -1892,9 +1892,10 @@ describe("chat file task title", () => {
 
     const smTask = currentChat.multiAgent.tasks[0]?.[0] as CHAT.Task;
     if (smTask?.resultMap) {
-      smTask.resultMap.resumed = true;
-      smTask.resultMap.run_in_background = true;
-      smTask.resultMap.agentId = "agent-done";
+      const resultMap = smTask.resultMap as unknown as Record<string, unknown>;
+      resultMap.resumed = true;
+      resultMap.run_in_background = true;
+      resultMap.agentId = "agent-done";
     }
 
     combineData(createToolCallEvent({

@@ -42,7 +42,7 @@ export default function BrowserRelayChip({ disabled }: Props) {
         void refresh();
         return;
       }
-      if (msg.error) showMessage({ content: msg.error, type: "error" });
+      if (msg.error) showMessage()?.error(msg.error);
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
@@ -61,13 +61,13 @@ export default function BrowserRelayChip({ disabled }: Props) {
     try {
       const data = await browserRelayApi.pairing();
       if (!data?.token || !data?.relayUrl) {
-        showMessage({ content: "发起配对失败", type: "error" });
+        showMessage()?.error("发起配对失败");
         return;
       }
       setPairing(data);
       sendPairingToExtension(data);
     } catch (error) {
-      showMessage({ content: error instanceof Error ? error.message : "发起配对失败", type: "error" });
+      showMessage()?.error(error instanceof Error ? error.message : "发起配对失败");
     } finally {
       setBusy(false);
     }

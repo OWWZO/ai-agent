@@ -281,9 +281,10 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
     if (primaryFile) {
       return fileView("image", primaryFile, missingReason);
     }
-    const url = typeof resolvedResultMap.url === "string" ? resolvedResultMap.url : "";
-    const title = typeof resolvedResultMap.title === "string" ? resolvedResultMap.title : "";
-    const tree = typeof resolvedResultMap.tree === "string" ? resolvedResultMap.tree : markDownContent;
+    const browserResultMap = resolvedResultMap as unknown as Record<string, unknown>;
+    const url = typeof browserResultMap.url === "string" ? browserResultMap.url : "";
+    const title = typeof browserResultMap.title === "string" ? browserResultMap.title : "";
+    const tree = typeof browserResultMap.tree === "string" ? browserResultMap.tree : markDownContent;
     return {
       type: "markdown",
       content: [title, url, tree].filter(Boolean).join("\n\n"),
