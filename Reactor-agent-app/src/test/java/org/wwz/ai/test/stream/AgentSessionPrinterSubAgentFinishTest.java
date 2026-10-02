@@ -88,6 +88,26 @@ public class AgentSessionPrinterSubAgentFinishTest {
     }
 
     @Test
+    public void desktopControlYieldFinishesEnvelopeWithoutClosingStream() throws Exception {
+        CapturingStream stream = new CapturingStream();
+        AgentRequest request = new AgentRequest();
+        request.setRequestId("req-desktop-finish");
+        AgentSessionPrinter printer = new AgentSessionPrinter(stream, request, 1);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("status", "pending");
+        payload.put("controlId", "dc_1");
+        payload.put("streamUrl", "https://6080-box.e2b.app/vnc.html");
+        printer.send("dc_1", "desktop_control", payload, false);
+
+        Assert.assertEquals(1, stream.payloads.size());
+        AgentResponse response = (AgentResponse) stream.payloads.get(0);
+        Assert.assertEquals("desktop_control", response.getMessageType());
+        Assert.assertTrue(Boolean.TRUE.equals(response.getFinish()));
+        Assert.assertFalse(stream.completed.get());
+    }
+
+    @Test
     public void rootResultStillFinishesMainStream() throws Exception {
         CapturingStream stream = new CapturingStream();
         AgentRequest request = new AgentRequest();

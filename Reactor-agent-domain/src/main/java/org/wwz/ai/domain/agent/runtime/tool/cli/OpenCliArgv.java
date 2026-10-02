@@ -28,8 +28,6 @@ public final class OpenCliArgv {
             if (!hasSession && StringUtils.isNotBlank(visitorId)) {
                 out.add(1, "visitor:" + visitorId);
             }
-        } else if (!ROOT_COMMANDS.contains(head) && !hasFlag(out, "--keep-tab")) {
-            out.add("--keep-tab");
         }
         // Browser subcommands render their own JSON envelopes and do not register
         // the site-command -f/--format option.
@@ -94,7 +92,4 @@ public final class OpenCliArgv {
         return false;
     }
 
-    private static boolean hasFlag(List<String> args, String flag) {
-        return args.contains(flag);
-    }
 }

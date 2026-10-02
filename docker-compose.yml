@@ -41,6 +41,7 @@ services:
       LOG_PATH: /data/logs/reactor-sandbox.log
       E2B_FULL_PAUSE_DEBOUNCE_SEC: ${E2B_FULL_PAUSE_DEBOUNCE_SEC:-3}
       E2B_FS_ONLY_IDLE_SEC: ${E2B_FS_ONLY_IDLE_SEC:-1200}
+      E2B_USER_OPERATING_HOLD_SEC: ${E2B_USER_OPERATING_HOLD_SEC:-600}
     volumes:
       - reactor-data:/data
     healthcheck:
@@ -110,6 +111,7 @@ services:
       REACTOR_OPENCLI_COMMAND: node
       REACTOR_OPENCLI_MAIN: /opt/opencli/dist/src/main.js
       ADAPTER_HOST_SECRET: ${ADAPTER_HOST_SECRET:?ADAPTER_HOST_SECRET is required}
+      KERNEL_API_KEY: ${KERNEL_API_KEY:-}
     volumes:
       - reactor-data:/data
       - reactor-data:/app/data

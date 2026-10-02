@@ -64,6 +64,11 @@ public class AgentRequest {
      */
     private String resumeQuestionId;
     /**
+     * RequestDesktopControl continuation：非空表示本轮是桌面操作后续跑，query 应为空，
+     * 由策略在 hydrate 后追加对应 tool observation。
+     */
+    private String resumeDesktopControlId;
+    /**
      * ExitPlanMode continuation：非空表示本轮是计划审批后续跑，query 应为空，
      * 由策略在 hydrate 后追加 ExitPlanMode tool observation。
      */

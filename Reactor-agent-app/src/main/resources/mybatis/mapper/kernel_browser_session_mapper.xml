@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.infrastructure.dao.IAiAgentKernelBrowserSessionDao">
+
+    <resultMap id="KernelBrowserSessionMap" type="org.wwz.ai.infrastructure.dao.po.AiAgentKernelBrowserSession">
+        <id column="id" property="id"/>
+        <result column="owner_key" property="ownerKey"/>
+        <result column="kernel_session_id" property="kernelSessionId"/>
+        <result column="kernel_browser_name" property="kernelBrowserName"/>
+        <result column="last_used_at" property="lastUsedAt"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="org.wwz.ai.infrastructure.dao.po.AiAgentKernelBrowserSession"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_agent_kernel_browser_session (
+            owner_key, kernel_session_id, kernel_browser_name, last_used_at, create_time, update_time
+        ) VALUES (
+            #{ownerKey}, #{kernelSessionId}, #{kernelBrowserName}, #{lastUsedAt}, #{createTime}, #{updateTime}
+        )
+    </insert>
+
+    <select id="queryByOwnerKey" resultMap="KernelBrowserSessionMap">
+        SELECT id, owner_key, kernel_session_id, kernel_browser_name, last_used_at, create_time, update_time
+        FROM ai_agent_kernel_browser_session
+        WHERE owner_key = #{ownerKey}
+    </select>
+
+    <select id="queryByKernelBrowserName" resultMap="KernelBrowserSessionMap">
+        SELECT id, owner_key, kernel_session_id, kernel_browser_name, last_used_at, create_time, update_time
+        FROM ai_agent_kernel_browser_session
+        WHERE kernel_browser_name = #{kernelBrowserName}
+    </select>
+
+    <update id="updateSession" parameterType="org.wwz.ai.infrastructure.dao.po.AiAgentKernelBrowserSession">
+        UPDATE ai_agent_kernel_browser_session
+        SET kernel_session_id = #{kernelSessionId},
+            kernel_browser_name = #{kernelBrowserName},
+            last_used_at = #{lastUsedAt},
+            update_time = #{updateTime}
+        WHERE owner_key = #{ownerKey}
+    </update>
+
+    <update id="updateLastUsedAt">
+        UPDATE ai_agent_kernel_browser_session
+        SET last_used_at = #{lastUsedAt},
+            update_time = NOW()
+        WHERE owner_key = #{ownerKey}
+    </update>
+
+    <delete id="deleteByOwnerKey">
+        DELETE FROM ai_agent_kernel_browser_session
+        WHERE owner_key = #{ownerKey}
+    </delete>
+
+    <select id="getLock" resultType="java.lang.Integer">
+        SELECT GET_LOCK(#{name}, #{timeoutSeconds})
+    </select>
+
+    <select id="releaseLock" resultType="java.lang.Integer">
+        SELECT RELEASE_LOCK(#{name})
+    </select>
+
+</mapper>

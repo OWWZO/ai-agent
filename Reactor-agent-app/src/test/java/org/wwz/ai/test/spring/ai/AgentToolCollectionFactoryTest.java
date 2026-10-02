@@ -26,6 +26,7 @@ import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspacePathGuard;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceRuntimeOptions;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
 import org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort;
+import org.wwz.ai.domain.agent.adapter.port.KernelBrowserSessionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.types.agent.config.HostCliProperties;
 import org.wwz.ai.types.agent.config.OpenCliProperties;
@@ -671,6 +672,71 @@ public class AgentToolCollectionFactoryTest {
 
         Assert.assertFalse(toolCollection.getToolMap().containsKey("browser"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("browser_site"));
+    }
+
+    @Test
+    public void shouldRegisterKernelBrowserWhenConfiguredEvenIfRelayOffline() {
+        AgentToolCollectionFactory factory = newFactory(
+                buildReactorConfig(),
+                Mockito.mock(McpToolExecutor.class),
+                Mockito.mock(DefaultSkillRegistry.class),
+                SkillRuntimeOptions.builder().enabled(false).build(),
+                disabledWorkspaceService(),
+                disabledWorkspaceOptions()
+        );
+        BrowserRelayPort relay = Mockito.mock(BrowserRelayPort.class);
+        Mockito.when(relay.isOnline("visitor-1")).thenReturn(false);
+        KernelBrowserSessionPort kernel = Mockito.mock(KernelBrowserSessionPort.class);
+        Mockito.when(kernel.isConfigured()).thenReturn(true);
+        AgentContext ctx = buildAgentContext();
+        ctx.setVisitorId("visitor-1");
+        ctx.setRuntimeDependencies(ctx.getRuntimeDependencies().toBuilder()
+                .browserRelayPort(relay)
+                .kernelBrowserSessionPort(kernel)
+                .cliExecutionPort(resolvableCli("node"))
+                .openCliProperties(enabledOpenCli())
+                .build());
+
+        AgentRequest request = buildAgentRequest("html");
+        request.setVisitorId("visitor-1");
+        ToolCollection toolCollection = factory.buildForReact(ctx, request);
+
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("kernel_browser"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("browser"));
+        Mockito.verify(relay).isOnline("visitor-1");
+    }
+
+    @Test
+    public void shouldNotRegisterKernelBrowserForDataAgent() {
+        AgentToolCollectionFactory factory = newFactory(
+                buildReactorConfig(),
+                Mockito.mock(McpToolExecutor.class),
+                Mockito.mock(DefaultSkillRegistry.class),
+                SkillRuntimeOptions.builder().enabled(false).build(),
+                disabledWorkspaceService(),
+                disabledWorkspaceOptions()
+        );
+        KernelBrowserSessionPort kernel = Mockito.mock(KernelBrowserSessionPort.class);
+        Mockito.when(kernel.isConfigured()).thenReturn(true);
+        AgentContext ctx = buildAgentContext();
+        ctx.setVisitorId("visitor-1");
+        ctx.setRuntimeDependencies(ctx.getRuntimeDependencies().toBuilder()
+                .kernelBrowserSessionPort(kernel)
+                .cliExecutionPort(resolvableCli("node"))
+                .openCliProperties(enabledOpenCli())
+                .build());
+        AgentRequest request = AgentRequest.builder()
+                .requestId("req-data")
+                .sessionId("session-data")
+                .visitorId("visitor-1")
+                .outputStyle("dataAgent")
+                .query("问数")
+                .build();
+
+        ToolCollection toolCollection = factory.buildForReact(ctx, request);
+
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("kernel_browser"));
+        Mockito.verify(kernel, Mockito.never()).isConfigured();
     }
 
     @Test

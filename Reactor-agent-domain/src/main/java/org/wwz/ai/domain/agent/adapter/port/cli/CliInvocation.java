@@ -13,6 +13,8 @@ public class CliInvocation {
     List<String> args;
     String cwd;
     Map<String, String> env;
+    @Builder.Default
+    List<String> unsetEnv = List.of();
     String stdin;
     long timeoutMs;
     String capture;

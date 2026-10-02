@@ -66,6 +66,7 @@ public final class SubAgentToolFilter {
         disallowed.add(TaskToolNames.ENTER_PLAN_MODE);
         disallowed.add(TaskToolNames.EXIT_PLAN_MODE);
         disallowed.add(org.wwz.ai.domain.agent.runtime.tool.common.planmode.AskUserQuestionTool.NAME);
+        disallowed.add(org.wwz.ai.domain.agent.runtime.tool.common.planmode.RequestDesktopControlTool.NAME);
         disallowed.addAll(LtmMemoryGuard.MEMORY_WRITE_TOOLS);
         disallowed.add(SessionSearchTool.TOOL_NAME);
         if (definition.getDisallowedTools() != null) {

@@ -64,4 +64,32 @@ public class HostProcessCliAdapterTest {
         Assert.assertFalse(ps1.isOk());
         Assert.assertTrue(ps1.getStderr().contains("PowerShell"));
     }
+
+    @Test
+    public void shouldUnsetParentSecretsBeforeChildStart() {
+        HostProcessCliAdapter adapter = new HostProcessCliAdapter();
+        java.util.HashMap<String, String> environment = new java.util.HashMap<>();
+        environment.put("KERNEL_API_KEY", "secret-key");
+        environment.put("PATH", "keep-me");
+        HostProcessCliAdapter.applyChildEnvironment(environment, CliInvocation.builder()
+                .tool("node")
+                .env(Map.of("OPENCLI_CDP_ENDPOINT", "wss://example.test/cdp"))
+                .unsetEnv(List.of("KERNEL_API_KEY"))
+                .timeoutMs(1_000)
+                .maxOutputChars(100)
+                .build());
+        Assert.assertFalse(environment.containsKey("KERNEL_API_KEY"));
+        Assert.assertEquals("keep-me", environment.get("PATH"));
+        Assert.assertEquals("wss://example.test/cdp", environment.get("OPENCLI_CDP_ENDPOINT"));
+
+        CliResult child = adapter.exec(CliInvocation.builder()
+                .tool("node")
+                .args(List.of("-e", "process.stdout.write(process.env.KERNEL_API_KEY ? 'leaked' : 'absent')"))
+                .unsetEnv(List.of("KERNEL_API_KEY"))
+                .timeoutMs(10_000)
+                .maxOutputChars(1_000)
+                .capture("both")
+                .build());
+        Assert.assertEquals("absent", child.getStdout());
+    }
 }

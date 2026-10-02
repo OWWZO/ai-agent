@@ -13,6 +13,8 @@ import org.wwz.ai.domain.agent.runtime.agent.ReactFinalAnswerResolver;
 import org.wwz.ai.domain.agent.runtime.agent.ReactImplAgent;
 import org.wwz.ai.domain.agent.runtime.askuser.UserInputRequiredException;
 import org.wwz.ai.domain.agent.runtime.askuser.UserQuestionYieldService;
+import org.wwz.ai.domain.agent.runtime.desktopcontrol.DesktopControlRequiredException;
+import org.wwz.ai.domain.agent.runtime.desktopcontrol.DesktopControlYieldService;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalRequiredException;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalYieldService;
@@ -37,6 +39,9 @@ public class RunReactLoopNode extends AbstractExecuteSupport {
     private UserQuestionYieldService userQuestionYieldService;
 
     @Resource
+    private DesktopControlYieldService desktopControlYieldService;
+
+    @Resource
     private PlanApprovalYieldService planApprovalYieldService;
 
     @Override
@@ -58,6 +63,16 @@ public class RunReactLoopNode extends AbstractExecuteSupport {
             return router(requestParameter, dynamicContext);
         } catch (UserInputRequiredException yield) {
             userQuestionYieldService.yieldAndNotify(
+                    agentContext,
+                    planner,
+                    requestParameter,
+                    yield,
+                    ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE
+            );
+            dynamicContext.setWaitingUserInput(Boolean.TRUE);
+            return router(requestParameter, dynamicContext);
+        } catch (DesktopControlRequiredException yield) {
+            desktopControlYieldService.yieldAndNotify(
                     agentContext,
                     planner,
                     requestParameter,

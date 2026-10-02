@@ -11,9 +11,11 @@ import org.wwz.ai.types.agent.config.BrowserRelayProperties;
 
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -83,5 +85,100 @@ public class BrowserRelayHubAllowlistTest {
         BrowserRpcResult result = call.get(1, TimeUnit.SECONDS);
         Assert.assertTrue(result.isOk());
         Assert.assertEquals("plain browser result", result.getData());
+    }
+
+    @Test
+    public void shouldAllowConcurrentRpcAndCorrelateReverseResponses() throws Exception {
+        BrowserRelayHub hub = new BrowserRelayHub(new BrowserRelayProperties());
+        WebSocketSession session = Mockito.mock(WebSocketSession.class);
+        Map<String, Object> attrs = new HashMap<>();
+        attrs.put("visitorId", "visitor-1");
+        Mockito.when(session.isOpen()).thenReturn(true);
+        Mockito.when(session.getId()).thenReturn("s1");
+        Mockito.when(session.getAttributes()).thenReturn(attrs);
+        List<TextMessage> outgoing = new CopyOnWriteArrayList<>();
+        CountDownLatch sent = new CountDownLatch(2);
+        Mockito.doAnswer(invocation -> {
+            outgoing.add(invocation.getArgument(0));
+            sent.countDown();
+            return null;
+        }).when(session).sendMessage(Mockito.any(TextMessage.class));
+        hub.register("visitor-1", session);
+
+        CompletableFuture<BrowserRpcResult> first = CompletableFuture.supplyAsync(
+                () -> hub.call("visitor-1", "exec", Map.of("id", "rpc-first"), Duration.ofSeconds(5)));
+        CompletableFuture<BrowserRpcResult> second = CompletableFuture.supplyAsync(
+                () -> hub.call("visitor-1", "tabs", Map.of("id", "rpc-second"), Duration.ofSeconds(5)));
+
+        Assert.assertTrue(sent.await(1, TimeUnit.SECONDS));
+        Assert.assertEquals(2, outgoing.size());
+        List<String> ids = outgoing.stream()
+                .map(message -> com.alibaba.fastjson.JSON.parseObject(message.getPayload()).getString("id"))
+                .toList();
+        String firstId = "rpc-first";
+        String secondId = "rpc-second";
+        Assert.assertEquals(2, ids.size());
+        Assert.assertTrue(ids.contains(firstId));
+        Assert.assertTrue(ids.contains(secondId));
+        Assert.assertNotEquals(firstId, secondId);
+
+        hub.onText(session, com.alibaba.fastjson.JSON.toJSONString(Map.of(
+                "id", secondId,
+                "ok", true,
+                "data", "second result"
+        )));
+        hub.onText(session, com.alibaba.fastjson.JSON.toJSONString(Map.of(
+                "id", firstId,
+                "ok", true,
+                "data", "first result"
+        )));
+
+        BrowserRpcResult firstResult = first.get(1, TimeUnit.SECONDS);
+        BrowserRpcResult secondResult = second.get(1, TimeUnit.SECONDS);
+        Assert.assertTrue(firstResult.isOk());
+        Assert.assertTrue(secondResult.isOk());
+        Assert.assertNotEquals("browser_busy", firstResult.getErrorCode());
+        Assert.assertNotEquals("browser_busy", secondResult.getErrorCode());
+        Assert.assertEquals("first result", firstResult.getData());
+        Assert.assertEquals("second result", secondResult.getData());
+    }
+
+    @Test
+    public void shouldRejectDuplicateRpcIdWithoutReplacingPendingRequest() throws Exception {
+        BrowserRelayHub hub = new BrowserRelayHub(new BrowserRelayProperties());
+        WebSocketSession session = Mockito.mock(WebSocketSession.class);
+        Map<String, Object> attrs = new HashMap<>();
+        attrs.put("visitorId", "visitor-1");
+        Mockito.when(session.isOpen()).thenReturn(true);
+        Mockito.when(session.getId()).thenReturn("s1");
+        Mockito.when(session.getAttributes()).thenReturn(attrs);
+        List<TextMessage> outgoing = new CopyOnWriteArrayList<>();
+        CountDownLatch sent = new CountDownLatch(1);
+        Mockito.doAnswer(invocation -> {
+            outgoing.add(invocation.getArgument(0));
+            sent.countDown();
+            return null;
+        }).when(session).sendMessage(Mockito.any(TextMessage.class));
+        hub.register("visitor-1", session);
+
+        CompletableFuture<BrowserRpcResult> original = CompletableFuture.supplyAsync(
+                () -> hub.call("visitor-1", "exec", Map.of("id", "rpc-1"), Duration.ofSeconds(5)));
+        Assert.assertTrue(sent.await(1, TimeUnit.SECONDS));
+
+        BrowserRpcResult duplicate = hub.call(
+                "visitor-1", "tabs", Map.of("id", "rpc-1"), Duration.ofSeconds(1));
+        Assert.assertFalse(duplicate.isOk());
+        Assert.assertEquals("duplicate_rpc_id", duplicate.getErrorCode());
+        Assert.assertEquals(1, outgoing.size());
+
+        hub.onText(session, com.alibaba.fastjson.JSON.toJSONString(Map.of(
+                "id", "rpc-1",
+                "ok", true,
+                "data", "original result"
+        )));
+
+        BrowserRpcResult result = original.get(1, TimeUnit.SECONDS);
+        Assert.assertTrue(result.isOk());
+        Assert.assertEquals("original result", result.getData());
     }
 }

@@ -41,7 +41,6 @@ public class BrowserRelayHub implements BrowserRelaySocketBridge {
     private final ConcurrentHashMap<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, TabMeta> tabs = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, PendingRpc> pending = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, String> inflightVisitor = new ConcurrentHashMap<>();
 
     public BrowserRelayHub(BrowserRelayProperties properties) {
         this.properties = properties;
@@ -95,7 +94,6 @@ public class BrowserRelayHub implements BrowserRelaySocketBridge {
         if (rpc == null) {
             return;
         }
-        inflightVisitor.remove(rpc.visitorId, rpc.action);
         BrowserRpcResult result = BrowserRpcResult.builder()
                 .ok(Boolean.TRUE.equals(frame.getBoolean("ok")))
                 .error(frame.getString("error"))
@@ -143,14 +141,13 @@ public class BrowserRelayHub implements BrowserRelaySocketBridge {
         if (!ALLOWED_ACTIONS.contains(StringUtils.defaultString(action).toLowerCase(Locale.ROOT))) {
             return BrowserRpcResult.builder().ok(false).errorCode("unsupported_action").error("不允许的浏览器动作").build();
         }
-        if (inflightVisitor.putIfAbsent(visitorId, action) != null) {
-            return BrowserRpcResult.builder().ok(false).errorCode("browser_busy").error("浏览器忙").build();
-        }
         String requestedId = params != null && params.get("id") instanceof String text ? text.trim() : "";
         String id = StringUtils.isNotBlank(requestedId) ? requestedId : "rpc-" + UUID.randomUUID();
         CompletableFuture<BrowserRpcResult> future = new CompletableFuture<>();
-        PendingRpc rpc = new PendingRpc(visitorId, action, future);
-        pending.put(id, rpc);
+        PendingRpc rpc = new PendingRpc(visitorId, future);
+        if (pending.putIfAbsent(id, rpc) != null) {
+            return BrowserRpcResult.builder().ok(false).errorCode("duplicate_rpc_id").error("RPC ID 已存在").build();
+        }
         JSONObject frame = new JSONObject();
         if (params != null) {
             frame.putAll(params);
@@ -174,7 +171,6 @@ public class BrowserRelayHub implements BrowserRelaySocketBridge {
             WebSocketSession session = sessions.get(visitorId);
             if (session == null || !session.isOpen()) {
                 pending.remove(id, rpc);
-                inflightVisitor.remove(visitorId, action);
                 return BrowserRpcResult.builder().ok(false).errorCode("browser_offline").error("浏览器未连接").build();
             }
             synchronized (session) {
@@ -184,18 +180,15 @@ public class BrowserRelayHub implements BrowserRelaySocketBridge {
         } catch (Exception e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();
             if (cause instanceof TimeoutException) {
-                // Keep the visitor busy until the late extension result arrives
-                // or the grace window expires. A retry must not overlap a
-                // screenshot whose Chrome command may still be running.
+                // Keep the RPC pending until the late extension result arrives
+                // or the grace window expires, so a late response cannot be
+                // mistaken for a later request with the same id.
                 CompletableFuture.delayedExecutor(LATE_RESULT_GRACE_SECONDS, TimeUnit.SECONDS).execute(() -> {
-                    if (pending.remove(id, rpc)) {
-                        inflightVisitor.remove(visitorId, action);
-                    }
+                    pending.remove(id, rpc);
                 });
                 return BrowserRpcResult.builder().ok(false).errorCode("command_result_unknown").error("浏览器操作结果未知").build();
             }
             pending.remove(id, rpc);
-            inflightVisitor.remove(visitorId, action);
             return BrowserRpcResult.builder().ok(false).errorCode("rpc_failed").error(cause.getMessage()).build();
         }
     }
@@ -238,7 +231,6 @@ public class BrowserRelayHub implements BrowserRelaySocketBridge {
                     .errorCode("browser_offline")
                     .error(message)
                     .build());
-            inflightVisitor.remove(visitorId, entry.getValue().action);
             return true;
         });
     }
@@ -293,6 +285,6 @@ public class BrowserRelayHub implements BrowserRelaySocketBridge {
     private record TabMeta(String url, String title) {
     }
 
-    private record PendingRpc(String visitorId, String action, CompletableFuture<BrowserRpcResult> future) {
+    private record PendingRpc(String visitorId, CompletableFuture<BrowserRpcResult> future) {
     }
 }

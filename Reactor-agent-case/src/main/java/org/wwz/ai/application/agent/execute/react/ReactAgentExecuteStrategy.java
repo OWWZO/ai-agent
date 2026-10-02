@@ -16,8 +16,10 @@ import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import java.util.List;
 import org.wwz.ai.application.agent.askuser.AskUserResumeApplicationService;
+import org.wwz.ai.application.agent.desktopcontrol.DesktopControlResumeApplicationService;
 import org.wwz.ai.application.agent.planmode.PlanApprovalResumeApplicationService;
 import org.wwz.ai.domain.agent.runtime.askuser.IUserQuestionRepository;
+import org.wwz.ai.domain.agent.runtime.desktopcontrol.IDesktopControlRepository;
 import org.wwz.ai.domain.agent.runtime.planmode.IPlanApprovalRepository;
 import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 
@@ -45,6 +47,9 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
 
     @Resource
     private IUserQuestionRepository userQuestionRepository;
+
+    @Resource
+    private IDesktopControlRepository desktopControlRepository;
 
     @Resource
     private IPlanApprovalRepository planApprovalRepository;
@@ -125,6 +130,12 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
             working = AskUserResumeApplicationService.appendAnswerObservation(
                     working,
                     userQuestionRepository.findByQuestionId(request.getResumeQuestionId()).orElse(null)
+            );
+        }
+        if (StringUtils.isNotBlank(request.getResumeDesktopControlId()) && desktopControlRepository != null) {
+            working = DesktopControlResumeApplicationService.appendCompletedObservation(
+                    working,
+                    desktopControlRepository.findByControlId(request.getResumeDesktopControlId()).orElse(null)
             );
         }
         if (StringUtils.isNotBlank(request.getResumeApprovalId()) && planApprovalRepository != null) {

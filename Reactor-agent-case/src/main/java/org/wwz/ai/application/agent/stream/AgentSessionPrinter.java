@@ -185,6 +185,7 @@ public class AgentSessionPrinter implements Printer {
                 case "tool_call":
                 case "tool_call_delta":
                 case "ask_user_question":
+                case "desktop_control":
                 case "plan_approval":
                 case "plan_mode_entered":
                 case "session_tasks":
@@ -314,7 +315,9 @@ public class AgentSessionPrinter implements Printer {
     }
 
     static boolean isHitlYieldMessageType(String messageType) {
-        return "ask_user_question".equals(messageType) || "plan_approval".equals(messageType);
+        return "ask_user_question".equals(messageType)
+                || "desktop_control".equals(messageType)
+                || "plan_approval".equals(messageType);
     }
 
     /**

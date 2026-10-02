@@ -495,6 +495,12 @@ $env:ADAPTER_HOST_SECRET = "..."
 
 插件在线时 Agent 会装配 `opencli` 工具，进程带 `OPENCLI_RELAY_URL=http://127.0.0.1:8100/internal/browser/rpc`。Chrome 加载 unpacked 扩展 `browser-extension/`（先 `cd browser-extension && npm install && npm run build`）。用户电脑不要再装 OpenCLI daemon。
 
+#### Kernel 云端浏览器（可选）
+
+在 Backend 环境中设置 `KERNEL_API_KEY`（仅后端密钥）。Backend 需要出站访问 `api.onkernel.com` 和 Kernel 浏览器代理的 WSS 主机；OpenCLI 子进程也必须能够连接返回的 WSS 主机。浏览器空闲 72 小时后过期；待机不计用量费用，但仍计入并发配额。
+
+启用前，需要在该 API key 所属的 Kernel project 中预置名为 `agent` 的 Profile。服务不会自动创建 Profile；每个用户仍会创建独立的 `rb-<owner-hash>` browser，但新建或重建时统一加载 `agent`，并固定使用 `save_changes: false`。如果需要把登录态写入模板，先用一次性 browser 以 `save_changes: true` 初始化并完成登录，随后删除该 browser 或等待其超时以保存 Profile；正式服务不能使用写入模式。上线时请通过现有 reset/delete 逻辑清理旧 browser 后再让用户重建，不能只删除数据库映射，否则可能留下 Kernel 侧的孤立资源。
+
 ### 5. 启动 React 工作台
 
 ```bash

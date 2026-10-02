@@ -15,12 +15,16 @@ import org.wwz.ai.domain.agent.ledger.ExecutionLedgerQueryService;
 import org.wwz.ai.domain.agent.ledger.impl.ExecutionLedgerQueryServiceImpl;
 import org.wwz.ai.domain.agent.ledger.replay.ConversationHistoryReplayService;
 import org.wwz.ai.domain.agent.ledger.tooloutput.ToolOutputReader;
+import org.wwz.ai.domain.agent.runtime.askuser.IUserQuestionRepository;
+import org.wwz.ai.domain.agent.runtime.desktopcontrol.IDesktopControlRepository;
+import org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog;
 import org.wwz.ai.infrastructure.adapter.repository.ExecutionLedgerReadRepository;
 import org.wwz.ai.infrastructure.dao.reactor.IArtifactLedgerDao;
 import org.wwz.ai.infrastructure.dao.reactor.IDialogueRunLedgerDao;
 import org.wwz.ai.infrastructure.dao.reactor.IDialogueSessionLedgerDao;
 import org.wwz.ai.infrastructure.dao.reactor.ILlmInvocationLedgerDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolInvocationLedgerDao;
+import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
 import org.wwz.ai.trigger.http.agent.AgentConversationHistoryController;
 
 import java.lang.reflect.Field;
@@ -110,6 +114,26 @@ public class ReplayProjectorBeanTopologyTest {
         @Bean
         public ToolOutputReader toolOutputReader() {
             return Mockito.mock(ToolOutputReader.class);
+        }
+
+        @Bean
+        public IUserQuestionRepository userQuestionRepository() {
+            return Mockito.mock(IUserQuestionRepository.class);
+        }
+
+        @Bean
+        public IDesktopControlRepository desktopControlRepository() {
+            return Mockito.mock(IDesktopControlRepository.class);
+        }
+
+        @Bean
+        public LlmModelCatalog llmModelCatalog() {
+            return Mockito.mock(LlmModelCatalog.class);
+        }
+
+        @Bean
+        public ConversationSessionOwnershipApplicationService conversationSessionOwnershipApplicationService() {
+            return Mockito.mock(ConversationSessionOwnershipApplicationService.class);
         }
     }
 }

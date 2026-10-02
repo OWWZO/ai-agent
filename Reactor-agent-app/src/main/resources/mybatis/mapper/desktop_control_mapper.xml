@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.infrastructure.dao.reactor.IDesktopControlDao">
+
+    <resultMap id="DesktopControlMap" type="org.wwz.ai.infrastructure.dao.reactor.po.DesktopControlPO">
+        <id column="id" property="id"/>
+        <result column="control_id" property="controlId"/>
+        <result column="visitor_id" property="visitorId"/>
+        <result column="session_id" property="sessionId"/>
+        <result column="owner_key" property="ownerKey"/>
+        <result column="source_run_id" property="sourceRunId"/>
+        <result column="source_request_id" property="sourceRequestId"/>
+        <result column="tool_invocation_id" property="toolInvocationId"/>
+        <result column="tool_call_id" property="toolCallId"/>
+        <result column="reason" property="reason"/>
+        <result column="stream_url" property="streamUrl"/>
+        <result column="hold_until" property="holdUntil"/>
+        <result column="status" property="status"/>
+        <result column="resume_request_id" property="resumeRequestId"/>
+        <result column="resume_context_json" property="resumeContextJson"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="org.wwz.ai.infrastructure.dao.reactor.po.DesktopControlPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_agent_desktop_control (
+            control_id, visitor_id, session_id, owner_key, source_run_id, source_request_id,
+            tool_invocation_id, tool_call_id, reason, stream_url, hold_until, status,
+            resume_request_id, resume_context_json, create_time, update_time, deleted
+        ) VALUES (
+            #{controlId}, #{visitorId}, #{sessionId}, #{ownerKey}, #{sourceRunId}, #{sourceRequestId},
+            #{toolInvocationId}, #{toolCallId}, #{reason}, #{streamUrl}, #{holdUntil}, #{status},
+            #{resumeRequestId}, #{resumeContextJson}, NOW(), NOW(), 0
+        )
+    </insert>
+
+    <select id="selectByControlId" resultMap="DesktopControlMap">
+        SELECT *
+        FROM ai_agent_desktop_control
+        WHERE control_id = #{controlId}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="selectByResumeRequestId" resultMap="DesktopControlMap">
+        SELECT *
+        FROM ai_agent_desktop_control
+        WHERE resume_request_id = #{resumeRequestId}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="selectOpenBySessionId" resultMap="DesktopControlMap">
+        SELECT *
+        FROM ai_agent_desktop_control
+        WHERE session_id = #{sessionId}
+          AND deleted = 0
+          AND status IN ('PENDING', 'RESUME_PENDING', 'RESUMING', 'COMPLETED')
+        ORDER BY create_time DESC, id DESC
+    </select>
+
+    <select id="countOpenBySessionId" resultType="int">
+        SELECT COUNT(1)
+        FROM ai_agent_desktop_control
+        WHERE session_id = #{sessionId}
+          AND deleted = 0
+          AND status IN ('PENDING', 'RESUME_PENDING', 'RESUMING')
+    </select>
+
+    <update id="casCompletePending">
+        UPDATE ai_agent_desktop_control
+        SET status = 'RESUME_PENDING',
+            resume_request_id = #{resumeRequestId},
+            update_time = NOW()
+        WHERE control_id = #{controlId}
+          AND deleted = 0
+          AND status = 'PENDING'
+          <if test="visitorId != null and visitorId != ''">
+              AND (visitor_id IS NULL OR visitor_id = #{visitorId})
+          </if>
+    </update>
+
+    <update id="casClaimResume">
+        UPDATE ai_agent_desktop_control
+        SET status = 'RESUMING',
+            update_time = NOW()
+        WHERE resume_request_id = #{resumeRequestId}
+          AND deleted = 0
+          AND status = 'RESUME_PENDING'
+          <if test="visitorId != null and visitorId != ''">
+              AND (visitor_id IS NULL OR visitor_id = #{visitorId})
+          </if>
+    </update>
+
+    <update id="markCompleted">
+        UPDATE ai_agent_desktop_control
+        SET status = 'COMPLETED',
+            update_time = NOW()
+        WHERE control_id = #{controlId}
+          AND deleted = 0
+          AND status = 'RESUMING'
+    </update>
+
+    <update id="markFailed">
+        UPDATE ai_agent_desktop_control
+        SET status = #{status},
+            update_time = NOW()
+        WHERE control_id = #{controlId}
+          AND deleted = 0
+    </update>
+
+    <update id="casCancel">
+        UPDATE ai_agent_desktop_control
+        SET status = 'CANCELLED',
+            update_time = NOW()
+        WHERE control_id = #{controlId}
+          AND deleted = 0
+          AND status IN
+          <foreach collection="fromStatuses" item="st" open="(" separator="," close=")">
+              #{st}
+          </foreach>
+          <if test="visitorId != null and visitorId != ''">
+              AND (visitor_id IS NULL OR visitor_id = #{visitorId})
+          </if>
+    </update>
+</mapper>

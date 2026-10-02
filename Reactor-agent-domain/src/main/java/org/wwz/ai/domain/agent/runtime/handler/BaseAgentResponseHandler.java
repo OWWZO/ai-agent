@@ -322,6 +322,7 @@ public class BaseAgentResponseHandler {
             case "tool_call":
             case "tool_call_delta":
             case "ask_user_question":
+            case "desktop_control":
             case "plan_approval":
             case "plan_mode_entered":
             case "session_tasks":

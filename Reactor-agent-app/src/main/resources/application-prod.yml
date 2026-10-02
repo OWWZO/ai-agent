@@ -26,6 +26,14 @@ reactor:
     pairing-ttl-seconds: 300
     rpc-timeout-seconds: 60
     internal-rpc-secret: "${ADAPTER_HOST_SECRET:}"
+  kernel-browser:
+    enabled: true
+    api-key: ${KERNEL_API_KEY:}
+    base-url: https://api.onkernel.com
+    timeout-seconds: 259200
+    browser-name-prefix: rb
+    profile-name: agent
+    profile-save-changes: false
 
 #长期记忆 策展有界、单外部 Provider、无 curated 向量
 memory:

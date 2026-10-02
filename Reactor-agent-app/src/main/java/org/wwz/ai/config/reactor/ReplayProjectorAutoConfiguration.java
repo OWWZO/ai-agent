@@ -10,8 +10,10 @@ import org.wwz.ai.domain.agent.ledger.replay.projector.ToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.ToolInvocationProjectorRegistry;
 import org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog;
 import org.wwz.ai.domain.agent.runtime.askuser.IUserQuestionRepository;
+import org.wwz.ai.domain.agent.runtime.desktopcontrol.IDesktopControlRepository;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.CanvasPublishToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.AskUserQuestionToolInvocationProjector;
+import org.wwz.ai.domain.agent.ledger.replay.projector.impl.RequestDesktopControlToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.GenUiPatchToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.GenUiTreeToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.CodeInterpreterToolInvocationProjector;
@@ -33,6 +35,12 @@ public class ReplayProjectorAutoConfiguration {
     public AskUserQuestionToolInvocationProjector askUserQuestionToolInvocationProjector(
             IUserQuestionRepository userQuestionRepository) {
         return new AskUserQuestionToolInvocationProjector(userQuestionRepository);
+    }
+
+    @Bean
+    public RequestDesktopControlToolInvocationProjector requestDesktopControlToolInvocationProjector(
+            IDesktopControlRepository desktopControlRepository) {
+        return new RequestDesktopControlToolInvocationProjector(desktopControlRepository);
     }
 
     @Bean

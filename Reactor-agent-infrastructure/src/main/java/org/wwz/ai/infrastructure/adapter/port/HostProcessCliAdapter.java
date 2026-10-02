@@ -62,14 +62,7 @@ public class HostProcessCliAdapter implements CliExecutionPort {
                     builder.directory(cwd);
                 }
             }
-            if (invocation.getEnv() != null && !invocation.getEnv().isEmpty()) {
-                Map<String, String> environment = builder.environment();
-                for (Map.Entry<String, String> entry : invocation.getEnv().entrySet()) {
-                    if (StringUtils.isNotBlank(entry.getKey()) && entry.getValue() != null) {
-                        environment.put(entry.getKey(), entry.getValue());
-                    }
-                }
-            }
+            applyChildEnvironment(builder.environment(), invocation);
             process = builder.start();
             Thread outThread = startCollector(process.getInputStream(), stdout);
             Thread errThread = startCollector(process.getErrorStream(), stderr);
@@ -117,6 +110,27 @@ public class HostProcessCliAdapter implements CliExecutionPort {
             return resolveBinary(tool) != null;
         } catch (IllegalArgumentException ignore) {
             return false;
+        }
+    }
+
+    public static void applyChildEnvironment(Map<String, String> environment, CliInvocation invocation) {
+        if (environment == null || invocation == null) {
+            return;
+        }
+        if (invocation.getUnsetEnv() != null) {
+            for (String key : invocation.getUnsetEnv()) {
+                if (StringUtils.isNotBlank(key)) {
+                    environment.remove(key);
+                }
+            }
+        }
+        if (invocation.getEnv() == null || invocation.getEnv().isEmpty()) {
+            return;
+        }
+        for (Map.Entry<String, String> entry : invocation.getEnv().entrySet()) {
+            if (StringUtils.isNotBlank(entry.getKey()) && entry.getValue() != null) {
+                environment.put(entry.getKey(), entry.getValue());
+            }
         }
     }
 

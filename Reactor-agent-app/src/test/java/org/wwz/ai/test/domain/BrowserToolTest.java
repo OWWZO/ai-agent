@@ -9,6 +9,7 @@ import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliInvocation;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliResult;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.infrastructure.adapter.port.InProcessBrowserOperationLockAdapter;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.cli.OpenCliArgv;
 import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserTool;
@@ -44,8 +45,16 @@ public class BrowserToolTest {
                 OpenCliArgv.rewrite(List.of("browser", "visitor:vis_zhangsan", "click", "12"),
                         "vis_zhangsan", List.of("-f", "json")));
         Assert.assertEquals(
-                List.of("bilibili", "search", "redis", "--keep-tab", "-f", "json"),
+                List.of("bilibili", "search", "redis", "-f", "json"),
                 OpenCliArgv.rewrite(List.of("bilibili", "search", "redis"), "vis_zhangsan", List.of("-f", "json")));
+        Assert.assertEquals(
+                List.of("xiaohongshu", "feed", "--limit", "10", "-f", "json"),
+                OpenCliArgv.rewrite(List.of("xiaohongshu", "feed", "--limit", "10", "-f", "json"),
+                        "vis_zhangsan", List.of("-f", "json")));
+        Assert.assertEquals(
+                List.of("bilibili", "search", "redis", "--keep-tab", "false", "-f", "json"),
+                OpenCliArgv.rewrite(List.of("bilibili", "search", "redis", "--keep-tab", "false"),
+                        "vis_zhangsan", List.of("-f", "json")));
         Assert.assertEquals(
                 List.of("list", "-f", "json"),
                 OpenCliArgv.rewrite(List.of("list"), "vis_zhangsan", List.of("-f", "json")));
@@ -99,6 +108,7 @@ public class BrowserToolTest {
                         .browserRelayPort(relay)
                         .cliExecutionPort(cli)
                         .openCliProperties(properties)
+                        .browserOperationLockPort(new InProcessBrowserOperationLockAdapter())
                         .build())
                 .build();
         return ctx;

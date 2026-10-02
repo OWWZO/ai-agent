@@ -147,6 +147,25 @@ public class VisitorIdentityFilterTest {
     }
 
     @Test
+    public void shouldBindVisitorForDesktopControlResumeEndpoint() throws Exception {
+        AnonymousVisitorApplicationService service = Mockito.mock(AnonymousVisitorApplicationService.class);
+        Mockito.when(service.resolveOrCreate(Mockito.isNull(), Mockito.any(), Mockito.any()))
+                .thenReturn(AnonymousVisitorIdentity.builder()
+                        .visitorId("visitor-desktop")
+                        .rawToken("token-desktop")
+                        .newlyCreated(false)
+                        .build());
+        VisitorIdentityFilter filter = new VisitorIdentityFilter(service, buildCookieProperties(false, "Lax"));
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/agent/desktop-control/resume");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicReference<String> visitorSeenInChain = new AtomicReference<>();
+
+        filter.doFilter(request, response, captureVisitorChain(visitorSeenInChain));
+
+        Assert.assertEquals("visitor-desktop", visitorSeenInChain.get());
+    }
+
+    @Test
     public void shouldBindVisitorForPlanApprovalResumeEndpoint() throws Exception {
         AnonymousVisitorApplicationService service = Mockito.mock(AnonymousVisitorApplicationService.class);
         Mockito.when(service.resolveOrCreate(Mockito.isNull(), Mockito.any(), Mockito.any()))
@@ -202,6 +221,25 @@ public class VisitorIdentityFilterTest {
         filter.doFilter(request, response, captureVisitorChain(visitorSeenInChain));
 
         Assert.assertEquals("visitor-browser", visitorSeenInChain.get());
+    }
+
+    @Test
+    public void shouldBindVisitorForKernelBrowserEndpoint() throws Exception {
+        AnonymousVisitorApplicationService service = Mockito.mock(AnonymousVisitorApplicationService.class);
+        Mockito.when(service.resolveOrCreate(Mockito.isNull(), Mockito.any(), Mockito.any()))
+                .thenReturn(AnonymousVisitorIdentity.builder()
+                        .visitorId("visitor-kernel-browser")
+                        .rawToken("token-kernel-browser")
+                        .newlyCreated(false)
+                        .build());
+        VisitorIdentityFilter filter = new VisitorIdentityFilter(service, buildCookieProperties(false, "Lax"));
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/agent/kernel-browser/ensure");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicReference<String> visitorSeenInChain = new AtomicReference<>();
+
+        filter.doFilter(request, response, captureVisitorChain(visitorSeenInChain));
+
+        Assert.assertEquals("visitor-kernel-browser", visitorSeenInChain.get());
     }
 
     private FilterChain captureVisitorChain(AtomicReference<String> visitorSeenInChain) {
