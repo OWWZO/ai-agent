@@ -20,7 +20,7 @@ public class DialogueSessionView {
 
     private String sessionId;
 
-    private String visitorId;
+    private String userId;
 
     private String title;
 

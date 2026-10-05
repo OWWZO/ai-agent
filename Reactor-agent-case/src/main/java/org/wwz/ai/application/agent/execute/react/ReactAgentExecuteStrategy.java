@@ -72,11 +72,11 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
                         .build();
 
         // 注册活动 run 后，停止请求才能通过 requestId 找到同一条执行流；无论成功还是异常都必须解除注册。
-        // 同一 visitor 已有活跃 run 时 begin 会拒绝，避免多会话并发。
+        // 同一 userId 已有冲突 run 时 begin 会拒绝，避免同会话并发。
         activeAgentRunRegistry.begin(
                 request.getRequestId(),
                 request.getSessionId(),
-                request.getVisitorId());
+                request.getUserId());
         activeAgentRunRegistry.bindStream(request.getRequestId(), stream);
         try {
             String result = executeHandler.apply(request, dynamicContext);

@@ -2,6 +2,7 @@ package org.wwz.ai.trigger.config;
 
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.Filter;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -10,16 +11,14 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
-import org.wwz.ai.application.agent.visitor.AnonymousVisitorApplicationService;
-import org.wwz.ai.trigger.http.visitor.VisitorIdentityFilter;
+import org.wwz.ai.application.auth.AuthApplicationService;
+import org.wwz.ai.trigger.http.auth.AuthenticationFilter;
 import org.wwz.ai.types.agent.config.AgentExecutorProperties;
 
 /**
  * 触发层基础过滤器配置。
  *
- * <p>过滤器顺序是本类的关键契约：CORS 先处理跨域响应，访客身份过滤器随后读取或
- * 创建匿名访客身份。两个过滤器都覆盖 REQUEST 分发，具体业务 Controller 无需重复
- * 编写跨域和访客识别逻辑。</p>
+ * <p>过滤器顺序是本类的关键契约：CORS 先处理跨域响应，认证过滤器注册顺序由认证整合接管。</p>
  */
 @Configuration
 @EnableConfigurationProperties(AgentExecutorProperties.class)
@@ -55,16 +54,14 @@ public class BaseFilterConfig {
 	}
 
 	@Bean
-	public FilterRegistrationBean<VisitorIdentityFilter> visitorIdentityFilter(
-			AnonymousVisitorApplicationService anonymousVisitorApplicationService,
-			AgentExecutorProperties properties) {
-		// 身份过滤器复用应用服务和访客 Cookie 配置，过滤器本身不持有访客持久化规则。
-		VisitorIdentityFilter filter = new VisitorIdentityFilter(
-				anonymousVisitorApplicationService,
-				properties.getVisitorCookie()
-		);
-		return this.creatAllFilter(filter, 2);
-	}
+    public FilterRegistrationBean<AuthenticationFilter> authenticationFilter(
+            AuthApplicationService authApplicationService,
+            ObjectMapper objectMapper) {
+        return this.creatAllFilter(
+                new AuthenticationFilter(authApplicationService, objectMapper),
+                2
+        );
+    }
 
 
 	<T extends Filter> FilterRegistrationBean<T> creatAllFilter(T filter, int order) {

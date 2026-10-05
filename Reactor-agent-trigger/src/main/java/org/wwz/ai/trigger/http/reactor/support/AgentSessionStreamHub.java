@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * 会话级 SSE 总线：订阅、回放闸门、心跳、按 visitor 限流。
+ * 会话级 SSE 总线：订阅、回放闸门、心跳、按 userId 限流。
  * 超时/断开只取消订阅，不终止 run。
  */
 @Slf4j

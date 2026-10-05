@@ -46,35 +46,35 @@ public class BrowserRelayHub implements BrowserRelaySocketBridge {
         this.properties = properties;
     }
 
-    public void register(String visitorId, WebSocketSession session) {
-        if (StringUtils.isBlank(visitorId) || session == null) {
+    public void register(String userId, WebSocketSession session) {
+        if (StringUtils.isBlank(userId) || session == null) {
             return;
         }
-        WebSocketSession previous = sessions.put(visitorId, session);
+        WebSocketSession previous = sessions.put(userId, session);
         if (previous != null && previous.isOpen() && !previous.getId().equals(session.getId())) {
             try {
                 previous.close();
             } catch (IOException ignore) {
             }
         }
-        log.info("browser relay online visitorId={}", visitorId);
+        log.info("browser relay online userId={}", userId);
     }
 
     public void unregister(WebSocketSession session) {
         if (session == null) {
             return;
         }
-        String visitorId = visitorIdOf(session);
-        if (visitorId != null && sessions.remove(visitorId, session)) {
-            tabs.remove(visitorId);
-            failPending(visitorId, "extension disconnected");
-            log.info("browser relay offline visitorId={}", visitorId);
+        String userId = userIdOf(session);
+        if (userId != null && sessions.remove(userId, session)) {
+            tabs.remove(userId);
+            failPending(userId, "extension disconnected");
+            log.info("browser relay offline userId={}", userId);
         }
     }
 
     public void onText(WebSocketSession session, String payload) {
-        String visitorId = visitorIdOf(session);
-        if (visitorId == null || StringUtils.isBlank(payload)) {
+        String userId = userIdOf(session);
+        if (userId == null || StringUtils.isBlank(payload)) {
             return;
         }
         JSONObject frame = JSON.parseObject(payload);
@@ -83,7 +83,7 @@ public class BrowserRelayHub implements BrowserRelaySocketBridge {
             return;
         }
         if ("tab.changed".equals(type)) {
-            updateTabMeta(visitorId, frame.getString("url"), frame.getString("title"));
+            updateTabMeta(userId, frame.getString("url"), frame.getString("title"));
             return;
         }
         String id = frame.getString("id");
@@ -106,7 +106,7 @@ public class BrowserRelayHub implements BrowserRelaySocketBridge {
             Object url = dataMap.get("url");
             Object title = dataMap.get("title");
             if (url != null || title != null) {
-                updateTabMeta(visitorId,
+                updateTabMeta(userId,
                         url == null ? null : String.valueOf(url),
                         title == null ? null : String.valueOf(title));
             }
@@ -115,27 +115,27 @@ public class BrowserRelayHub implements BrowserRelaySocketBridge {
     }
 
     @Override
-    public boolean isOnline(String visitorId) {
-        WebSocketSession session = StringUtils.isBlank(visitorId) ? null : sessions.get(visitorId);
+    public boolean isOnline(String userId) {
+        WebSocketSession session = StringUtils.isBlank(userId) ? null : sessions.get(userId);
         return session != null && session.isOpen();
     }
 
     @Override
-    public BrowserRelayStatus status(String visitorId) {
-        TabMeta meta = StringUtils.isBlank(visitorId) ? null : tabs.get(visitorId);
+    public BrowserRelayStatus status(String userId) {
+        TabMeta meta = StringUtils.isBlank(userId) ? null : tabs.get(userId);
         return BrowserRelayStatus.builder()
-                .connected(isOnline(visitorId))
+                .connected(isOnline(userId))
                 .tabUrl(meta == null ? null : meta.url)
                 .tabTitle(meta == null ? null : meta.title)
                 .build();
     }
 
     @Override
-    public BrowserRpcResult call(String visitorId, String action, Map<String, Object> params, Duration timeout) {
+    public BrowserRpcResult call(String userId, String action, Map<String, Object> params, Duration timeout) {
         if ("lease-release".equalsIgnoreCase(StringUtils.defaultString(action))) {
             return BrowserRpcResult.builder().ok(true).data(Map.of()).build();
         }
-        if (!isOnline(visitorId)) {
+        if (!isOnline(userId)) {
             return BrowserRpcResult.builder().ok(false).errorCode("browser_offline").error("浏览器未连接").build();
         }
         if (!ALLOWED_ACTIONS.contains(StringUtils.defaultString(action).toLowerCase(Locale.ROOT))) {
@@ -144,7 +144,7 @@ public class BrowserRelayHub implements BrowserRelaySocketBridge {
         String requestedId = params != null && params.get("id") instanceof String text ? text.trim() : "";
         String id = StringUtils.isNotBlank(requestedId) ? requestedId : "rpc-" + UUID.randomUUID();
         CompletableFuture<BrowserRpcResult> future = new CompletableFuture<>();
-        PendingRpc rpc = new PendingRpc(visitorId, future);
+        PendingRpc rpc = new PendingRpc(userId, future);
         if (pending.putIfAbsent(id, rpc) != null) {
             return BrowserRpcResult.builder().ok(false).errorCode("duplicate_rpc_id").error("RPC ID 已存在").build();
         }
@@ -168,7 +168,7 @@ public class BrowserRelayHub implements BrowserRelaySocketBridge {
         }
         frame.put("deadlineAt", Math.max(System.currentTimeMillis() + 1, deadlineAt));
         try {
-            WebSocketSession session = sessions.get(visitorId);
+            WebSocketSession session = sessions.get(userId);
             if (session == null || !session.isOpen()) {
                 pending.remove(id, rpc);
                 return BrowserRpcResult.builder().ok(false).errorCode("browser_offline").error("浏览器未连接").build();
@@ -194,13 +194,13 @@ public class BrowserRelayHub implements BrowserRelaySocketBridge {
     }
 
     @Override
-    public void disconnect(String visitorId) {
-        if (StringUtils.isBlank(visitorId)) {
+    public void disconnect(String userId) {
+        if (StringUtils.isBlank(userId)) {
             return;
         }
-        WebSocketSession session = sessions.remove(visitorId);
-        tabs.remove(visitorId);
-        failPending(visitorId, "disconnected");
+        WebSocketSession session = sessions.remove(userId);
+        tabs.remove(userId);
+        failPending(userId, "disconnected");
         if (session != null && session.isOpen()) {
             try {
                 session.close();
@@ -210,20 +210,20 @@ public class BrowserRelayHub implements BrowserRelaySocketBridge {
     }
 
     @Override
-    public void updateTabMeta(String visitorId, String url, String title) {
-        if (StringUtils.isBlank(visitorId)) {
+    public void updateTabMeta(String userId, String url, String title) {
+        if (StringUtils.isBlank(userId)) {
             return;
         }
-        TabMeta previous = tabs.get(visitorId);
-        tabs.put(visitorId, new TabMeta(
+        TabMeta previous = tabs.get(userId);
+        tabs.put(userId, new TabMeta(
                 StringUtils.defaultIfBlank(url, previous == null ? null : previous.url),
                 StringUtils.defaultIfBlank(title, previous == null ? null : previous.title)
         ));
     }
 
-    private void failPending(String visitorId, String message) {
+    private void failPending(String userId, String message) {
         pending.entrySet().removeIf(entry -> {
-            if (!visitorId.equals(entry.getValue().visitorId)) {
+            if (!userId.equals(entry.getValue().userId)) {
                 return false;
             }
             entry.getValue().future.complete(BrowserRpcResult.builder()
@@ -249,8 +249,8 @@ public class BrowserRelayHub implements BrowserRelaySocketBridge {
         return 60_000L;
     }
 
-    private static String visitorIdOf(WebSocketSession session) {
-        Object value = session.getAttributes().get("visitorId");
+    private static String userIdOf(WebSocketSession session) {
+        Object value = session.getAttributes().get("userId");
         return value == null ? null : String.valueOf(value);
     }
 
@@ -285,6 +285,6 @@ public class BrowserRelayHub implements BrowserRelaySocketBridge {
     private record TabMeta(String url, String title) {
     }
 
-    private record PendingRpc(String visitorId, CompletableFuture<BrowserRpcResult> future) {
+    private record PendingRpc(String userId, CompletableFuture<BrowserRpcResult> future) {
     }
 }

@@ -26,10 +26,6 @@ public class LtmOwner {
         return of(LtmOwnerType.USER, userId);
     }
 
-    public static LtmOwner visitor(String visitorId) {
-        return of(LtmOwnerType.VISITOR, visitorId);
-    }
-
     public String asOwnerKey() {
         return type.name().toLowerCase(Locale.ROOT) + ":" + id;
     }

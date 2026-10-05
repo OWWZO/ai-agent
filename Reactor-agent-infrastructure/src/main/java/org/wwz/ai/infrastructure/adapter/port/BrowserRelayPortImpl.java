@@ -20,22 +20,22 @@ public class BrowserRelayPortImpl implements BrowserRelayPort {
     }
 
     @Override
-    public boolean isOnline(String visitorId) {
-        return bridge.isOnline(visitorId);
+    public boolean isOnline(String userId) {
+        return bridge.isOnline(userId);
     }
 
     @Override
-    public BrowserRelayStatus status(String visitorId) {
-        return bridge.status(visitorId);
+    public BrowserRelayStatus status(String userId) {
+        return bridge.status(userId);
     }
 
     @Override
-    public BrowserRpcResult call(String visitorId, String action, Map<String, Object> params, Duration timeout) {
-        return bridge.call(visitorId, action, params, timeout);
+    public BrowserRpcResult call(String userId, String action, Map<String, Object> params, Duration timeout) {
+        return bridge.call(userId, action, params, timeout);
     }
 
     @Override
-    public void disconnect(String visitorId) {
-        bridge.disconnect(visitorId);
+    public void disconnect(String userId) {
+        bridge.disconnect(userId);
     }
 }

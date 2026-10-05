@@ -14,16 +14,16 @@ public interface SessionSearchService {
             return search(null, null, null, 0, null);
         }
         int limit = request.getLimit() == null ? 0 : request.getLimit();
-        return search(request.getCurrentSessionId(), request.getVisitorId(), request.getQuery(),
+        return search(request.getCurrentSessionId(), request.getUserId(), request.getQuery(),
                 limit, request.getScope());
     }
 
     /**
      * @param sessionId  当前会话（scope=session 时必填；scope=user 时用于排序/标注当前会话）
-     * @param visitorId  访客/用户归属（scope=user 时优先；可为空则回退本会话）
+     * @param userId  用户归属（scope=user 时优先；可为空则回退本会话）
      * @param query      关键词
      * @param limit      最大命中
-     * @param scope      session=仅本会话；user=该 visitor 下跨会话
+     * @param scope      session=仅本会话；user=该 userId 下跨会话
      */
-    String search(String sessionId, String visitorId, String query, int limit, String scope);
+    String search(String sessionId, String userId, String query, int limit, String scope);
 }

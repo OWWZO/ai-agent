@@ -11,7 +11,7 @@ import org.wwz.ai.api.response.Response;
 import org.wwz.ai.application.agent.kernelbrowser.KernelBrowserApplicationService;
 import org.wwz.ai.domain.agent.adapter.port.KernelBrowserLiveView;
 import org.wwz.ai.domain.agent.adapter.port.KernelBrowserSessionStatus;
-import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
+import org.wwz.ai.types.agent.user.UserRequestContext;
 import org.wwz.ai.types.enums.ResponseCode;
 
 @RestController
@@ -27,7 +27,7 @@ public class AgentKernelBrowserController {
     @PostMapping("/ensure")
     public ResponseEntity<Response<KernelBrowserLiveView>> ensure() {
         KernelBrowserLiveView liveView = kernelBrowserApplicationService.ensure(
-                VisitorRequestContext.requireVisitorId());
+                UserRequestContext.requireUserId());
         Response<KernelBrowserLiveView> response = Response.<KernelBrowserLiveView>builder()
                 .code(ResponseCode.SUCCESS.getCode())
                 .info(ResponseCode.SUCCESS.getInfo())
@@ -41,7 +41,7 @@ public class AgentKernelBrowserController {
     @GetMapping("/status")
     public Response<KernelBrowserSessionStatus> status() {
         KernelBrowserSessionStatus status = kernelBrowserApplicationService.status(
-                VisitorRequestContext.requireVisitorId());
+                UserRequestContext.requireUserId());
         return Response.<KernelBrowserSessionStatus>builder()
                 .code(ResponseCode.SUCCESS.getCode())
                 .info(ResponseCode.SUCCESS.getInfo())
@@ -51,7 +51,7 @@ public class AgentKernelBrowserController {
 
     @DeleteMapping("/session")
     public Response<Void> reset() {
-        kernelBrowserApplicationService.reset(VisitorRequestContext.requireVisitorId());
+        kernelBrowserApplicationService.reset(UserRequestContext.requireUserId());
         return Response.<Void>builder()
                 .code(ResponseCode.SUCCESS.getCode())
                 .info(ResponseCode.SUCCESS.getInfo())

@@ -61,11 +61,11 @@ public class UserQuestionYieldService {
             toolInvocationId = agentContext.getAgentRunState().resolveToolInvocationId(toolCallId);
         }
         UserQuestionResumeContext resumeContext = UserQuestionResumeContext.from(agentContext, request, entryAgent);
-        String visitorId = request == null ? null : request.getVisitorId();
+        String userId = request == null ? null : request.getUserId();
 
         UserQuestionRecord record = UserQuestionRecord.builder()
                 .questionId(questionId)
-                .visitorId(visitorId)
+                .userId(userId)
                 .sessionId(agentContext.getSessionId())
                 .sourceRunId(runId)
                 .sourceRequestId(agentContext.getRequestId())

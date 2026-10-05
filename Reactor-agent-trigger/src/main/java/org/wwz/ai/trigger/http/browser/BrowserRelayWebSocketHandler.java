@@ -19,9 +19,9 @@ public class BrowserRelayWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
-        Object visitorId = session.getAttributes().get("visitorId");
-        if (visitorId != null) {
-            hub.register(String.valueOf(visitorId), session);
+        Object userId = session.getAttributes().get("userId");
+        if (userId != null) {
+            hub.register(String.valueOf(userId), session);
         }
     }
 

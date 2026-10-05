@@ -77,23 +77,23 @@ public class UserQuestionRepository implements IUserQuestionRepository {
     }
 
     @Override
-    public boolean casAnswerPending(String questionId, String visitorId, Map<String, String> answers, String resumeRequestId) {
+    public boolean casAnswerPending(String questionId, String userId, Map<String, String> answers, String resumeRequestId) {
         if (StringUtils.isBlank(questionId) || StringUtils.isBlank(resumeRequestId)) {
             return false;
         }
         return userQuestionDao.casAnswerPending(
                 questionId.trim(),
-                StringUtils.trimToNull(visitorId),
+                StringUtils.trimToNull(userId),
                 JSON.toJSONString(answers == null ? Collections.emptyMap() : answers),
                 resumeRequestId.trim()) > 0;
     }
 
     @Override
-    public boolean casClaimResume(String resumeRequestId, String visitorId) {
+    public boolean casClaimResume(String resumeRequestId, String userId) {
         if (StringUtils.isBlank(resumeRequestId)) {
             return false;
         }
-        return userQuestionDao.casClaimResume(resumeRequestId.trim(), StringUtils.trimToNull(visitorId)) > 0;
+        return userQuestionDao.casClaimResume(resumeRequestId.trim(), StringUtils.trimToNull(userId)) > 0;
     }
 
     @Override
@@ -113,20 +113,20 @@ public class UserQuestionRepository implements IUserQuestionRepository {
     }
 
     @Override
-    public boolean casCancel(String questionId, String visitorId) {
+    public boolean casCancel(String questionId, String userId) {
         if (StringUtils.isBlank(questionId)) {
             return false;
         }
         return userQuestionDao.casCancel(
                 questionId.trim(),
-                StringUtils.trimToNull(visitorId),
+                StringUtils.trimToNull(userId),
                 UserQuestionStatuses.CANCELABLE) > 0;
     }
 
     private UserQuestionPO toPo(UserQuestionRecord record) {
         UserQuestionPO po = new UserQuestionPO();
         po.setQuestionId(record.getQuestionId());
-        po.setVisitorId(record.getVisitorId());
+        po.setUserId(record.getUserId());
         po.setSessionId(record.getSessionId());
         po.setSourceRunId(record.getSourceRunId());
         po.setSourceRequestId(record.getSourceRequestId());
@@ -158,7 +158,7 @@ public class UserQuestionRepository implements IUserQuestionRepository {
         return UserQuestionRecord.builder()
                 .id(po.getId())
                 .questionId(po.getQuestionId())
-                .visitorId(po.getVisitorId())
+                .userId(po.getUserId())
                 .sessionId(po.getSessionId())
                 .sourceRunId(po.getSourceRunId())
                 .sourceRequestId(po.getSourceRequestId())

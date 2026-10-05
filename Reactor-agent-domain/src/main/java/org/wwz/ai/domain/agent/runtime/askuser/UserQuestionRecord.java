@@ -16,7 +16,7 @@ import java.util.Map;
 public class UserQuestionRecord {
     private Long id;
     private String questionId;
-    private String visitorId;
+    private String userId;
     private String sessionId;
     private Long sourceRunId;
     private String sourceRequestId;

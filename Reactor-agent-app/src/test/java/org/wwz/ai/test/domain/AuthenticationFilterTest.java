@@ -1,0 +1,88 @@
+package org.wwz.ai.test.domain;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.FilterChain;
+import org.junit.Assert;
+import org.junit.Test;
+import org.mockito.Mockito;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.wwz.ai.application.auth.AuthApplicationService;
+import org.wwz.ai.application.auth.JwtTokenService;
+import org.wwz.ai.trigger.http.auth.AuthenticationFilter;
+import org.wwz.ai.types.agent.user.UserRequestContext;
+
+import java.time.Instant;
+
+public class AuthenticationFilterTest {
+
+    @Test
+    public void protectedRequestWithoutAccessTokenReturnsUnauthorized() throws Exception {
+        AuthApplicationService authService = Mockito.mock(AuthApplicationService.class);
+        AuthenticationFilter filter = new AuthenticationFilter(authService, new ObjectMapper());
+        MockHttpServletRequest request = request("/api/agent/conversation/sessions");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (ignoredRequest, ignoredResponse) -> Assert.fail("unauthorized request reached controller");
+
+        filter.doFilter(request, response, chain);
+
+        Assert.assertEquals(401, response.getStatus());
+        Mockito.verify(authService).verifyAccessToken(null);
+    }
+
+    @Test
+    public void authEndpointRemainsAnonymous() throws Exception {
+        AuthApplicationService authService = Mockito.mock(AuthApplicationService.class);
+        AuthenticationFilter filter = new AuthenticationFilter(authService, new ObjectMapper());
+        MockHttpServletRequest request = request("/api/auth/login");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockHttpServletResponse[] reached = new MockHttpServletResponse[1];
+
+        filter.doFilter(request, response, (ignoredRequest, servletResponse) ->
+                reached[0] = (MockHttpServletResponse) servletResponse);
+
+        Assert.assertSame(response, reached[0]);
+        Mockito.verifyNoInteractions(authService);
+    }
+
+    @Test
+    public void validAccessTokenBindsAndClearsUserContext() throws Exception {
+        AuthApplicationService authService = Mockito.mock(AuthApplicationService.class);
+        Mockito.when(authService.verifyAccessToken("access-token"))
+                .thenReturn(new JwtTokenService.AuthenticatedAccount(
+                        "user-1", "session-1", "USER", Instant.now(), Instant.now().plusSeconds(900)));
+        AuthenticationFilter filter = new AuthenticationFilter(authService, new ObjectMapper());
+        MockHttpServletRequest request = request("/api/agent/conversation/sessions");
+        request.addHeader("Authorization", "Bearer access-token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        UserRequestContext.clear();
+
+        filter.doFilter(request, response, (ignoredRequest, ignoredResponse) ->
+                Assert.assertEquals("user-1", UserRequestContext.currentUserId()));
+
+        Assert.assertNull(UserRequestContext.currentUserId());
+    }
+
+    @Test
+    public void regularUserCannotAccessAdminEndpoint() throws Exception {
+        AuthApplicationService authService = Mockito.mock(AuthApplicationService.class);
+        Mockito.when(authService.verifyAccessToken("access-token"))
+                .thenReturn(new JwtTokenService.AuthenticatedAccount(
+                        "user-1", "session-1", "USER", Instant.now(), Instant.now().plusSeconds(900)));
+        AuthenticationFilter filter = new AuthenticationFilter(authService, new ObjectMapper());
+        MockHttpServletRequest request = request("/api/v1/admin/ai-client/query-all");
+        request.addHeader("Authorization", "Bearer access-token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, (ignoredRequest, ignoredResponse) ->
+                Assert.fail("regular user reached admin controller"));
+
+        Assert.assertEquals(403, response.getStatus());
+    }
+
+    private MockHttpServletRequest request(String path) {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI(path);
+        return request;
+    }
+}

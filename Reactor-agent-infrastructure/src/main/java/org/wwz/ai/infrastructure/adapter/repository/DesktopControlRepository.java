@@ -65,22 +65,22 @@ public class DesktopControlRepository implements IDesktopControlRepository {
     }
 
     @Override
-    public boolean casCompletePending(String controlId, String visitorId, String resumeRequestId) {
+    public boolean casCompletePending(String controlId, String userId, String resumeRequestId) {
         if (StringUtils.isBlank(controlId) || StringUtils.isBlank(resumeRequestId)) {
             return false;
         }
         return desktopControlDao.casCompletePending(
                 controlId.trim(),
-                StringUtils.trimToNull(visitorId),
+                StringUtils.trimToNull(userId),
                 resumeRequestId.trim()) > 0;
     }
 
     @Override
-    public boolean casClaimResume(String resumeRequestId, String visitorId) {
+    public boolean casClaimResume(String resumeRequestId, String userId) {
         if (StringUtils.isBlank(resumeRequestId)) {
             return false;
         }
-        return desktopControlDao.casClaimResume(resumeRequestId.trim(), StringUtils.trimToNull(visitorId)) > 0;
+        return desktopControlDao.casClaimResume(resumeRequestId.trim(), StringUtils.trimToNull(userId)) > 0;
     }
 
     @Override
@@ -100,20 +100,20 @@ public class DesktopControlRepository implements IDesktopControlRepository {
     }
 
     @Override
-    public boolean casCancel(String controlId, String visitorId) {
+    public boolean casCancel(String controlId, String userId) {
         if (StringUtils.isBlank(controlId)) {
             return false;
         }
         return desktopControlDao.casCancel(
                 controlId.trim(),
-                StringUtils.trimToNull(visitorId),
+                StringUtils.trimToNull(userId),
                 DesktopControlStatuses.CANCELABLE) > 0;
     }
 
     private DesktopControlPO toPo(DesktopControlRecord record) {
         DesktopControlPO po = new DesktopControlPO();
         po.setControlId(record.getControlId());
-        po.setVisitorId(record.getVisitorId());
+        po.setUserId(record.getUserId());
         po.setSessionId(record.getSessionId());
         po.setOwnerKey(record.getOwnerKey());
         po.setSourceRunId(record.getSourceRunId());
@@ -136,7 +136,7 @@ public class DesktopControlRepository implements IDesktopControlRepository {
         return DesktopControlRecord.builder()
                 .id(po.getId())
                 .controlId(po.getControlId())
-                .visitorId(po.getVisitorId())
+                .userId(po.getUserId())
                 .sessionId(po.getSessionId())
                 .ownerKey(po.getOwnerKey())
                 .sourceRunId(po.getSourceRunId())

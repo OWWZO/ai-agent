@@ -8,7 +8,7 @@ import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalDecision;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalObservationSupport;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalRecord;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalStatuses;
-import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
+import org.wwz.ai.types.agent.user.UserRequestContext;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -44,14 +44,14 @@ public class PlanApprovalApplicationService {
         if (StringUtils.isBlank(approvalId)) {
             throw new IllegalArgumentException("approvalId 不能为空");
         }
-        String visitorId = VisitorRequestContext.currentVisitorId();
+        String userId = UserRequestContext.currentUserId();
         PlanApprovalRecord existing = planApprovalRepository.findByApprovalId(approvalId.trim()).orElse(null);
         if (existing == null) {
             return rejected(approvalId, "批准请求不存在");
         }
-        if (StringUtils.isNotBlank(existing.getVisitorId())
-                && StringUtils.isNotBlank(visitorId)
-                && !existing.getVisitorId().equals(visitorId)) {
+        if (StringUtils.isNotBlank(existing.getUserId())
+                && StringUtils.isNotBlank(userId)
+                && !existing.getUserId().equals(userId)) {
             return rejected(approvalId, "无权操作该审批");
         }
         if (PlanApprovalStatuses.RESUME_PENDING.equals(existing.getStatus())
@@ -73,7 +73,7 @@ public class PlanApprovalApplicationService {
 
         String resumeRequestId = "resume_" + UUID.randomUUID().toString().replace("-", "");
         boolean ok = planApprovalRepository.casDecidePending(
-                approvalId.trim(), visitorId, decision, resumeRequestId);
+                approvalId.trim(), userId, decision, resumeRequestId);
         if (!ok) {
             PlanApprovalRecord latest = planApprovalRepository.findByApprovalId(approvalId.trim()).orElse(existing);
             if (StringUtils.isNotBlank(latest.getResumeRequestId())) {
@@ -111,8 +111,8 @@ public class PlanApprovalApplicationService {
     }
 
     public Map<String, Object> cancel(String approvalId, String reason) {
-        String visitorId = VisitorRequestContext.currentVisitorId();
-        boolean ok = planApprovalRepository.casCancel(approvalId, visitorId);
+        String userId = UserRequestContext.currentUserId();
+        boolean ok = planApprovalRepository.casCancel(approvalId, userId);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("approvalId", approvalId);
         result.put("cancelled", ok);

@@ -20,19 +20,19 @@ public interface IPlanApprovalDao {
     int countOpenBySessionId(@Param("sessionId") String sessionId);
 
     int casDecidePending(@Param("approvalId") String approvalId,
-                         @Param("visitorId") String visitorId,
+                         @Param("userId") String userId,
                          @Param("decisionJson") String decisionJson,
                          @Param("resumeRequestId") String resumeRequestId);
 
     int casClaimResume(@Param("resumeRequestId") String resumeRequestId,
-                       @Param("visitorId") String visitorId);
+                       @Param("userId") String userId);
 
     int markAnswered(@Param("approvalId") String approvalId);
 
     int markFailed(@Param("approvalId") String approvalId, @Param("status") String status);
 
     int casCancel(@Param("approvalId") String approvalId,
-                  @Param("visitorId") String visitorId,
+                  @Param("userId") String userId,
                   @Param("fromStatuses") List<String> fromStatuses);
 
     int cancelBySourceRequestId(@Param("sourceRequestId") String sourceRequestId,

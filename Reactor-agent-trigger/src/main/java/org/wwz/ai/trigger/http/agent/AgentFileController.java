@@ -10,7 +10,7 @@ import org.wwz.ai.api.response.Response;
 import org.wwz.ai.application.agent.file.ConversationFileApplicationService;
 import org.wwz.ai.domain.agent.model.valobj.ConversationUploadedFile;
 import org.wwz.ai.trigger.http.agent.vo.AgentFileUploadRespVO;
-import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
+import org.wwz.ai.types.agent.user.UserRequestContext;
 import org.wwz.ai.types.enums.ResponseCode;
 
 import javax.annotation.Resource;
@@ -45,9 +45,9 @@ public class AgentFileController {
         }
 
         try {
-            // 访客身份从请求上下文取得，Controller 不信任客户端自行提交的 owner；文件落库交给 case 层。
+            // userId 从请求上下文取得，Controller 不信任客户端自行提交的 owner；文件落库交给 case 层。
             ConversationUploadedFile uploaded = conversationFileApplicationService.upload(
-                    VisitorRequestContext.requireVisitorId(),
+                    UserRequestContext.requireUserId(),
                     sessionId,
                     file.getOriginalFilename(),
                     file.getContentType(),

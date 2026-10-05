@@ -10,7 +10,7 @@ import org.wwz.ai.domain.agent.runtime.desktopcontrol.DesktopControlRecord;
 import org.wwz.ai.domain.agent.runtime.desktopcontrol.DesktopControlStatuses;
 import org.wwz.ai.domain.agent.runtime.desktopcontrol.DesktopSessionRemote;
 import org.wwz.ai.domain.agent.runtime.desktopcontrol.IDesktopControlRepository;
-import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
+import org.wwz.ai.types.agent.user.UserRequestContext;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,15 +30,15 @@ public class DesktopControlApplicationService {
         if (StringUtils.isBlank(controlId)) {
             throw new IllegalArgumentException("controlId 不能为空");
         }
-        String visitorId = VisitorRequestContext.currentVisitorId();
+        String userId = UserRequestContext.currentUserId();
         DesktopControlRecord existing = desktopControlRepository.findByControlId(controlId.trim())
                 .orElse(null);
         if (existing == null) {
             return rejected(controlId, "桌面控制不存在");
         }
-        if (StringUtils.isNotBlank(existing.getVisitorId())
-                && StringUtils.isNotBlank(visitorId)
-                && !existing.getVisitorId().equals(visitorId)) {
+        if (StringUtils.isNotBlank(existing.getUserId())
+                && StringUtils.isNotBlank(userId)
+                && !existing.getUserId().equals(userId)) {
             return rejected(controlId, "无权完成该桌面控制");
         }
         if (DesktopControlStatuses.RESUME_PENDING.equals(existing.getStatus())
@@ -60,7 +60,7 @@ public class DesktopControlApplicationService {
 
         String resumeRequestId = "resume_" + UUID.randomUUID().toString().replace("-", "");
         boolean ok = desktopControlRepository.casCompletePending(
-                controlId.trim(), visitorId, resumeRequestId);
+                controlId.trim(), userId, resumeRequestId);
         if (!ok) {
             DesktopControlRecord latest = desktopControlRepository.findByControlId(controlId.trim()).orElse(existing);
             if (StringUtils.isNotBlank(latest.getResumeRequestId())) {
@@ -96,11 +96,11 @@ public class DesktopControlApplicationService {
     }
 
     public Map<String, Object> cancel(String controlId, String reason) {
-        String visitorId = VisitorRequestContext.currentVisitorId();
+        String userId = UserRequestContext.currentUserId();
         DesktopControlRecord existing = StringUtils.isBlank(controlId)
                 ? null
                 : desktopControlRepository.findByControlId(controlId.trim()).orElse(null);
-        boolean ok = desktopControlRepository.casCancel(controlId, visitorId);
+        boolean ok = desktopControlRepository.casCancel(controlId, userId);
         if (ok && existing != null) {
             closeQuietly(existing);
         }

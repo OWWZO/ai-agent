@@ -12,7 +12,7 @@ import org.wwz.ai.application.agent.browser.BrowserPairingView;
 import org.wwz.ai.application.agent.browser.BrowserRelayApplicationService;
 import org.wwz.ai.domain.agent.adapter.port.BrowserRelayStatus;
 import org.wwz.ai.types.agent.config.BrowserRelayProperties;
-import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
+import org.wwz.ai.types.agent.user.UserRequestContext;
 import org.wwz.ai.types.enums.ResponseCode;
 
 import java.util.Map;
@@ -33,7 +33,7 @@ public class BrowserPairingController {
     @PostMapping("/pairing")
     public Response<BrowserPairingView> pairing(HttpServletRequest request) {
         BrowserPairingView view = browserRelayApplicationService.createPairing(
-                VisitorRequestContext.requireVisitorId(),
+                UserRequestContext.requireUserId(),
                 buildRelayUrl(request)
         );
         return Response.<BrowserPairingView>builder()
@@ -63,7 +63,7 @@ public class BrowserPairingController {
 
     @GetMapping("/status")
     public Response<BrowserRelayStatus> status() {
-        BrowserRelayStatus status = browserRelayApplicationService.status(VisitorRequestContext.requireVisitorId());
+        BrowserRelayStatus status = browserRelayApplicationService.status(UserRequestContext.requireUserId());
         return Response.<BrowserRelayStatus>builder()
                 .code(ResponseCode.SUCCESS.getCode())
                 .info(ResponseCode.SUCCESS.getInfo())
@@ -73,7 +73,7 @@ public class BrowserPairingController {
 
     @PostMapping("/disconnect")
     public Response<Void> disconnect() {
-        browserRelayApplicationService.revokeVisitor(VisitorRequestContext.requireVisitorId());
+        browserRelayApplicationService.revokeUser(UserRequestContext.requireUserId());
         return Response.<Void>builder()
                 .code(ResponseCode.SUCCESS.getCode())
                 .info(ResponseCode.SUCCESS.getInfo())

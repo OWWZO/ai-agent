@@ -113,13 +113,13 @@
         LIMIT #{limit}
     </select>
 
-    <select id="searchFullTextByVisitor" resultMap="WorkingMemorySearchMessageMap">
+    <select id="searchFullTextByUserId" resultMap="WorkingMemorySearchMessageMap">
         SELECT <include refid="searchColumns"/>,
                MATCH(m.content) AGAINST (#{query} IN NATURAL LANGUAGE MODE) AS search_score
         FROM ai_agent_working_memory_message m
         INNER JOIN ai_agent_working_memory_turn t ON m.turn_id = t.id
         INNER JOIN ai_agent_dialogue_session s ON s.session_id = m.session_id AND s.deleted = 0
-        WHERE s.visitor_id = #{visitorId}
+        WHERE s.user_id = #{userId}
           AND m.memory_scope = 'main'
           AND m.deleted = 0
           AND t.deleted = 0
@@ -146,12 +146,12 @@
         LIMIT #{limit}
     </select>
 
-    <select id="scanByVisitor" resultMap="WorkingMemorySearchMessageMap">
+    <select id="scanByUserId" resultMap="WorkingMemorySearchMessageMap">
         SELECT <include refid="searchColumns"/>
         FROM ai_agent_working_memory_message m
         INNER JOIN ai_agent_working_memory_turn t ON m.turn_id = t.id
         INNER JOIN ai_agent_dialogue_session s ON s.session_id = m.session_id AND s.deleted = 0
-        WHERE s.visitor_id = #{visitorId}
+        WHERE s.user_id = #{userId}
           AND m.memory_scope = 'main'
           AND m.deleted = 0
           AND t.deleted = 0
@@ -234,7 +234,7 @@
 
     <select id="selectRecentSessions" resultType="map">
         SELECT session_id AS sessionId,
-               visitor_id AS visitorId,
+               user_id AS userId,
                title AS title,
                latest_query_text AS latestQueryText,
                latest_summary_text AS latestSummaryText,
@@ -249,7 +249,7 @@
                    AND wt.deleted = 0) AS messageCount
         FROM ai_agent_dialogue_session s
         WHERE deleted = 0
-          AND (#{visitorId} IS NULL OR visitor_id = #{visitorId})
+          AND (#{userId} IS NULL OR user_id = #{userId})
           AND EXISTS (
               SELECT 1
               FROM ai_agent_working_memory_message wm
@@ -265,7 +265,7 @@
 
     <select id="selectSessionSummary" resultType="map">
         SELECT session_id AS sessionId,
-               visitor_id AS visitorId,
+               user_id AS userId,
                title AS title,
                started_at AS startedAt,
                last_active_at AS lastActiveAt

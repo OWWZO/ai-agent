@@ -11,13 +11,13 @@ import java.util.Map;
  */
 public interface BrowserRelaySocketBridge {
 
-    boolean isOnline(String visitorId);
+    boolean isOnline(String userId);
 
-    BrowserRelayStatus status(String visitorId);
+    BrowserRelayStatus status(String userId);
 
-    BrowserRpcResult call(String visitorId, String action, Map<String, Object> params, Duration timeout);
+    BrowserRpcResult call(String userId, String action, Map<String, Object> params, Duration timeout);
 
-    void disconnect(String visitorId);
+    void disconnect(String userId);
 
-    void updateTabMeta(String visitorId, String url, String title);
+    void updateTabMeta(String userId, String url, String title);
 }

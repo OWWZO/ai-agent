@@ -7,7 +7,7 @@ import lombok.Value;
 @Builder
 public class KernelBrowserSession {
 
-    String ownerKey;
+    String userId;
 
     String kernelSessionId;
 

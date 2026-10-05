@@ -165,7 +165,7 @@ public class CodeExecutionTool implements BaseTool {
     private String resolveOwnerKey() {
         LtmOwner owner = agentContext.getLtmOwner();
         if (owner == null) {
-            owner = LtmOwnerResolver.resolve(agentContext.getVisitorId(), null);
+            owner = LtmOwnerResolver.resolve(agentContext.getUserId(), null);
         }
         return owner.asOwnerKey();
     }

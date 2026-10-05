@@ -22,16 +22,16 @@ public interface IUserQuestionRepository {
     /**
      * CAS PENDING → RESUME_PENDING；成功返回 true。
      */
-    boolean casAnswerPending(String questionId, String visitorId, Map<String, String> answers, String resumeRequestId);
+    boolean casAnswerPending(String questionId, String userId, Map<String, String> answers, String resumeRequestId);
 
     /**
      * CAS RESUME_PENDING → RESUMING；成功返回 true。
      */
-    boolean casClaimResume(String resumeRequestId, String visitorId);
+    boolean casClaimResume(String resumeRequestId, String userId);
 
     boolean markAnswered(String questionId);
 
     boolean markStatus(String questionId, String status);
 
-    boolean casCancel(String questionId, String visitorId);
+    boolean casCancel(String questionId, String userId);
 }

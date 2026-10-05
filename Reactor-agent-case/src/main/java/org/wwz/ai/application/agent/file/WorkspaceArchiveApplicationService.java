@@ -3,7 +3,7 @@ package org.wwz.ai.application.agent.file;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
-import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
+import org.wwz.ai.application.agent.authorization.ConversationSessionAuthorizationService;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
 
 import java.io.IOException;
@@ -21,14 +21,14 @@ import java.util.zip.ZipOutputStream;
 @RequiredArgsConstructor
 public class WorkspaceArchiveApplicationService {
 
-    private final ConversationSessionOwnershipApplicationService conversationSessionOwnershipApplicationService;
+    private final ConversationSessionAuthorizationService conversationSessionAuthorizationService;
     private final WorkspaceService workspaceService;
 
-    public void writeArchive(String visitorId, String sessionId, OutputStream outputStream) throws IOException {
+    public void writeArchive(String userId, String sessionId, OutputStream outputStream) throws IOException {
         if (StringUtils.isBlank(sessionId)) {
             throw new IllegalArgumentException("sessionId不能为空");
         }
-        conversationSessionOwnershipApplicationService.ensureExistingSessionAccessible(visitorId, sessionId);
+        conversationSessionAuthorizationService.ensureExistingSessionAccessible(userId, sessionId);
         if (workspaceService == null || !workspaceService.isEnabled()) {
             throw new IllegalStateException("工作区未启用");
         }

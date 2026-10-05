@@ -10,15 +10,15 @@ import org.wwz.ai.application.agent.stream.AgentSessionStream;
 import org.wwz.ai.application.agent.stream.SessionProjectionRegistry;
 import org.wwz.ai.application.agent.stream.StreamFrameConsumer;
 import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
-import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
-import org.wwz.ai.application.agent.visitor.SessionOwnershipDeniedException;
+import org.wwz.ai.application.agent.authorization.ConversationSessionAuthorizationService;
+import org.wwz.ai.application.agent.authorization.SessionOwnershipDeniedException;
 import org.wwz.ai.domain.agent.ledger.IExecutionLedgerReadRepository;
 import org.wwz.ai.domain.agent.ledger.entity.DialogueRun;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
-import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
+import org.wwz.ai.types.agent.user.UserRequestContext;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -36,7 +36,7 @@ public class AgentRunFollowApplicationService {
     public static final long PENDING_RETRY_MS = 800L;
 
     private final ActiveAgentRunRegistry activeAgentRunRegistry;
-    private final ConversationSessionOwnershipApplicationService conversationSessionOwnershipApplicationService;
+    private final ConversationSessionAuthorizationService conversationSessionAuthorizationService;
     private final IExecutionLedgerReadRepository executionLedgerReadRepository;
     private final AgentRunLaunchGate agentRunLaunchGate;
     private final SessionProjectionRegistry sessionProjectionRegistry;
@@ -45,15 +45,15 @@ public class AgentRunFollowApplicationService {
                                                  long lastEventSeq,
                                                  StreamFrameConsumer replay) {
         try {
-            String visitorId = VisitorRequestContext.currentVisitorId();
-            if (StringUtils.isBlank(visitorId)) {
-                throw new IllegalArgumentException("visitorId不能为空");
+            String userId = UserRequestContext.currentUserId();
+            if (StringUtils.isBlank(userId)) {
+                throw new IllegalArgumentException("userId不能为空");
             }
             if (StringUtils.isBlank(sessionId)) {
                 throw new IllegalArgumentException("sessionId不能为空");
             }
-            conversationSessionOwnershipApplicationService.ensureExistingSessionAccessible(
-                    visitorId, sessionId);
+            conversationSessionAuthorizationService.ensureExistingSessionAccessible(
+                    userId, sessionId);
         } catch (SessionOwnershipDeniedException | IllegalArgumentException e) {
             log.warn("observe rejected sessionId={}", sessionId, e);
             return FollowAttachResult.IDLE;

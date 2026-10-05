@@ -45,7 +45,7 @@ public class AgentSessionStreamHubTest {
         ReflectionTestUtils.setField(hub, "agentExecutorProperties", new AgentExecutorProperties());
         ReflectionTestUtils.setField(hub, "heartbeatScheduler", scheduler);
 
-        String ownerKey = "visitor-serial";
+        String ownerKey = "user-serial";
         String sessionId = "session-serial";
         SessionProjectionRegistry projectionRegistry = new SessionProjectionRegistry();
         for (int i = 0; i < AgentSessionStreamHub.MAX_STREAMS_PER_OWNER; i++) {
@@ -91,7 +91,7 @@ public class AgentSessionStreamHubTest {
         ReflectionTestUtils.setField(hub, "agentExecutorProperties", new AgentExecutorProperties());
         ReflectionTestUtils.setField(hub, "heartbeatScheduler", scheduler);
 
-        String ownerKey = "visitor-1";
+        String ownerKey = "user-1";
         for (int i = 0; i < AgentSessionStreamHub.MAX_STREAMS_PER_OWNER; i++) {
             hub.open("session-" + i, hub.reserve(ownerKey), 0L);
             abortLatestStream(hub);

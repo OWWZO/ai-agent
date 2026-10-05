@@ -27,8 +27,8 @@ public class DialogueRun {
     /** 会话ID */
     private String sessionId;
 
-    /** 匿名访客ID */
-    private String visitorId;
+    /** 所属用户 ID */
+    private String userId;
 
     /** 入口执行链 react / plan_solve */
     private String entryAgent;

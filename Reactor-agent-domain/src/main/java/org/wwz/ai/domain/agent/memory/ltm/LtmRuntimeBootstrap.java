@@ -32,7 +32,7 @@ public final class LtmRuntimeBootstrap {
         if (ltmManager == null) {
             return;
         }
-        LtmOwner owner = LtmOwnerResolver.resolve(request.getVisitorId(), request.getErp());
+        LtmOwner owner = LtmOwnerResolver.resolve(request.getUserId(), request.getErp());
         agentContext.setLtmOwner(owner);
         Map<String, Object> ctx = new HashMap<>();
         ctx.put("requestId", request.getRequestId());

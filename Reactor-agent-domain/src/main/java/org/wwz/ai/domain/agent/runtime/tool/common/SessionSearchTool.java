@@ -10,7 +10,7 @@ import org.wwz.ai.domain.agent.memory.ltm.SessionSearchService;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
-import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
+import org.wwz.ai.types.agent.user.UserRequestContext;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -59,7 +59,7 @@ public class SessionSearchTool implements BaseTool {
         limitProp.put("description", "Discovery/browse only. Max sessions to return (default 8, max 20). Must be >= 1 when set");
         Map<String, Object> scopeProp = new LinkedHashMap<>();
         scopeProp.put("type", "string");
-        scopeProp.put("description", "user = all sessions of this visitor (default); session = current session only");
+        scopeProp.put("description", "user = all sessions of this user (default); session = current session only");
         scopeProp.put("enum", List.of("user", "session"));
         Map<String, Object> roleFilterProp = new LinkedHashMap<>();
         roleFilterProp.put("type", "string");
@@ -110,12 +110,12 @@ public class SessionSearchTool implements BaseTool {
             );
         }
         String sessionId = agentContext == null ? null : agentContext.getSessionId();
-        String visitorId = resolveVisitorId();
+        String userId = resolveUserId();
         try {
             String result = searchService.search(SessionSearchRequest.builder()
                     .sessionId(requestedSessionId)
                     .currentSessionId(sessionId)
-                    .visitorId(visitorId)
+                    .userId(userId)
                     .query(query)
                     .limit(limit)
                     .scope(scope)
@@ -220,20 +220,19 @@ public class SessionSearchTool implements BaseTool {
         return value == null ? null : String.valueOf(value);
     }
 
-    private String resolveVisitorId() {
+    private String resolveUserId() {
         if (agentContext == null) {
-            return VisitorRequestContext.currentVisitorId();
+            return UserRequestContext.currentUserId();
+        }
+        if (StringUtils.isNotBlank(agentContext.getUserId())) {
+            return agentContext.getUserId();
         }
         LtmOwner owner = agentContext.getLtmOwner();
-        if (owner != null && owner.getType() == LtmOwnerType.VISITOR && StringUtils.isNotBlank(owner.getId())) {
-            return owner.getId();
-        }
-        // USER 类型 owner 也可作为隔离键（与 visitor 表不同时仍可用于跨会话过滤的扩展；ledger 按 visitorId）
-        String fromThread = VisitorRequestContext.currentVisitorId();
+        String fromThread = UserRequestContext.currentUserId();
         if (StringUtils.isNotBlank(fromThread)) {
             return fromThread;
         }
-        if (owner != null && StringUtils.isNotBlank(owner.getId())) {
+        if (owner != null && owner.getType() == LtmOwnerType.USER && StringUtils.isNotBlank(owner.getId())) {
             return owner.getId();
         }
         return null;

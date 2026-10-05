@@ -15,13 +15,13 @@ public interface IDesktopControlRepository {
 
     boolean hasOpenBySessionId(String sessionId);
 
-    boolean casCompletePending(String controlId, String visitorId, String resumeRequestId);
+    boolean casCompletePending(String controlId, String userId, String resumeRequestId);
 
-    boolean casClaimResume(String resumeRequestId, String visitorId);
+    boolean casClaimResume(String resumeRequestId, String userId);
 
     boolean markCompleted(String controlId);
 
     boolean markStatus(String controlId, String status);
 
-    boolean casCancel(String controlId, String visitorId);
+    boolean casCancel(String controlId, String userId);
 }

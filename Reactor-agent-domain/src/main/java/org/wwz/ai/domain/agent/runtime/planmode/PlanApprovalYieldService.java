@@ -62,11 +62,11 @@ public class PlanApprovalYieldService {
             toolInvocationId = agentContext.getAgentRunState().resolveToolInvocationId(toolCallId);
         }
         PlanApprovalResumeContext resumeContext = PlanApprovalResumeContext.from(agentContext, request, entryAgent);
-        String visitorId = request == null ? null : request.getVisitorId();
+        String userId = request == null ? null : request.getUserId();
 
         PlanApprovalRecord record = PlanApprovalRecord.builder()
                 .approvalId(approvalId)
-                .visitorId(visitorId)
+                .userId(userId)
                 .sessionId(agentContext.getSessionId())
                 .sourceRunId(runId)
                 .sourceRequestId(agentContext.getRequestId())

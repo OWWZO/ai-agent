@@ -7,7 +7,7 @@ import org.wwz.ai.domain.agent.runtime.askuser.AskUserQuestionObservationSupport
 import org.wwz.ai.domain.agent.runtime.askuser.IUserQuestionRepository;
 import org.wwz.ai.domain.agent.runtime.askuser.UserQuestionRecord;
 import org.wwz.ai.domain.agent.runtime.askuser.UserQuestionStatuses;
-import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
+import org.wwz.ai.types.agent.user.UserRequestContext;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,15 +28,15 @@ public class AskUserQuestionApplicationService {
         if (StringUtils.isBlank(questionId)) {
             throw new IllegalArgumentException("questionId 不能为空");
         }
-        String visitorId = VisitorRequestContext.currentVisitorId();
+        String userId = UserRequestContext.currentUserId();
         UserQuestionRecord existing = userQuestionRepository.findByQuestionId(questionId.trim())
                 .orElse(null);
         if (existing == null) {
             return rejected(questionId, "问题不存在");
         }
-        if (StringUtils.isNotBlank(existing.getVisitorId())
-                && StringUtils.isNotBlank(visitorId)
-                && !existing.getVisitorId().equals(visitorId)) {
+        if (StringUtils.isNotBlank(existing.getUserId())
+                && StringUtils.isNotBlank(userId)
+                && !existing.getUserId().equals(userId)) {
             return rejected(questionId, "无权回答该问题");
         }
         if (UserQuestionStatuses.RESUME_PENDING.equals(existing.getStatus())
@@ -57,7 +57,7 @@ public class AskUserQuestionApplicationService {
 
         String resumeRequestId = "resume_" + UUID.randomUUID().toString().replace("-", "");
         boolean ok = userQuestionRepository.casAnswerPending(
-                questionId.trim(), visitorId, answers, resumeRequestId);
+                questionId.trim(), userId, answers, resumeRequestId);
         if (!ok) {
             UserQuestionRecord latest = userQuestionRepository.findByQuestionId(questionId.trim()).orElse(existing);
             if (StringUtils.isNotBlank(latest.getResumeRequestId())) {
@@ -91,8 +91,8 @@ public class AskUserQuestionApplicationService {
     }
 
     public Map<String, Object> cancel(String questionId, String reason) {
-        String visitorId = VisitorRequestContext.currentVisitorId();
-        boolean ok = userQuestionRepository.casCancel(questionId, visitorId);
+        String userId = UserRequestContext.currentUserId();
+        boolean ok = userQuestionRepository.casCancel(questionId, userId);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("questionId", questionId);
         result.put("cancelled", ok);

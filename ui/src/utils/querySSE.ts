@@ -1,6 +1,9 @@
 import { fetchEventSource, EventSourceMessage } from '@microsoft/fetch-event-source';
 
 import { getDeviceId } from '@/services/agentConversation';
+import { refreshAccessToken } from '@/services/authTransport';
+import { emitAuthSessionExpired } from '@/services/authSessionExpired';
+import { clearAuthSession, getAccessToken } from '@/stores/auth';
 import { resolveServiceBaseUrl } from './origin';
 
 /**
@@ -27,6 +30,8 @@ interface SSEConfig<TMessage = unknown> {
   body: unknown;
   method?: 'GET' | 'POST';
   signal?: AbortSignal;
+  /** 隐藏标签页时是否继续保持连接；主 Agent GET 观察流会显式关闭。 */
+  openWhenHidden?: boolean;
   /** GET 续接时写入标准 Last-Event-ID。 */
   lastEventId?: string;
   /** 是否允许 fetch-event-source 在连接失败后自动重发请求。 */
@@ -54,6 +59,7 @@ export default <TMessage = unknown>(
     body = null,
     method = 'POST',
     signal,
+    openWhenHidden = true,
     lastEventId,
     // POST 发消息默认不重发原始请求，避免断线后重复创建任务；续接走 GET。
     retryOnError = false,
@@ -66,9 +72,36 @@ export default <TMessage = unknown>(
   } = config;
 
   const headers = { ...SSE_HEADERS };
+  const accessToken = getAccessToken();
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
   if (lastEventId) {
     headers['Last-Event-ID'] = lastEventId;
   }
+
+  const fetchWithAuthRefresh: typeof fetch = async (input, init) => {
+    const response = await fetch(input, init);
+    if (response.status !== 401) {
+      return response;
+    }
+
+    try {
+      const accessToken = await refreshAccessToken();
+      headers.Authorization = `Bearer ${accessToken}`;
+      const retryHeaders = new Headers(init?.headers);
+      retryHeaders.set('Authorization', `Bearer ${accessToken}`);
+      return await fetch(input, {
+        ...init,
+        headers: retryHeaders,
+      });
+    } catch {
+      // 让 onopen 统一把最终的非 2xx 响应交给业务层；这里不重复提交更多请求。
+      clearAuthSession();
+      emitAuthSessionExpired();
+      return response;
+    }
+  };
 
   void fetchEventSource(url, {
     method,
@@ -76,8 +109,16 @@ export default <TMessage = unknown>(
     headers,
     signal,
     body: method === 'GET' ? undefined : JSON.stringify(body),
-    openWhenHidden: true,
-    onopen() {
+    openWhenHidden,
+    fetch: fetchWithAuthRefresh,
+    onopen(response: Response) {
+      if (!response.ok) {
+        throw new Error(`SSE 请求失败，状态码: ${response.status}`);
+      }
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.startsWith('text/event-stream')) {
+        throw new Error(`SSE 响应类型错误: ${contentType || 'unknown'}`);
+      }
       handleOpen?.();
       return Promise.resolve();
     },

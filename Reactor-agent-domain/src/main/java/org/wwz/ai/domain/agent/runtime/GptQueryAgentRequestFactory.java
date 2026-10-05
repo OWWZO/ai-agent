@@ -8,7 +8,7 @@ import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
 import org.wwz.ai.domain.agent.reactor.util.ChateiUtils;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
-import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
+import org.wwz.ai.types.agent.user.UserRequestContext;
 
 /**
  * 把浏览器侧 {@link GptQueryReq} 翻译为运行时 {@link AgentRequest}。
@@ -49,7 +49,7 @@ public class GptQueryAgentRequestFactory {
                 : req.getTraceId();
         request.setRequestId(runRequestId);
         request.setSessionId(req.getSessionId());
-        request.setVisitorId(VisitorRequestContext.currentVisitorId());
+        request.setUserId(UserRequestContext.currentUserId());
         request.setQuery(req.getQuery());
         request.setOutputStyle("dataAgent".equals(req.getOutputStyle()) ? "dataAgent" : null);
         request.setSessionFiles(req.getSessionFiles());

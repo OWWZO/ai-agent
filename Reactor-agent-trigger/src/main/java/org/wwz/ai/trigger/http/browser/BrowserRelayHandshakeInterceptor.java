@@ -34,13 +34,13 @@ public class BrowserRelayHandshakeInterceptor implements HandshakeInterceptor {
         if (StringUtils.isBlank(token) && request instanceof ServletServerHttpRequest servletRequest) {
             token = servletRequest.getServletRequest().getParameter("token");
         }
-        String visitorId = browserRelayApplicationService.resolveVisitorId(token);
-        if (StringUtils.isBlank(visitorId)) {
+        String userId = browserRelayApplicationService.resolveUserId(token);
+        if (StringUtils.isBlank(userId)) {
             log.warn("browser relay handshake rejected tokenPresent={} tokenLen={}",
                     StringUtils.isNotBlank(token), token == null ? 0 : token.length());
             return false;
         }
-        attributes.put("visitorId", visitorId);
+        attributes.put("userId", userId);
         return true;
     }
 

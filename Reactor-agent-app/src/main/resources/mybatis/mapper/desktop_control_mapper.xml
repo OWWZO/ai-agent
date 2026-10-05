@@ -5,7 +5,7 @@
     <resultMap id="DesktopControlMap" type="org.wwz.ai.infrastructure.dao.reactor.po.DesktopControlPO">
         <id column="id" property="id"/>
         <result column="control_id" property="controlId"/>
-        <result column="visitor_id" property="visitorId"/>
+        <result column="user_id" property="userId"/>
         <result column="session_id" property="sessionId"/>
         <result column="owner_key" property="ownerKey"/>
         <result column="source_run_id" property="sourceRunId"/>
@@ -25,11 +25,11 @@
 
     <insert id="insert" parameterType="org.wwz.ai.infrastructure.dao.reactor.po.DesktopControlPO" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_agent_desktop_control (
-            control_id, visitor_id, session_id, owner_key, source_run_id, source_request_id,
+            control_id, user_id, session_id, owner_key, source_run_id, source_request_id,
             tool_invocation_id, tool_call_id, reason, stream_url, hold_until, status,
             resume_request_id, resume_context_json, create_time, update_time, deleted
         ) VALUES (
-            #{controlId}, #{visitorId}, #{sessionId}, #{ownerKey}, #{sourceRunId}, #{sourceRequestId},
+            #{controlId}, #{userId}, #{sessionId}, #{ownerKey}, #{sourceRunId}, #{sourceRequestId},
             #{toolInvocationId}, #{toolCallId}, #{reason}, #{streamUrl}, #{holdUntil}, #{status},
             #{resumeRequestId}, #{resumeContextJson}, NOW(), NOW(), 0
         )
@@ -76,8 +76,8 @@
         WHERE control_id = #{controlId}
           AND deleted = 0
           AND status = 'PENDING'
-          <if test="visitorId != null and visitorId != ''">
-              AND (visitor_id IS NULL OR visitor_id = #{visitorId})
+          <if test="userId != null and userId != ''">
+              AND (user_id IS NULL OR user_id = #{userId})
           </if>
     </update>
 
@@ -88,8 +88,8 @@
         WHERE resume_request_id = #{resumeRequestId}
           AND deleted = 0
           AND status = 'RESUME_PENDING'
-          <if test="visitorId != null and visitorId != ''">
-              AND (visitor_id IS NULL OR visitor_id = #{visitorId})
+          <if test="userId != null and userId != ''">
+              AND (user_id IS NULL OR user_id = #{userId})
           </if>
     </update>
 
@@ -120,8 +120,8 @@
           <foreach collection="fromStatuses" item="st" open="(" separator="," close=")">
               #{st}
           </foreach>
-          <if test="visitorId != null and visitorId != ''">
-              AND (visitor_id IS NULL OR visitor_id = #{visitorId})
+          <if test="userId != null and userId != ''">
+              AND (user_id IS NULL OR user_id = #{userId})
           </if>
     </update>
 </mapper>

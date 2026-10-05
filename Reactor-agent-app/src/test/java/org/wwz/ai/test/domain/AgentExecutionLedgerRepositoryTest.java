@@ -236,7 +236,7 @@ public class AgentExecutionLedgerRepositoryTest {
         var session = ctx.sessionDao.queryBySessionId(sessionId);
         ctx.sessionDao.upsertSession(DialogueSessionUpsertRecord.builder()
                 .sessionId(sessionId)
-                .visitorId(session.getVisitorId())
+                .userId(session.getUserId())
                 .title("新对话")
                 .status(session.getStatus())
                 .latestRequestId(session.getLatestRequestId())

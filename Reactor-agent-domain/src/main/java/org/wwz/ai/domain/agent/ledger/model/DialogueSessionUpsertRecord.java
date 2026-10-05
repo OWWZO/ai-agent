@@ -18,7 +18,7 @@ public class DialogueSessionUpsertRecord {
 
     private String sessionId;
 
-    private String visitorId;
+    private String userId;
 
     private String title;
 

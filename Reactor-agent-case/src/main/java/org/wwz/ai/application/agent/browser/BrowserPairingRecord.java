@@ -7,7 +7,7 @@ import lombok.Value;
 @Builder
 public class BrowserPairingRecord {
 
-    String visitorId;
+    String userId;
     String token;
     String code;
     String relayUrl;

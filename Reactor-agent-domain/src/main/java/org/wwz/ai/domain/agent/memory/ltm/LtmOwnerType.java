@@ -5,6 +5,5 @@ package org.wwz.ai.domain.agent.memory.ltm;
  */
 public enum LtmOwnerType {
     USER,
-    VISITOR,
     SESSION
 }

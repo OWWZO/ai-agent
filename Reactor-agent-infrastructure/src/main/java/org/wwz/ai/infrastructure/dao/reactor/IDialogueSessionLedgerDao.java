@@ -26,10 +26,10 @@ public interface IDialogueSessionLedgerDao {
 
     List<DialogueSessionView> queryRecentSessions(@Param("limit") int limit);
 
-    DialogueSessionView querySessionViewByVisitor(@Param("visitorId") String visitorId,
+    DialogueSessionView querySessionViewByUserId(@Param("userId") String userId,
                                                   @Param("sessionId") String sessionId);
 
-    List<DialogueSessionView> queryRecentSessionsByVisitor(@Param("visitorId") String visitorId,
+    List<DialogueSessionView> queryRecentSessionsByUserId(@Param("userId") String userId,
                                                            @Param("limit") int limit);
 
     int bumpEventSeq(@Param("sessionId") String sessionId, @Param("eventSeq") long eventSeq);

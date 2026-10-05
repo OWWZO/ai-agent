@@ -64,11 +64,11 @@ public class PlanSolveAgentExecuteStrategy implements IExecuteStrategy {
                         .printer(new AgentSessionPrinter(stream, request, request.getAgentType()))
                         .build();
         // 让 stop 入口可以通过 requestId 定位当前 run；finally 中统一释放，避免取消后残留活动记录。
-        // 同一 visitor 已有活跃 run 时 begin 会拒绝，避免多会话并发。
+        // 同一 userId 已有冲突 run 时 begin 会拒绝，避免同会话并发。
         activeAgentRunRegistry.begin(
                 request.getRequestId(),
                 request.getSessionId(),
-                request.getVisitorId());
+                request.getUserId());
         activeAgentRunRegistry.bindStream(request.getRequestId(), stream);
         try {
             String result = executeHandler.apply(request, dynamicContext);

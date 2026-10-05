@@ -3,7 +3,7 @@ package org.wwz.ai.application.agent.file;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
-import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
+import org.wwz.ai.application.agent.authorization.ConversationSessionAuthorizationService;
 import org.wwz.ai.domain.agent.adapter.port.ConversationFilePort;
 import org.wwz.ai.domain.agent.model.valobj.ConversationUploadedFile;
 
@@ -17,10 +17,10 @@ import java.io.InputStream;
 @RequiredArgsConstructor
 public class ConversationFileApplicationService {
 
-    private final ConversationSessionOwnershipApplicationService conversationSessionOwnershipApplicationService;
+    private final ConversationSessionAuthorizationService conversationSessionAuthorizationService;
     private final ConversationFilePort conversationFilePort;
 
-    public ConversationUploadedFile upload(String visitorId,
+    public ConversationUploadedFile upload(String userId,
                                            String sessionId,
                                            String originalFileName,
                                            String contentType,
@@ -32,7 +32,7 @@ public class ConversationFileApplicationService {
         if (content == null || size <= 0) {
             throw new IllegalArgumentException("上传文件不能为空");
         }
-        conversationSessionOwnershipApplicationService.ensureSessionAccessible(visitorId, sessionId, null);
+        conversationSessionAuthorizationService.ensureSessionAccessible(userId, sessionId, null);
         return conversationFilePort.upload(sessionId, originalFileName, contentType, size, content);
     }
 }

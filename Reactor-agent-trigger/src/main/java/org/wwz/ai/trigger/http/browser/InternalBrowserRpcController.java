@@ -39,11 +39,11 @@ public class InternalBrowserRpcController {
         if (body == null) {
             return error(null, "invalid_body", "invalid JSON body");
         }
-        String visitorId = StringUtils.trimToNull(body.getString("visitorId"));
+        String userId = StringUtils.trimToNull(body.getString("userId"));
         String action = StringUtils.trimToNull(body.getString("action"));
         String id = body.getString("id");
-        if (visitorId == null || action == null) {
-            return error(id, "invalid_body", "visitorId and action are required");
+        if (userId == null || action == null) {
+            return error(id, "invalid_body", "userId and action are required");
         }
         if ("lease-release".equalsIgnoreCase(action)) {
             Map<String, Object> released = new LinkedHashMap<>();
@@ -52,9 +52,9 @@ public class InternalBrowserRpcController {
             return released;
         }
         Map<String, Object> params = new LinkedHashMap<>(body);
-        params.remove("visitorId");
+        params.remove("userId");
         Duration timeout = resolveTimeout(action, body);
-        BrowserRpcResult result = hub.call(visitorId, action, params, timeout);
+        BrowserRpcResult result = hub.call(userId, action, params, timeout);
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("id", id);
         if (result == null) {

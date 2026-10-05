@@ -13,8 +13,8 @@ import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
 import org.wwz.ai.application.agent.stream.AgentSessionEventBus;
 import org.wwz.ai.application.agent.stream.SessionEventClock;
 import org.wwz.ai.application.agent.stream.SessionProjectionRegistry;
-import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
-import org.wwz.ai.application.agent.visitor.SessionOwnershipDeniedException;
+import org.wwz.ai.application.agent.authorization.ConversationSessionAuthorizationService;
+import org.wwz.ai.application.agent.authorization.SessionOwnershipDeniedException;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
@@ -29,7 +29,7 @@ import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalStatuses;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
 import org.wwz.ai.types.agent.exception.AgentConcurrentRunException;
 import org.wwz.ai.types.agent.exception.AgentExecutorBusyException;
-import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
+import org.wwz.ai.types.agent.user.UserRequestContext;
 
 import javax.annotation.Resource;
 import java.util.ArrayList;
@@ -47,7 +47,7 @@ public class PlanApprovalResumeApplicationService {
 
     private final IPlanApprovalRepository planApprovalRepository;
     private final IAgentDispatchService agentDispatchService;
-    private final ConversationSessionOwnershipApplicationService conversationSessionOwnershipApplicationService;
+    private final ConversationSessionAuthorizationService conversationSessionAuthorizationService;
     private final ActiveAgentRunRegistry activeAgentRunRegistry;
     private final AgentSessionEventBus agentSessionEventBus;
     private final AgentRunLaunchGate agentRunLaunchGate;
@@ -65,22 +65,22 @@ public class PlanApprovalResumeApplicationService {
         if (StringUtils.isBlank(resumeRequestId)) {
             throw new IllegalArgumentException("resumeRequestId 不能为空");
         }
-        String visitorId = VisitorRequestContext.currentVisitorId();
-        if (StringUtils.isBlank(visitorId)) {
-            throw new IllegalArgumentException("visitorId不能为空");
+        String userId = UserRequestContext.currentUserId();
+        if (StringUtils.isBlank(userId)) {
+            throw new IllegalArgumentException("userId不能为空");
         }
 
         PlanApprovalRecord record = planApprovalRepository.findByResumeRequestId(resumeRequestId.trim()).orElse(null);
         if (record == null) {
             throw new IllegalArgumentException("resume 记录不存在");
         }
-        if (StringUtils.isNotBlank(record.getVisitorId()) && !record.getVisitorId().equals(visitorId)) {
+        if (StringUtils.isNotBlank(record.getUserId()) && !record.getUserId().equals(userId)) {
             throw new IllegalArgumentException("无权恢复该审批");
         }
 
         try {
-            conversationSessionOwnershipApplicationService.ensureExistingSessionAccessible(
-                    visitorId, record.getSessionId());
+            conversationSessionAuthorizationService.ensureExistingSessionAccessible(
+                    userId, record.getSessionId());
         } catch (SessionOwnershipDeniedException e) {
             throw new IllegalArgumentException(e.getMessage(), e);
         }
@@ -96,16 +96,16 @@ public class PlanApprovalResumeApplicationService {
             throw new IllegalStateException("审批状态不可 resume: " + record.getStatus());
         }
 
-        boolean claimed = planApprovalRepository.casClaimResume(resumeRequestId.trim(), visitorId);
+        boolean claimed = planApprovalRepository.casClaimResume(resumeRequestId.trim(), userId);
         if (!claimed) {
             throw new AgentConcurrentRunException(
                     "claim 失败或续跑已被认领", record.getResumeRequestId(), record.getSessionId());
         }
 
-        AgentRequest agentRequest = buildContinuationRequest(record, visitorId);
+        AgentRequest agentRequest = buildContinuationRequest(record, userId);
         try {
             activeAgentRunRegistry.begin(
-                    agentRequest.getRequestId(), agentRequest.getSessionId(), visitorId);
+                    agentRequest.getRequestId(), agentRequest.getSessionId(), userId);
         } catch (AgentConcurrentRunException e) {
             planApprovalRepository.markStatus(record.getApprovalId(), PlanApprovalStatuses.RESUME_PENDING);
             throw e;
@@ -158,13 +158,13 @@ public class PlanApprovalResumeApplicationService {
         }
     }
 
-    private AgentRequest buildContinuationRequest(PlanApprovalRecord record, String visitorId) {
+    private AgentRequest buildContinuationRequest(PlanApprovalRecord record, String userId) {
         PlanApprovalResumeContext resumeContext = PlanApprovalResumeContext.fromJson(record.getResumeContextJson());
         Integer agentType = resumeContext.getAgentType();
         return AgentRequest.builder()
                 .requestId(record.getResumeRequestId())
                 .sessionId(record.getSessionId())
-                .visitorId(visitorId)
+                .userId(userId)
                 .query("")
                 .agentType(agentType)
                 .model(resumeContext.getModel())

@@ -13,7 +13,7 @@ import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
 import org.wwz.ai.application.agent.stream.AgentSessionEventBus;
 import org.wwz.ai.application.agent.stream.SessionEventClock;
 import org.wwz.ai.application.agent.stream.SessionProjectionRegistry;
-import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
+import org.wwz.ai.application.agent.authorization.ConversationSessionAuthorizationService;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
 import org.wwz.ai.domain.agent.runtime.GptQueryAgentRequestFactory;
@@ -24,7 +24,7 @@ import org.wwz.ai.domain.agent.runtime.handler.AgentResponseHandler;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
 import org.wwz.ai.types.agent.exception.AgentExecutorBusyException;
-import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
+import org.wwz.ai.types.agent.user.UserRequestContext;
 
 import javax.annotation.Resource;
 import java.util.Map;
@@ -45,7 +45,7 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
     private IAgentDispatchService agentDispatchService;
 
     @Resource
-    private ConversationSessionOwnershipApplicationService conversationSessionOwnershipApplicationService;
+    private ConversationSessionAuthorizationService conversationSessionAuthorizationService;
 
     @Resource
     private AskUserQuestionApplicationService askUserQuestionApplicationService;
@@ -81,10 +81,10 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
         AgentRequest agentRequest = gptQueryAgentRequestFactory.build(params);
         log.info("{} start handle Agent request: {}", params.getRequestId(), JSON.toJSONString(agentRequest));
 
-        String visitorId = resolveVisitorId(agentRequest);
-        agentRequest.setVisitorId(visitorId);
-        conversationSessionOwnershipApplicationService.ensureSessionAccessible(
-                visitorId,
+        String userId = resolveUserId(agentRequest);
+        agentRequest.setUserId(userId);
+        conversationSessionAuthorizationService.ensureSessionAccessible(
+                userId,
                 agentRequest.getSessionId(),
                 agentRequest.getQuery()
         );
@@ -104,7 +104,7 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
         activeAgentRunRegistry.begin(
                 agentRequest.getRequestId(),
                 agentRequest.getSessionId(),
-                visitorId);
+                userId);
 
         AgentResponseProjectionStream projectingStream =
                 new AgentResponseProjectionStream(null, agentRequest, handlerMap, agentSessionEventBus, sessionEventClock)
@@ -151,13 +151,13 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
         }
     }
 
-    private String resolveVisitorId(AgentRequest request) {
-        String contextVisitorId = VisitorRequestContext.currentVisitorId();
-        String visitorId = StringUtils.defaultIfBlank(contextVisitorId, request == null ? null : request.getVisitorId());
-        if (StringUtils.isBlank(visitorId)) {
-            throw new IllegalArgumentException("visitorId不能为空");
+    private String resolveUserId(AgentRequest request) {
+        String contextUserId = UserRequestContext.currentUserId();
+        String userId = StringUtils.defaultIfBlank(contextUserId, request == null ? null : request.getUserId());
+        if (StringUtils.isBlank(userId)) {
+            throw new IllegalArgumentException("userId不能为空");
         }
-        return visitorId;
+        return userId;
     }
 
     public static void completeProjectionUnlessBackgroundRunning(AgentRequest agentRequest,

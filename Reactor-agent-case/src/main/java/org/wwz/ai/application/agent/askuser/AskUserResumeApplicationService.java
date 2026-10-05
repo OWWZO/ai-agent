@@ -13,8 +13,8 @@ import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
 import org.wwz.ai.application.agent.stream.AgentSessionEventBus;
 import org.wwz.ai.application.agent.stream.SessionEventClock;
 import org.wwz.ai.application.agent.stream.SessionProjectionRegistry;
-import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
-import org.wwz.ai.application.agent.visitor.SessionOwnershipDeniedException;
+import org.wwz.ai.application.agent.authorization.ConversationSessionAuthorizationService;
+import org.wwz.ai.application.agent.authorization.SessionOwnershipDeniedException;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.runtime.askuser.AskUserQuestionObservationSupport;
 import org.wwz.ai.domain.agent.runtime.askuser.IUserQuestionRepository;
@@ -29,7 +29,7 @@ import org.wwz.ai.domain.agent.runtime.handler.AgentResponseHandler;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
 import org.wwz.ai.types.agent.exception.AgentConcurrentRunException;
 import org.wwz.ai.types.agent.exception.AgentExecutorBusyException;
-import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
+import org.wwz.ai.types.agent.user.UserRequestContext;
 
 import javax.annotation.Resource;
 import java.util.ArrayList;
@@ -47,7 +47,7 @@ public class AskUserResumeApplicationService {
 
     private final IUserQuestionRepository userQuestionRepository;
     private final IAgentDispatchService agentDispatchService;
-    private final ConversationSessionOwnershipApplicationService conversationSessionOwnershipApplicationService;
+    private final ConversationSessionAuthorizationService conversationSessionAuthorizationService;
     private final ActiveAgentRunRegistry activeAgentRunRegistry;
     private final AgentSessionEventBus agentSessionEventBus;
     private final AgentRunLaunchGate agentRunLaunchGate;
@@ -68,22 +68,22 @@ public class AskUserResumeApplicationService {
         if (StringUtils.isBlank(resumeRequestId)) {
             throw new IllegalArgumentException("resumeRequestId 不能为空");
         }
-        String visitorId = VisitorRequestContext.currentVisitorId();
-        if (StringUtils.isBlank(visitorId)) {
-            throw new IllegalArgumentException("visitorId不能为空");
+        String userId = UserRequestContext.currentUserId();
+        if (StringUtils.isBlank(userId)) {
+            throw new IllegalArgumentException("userId不能为空");
         }
 
         UserQuestionRecord record = userQuestionRepository.findByResumeRequestId(resumeRequestId.trim()).orElse(null);
         if (record == null) {
             throw new IllegalArgumentException("resume 记录不存在");
         }
-        if (StringUtils.isNotBlank(record.getVisitorId()) && !record.getVisitorId().equals(visitorId)) {
+        if (StringUtils.isNotBlank(record.getUserId()) && !record.getUserId().equals(userId)) {
             throw new IllegalArgumentException("无权恢复该问题");
         }
 
         try {
-            conversationSessionOwnershipApplicationService.ensureExistingSessionAccessible(
-                    visitorId, record.getSessionId());
+            conversationSessionAuthorizationService.ensureExistingSessionAccessible(
+                    userId, record.getSessionId());
         } catch (SessionOwnershipDeniedException e) {
             throw new IllegalArgumentException(e.getMessage(), e);
         }
@@ -99,16 +99,16 @@ public class AskUserResumeApplicationService {
             throw new IllegalStateException("问题状态不可 resume: " + record.getStatus());
         }
 
-        boolean claimed = userQuestionRepository.casClaimResume(resumeRequestId.trim(), visitorId);
+        boolean claimed = userQuestionRepository.casClaimResume(resumeRequestId.trim(), userId);
         if (!claimed) {
             throw new AgentConcurrentRunException(
                     "claim 失败或续跑已被认领", record.getResumeRequestId(), record.getSessionId());
         }
 
-        AgentRequest agentRequest = buildContinuationRequest(record, visitorId);
+        AgentRequest agentRequest = buildContinuationRequest(record, userId);
         try {
             activeAgentRunRegistry.begin(
-                    agentRequest.getRequestId(), agentRequest.getSessionId(), visitorId);
+                    agentRequest.getRequestId(), agentRequest.getSessionId(), userId);
         } catch (AgentConcurrentRunException e) {
             userQuestionRepository.markStatus(record.getQuestionId(), UserQuestionStatuses.RESUME_PENDING);
             throw e;
@@ -161,13 +161,13 @@ public class AskUserResumeApplicationService {
         }
     }
 
-    private AgentRequest buildContinuationRequest(UserQuestionRecord record, String visitorId) {
+    private AgentRequest buildContinuationRequest(UserQuestionRecord record, String userId) {
         UserQuestionResumeContext resumeContext = UserQuestionResumeContext.fromJson(record.getResumeContextJson());
         Integer agentType = resumeContext.getAgentType();
         return AgentRequest.builder()
                 .requestId(record.getResumeRequestId())
                 .sessionId(record.getSessionId())
-                .visitorId(visitorId)
+                .userId(userId)
                 .query("")
                 .agentType(agentType)
                 .model(resumeContext.getModel())

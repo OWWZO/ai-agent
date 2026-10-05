@@ -22,7 +22,7 @@ public class DialogueRunStartRecord {
 
     private String sessionId;
 
-    private String visitorId;
+    private String userId;
 
     private String entryAgent;
 

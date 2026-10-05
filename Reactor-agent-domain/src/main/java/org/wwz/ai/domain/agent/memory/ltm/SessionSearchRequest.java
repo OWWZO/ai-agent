@@ -12,7 +12,7 @@ public class SessionSearchRequest {
 
     private String sessionId;
     private String currentSessionId;
-    private String visitorId;
+    private String userId;
     private String query;
     /** Null = default. Explicit 0 or negative is a validation error. */
     private Integer limit;

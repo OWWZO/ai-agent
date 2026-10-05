@@ -58,15 +58,15 @@ public class DesktopControlYieldService {
             toolInvocationId = agentContext.getAgentRunState().resolveToolInvocationId(toolCallId);
         }
         UserQuestionResumeContext resumeContext = UserQuestionResumeContext.from(agentContext, request, entryAgent);
-        String visitorId = request == null ? null : request.getVisitorId();
+        String userId = request == null ? null : request.getUserId();
         LtmOwner owner = agentContext.getLtmOwner();
         if (owner == null) {
-            owner = LtmOwnerResolver.resolve(visitorId, null);
+            owner = LtmOwnerResolver.resolve(userId, null);
         }
 
         DesktopControlRecord record = DesktopControlRecord.builder()
                 .controlId(controlId)
-                .visitorId(visitorId)
+                .userId(userId)
                 .sessionId(agentContext.getSessionId())
                 .ownerKey(owner.asOwnerKey())
                 .sourceRunId(runId)

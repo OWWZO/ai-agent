@@ -25,9 +25,9 @@ public class AgentRequest {
      */
     private String sessionId;
     /**
-     * 匿名访客ID。
+     * 当前用户 ID。
      */
-    private String visitorId;
+    private String userId;
     private String erp;
     private String query;
     private Integer agentType;

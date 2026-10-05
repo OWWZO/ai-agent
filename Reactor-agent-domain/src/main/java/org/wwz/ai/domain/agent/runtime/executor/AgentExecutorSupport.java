@@ -5,7 +5,7 @@ import org.wwz.ai.domain.agent.ledger.model.AgentRunState;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.llm.LlmPromptObservability;
 import org.wwz.ai.types.agent.exception.AgentExecutorBusyException;
-import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
+import org.wwz.ai.types.agent.user.UserRequestContext;
 
 import java.util.Map;
 import java.util.Objects;
@@ -23,7 +23,7 @@ import java.util.function.Supplier;
  * Agent 主链路执行器公共提交工具。
  * <p>
  * 这里同时解决两个容易被忽略的问题：把拒绝转换成已完成的失败 Future，
- * 以及把请求、访客、MDC、LLM 观测和 Agent 运行位置带过线程池边界。
+ * 以及把请求、用户身份、MDC、LLM 观测和 Agent 运行位置带过线程池边界。
  */
 public final class AgentExecutorSupport {
 
@@ -180,7 +180,7 @@ public final class AgentExecutorSupport {
     }
 
     private record TaskContextSnapshot(String requestId,
-                                       String visitorId,
+                                       String userId,
                                        Map<String, String> mdc,
                                        LlmPromptObservability.ObservationBundle observation,
                                        AgentRunState runState,
@@ -201,7 +201,7 @@ public final class AgentExecutorSupport {
             }
             return new TaskContextSnapshot(
                     resolvedRequestId,
-                    VisitorRequestContext.currentVisitorId(),
+                    UserRequestContext.currentUserId(),
                     capturedMdc,
                     LlmPromptObservability.current(),
                     state,
@@ -231,17 +231,17 @@ public final class AgentExecutorSupport {
 
         private Scope open() {
             // 线程池线程可能复用上一个请求的 ThreadLocal，进入任务前先保存并覆盖所有运行态。
-            String previousVisitorId = VisitorRequestContext.currentVisitorId();
+            String previousUserId = UserRequestContext.currentUserId();
             Map<String, String> previousMdc = MDC.getCopyOfContextMap();
             LlmPromptObservability.ObservationBundle previousObservation = LlmPromptObservability.current();
             String previousAgentName = runState == null ? null : runState.getCurrentAgentName();
             Integer previousStepNo = runState == null ? null : runState.getCurrentStepNo();
             Long previousLlmInvocationId = runState == null ? null : runState.getCurrentLlmInvocationId();
 
-            if (visitorId == null) {
-                VisitorRequestContext.clear();
+            if (userId == null) {
+                UserRequestContext.clear();
             } else {
-                VisitorRequestContext.bind(visitorId);
+                UserRequestContext.bind(userId);
             }
             if (mdc == null || mdc.isEmpty()) {
                 MDC.clear();
@@ -265,25 +265,25 @@ public final class AgentExecutorSupport {
                     runState.bindCurrentLlmInvocationId(llmInvocationId);
                 }
             }
-            return new Scope(previousVisitorId, previousMdc, previousObservation,
+            return new Scope(previousUserId, previousMdc, previousObservation,
                     previousAgentName, previousStepNo, previousLlmInvocationId);
         }
 
         private final class Scope {
-            private final String previousVisitorId;
+            private final String previousUserId;
             private final Map<String, String> previousMdc;
             private final LlmPromptObservability.ObservationBundle previousObservation;
             private final String previousAgentName;
             private final Integer previousStepNo;
             private final Long previousLlmInvocationId;
 
-            private Scope(String previousVisitorId,
+            private Scope(String previousUserId,
                           Map<String, String> previousMdc,
                           LlmPromptObservability.ObservationBundle previousObservation,
                           String previousAgentName,
                           Integer previousStepNo,
                           Long previousLlmInvocationId) {
-                this.previousVisitorId = previousVisitorId;
+                this.previousUserId = previousUserId;
                 this.previousMdc = previousMdc;
                 this.previousObservation = previousObservation;
                 this.previousAgentName = previousAgentName;
@@ -293,10 +293,10 @@ public final class AgentExecutorSupport {
 
             private void close() {
                 // 无论任务成功、失败还是取消，都恢复线程原有上下文，避免请求之间互相污染。
-                if (previousVisitorId == null) {
-                    VisitorRequestContext.clear();
+                if (previousUserId == null) {
+                    UserRequestContext.clear();
                 } else {
-                    VisitorRequestContext.bind(previousVisitorId);
+                    UserRequestContext.bind(previousUserId);
                 }
                 if (previousMdc == null || previousMdc.isEmpty()) {
                     MDC.clear();

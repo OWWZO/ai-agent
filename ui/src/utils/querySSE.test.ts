@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { clearAuthSession, setAuthSession } from "@/stores/auth";
 
 const { fetchEventSourceMock } = vi.hoisted(() => ({ fetchEventSourceMock: vi.fn(), }));
 
@@ -18,6 +19,23 @@ describe("querySSE", () => {
   beforeEach(() => {
     fetchEventSourceMock.mockReset();
     fetchEventSourceMock.mockResolvedValue(undefined);
+    clearAuthSession();
+  });
+
+  it("每次建立 SSE 时读取当前内存 access token", () => {
+    setAuthSession("access-token-1", null);
+    querySSE(createConfig());
+    const firstOptions = fetchEventSourceMock.mock.calls[0][1] as {
+      headers: Record<string, string>;
+    };
+    expect(firstOptions.headers.Authorization).toBe("Bearer access-token-1");
+
+    setAuthSession("access-token-2", null);
+    querySSE(createConfig());
+    const secondOptions = fetchEventSourceMock.mock.calls[1][1] as {
+      headers: Record<string, string>;
+    };
+    expect(secondOptions.headers.Authorization).toBe("Bearer access-token-2");
   });
 
   it("默认不重发 POST，并在页面隐藏时保持 SSE 连接", () => {
@@ -37,6 +55,21 @@ describe("querySSE", () => {
     expect(config.handleError).not.toHaveBeenCalled();
   });
 
+  it("允许幂等的 GET 观察流在页面隐藏时暂停", () => {
+    querySSE(
+      createConfig({
+        method: "GET",
+        openWhenHidden: false,
+      })
+    );
+
+    const options = fetchEventSourceMock.mock.calls[0][1] as {
+      openWhenHidden: boolean;
+    };
+
+    expect(options.openWhenHidden).toBe(false);
+  });
+
   it("HTTP SSE 响应建立后通知调用方", () => {
     const handleOpen = vi.fn();
     const config = createConfig({ handleOpen });
@@ -44,9 +77,14 @@ describe("querySSE", () => {
     querySSE(config);
 
     const options = fetchEventSourceMock.mock.calls[0][1] as {
-      onopen: () => void;
+      onopen: (response: Response) => void;
     };
-    options.onopen();
+    options.onopen(
+      new Response(null, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      })
+    );
 
     expect(handleOpen).toHaveBeenCalledTimes(1);
   });
@@ -81,7 +119,10 @@ describe("querySSE", () => {
     const options = fetchEventSourceMock.mock.calls[0][1] as {
       onmessage: (event: { id: string; data: string }) => void;
     };
-    options.onmessage({ id: "event-invalid", data: JSON.stringify({ value: 1 }) });
+    options.onmessage({
+      id: "event-invalid",
+      data: JSON.stringify({ value: 1 }),
+    });
 
     expect(config.handleError).not.toHaveBeenCalled();
   });

@@ -4,11 +4,11 @@ public interface KernelBrowserSessionPort {
 
     boolean isConfigured();
 
-    KernelBrowserSession resolveForOwner(String ownerKey);
+    KernelBrowserSession resolveForUser(String userId);
 
-    KernelBrowserSessionStatus statusForOwner(String ownerKey);
+    KernelBrowserSessionStatus statusForUser(String userId);
 
-    KernelBrowserLiveView ensureLiveView(String ownerKey);
+    KernelBrowserLiveView ensureLiveView(String userId);
 
-    void deleteForOwner(String ownerKey);
+    void deleteForUser(String userId);
 }

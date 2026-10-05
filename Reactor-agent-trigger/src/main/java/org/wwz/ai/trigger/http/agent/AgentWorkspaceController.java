@@ -8,8 +8,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.wwz.ai.application.agent.file.WorkspaceArchiveApplicationService;
-import org.wwz.ai.application.agent.visitor.SessionOwnershipDeniedException;
-import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
+import org.wwz.ai.application.agent.authorization.SessionOwnershipDeniedException;
+import org.wwz.ai.types.agent.user.UserRequestContext;
 
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -43,7 +43,7 @@ public class AgentWorkspaceController {
                 "attachment; filename=\"workspace.zip\"; filename*=UTF-8''" + encoded);
         try {
             workspaceArchiveApplicationService.writeArchive(
-                    VisitorRequestContext.requireVisitorId(),
+                    UserRequestContext.requireUserId(),
                     sessionId,
                     response.getOutputStream());
             response.flushBuffer();

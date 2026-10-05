@@ -21,7 +21,7 @@ public interface IWorkingMemoryMessageDao {
                                                              @Param("limit") int limit,
                                                              @Param("roles") List<String> roles);
 
-    List<WorkingMemorySearchMessage> searchFullTextByVisitor(@Param("visitorId") String visitorId,
+    List<WorkingMemorySearchMessage> searchFullTextByUserId(@Param("userId") String userId,
                                                              @Param("query") String query,
                                                              @Param("limit") int limit,
                                                              @Param("roles") List<String> roles);
@@ -31,7 +31,7 @@ public interface IWorkingMemoryMessageDao {
                                                    @Param("limit") int limit,
                                                    @Param("roles") List<String> roles);
 
-    List<WorkingMemorySearchMessage> scanByVisitor(@Param("visitorId") String visitorId,
+    List<WorkingMemorySearchMessage> scanByUserId(@Param("userId") String userId,
                                                    @Param("query") String query,
                                                    @Param("limit") int limit,
                                                    @Param("roles") List<String> roles);
@@ -52,7 +52,7 @@ public interface IWorkingMemoryMessageDao {
     List<WorkingMemorySearchMessage> selectHistoryBySession(@Param("sessionId") String sessionId);
 
     /** 最近的主会话摘要，用于 session_search browse。 */
-    List<java.util.Map<String, Object>> selectRecentSessions(@Param("visitorId") String visitorId,
+    List<java.util.Map<String, Object>> selectRecentSessions(@Param("userId") String userId,
                                                              @Param("limit") int limit);
 
     java.util.Map<String, Object> selectSessionSummary(@Param("sessionId") String sessionId);

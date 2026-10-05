@@ -63,7 +63,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
                 .runUid(StringUtils.defaultIfBlank(record.getRunUid(), record.getRequestId()))
                 .requestId(record.getRequestId())
                 .sessionId(record.getSessionId())
-                .visitorId(record.getVisitorId())
+                .userId(record.getUserId())
                 .entryAgent(record.getEntryAgent())
                 .status(ExecutionLedgerConstants.STATUS_RUNNING)
                 .queryText(record.getQueryText())
@@ -81,7 +81,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
             SessionHeadValues sessionHead = resolveSessionHead(record.getSessionId(), record.getQueryText());
             upsertSessionHead(DialogueSessionUpsertRecord.builder()
                     .sessionId(record.getSessionId())
-                    .visitorId(record.getVisitorId())
+                    .userId(record.getUserId())
                     .title(sessionHead.title())
                     .status(ExecutionLedgerConstants.STATUS_RUNNING)
                     .latestRequestId(record.getRequestId())
@@ -136,7 +136,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
             SessionHeadValues sessionHead = resolveSessionHead(existing.getSessionId(), existing.getQueryText());
             upsertSessionHead(DialogueSessionUpsertRecord.builder()
                     .sessionId(existing.getSessionId())
-                    .visitorId(existing.getVisitorId())
+                    .userId(existing.getUserId())
                     .title(sessionHead.title())
                     .status(record.getStatus())
                     .latestRequestId(existing.getRequestId())

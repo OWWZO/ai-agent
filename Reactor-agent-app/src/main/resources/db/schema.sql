@@ -8,7 +8,7 @@
 --   ai_agent_dialogue_session, ai_agent_dialogue_run,
 --   ai_agent_llm_invocation, ai_agent_tool_invocation,
 --   ai_agent_artifact and the remaining persisted ai_agent_tool_output_* tables,
---   ai_agent_visitor_identity, ai_agent_featured_conversation
+--   ai_agent_featured_conversation
 --
 -- Agent assembly config (not execution facts):
 --   ai_agent_sub_agent_definition — custom SubAgent definitions for Agent tool
@@ -23,19 +23,46 @@
 --   ai_agent_display_event, ai_agent_session_memory
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS admin_user (
-    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    user_id     VARCHAR(64)  NOT NULL COMMENT '用户ID（唯一标识）',
-    username    VARCHAR(50)  NOT NULL COMMENT '用户名（登录账号）',
-    password    VARCHAR(128) NOT NULL COMMENT '密码（加密存储）',
-    status      TINYINT(1)   NULL DEFAULT 1 COMMENT '状态(0:禁用,1:启用,2:锁定)',
-    create_time DATETIME     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time DATETIME     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+CREATE TABLE IF NOT EXISTS user_account (
+    id               BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    user_id          VARCHAR(64)    NOT NULL COMMENT '稳定用户ID，供 JWT sub 和业务 ownership 使用',
+    token_digest     VARCHAR(128)   NOT NULL COMMENT 'Cookie token 摘要',
+    status           TINYINT        NOT NULL DEFAULT 1 COMMENT '1=有效,0=失效',
+    first_seen_at    DATETIME(3)    NOT NULL COMMENT '首次访问时间',
+    last_seen_at     DATETIME(3)    NOT NULL COMMENT '最近访问时间',
+    last_ip          VARCHAR(128)   NULL COMMENT '最近访问IP',
+    last_user_agent  VARCHAR(512)   NULL COMMENT '最近访问UA',
+    username         VARCHAR(64)    NULL COMMENT '旧访客用户名，迁移后继续保留',
+    create_time      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted          TINYINT(1)     NOT NULL DEFAULT 0 COMMENT '软删除',
+    login_name       VARCHAR(64)    NULL COMMENT '规范化登录名（trim + lower-case）',
+    password_hash    VARCHAR(255)   NULL COMMENT 'BCrypt 密文；legacy 回填前允许为空',
+    nickname         VARCHAR(64)    NULL COMMENT '展示昵称',
+    role             VARCHAR(32)    NOT NULL DEFAULT 'USER' COMMENT 'USER 或 ADMIN',
+    last_login_at    DATETIME       NULL COMMENT '最近登录时间',
     PRIMARY KEY (id),
-    UNIQUE KEY uk_user_id (user_id),
-    KEY idx_create_time (create_time),
-    KEY idx_status (status)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='管理员用户表';
+    UNIQUE KEY uk_user_account_user_id (user_id),
+    UNIQUE KEY uk_user_account_token_digest (token_digest),
+    UNIQUE KEY uk_user_account_login_name (login_name),
+    KEY idx_user_account_last_seen (deleted, last_seen_at DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='账号表';
+
+CREATE TABLE IF NOT EXISTS user_auth_session (
+    session_id          CHAR(36)     NOT NULL COMMENT 'refresh session UUID',
+    user_id             VARCHAR(64)  NOT NULL COMMENT 'user_account.user_id',
+    refresh_token_hash  CHAR(64)     NOT NULL COMMENT 'refresh token SHA-256，不保存原文',
+    device_name         VARCHAR(128) NULL COMMENT '设备名称',
+    ip                  VARCHAR(128) NULL COMMENT '登录 IP',
+    user_agent          VARCHAR(512) NULL COMMENT '登录 User-Agent',
+    expires_at          DATETIME     NOT NULL COMMENT 'refresh 会话过期时间',
+    last_seen_at        DATETIME     NOT NULL COMMENT '最近使用时间',
+    revoked_at          DATETIME     NULL COMMENT '吊销时间',
+    created_at          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (session_id),
+    UNIQUE KEY uk_user_auth_session_refresh_hash (refresh_token_hash),
+    KEY idx_user_auth_session_user (user_id, revoked_at, expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='账号 refresh 会话';
 
 CREATE TABLE IF NOT EXISTS ai_client_api (
     id               BIGINT        NOT NULL AUTO_INCREMENT COMMENT '自增主键ID',
@@ -167,31 +194,12 @@ CREATE TABLE IF NOT EXISTS sales_data (
     profit DECIMAL(10, 4) DEFAULT NULL COMMENT '利润'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE IF NOT EXISTS ai_agent_visitor_identity (
-    id               BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    visitor_id       VARCHAR(64)    NOT NULL COMMENT '匿名访客ID',
-    token_digest     VARCHAR(128)   NOT NULL COMMENT 'Cookie token 摘要',
-    status           TINYINT        NOT NULL DEFAULT 1 COMMENT '1=有效,0=失效',
-    first_seen_at    DATETIME(3)    NOT NULL COMMENT '首次访问时间',
-    last_seen_at     DATETIME(3)    NOT NULL COMMENT '最近访问时间',
-    last_ip          VARCHAR(128)   NULL COMMENT '最近访问IP',
-    last_user_agent  VARCHAR(512)   NULL COMMENT '最近访问UA',
-    username         VARCHAR(64)    NULL COMMENT '当前浏览器访客首次命名用户名',
-    create_time      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建\r\n  时间',
-    update_time      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    deleted          TINYINT(1)     NOT NULL DEFAULT 0 COMMENT '软删除',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_visitor_identity_visitor (visitor_id),
-    UNIQUE KEY uk_visitor_identity_token (token_digest),
-    KEY idx_visitor_identity_last_seen (deleted, last_seen_at DESC)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='匿名访客\r\n  身份表';
-
 CREATE TABLE IF NOT EXISTS ai_agent_dialogue_run (
     id                      BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     run_uid                 VARCHAR(64)    NOT NULL COMMENT '对外稳定运行ID，首期复用\r\n  requestId',
     request_id              VARCHAR(64)    NOT NULL COMMENT '单次请求ID',
     session_id              VARCHAR(64)    NOT NULL COMMENT '会话ID',
-    visitor_id              VARCHAR(64)    NULL COMMENT '匿名访客ID',
+    user_id                 VARCHAR(64)    NULL COMMENT '用户ID',
     entry_agent             VARCHAR(32)    NOT NULL COMMENT '入口执行链 react /\r\n  plan_solve',
     status                  TINYINT        NOT NULL DEFAULT 0 COMMENT '0=RUNNING,1=SUCCESS,2=FAILED,3=TIMEOUT,4=STOPPED,5=WAITING_INPUT',
     query_text              MEDIUMTEXT     NULL COMMENT '用户原始问题',
@@ -215,14 +223,14 @@ CREATE TABLE IF NOT EXISTS ai_agent_dialogue_run (
     UNIQUE KEY uk_dialogue_request_id (request_id),
     KEY idx_dialogue_session_create (session_id, deleted, create_time DESC),
     KEY idx_dialogue_session_cursor (session_id, deleted, create_time, id),
-    KEY idx_dialogue_run_visitor_create (visitor_id, deleted, create_time DESC),
+    KEY idx_dialogue_run_user_create (user_id, deleted, create_time DESC),
     KEY idx_dialogue_entry_status (entry_agent, status, deleted, create_time DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='对话执行\r\n  总账表';
 
 CREATE TABLE IF NOT EXISTS ai_agent_dialogue_session (
     id                 BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     session_id         VARCHAR(64)    NOT NULL COMMENT '会话ID',
-    visitor_id         VARCHAR(64)    NULL COMMENT '匿名访客ID',
+    user_id            VARCHAR(64)    NULL COMMENT '用户ID',
     title              VARCHAR(256)   NOT NULL COMMENT '会话标题',
     status             TINYINT        NOT NULL DEFAULT 0 COMMENT '会话终态，复用 run\r\n  状态枚举',
     latest_request_id  VARCHAR(64)    NULL COMMENT '最近一次请求ID',
@@ -239,7 +247,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_dialogue_session (
     deleted            TINYINT(1)     NOT NULL DEFAULT 0 COMMENT '软删除',
     PRIMARY KEY (id),
     UNIQUE KEY uk_dialogue_session_id (session_id, deleted),
-    KEY idx_dialogue_session_visitor_active (visitor_id, deleted, last_active_at DESC),
+    KEY idx_dialogue_session_user_active (user_id, deleted, last_active_at DESC),
     KEY idx_dialogue_session_active (deleted, last_active_at DESC, id DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='对话会话\r\n  主表';
 
@@ -324,7 +332,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_invocation (
 CREATE TABLE IF NOT EXISTS ai_agent_user_question (
     id                   BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     question_id          VARCHAR(64)    NOT NULL COMMENT '问题对外ID',
-    visitor_id           VARCHAR(64)    NULL COMMENT '访客ID',
+    user_id              VARCHAR(64)    NULL COMMENT '用户ID',
     session_id           VARCHAR(64)    NOT NULL COMMENT '会话ID',
     source_run_id        BIGINT         NULL COMMENT '源 dialogue_run.id',
     source_request_id    VARCHAR(64)    NOT NULL COMMENT '源 requestId',
@@ -343,14 +351,14 @@ CREATE TABLE IF NOT EXISTS ai_agent_user_question (
     UNIQUE KEY uk_user_question_id (question_id, deleted),
     UNIQUE KEY uk_user_question_resume (resume_request_id, deleted),
     KEY idx_user_question_session_status (session_id, status, deleted, create_time DESC),
-    KEY idx_user_question_visitor (visitor_id, deleted, create_time DESC),
+    KEY idx_user_question_user (user_id, deleted, create_time DESC),
     KEY idx_user_question_source_request (source_request_id, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AskUserQuestion 交互附属状态（非第二账本）';
 
 CREATE TABLE IF NOT EXISTS ai_agent_desktop_control (
     id                   BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     control_id           VARCHAR(64)    NOT NULL COMMENT '桌面控制对外ID',
-    visitor_id           VARCHAR(64)    NULL COMMENT '访客ID',
+    user_id              VARCHAR(64)    NULL COMMENT '用户ID',
     session_id           VARCHAR(64)    NOT NULL COMMENT '会话ID',
     owner_key            VARCHAR(128)   NULL COMMENT '沙箱 ownerKey',
     source_run_id        BIGINT         NULL COMMENT '源 dialogue_run.id',
@@ -370,14 +378,14 @@ CREATE TABLE IF NOT EXISTS ai_agent_desktop_control (
     UNIQUE KEY uk_desktop_control_id (control_id, deleted),
     UNIQUE KEY uk_desktop_control_resume (resume_request_id, deleted),
     KEY idx_desktop_control_session_status (session_id, status, deleted, create_time DESC),
-    KEY idx_desktop_control_visitor (visitor_id, deleted, create_time DESC),
+    KEY idx_desktop_control_user (user_id, deleted, create_time DESC),
     KEY idx_desktop_control_source_request (source_request_id, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='RequestDesktopControl 交互附属状态（非第二账本）';
 
 CREATE TABLE IF NOT EXISTS ai_agent_plan_approval (
     id                   BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     approval_id          VARCHAR(64)    NOT NULL COMMENT '审批对外ID',
-    visitor_id           VARCHAR(64)    NULL COMMENT '访客ID',
+    user_id              VARCHAR(64)    NULL COMMENT '用户ID',
     session_id           VARCHAR(64)    NOT NULL COMMENT '会话ID',
     source_run_id        BIGINT         NULL COMMENT '源 dialogue_run.id',
     source_request_id    VARCHAR(64)    NOT NULL COMMENT '源 requestId',
@@ -397,7 +405,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_plan_approval (
     UNIQUE KEY uk_plan_approval_id (approval_id, deleted),
     UNIQUE KEY uk_plan_approval_resume (resume_request_id, deleted),
     KEY idx_plan_approval_session_status (session_id, status, deleted, create_time DESC),
-    KEY idx_plan_approval_visitor (visitor_id, deleted, create_time DESC),
+    KEY idx_plan_approval_user (user_id, deleted, create_time DESC),
     KEY idx_plan_approval_source_request (source_request_id, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='ExitPlanMode 计划审批附属状态（非第二账本）';
 
@@ -815,7 +823,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_background_task (
 
 CREATE TABLE IF NOT EXISTS ai_agent_kernel_browser_session (
     id BIGINT NOT NULL AUTO_INCREMENT,
-    owner_key VARCHAR(128) NOT NULL COMMENT '稳定 owner identity，v1=visitorId',
+    owner_key VARCHAR(128) NOT NULL COMMENT '稳定 userId',
     kernel_session_id VARCHAR(64) NOT NULL COMMENT 'Kernel browser session_id',
     kernel_browser_name VARCHAR(255) NOT NULL COMMENT '稳定 Kernel browser name',
     last_used_at DATETIME NOT NULL COMMENT '最近一次成功取得 CDP endpoint 的时间',

@@ -27,9 +27,9 @@ public class BrowserRelayApplicationService {
         this.browserRelayPort = browserRelayPortProvider.getIfAvailable();
     }
 
-    public BrowserPairingView createPairing(String visitorId, String relayUrl) {
-        if (StringUtils.isBlank(visitorId)) {
-            throw new IllegalArgumentException("visitorId不能为空");
+    public BrowserPairingView createPairing(String userId, String relayUrl) {
+        if (StringUtils.isBlank(userId)) {
+            throw new IllegalArgumentException("userId不能为空");
         }
         purgeExpired();
         byte[] bytes = new byte[32];
@@ -41,7 +41,7 @@ public class BrowserRelayApplicationService {
         }
         long expiresAt = System.currentTimeMillis() + properties.getPairingTtlSeconds() * 1000L;
         BrowserPairingRecord record = BrowserPairingRecord.builder()
-                .visitorId(visitorId)
+                .userId(userId)
                 .token(token)
                 .code(code)
                 .relayUrl(relayUrl)
@@ -76,7 +76,7 @@ public class BrowserRelayApplicationService {
                 .build();
     }
 
-    public String resolveVisitorId(String token) {
+    public String resolveUserId(String token) {
         if (StringUtils.isBlank(token)) {
             return null;
         }
@@ -84,29 +84,29 @@ public class BrowserRelayApplicationService {
         if (record == null) {
             return null;
         }
-        return record.getVisitorId();
+        return record.getUserId();
     }
 
-    public void revokeVisitor(String visitorId) {
-        if (StringUtils.isBlank(visitorId) || browserRelayPort == null) {
+    public void revokeUser(String userId) {
+        if (StringUtils.isBlank(userId) || browserRelayPort == null) {
             return;
         }
         Iterator<Map.Entry<String, BrowserPairingRecord>> it = byToken.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry<String, BrowserPairingRecord> entry = it.next();
-            if (visitorId.equals(entry.getValue().getVisitorId())) {
+            if (userId.equals(entry.getValue().getUserId())) {
                 tokenByCode.remove(entry.getValue().getCode());
                 it.remove();
             }
         }
-        browserRelayPort.disconnect(visitorId);
+        browserRelayPort.disconnect(userId);
     }
 
-    public BrowserRelayStatus status(String visitorId) {
-        if (browserRelayPort == null || StringUtils.isBlank(visitorId)) {
+    public BrowserRelayStatus status(String userId) {
+        if (browserRelayPort == null || StringUtils.isBlank(userId)) {
             return BrowserRelayStatus.builder().connected(false).build();
         }
-        return browserRelayPort.status(visitorId);
+        return browserRelayPort.status(userId);
     }
 
     private void purgeExpired() {

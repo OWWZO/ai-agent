@@ -142,3 +142,12 @@ autobots:
 agent:
   llm:
     model-cache-ms: 60000
+
+auth:
+  jwt:
+    secret: ${REACTOR_AUTH_JWT_SECRET:}
+    issuer: reactor
+    access-token-ttl-seconds: 900
+  refresh-cookie:
+    secure: ${REACTOR_AUTH_REFRESH_COOKIE_SECURE:false}
+    same-site: Lax

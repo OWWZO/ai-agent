@@ -25,7 +25,7 @@ public class DialogueRunView {
 
     private String sessionId;
 
-    private String visitorId;
+    private String userId;
 
     private String entryAgent;
 

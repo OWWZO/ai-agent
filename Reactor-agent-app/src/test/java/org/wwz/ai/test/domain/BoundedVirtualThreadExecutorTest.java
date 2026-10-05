@@ -10,7 +10,7 @@ import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.runtime.llm.LlmPromptObservability;
 import org.wwz.ai.types.agent.config.AgentExecutorProperties;
-import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
+import org.wwz.ai.types.agent.user.UserRequestContext;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -153,7 +153,7 @@ public class BoundedVirtualThreadExecutorTest {
                 .agentRunState(runState)
                 .build();
         context.markExecutionPosition("react-agent", 3);
-        VisitorRequestContext.bind("visitor-context");
+        UserRequestContext.bind("user-context");
         MDC.put("requestId", "request-context");
         LlmPromptObservability.restore(LlmPromptObservability.ObservationBundle.builder()
                 .systemFingerprint("fingerprint")
@@ -161,7 +161,7 @@ public class BoundedVirtualThreadExecutorTest {
         try {
             String threadName = AgentExecutorSupport.supplyAsync(
                     executor, "context-test", context, () -> {
-                        Assert.assertEquals("visitor-context", VisitorRequestContext.currentVisitorId());
+                        Assert.assertEquals("user-context", UserRequestContext.currentUserId());
                         Assert.assertEquals("request-context", MDC.get("requestId"));
                         Assert.assertNotNull(LlmPromptObservability.current());
                         Assert.assertEquals("react-agent", runState.getCurrentAgentName());
@@ -171,17 +171,17 @@ public class BoundedVirtualThreadExecutorTest {
             Assert.assertTrue(threadName.startsWith("context-agent-"));
 
             // 清空提交线程上下文，验证任务结束后不会把上一个任务的身份带入新任务。
-            VisitorRequestContext.clear();
+            UserRequestContext.clear();
             MDC.clear();
             LlmPromptObservability.clear();
             AgentExecutorSupport.supplyAsync(executor, "cleanup-test", () -> {
-                Assert.assertNull(VisitorRequestContext.currentVisitorId());
+                Assert.assertNull(UserRequestContext.currentUserId());
                 Assert.assertNull(MDC.get("requestId"));
                 Assert.assertNull(LlmPromptObservability.current());
                 return null;
             }).get(2, TimeUnit.SECONDS);
         } finally {
-            VisitorRequestContext.clear();
+            UserRequestContext.clear();
             MDC.clear();
             LlmPromptObservability.clear();
             executor.shutdown();

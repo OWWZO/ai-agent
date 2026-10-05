@@ -5,7 +5,7 @@
     <resultMap id="DialogueSessionMap" type="org.wwz.ai.domain.agent.ledger.entity.DialogueSession">
         <id column="id" property="id"/>
         <result column="session_id" property="sessionId"/>
-        <result column="visitor_id" property="visitorId"/>
+        <result column="user_id" property="userId"/>
         <result column="title" property="title"/>
         <result column="status" property="status"/>
         <result column="latest_request_id" property="latestRequestId"/>
@@ -25,7 +25,7 @@
     <resultMap id="DialogueSessionViewMap" type="org.wwz.ai.domain.agent.ledger.model.DialogueSessionView">
         <id column="id" property="id"/>
         <result column="session_id" property="sessionId"/>
-        <result column="visitor_id" property="visitorId"/>
+        <result column="user_id" property="userId"/>
         <result column="title" property="title"/>
         <result column="status" property="status"/>
         <result column="latest_request_id" property="latestRequestId"/>
@@ -40,19 +40,19 @@
     </resultMap>
 
     <sql id="dialogueSessionColumns">
-        id, session_id, visitor_id, title, status, latest_request_id, latest_query_text,
+        id, session_id, user_id, title, status, latest_request_id, latest_query_text,
         latest_summary_text, run_count, finished_run_count, failed_run_count,
         started_at, last_active_at, event_seq, create_time, update_time, deleted
     </sql>
 
     <sql id="dialogueSessionViewColumns">
-        id, session_id, visitor_id, title, status, latest_request_id, latest_query_text,
+        id, session_id, user_id, title, status, latest_request_id, latest_query_text,
         latest_summary_text, run_count, finished_run_count, failed_run_count,
         started_at, last_active_at, create_time
     </sql>
 
     <sql id="dialogueSessionHistoryViewColumns">
-        id, session_id, visitor_id, title, status, latest_request_id,
+        id, session_id, user_id, title, status, latest_request_id,
         LEFT(latest_query_text, 241) AS latest_query_text,
         LEFT(latest_summary_text, 241) AS latest_summary_text,
         run_count, finished_run_count, failed_run_count,
@@ -61,18 +61,18 @@
 
     <insert id="upsertSession" parameterType="org.wwz.ai.domain.agent.ledger.model.DialogueSessionUpsertRecord">
         INSERT INTO ai_agent_dialogue_session (
-            session_id, visitor_id, title, status, latest_request_id, latest_query_text, latest_summary_text,
+            session_id, user_id, title, status, latest_request_id, latest_query_text, latest_summary_text,
             run_count, finished_run_count, failed_run_count, started_at, last_active_at,
             create_time, update_time, deleted
         ) VALUES (
-            #{sessionId}, #{visitorId}, #{title}, #{status}, #{latestRequestId}, #{latestQueryText}, #{latestSummaryText},
+            #{sessionId}, #{userId}, #{title}, #{status}, #{latestRequestId}, #{latestQueryText}, #{latestSummaryText},
             #{runCount}, #{finishedRunCount}, #{failedRunCount}, #{startedAt}, #{lastActiveAt},
             NOW(), NOW(), 0
         )
         ON DUPLICATE KEY UPDATE
-            visitor_id = CASE
-                WHEN visitor_id IS NULL OR visitor_id = '' THEN VALUES(visitor_id)
-                ELSE visitor_id
+            user_id = CASE
+                WHEN user_id IS NULL OR user_id = '' THEN VALUES(user_id)
+                ELSE user_id
             END,
             title = VALUES(title),
             status = VALUES(status),
@@ -96,7 +96,7 @@
     </select>
 
     <select id="querySessionOwnership" resultMap="DialogueSessionMap">
-        SELECT id, session_id, visitor_id, deleted
+        SELECT id, session_id, user_id, deleted
         FROM ai_agent_dialogue_session
         WHERE session_id = #{sessionId}
           AND deleted = 0
@@ -127,19 +127,19 @@
         LIMIT #{limit}
     </select>
 
-    <select id="querySessionViewByVisitor" resultMap="DialogueSessionViewMap">
+    <select id="querySessionViewByUserId" resultMap="DialogueSessionViewMap">
         SELECT <include refid="dialogueSessionViewColumns"/>
         FROM ai_agent_dialogue_session
         WHERE session_id = #{sessionId}
-          AND visitor_id = #{visitorId}
+          AND user_id = #{userId}
           AND deleted = 0
         LIMIT 1
     </select>
 
-    <select id="queryRecentSessionsByVisitor" resultMap="DialogueSessionViewMap">
+    <select id="queryRecentSessionsByUserId" resultMap="DialogueSessionViewMap">
         SELECT <include refid="dialogueSessionViewColumns"/>
         FROM ai_agent_dialogue_session
-        WHERE visitor_id = #{visitorId}
+        WHERE user_id = #{userId}
           AND deleted = 0
         ORDER BY last_active_at DESC, id DESC
         LIMIT #{limit}

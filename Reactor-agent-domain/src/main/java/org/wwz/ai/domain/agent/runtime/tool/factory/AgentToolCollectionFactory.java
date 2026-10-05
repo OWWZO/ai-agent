@@ -648,7 +648,7 @@ public class AgentToolCollectionFactory {
         if (properties == null || !properties.isEnabled() || cli == null || !cli.isResolvable(properties.getCommand())) {
             return;
         }
-        if (port == null || request == null || StringUtils.isBlank(request.getVisitorId()) || !port.isOnline(request.getVisitorId())) {
+        if (port == null || request == null || StringUtils.isBlank(request.getUserId()) || !port.isOnline(request.getUserId())) {
             return;
         }
         addTool(toolCollection, new BrowserTool(), agentContext, BrowserTool::setAgentContext);

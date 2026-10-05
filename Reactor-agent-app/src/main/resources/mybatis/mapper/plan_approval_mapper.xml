@@ -5,7 +5,7 @@
     <resultMap id="PlanApprovalMap" type="org.wwz.ai.infrastructure.dao.reactor.po.PlanApprovalPO">
         <id column="id" property="id"/>
         <result column="approval_id" property="approvalId"/>
-        <result column="visitor_id" property="visitorId"/>
+        <result column="user_id" property="userId"/>
         <result column="session_id" property="sessionId"/>
         <result column="source_run_id" property="sourceRunId"/>
         <result column="source_request_id" property="sourceRequestId"/>
@@ -25,11 +25,11 @@
 
     <insert id="insert" parameterType="org.wwz.ai.infrastructure.dao.reactor.po.PlanApprovalPO" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_agent_plan_approval (
-            approval_id, visitor_id, session_id, source_run_id, source_request_id,
+            approval_id, user_id, session_id, source_run_id, source_request_id,
             tool_invocation_id, tool_call_id, plan_content, plan_file_path, decision_json, status,
             expires_at, resume_request_id, resume_context_json, create_time, update_time, deleted
         ) VALUES (
-            #{approvalId}, #{visitorId}, #{sessionId}, #{sourceRunId}, #{sourceRequestId},
+            #{approvalId}, #{userId}, #{sessionId}, #{sourceRunId}, #{sourceRequestId},
             #{toolInvocationId}, #{toolCallId}, #{planContent}, #{planFilePath}, #{decisionJson}, #{status},
             #{expiresAt}, #{resumeRequestId}, #{resumeContextJson}, NOW(), NOW(), 0
         )
@@ -77,8 +77,8 @@
         WHERE approval_id = #{approvalId}
           AND deleted = 0
           AND status = 'PENDING'
-          <if test="visitorId != null and visitorId != ''">
-              AND (visitor_id IS NULL OR visitor_id = #{visitorId})
+          <if test="userId != null and userId != ''">
+              AND (user_id IS NULL OR user_id = #{userId})
           </if>
     </update>
 
@@ -89,8 +89,8 @@
         WHERE resume_request_id = #{resumeRequestId}
           AND deleted = 0
           AND status = 'RESUME_PENDING'
-          <if test="visitorId != null and visitorId != ''">
-              AND (visitor_id IS NULL OR visitor_id = #{visitorId})
+          <if test="userId != null and userId != ''">
+              AND (user_id IS NULL OR user_id = #{userId})
           </if>
     </update>
 
@@ -121,8 +121,8 @@
           <foreach collection="fromStatuses" item="st" open="(" separator="," close=")">
               #{st}
           </foreach>
-          <if test="visitorId != null and visitorId != ''">
-              AND (visitor_id IS NULL OR visitor_id = #{visitorId})
+          <if test="userId != null and userId != ''">
+              AND (user_id IS NULL OR user_id = #{userId})
           </if>
     </update>
 

@@ -21,18 +21,18 @@ public interface IPlanApprovalRepository {
     /**
      * CAS PENDING → RESUME_PENDING；成功返回 true。
      */
-    boolean casDecidePending(String approvalId, String visitorId, PlanApprovalDecision decision, String resumeRequestId);
+    boolean casDecidePending(String approvalId, String userId, PlanApprovalDecision decision, String resumeRequestId);
 
     /**
      * CAS RESUME_PENDING → RESUMING；成功返回 true。
      */
-    boolean casClaimResume(String resumeRequestId, String visitorId);
+    boolean casClaimResume(String resumeRequestId, String userId);
 
     boolean markAnswered(String approvalId);
 
     boolean markStatus(String approvalId, String status);
 
-    boolean casCancel(String approvalId, String visitorId);
+    boolean casCancel(String approvalId, String userId);
 
     int cancelBySourceRequestId(String sourceRequestId, String reason);
 }

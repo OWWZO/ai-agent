@@ -20,17 +20,17 @@ public interface IDesktopControlDao {
     int countOpenBySessionId(@Param("sessionId") String sessionId);
 
     int casCompletePending(@Param("controlId") String controlId,
-                           @Param("visitorId") String visitorId,
+                           @Param("userId") String userId,
                            @Param("resumeRequestId") String resumeRequestId);
 
     int casClaimResume(@Param("resumeRequestId") String resumeRequestId,
-                       @Param("visitorId") String visitorId);
+                       @Param("userId") String userId);
 
     int markCompleted(@Param("controlId") String controlId);
 
     int markFailed(@Param("controlId") String controlId, @Param("status") String status);
 
     int casCancel(@Param("controlId") String controlId,
-                  @Param("visitorId") String visitorId,
+                  @Param("userId") String userId,
                   @Param("fromStatuses") List<String> fromStatuses);
 }

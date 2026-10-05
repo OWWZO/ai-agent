@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.trigger.http.reactor.support.AgentSessionStreamHub;
 import org.wwz.ai.trigger.http.reactor.support.AgentStreamLimitException;
-import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
+import org.wwz.ai.types.agent.user.UserRequestContext;
 
 import javax.annotation.Resource;
 
@@ -32,7 +32,7 @@ public class AgentSessionStreamController {
                              @RequestParam(required = false) Long lastEventSeq,
                              @RequestHeader(value = "Last-Event-ID", required = false) String lastEventIdHeader) {
         long from = AgentRunController.resolveLastEventSeq(lastEventSeq, lastEventIdHeader);
-        String ownerKey = StringUtils.trimToNull(VisitorRequestContext.currentVisitorId());
+        String ownerKey = StringUtils.trimToNull(UserRequestContext.currentUserId());
         AgentSessionStreamHub.StreamReservation reservation = agentSessionStreamHub.reserve(ownerKey);
         try {
             return agentSessionStreamHub.open(sessionId, reservation, from);

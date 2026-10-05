@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.infrastructure.dao.IUserAuthSessionDao">
+
+    <resultMap id="UserAuthSessionMap" type="org.wwz.ai.infrastructure.dao.po.UserAuthSessionPO">
+        <id column="session_id" property="sessionId"/>
+        <result column="user_id" property="userId"/>
+        <result column="refresh_token_hash" property="refreshTokenHash"/>
+        <result column="device_name" property="deviceName"/>
+        <result column="ip" property="ip"/>
+        <result column="user_agent" property="userAgent"/>
+        <result column="expires_at" property="expiresAt"/>
+        <result column="last_seen_at" property="lastSeenAt"/>
+        <result column="revoked_at" property="revokedAt"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="org.wwz.ai.infrastructure.dao.po.UserAuthSessionPO"
+            useGeneratedKeys="false">
+        INSERT INTO user_auth_session (
+            session_id, user_id, refresh_token_hash, device_name, ip, user_agent,
+            expires_at, last_seen_at, revoked_at, created_at
+        ) VALUES (
+            #{sessionId}, #{userId}, #{refreshTokenHash}, #{deviceName}, #{ip}, #{userAgent},
+            #{expiresAt}, #{lastSeenAt}, #{revokedAt}, #{createdAt}
+        )
+    </insert>
+
+    <select id="queryBySessionId" resultMap="UserAuthSessionMap">
+        SELECT session_id, user_id, refresh_token_hash, device_name, ip, user_agent,
+               expires_at, last_seen_at, revoked_at, created_at
+        FROM user_auth_session
+        WHERE session_id = #{sessionId}
+        LIMIT 1
+    </select>
+
+    <select id="queryByRefreshTokenHash" resultMap="UserAuthSessionMap">
+        SELECT session_id, user_id, refresh_token_hash, device_name, ip, user_agent,
+               expires_at, last_seen_at, revoked_at, created_at
+        FROM user_auth_session
+        WHERE refresh_token_hash = #{refreshTokenHash}
+        LIMIT 1
+    </select>
+
+    <update id="rotate">
+        UPDATE user_auth_session
+        SET refresh_token_hash = #{nextRefreshTokenHash},
+            last_seen_at = #{lastSeenAt},
+            expires_at = LEAST(#{expiresAt}, DATE_ADD(created_at, INTERVAL 365 DAY))
+        WHERE session_id = #{sessionId}
+          AND refresh_token_hash = #{currentRefreshTokenHash}
+          AND revoked_at IS NULL
+          AND expires_at &gt; #{lastSeenAt}
+          AND DATE_ADD(created_at, INTERVAL 365 DAY) &gt; #{lastSeenAt}
+    </update>
+
+    <update id="revokeByRefreshTokenHash">
+        UPDATE user_auth_session
+        SET revoked_at = #{revokedAt}
+        WHERE refresh_token_hash = #{refreshTokenHash}
+          AND revoked_at IS NULL
+    </update>
+
+    <update id="revokeByUserId">
+        UPDATE user_auth_session
+        SET revoked_at = #{revokedAt}
+        WHERE user_id = #{userId}
+          AND revoked_at IS NULL
+    </update>
+
+    <update id="revokeByUserIdExcept">
+        UPDATE user_auth_session
+        SET revoked_at = #{revokedAt}
+        WHERE user_id = #{userId}
+          AND revoked_at IS NULL
+          AND session_id &lt;&gt; #{retainedSessionId}
+    </update>
+
+</mapper>

@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.infrastructure.dao.IUserAccountDao">
+
+    <resultMap id="UserAccountMap" type="org.wwz.ai.infrastructure.dao.po.UserAccountPO">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="token_digest" property="tokenDigest"/>
+        <result column="status" property="status"/>
+        <result column="first_seen_at" property="firstSeenAt"/>
+        <result column="last_seen_at" property="lastSeenAt"/>
+        <result column="last_ip" property="lastIp"/>
+        <result column="last_user_agent" property="lastUserAgent"/>
+        <result column="username" property="username"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+        <result column="login_name" property="loginName"/>
+        <result column="password_hash" property="passwordHash"/>
+        <result column="nickname" property="nickname"/>
+        <result column="role" property="role"/>
+        <result column="last_login_at" property="lastLoginAt"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="org.wwz.ai.infrastructure.dao.po.UserAccountPO"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_account (
+            user_id, token_digest, status, first_seen_at, last_seen_at, last_ip, last_user_agent,
+            username, create_time, update_time, deleted, login_name, password_hash, nickname, role, last_login_at
+        ) VALUES (
+            #{userId}, #{tokenDigest}, #{status}, #{firstSeenAt}, #{lastSeenAt}, #{lastIp}, #{lastUserAgent},
+            #{username}, #{createTime}, #{updateTime}, #{deleted}, #{loginName}, #{passwordHash}, #{nickname},
+            #{role}, #{lastLoginAt}
+        )
+    </insert>
+
+    <select id="queryById" resultMap="UserAccountMap">
+        SELECT id, user_id, token_digest, status, first_seen_at, last_seen_at, last_ip, last_user_agent,
+               username, create_time, update_time, deleted, login_name, password_hash, nickname, role, last_login_at
+        FROM user_account
+        WHERE id = #{id}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="queryByUserId" resultMap="UserAccountMap">
+        SELECT id, user_id, token_digest, status, first_seen_at, last_seen_at, last_ip, last_user_agent,
+               username, create_time, update_time, deleted, login_name, password_hash, nickname, role, last_login_at
+        FROM user_account
+        WHERE user_id = #{userId}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="queryByLoginName" resultMap="UserAccountMap">
+        SELECT id, user_id, token_digest, status, first_seen_at, last_seen_at, last_ip, last_user_agent,
+               username, create_time, update_time, deleted, login_name, password_hash, nickname, role, last_login_at
+        FROM user_account
+        WHERE login_name = #{loginName}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <update id="updatePassword">
+        UPDATE user_account
+        SET password_hash = #{passwordHash},
+            update_time = #{updateTime}
+        WHERE user_id = #{userId}
+          AND deleted = 0
+    </update>
+
+    <update id="updateLastLoginAt">
+        UPDATE user_account
+        SET last_login_at = #{lastLoginAt},
+            update_time = #{lastLoginAt}
+        WHERE user_id = #{userId}
+          AND deleted = 0
+    </update>
+
+</mapper>

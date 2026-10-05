@@ -8,11 +8,11 @@ import java.util.Map;
  */
 public interface BrowserRelayPort {
 
-    boolean isOnline(String visitorId);
+    boolean isOnline(String userId);
 
-    BrowserRelayStatus status(String visitorId);
+    BrowserRelayStatus status(String userId);
 
-    BrowserRpcResult call(String visitorId, String action, Map<String, Object> params, Duration timeout);
+    BrowserRpcResult call(String userId, String action, Map<String, Object> params, Duration timeout);
 
-    void disconnect(String visitorId);
+    void disconnect(String userId);
 }

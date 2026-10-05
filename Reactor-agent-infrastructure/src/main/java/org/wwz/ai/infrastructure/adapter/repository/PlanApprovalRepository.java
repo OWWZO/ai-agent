@@ -67,23 +67,23 @@ public class PlanApprovalRepository implements IPlanApprovalRepository {
     }
 
     @Override
-    public boolean casDecidePending(String approvalId, String visitorId, PlanApprovalDecision decision, String resumeRequestId) {
+    public boolean casDecidePending(String approvalId, String userId, PlanApprovalDecision decision, String resumeRequestId) {
         if (StringUtils.isBlank(approvalId) || StringUtils.isBlank(resumeRequestId) || decision == null) {
             return false;
         }
         return planApprovalDao.casDecidePending(
                 approvalId.trim(),
-                StringUtils.trimToNull(visitorId),
+                StringUtils.trimToNull(userId),
                 JSON.toJSONString(decision),
                 resumeRequestId.trim()) > 0;
     }
 
     @Override
-    public boolean casClaimResume(String resumeRequestId, String visitorId) {
+    public boolean casClaimResume(String resumeRequestId, String userId) {
         if (StringUtils.isBlank(resumeRequestId)) {
             return false;
         }
-        return planApprovalDao.casClaimResume(resumeRequestId.trim(), StringUtils.trimToNull(visitorId)) > 0;
+        return planApprovalDao.casClaimResume(resumeRequestId.trim(), StringUtils.trimToNull(userId)) > 0;
     }
 
     @Override
@@ -103,13 +103,13 @@ public class PlanApprovalRepository implements IPlanApprovalRepository {
     }
 
     @Override
-    public boolean casCancel(String approvalId, String visitorId) {
+    public boolean casCancel(String approvalId, String userId) {
         if (StringUtils.isBlank(approvalId)) {
             return false;
         }
         return planApprovalDao.casCancel(
                 approvalId.trim(),
-                StringUtils.trimToNull(visitorId),
+                StringUtils.trimToNull(userId),
                 PlanApprovalStatuses.CANCELABLE) > 0;
     }
 
@@ -124,7 +124,7 @@ public class PlanApprovalRepository implements IPlanApprovalRepository {
     private PlanApprovalPO toPo(PlanApprovalRecord record) {
         PlanApprovalPO po = new PlanApprovalPO();
         po.setApprovalId(record.getApprovalId());
-        po.setVisitorId(record.getVisitorId());
+        po.setUserId(record.getUserId());
         po.setSessionId(record.getSessionId());
         po.setSourceRunId(record.getSourceRunId());
         po.setSourceRequestId(record.getSourceRequestId());
@@ -151,7 +151,7 @@ public class PlanApprovalRepository implements IPlanApprovalRepository {
         return PlanApprovalRecord.builder()
                 .id(po.getId())
                 .approvalId(po.getApprovalId())
-                .visitorId(po.getVisitorId())
+                .userId(po.getUserId())
                 .sessionId(po.getSessionId())
                 .sourceRunId(po.getSourceRunId())
                 .sourceRequestId(po.getSourceRequestId())
