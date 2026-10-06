@@ -1,5 +1,6 @@
 package org.wwz.ai.domain.agent.ledger.model;
 
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeoutException;
 
 /**
@@ -43,9 +44,25 @@ public final class ExecutionLedgerConstants {
     public static final String TOOL_PROVIDER_MCP = "mcp";
 
     /**
-     * 根据异常推导失败状态。
+     * 根据异常推导终态。用户取消不是失败，也不能被超时覆盖成 TIMEOUT。
      */
     public static int resolveFailureStatus(Throwable throwable) {
-        return throwable instanceof TimeoutException ? STATUS_TIMEOUT : STATUS_FAILED;
+        boolean timeout = false;
+        boolean cancelled = false;
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof TimeoutException) {
+                timeout = true;
+            }
+            if (current instanceof CancellationException || current instanceof InterruptedException) {
+                cancelled = true;
+            }
+            Throwable next = current.getCause();
+            current = next == current ? null : next;
+        }
+        if (cancelled && !timeout) {
+            return STATUS_STOPPED;
+        }
+        return timeout ? STATUS_TIMEOUT : STATUS_FAILED;
     }
 }

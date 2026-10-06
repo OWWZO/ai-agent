@@ -88,13 +88,16 @@ public class AgentRunLaunchGate {
         }
     }
 
-    public void cancel(String requestId) {
+    /**
+     * @return true 表示 launch 仍在等待，已被取消，后续不会再启动
+     */
+    public boolean cancel(String requestId) {
         if (StringUtils.isBlank(requestId)) {
-            return;
+            return false;
         }
         Pending pending = byRequest.remove(requestId);
         if (pending == null) {
-            return;
+            return false;
         }
         if (StringUtils.isNotBlank(pending.sessionId)) {
             sessionToRequest.remove(pending.sessionId, requestId);
@@ -102,6 +105,7 @@ public class AgentRunLaunchGate {
         if (pending.timeout != null) {
             pending.timeout.cancel(false);
         }
+        return true;
     }
 
     @PreDestroy

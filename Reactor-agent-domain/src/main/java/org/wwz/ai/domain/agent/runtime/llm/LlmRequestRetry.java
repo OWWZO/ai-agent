@@ -10,6 +10,7 @@ import java.net.SocketTimeoutException;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
@@ -112,6 +113,9 @@ public final class LlmRequestRetry {
     public static boolean isTransient(Throwable throwable) {
         Throwable current = throwable;
         while (current != null) {
+            if (current instanceof CancellationException || current instanceof InterruptedException) {
+                return false;
+            }
             String message = current.getMessage();
             String lower = message == null ? "" : message.toLowerCase(Locale.ROOT);
             if (containsAny(lower, NON_TRANSIENT_MARKERS)) {

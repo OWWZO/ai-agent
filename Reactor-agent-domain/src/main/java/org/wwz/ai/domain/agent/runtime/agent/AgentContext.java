@@ -64,9 +64,9 @@ public class AgentContext {
     String sessionId;
 
     /**
-     * 匿名访客 ID。浏览器遥控按 visitorId 索引本机扩展连接，不是 sessionId。
+     * 当前用户 ID。浏览器遥控按 userId 索引本机扩展连接，不是 sessionId。
      */
-    String visitorId;
+    String userId;
 
     /**
      * 用户原始查询语句
@@ -261,7 +261,7 @@ public class AgentContext {
 
     /**
      * 非空时：tools[] 仍可上报全量 schema（prompt cache），但 execute 仅允许白名单内工具。
-     * LTM review/flush fork 用于对齐 Hermes「schema 全量 + runtime whitelist」。
+     * LTM review/flush fork 「schema 全量 + runtime whitelist」。
      */
     java.util.Set<String> toolDispatchWhitelist;
 
@@ -358,7 +358,7 @@ public class AgentContext {
     PlanModeState planModeState = PlanModeState.builder().build();
 
     /**
-     * 本轮协作式取消（用户停止 / SSE 断开）。
+     * 本轮协作式取消。只由显式 stop 置位；SSE 断开只解绑观察流。
      */
     @ToString.Exclude
     @JSONField(serialize = false)
@@ -464,6 +464,17 @@ public class AgentContext {
 
     public String getRunCancelReason() {
         return runCancellation == null ? null : runCancellation.getReason();
+    }
+
+    /**
+     * 把在途模型请求或阻塞调用挂到本轮取消令牌上。没有令牌时返回空注销句柄。
+     */
+    public Runnable registerRunAbort(Runnable hook) {
+        if (runCancellation == null || hook == null) {
+            return () -> {
+            };
+        }
+        return runCancellation.registerAbort(hook);
     }
 
     /**
@@ -647,7 +658,7 @@ public class AgentContext {
         return AgentContext.builder()
                 .requestId(requestId)
                 .sessionId(sessionId)
-                .visitorId(visitorId)
+                .userId(userId)
                 .query(query)
                 .task(parallelTask)
                 .printer(printer)

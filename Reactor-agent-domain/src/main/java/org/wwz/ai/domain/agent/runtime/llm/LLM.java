@@ -222,6 +222,19 @@ public class LLM {
                     callKind,
                     stream
             );
+            if (context != null && context.isRunCancelled()) {
+                finishLlmInvocation(
+                        context,
+                        invocationHandle,
+                        ExecutionLedgerConstants.STATUS_STOPPED,
+                        null,
+                        0,
+                        null,
+                        null,
+                        "user_stop"
+                );
+                return failedFuture(new LlmCancelledException(context.getRunCancelReason(), null));
+            }
             Prompt prompt = buildPrompt(
                     mergeMessages(systemMsgs, messages),
                     chatOptionsFactory.buildTextOptions(llmSettings, temperature)
@@ -234,7 +247,8 @@ public class LLM {
             String retryLabel = "llm-ask:" + model;
             if (!stream) {
                 // 非流式调用在受控 LLM 执行器中完成，避免阻塞请求线程或公共 ForkJoinPool。
-                return AgentExecutorSupport.supplyAsync(runtimeDependencies.requireLlmExecutor(), "llmAsk", context, () -> {
+                // stop 会 cancel 这个 Future，从而打断阻塞中的 call。
+                return abortOnRunCancel(context, AgentExecutorSupport.supplyAsync(runtimeDependencies.requireLlmExecutor(), "llmAsk", context, () -> {
                     try {
                         ChatResponse response = LlmRequestRetry.call(
                                 retryLabel, () -> chatModel.call(prompt), retryNotifier(context));
@@ -244,6 +258,20 @@ public class LLM {
                                 ? split.content()
                                 : responseMapper.toText(response);
                         LlmUsageSnapshot usage = LlmUsageSnapshot.resolve(response.getMetadata());
+                        if (context != null && context.isRunCancelled()) {
+                            finishLlmInvocation(
+                                    context,
+                                    invocationHandle,
+                                    ExecutionLedgerConstants.STATUS_STOPPED,
+                                    content,
+                                    split.reasoningContent(),
+                                    0,
+                                    usage,
+                                    resolveFinishReason(response),
+                                    "user_stop"
+                            );
+                            throw new LlmCancelledException(context.getRunCancelReason(), content);
+                        }
                         finishLlmInvocation(
                                 context,
                                 invocationHandle,
@@ -256,11 +284,13 @@ public class LLM {
                                 null
                         );
                         return content;
+                    } catch (LlmCancelledException e) {
+                        throw new CompletionException(e);
                     } catch (Exception e) {
                         finishLlmInvocation(
                                 context,
                                 invocationHandle,
-                                ExecutionLedgerConstants.resolveFailureStatus(e),
+                                resolveInvocationStatus(context, e),
                                 null,
                                 0,
                                 null,
@@ -269,7 +299,7 @@ public class LLM {
                         );
                         throw new CompletionException(e);
                     }
-                });
+                }));
             }
 
             // 流式调用的完成与失败都由 whenComplete 收口，避免网络异常时留下 RUNNING 的孤立 invocation。
@@ -305,7 +335,7 @@ public class LLM {
                 finishLlmInvocation(
                         context,
                         invocationHandle,
-                        ExecutionLedgerConstants.resolveFailureStatus(cause),
+                        resolveInvocationStatus(context, cause),
                         null,
                         0,
                         null,
@@ -387,6 +417,19 @@ public class LLM {
                     ExecutionLedgerConstants.CALL_KIND_ASK_TOOL,
                     stream
             );
+            if (context != null && context.isRunCancelled()) {
+                finishLlmInvocation(
+                        context,
+                        invocationHandle,
+                        ExecutionLedgerConstants.STATUS_STOPPED,
+                        null,
+                        0,
+                        null,
+                        null,
+                        "user_stop"
+                );
+                return failedFuture(new LlmCancelledException(context.getRunCancelReason(), null));
+            }
             long startTime = System.currentTimeMillis();
             if (protocol == LlmAskToolProtocol.STRUCT_PARSE) {
                 return askToolWithStructParse(
@@ -404,7 +447,7 @@ public class LLM {
 
             String retryLabel = "llm-askTool:" + model;
             if (!stream) {
-                return AgentExecutorSupport.withTimeout(
+                CompletableFuture<ToolCallResponse> call = AgentExecutorSupport.withTimeout(
                         AgentExecutorSupport.supplyAsync(
                                 runtimeDependencies.requireLlmExecutor(),
                                 "llmAskToolFunctionCall",
@@ -420,7 +463,9 @@ public class LLM {
                                 }),
                         timeout,
                         TimeUnit.SECONDS
-                ).whenComplete((response, throwable) -> {
+                );
+                abortOnRunCancel(context, call);
+                return call.whenComplete((response, throwable) -> {
                     if (throwable == null) {
                         finishLlmInvocation(context, invocationHandle, response, null);
                         return;
@@ -515,7 +560,7 @@ public class LLM {
         String retryLabel = "llm-askTool-struct:" + model;
         if (!stream) {
             // 非流式路径可以一次性解析完整 JSON；流式路径则由响应处理器隐藏代码块标记后再解析。
-            return AgentExecutorSupport.withTimeout(
+            CompletableFuture<ToolCallResponse> call = AgentExecutorSupport.withTimeout(
                     AgentExecutorSupport.supplyAsync(
                             runtimeDependencies.requireLlmExecutor(),
                             "llmAskToolStructParse",
@@ -533,8 +578,16 @@ public class LLM {
                                             startTime
                                     );
                                     responseMapper.applyUsage(toolCallResponse, usage);
+                                    if (context != null && context.isRunCancelled()) {
+                                        LlmCancelledException cancelled = new LlmCancelledException(
+                                                context.getRunCancelReason(), toolCallResponse.getContent());
+                                        finishLlmInvocation(context, invocationHandle, null, cancelled);
+                                        throw cancelled;
+                                    }
                                     finishLlmInvocation(context, invocationHandle, toolCallResponse, null);
                                     return toolCallResponse;
+                                } catch (LlmCancelledException e) {
+                                    throw new CompletionException(e);
                                 } catch (Exception e) {
                                     finishLlmInvocation(context, invocationHandle, null, e);
                                     throw new CompletionException(e);
@@ -542,6 +595,7 @@ public class LLM {
                             }),
                     timeout,
                     TimeUnit.SECONDS);
+            return abortOnRunCancel(context, call);
         }
 
         return LlmRequestRetry.callAsync(
@@ -796,7 +850,7 @@ public class LLM {
             finishLlmInvocation(
                     context,
                     handle,
-                    ExecutionLedgerConstants.resolveFailureStatus(throwable),
+                    resolveInvocationStatus(context, throwable),
                     null,
                     null,
                     0,
@@ -950,6 +1004,29 @@ public class LLM {
         CompletableFuture<T> future = new CompletableFuture<>();
         future.completeExceptionally(e);
         return future;
+    }
+
+    /**
+     * 非流式阻塞调用没有 Reactor 订阅可 dispose，stop 时直接取消执行 Future 以打断等待。
+     */
+    private <T> CompletableFuture<T> abortOnRunCancel(AgentContext context, CompletableFuture<T> future) {
+        if (context == null || future == null) {
+            return future;
+        }
+        Runnable unregister = context.registerRunAbort(() -> {
+            if (!future.isDone()) {
+                future.cancel(true);
+            }
+        });
+        future.whenComplete((ignored, error) -> unregister.run());
+        return future;
+    }
+
+    private int resolveInvocationStatus(AgentContext context, Throwable throwable) {
+        if (context != null && context.isRunCancelled()) {
+            return ExecutionLedgerConstants.STATUS_STOPPED;
+        }
+        return ExecutionLedgerConstants.resolveFailureStatus(throwable);
     }
 
     /**

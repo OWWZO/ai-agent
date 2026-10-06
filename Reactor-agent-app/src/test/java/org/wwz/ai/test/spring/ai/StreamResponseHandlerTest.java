@@ -10,8 +10,10 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.cancel.RunCancellation;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
+import org.wwz.ai.domain.agent.runtime.llm.LlmCancelledException;
 import org.wwz.ai.domain.agent.runtime.llm.LlmChatResponseMapper;
 import org.wwz.ai.domain.agent.runtime.llm.StreamResponseHandler;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
@@ -28,6 +30,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.time.LocalDateTime;
 
@@ -340,6 +343,76 @@ public class StreamResponseHandlerTest {
         Assert.assertTrue(printer.messages.stream().noneMatch(
                 message -> String.valueOf(message.message).contains("late-string")));
         Assert.assertTrue(future.isCompletedExceptionally());
+    }
+
+    @Test
+    public void test_stopBeforeSubscribeDoesNotOpenStream() throws Exception {
+        StreamResponseHandler handler = handler();
+        RunCancellation cancellation = new RunCancellation();
+        cancellation.cancel(RunCancellation.REASON_USER_STOP);
+        AtomicInteger subscribed = new AtomicInteger();
+        AgentContext context = AgentContext.builder()
+                .requestId("req-stop-before-llm")
+                .runCancellation(cancellation)
+                .build();
+
+        try {
+            handler.handleStringStreamWithUsage(
+                    context,
+                    Flux.<ChatResponse>never().doOnSubscribe(subscription -> subscribed.incrementAndGet()),
+                    null,
+                    false,
+                    false,
+                    0
+            ).get(1, TimeUnit.SECONDS);
+            Assert.fail("expected cancellation");
+        } catch (ExecutionException e) {
+            Assert.assertTrue(e.getCause() instanceof LlmCancelledException);
+        } catch (LlmCancelledException expected) {
+            Assert.assertTrue(expected.getMessage().contains("user_stop"));
+        }
+        Assert.assertEquals(0, subscribed.get());
+    }
+
+    @Test
+    public void test_stopDuringIdleStreamDisposesAndKeepsPartialText() throws Exception {
+        StreamResponseHandler handler = handler();
+        RunCancellation cancellation = new RunCancellation();
+        AtomicBoolean disposed = new AtomicBoolean(false);
+        AgentContext context = AgentContext.builder()
+                .requestId("req-stop-during-llm")
+                .isStream(true)
+                .streamMessageType("tool_thought")
+                .runCancellation(cancellation)
+                .build();
+        Flux<ChatResponse> flux = Flux.concat(
+                Flux.just(textChunk("partial answer")),
+                Flux.create(sink -> sink.onDispose(() -> disposed.set(true)))
+        );
+
+        CompletableFuture<StreamResponseHandler.StringStreamResult> future = handler.handleStringStreamWithUsage(
+                context, flux, null, false, false, 0);
+        cancellation.cancel(RunCancellation.REASON_USER_STOP);
+
+        try {
+            future.get(1, TimeUnit.SECONDS);
+            Assert.fail("expected cancellation");
+        } catch (ExecutionException e) {
+            Assert.assertEquals("partial answer",
+                    ((LlmCancelledException) e.getCause()).getPartialContent());
+        } catch (LlmCancelledException expected) {
+            Assert.assertEquals("partial answer", expected.getPartialContent());
+        }
+        Assert.assertTrue("停止后应立刻断开上游流", disposed.get());
+    }
+
+    private StreamResponseHandler handler() {
+        StreamResponseHandler handler = new StreamResponseHandler();
+        ReactorConfig reactorConfig = new ReactorConfig();
+        reactorConfig.setMessageInterval("{\"llm\":\"1,1\"}");
+        ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
+        ReflectionTestUtils.setField(handler, "chatResponseMapper", new LlmChatResponseMapper());
+        return handler;
     }
 
     private static void awaitCancelled(AtomicBoolean cancelled) throws InterruptedException {

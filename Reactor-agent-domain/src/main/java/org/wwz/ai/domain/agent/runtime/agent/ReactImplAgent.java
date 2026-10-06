@@ -8,6 +8,7 @@ import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolChoice;
 import org.wwz.ai.domain.agent.runtime.enums.AgentState;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
+import org.wwz.ai.domain.agent.runtime.llm.LlmCancelledException;
 import org.wwz.ai.domain.agent.runtime.llm.LlmUserFacingError;
 import org.wwz.ai.domain.agent.runtime.prompt.AgentPrompt;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
@@ -114,6 +115,15 @@ public class ReactImplAgent extends ReActAgent {
             appendAssistantMessage(response);
 
         } catch (Exception e) {
+            if (LlmCancelledException.isCancellation(e) || (context != null && context.isRunCancelled())) {
+                log.info("{} react think cancelled", context == null ? "-" : context.getRequestId());
+                setToolCalls(List.of());
+                String partial = LlmCancelledException.partialContentOf(e);
+                if (partial != null && !partial.isBlank() && getMemory() != null) {
+                    getMemory().addMessage(Message.assistantMessage(partial, null));
+                }
+                return false;
+            }
             log.error("{} react think error", context.getRequestId(), e);
             String userMsg = LlmUserFacingError.toUserMessage(e);
             setThinkFailureReason(userMsg);

@@ -29,8 +29,8 @@ public class AgentRunStopApplicationService {
     private final AgentRunLaunchGate agentRunLaunchGate;
 
     public Map<String, Object> stop(String sessionId, String requestId) {
-        // 停止是协作式的：先校验 request/session 归属，再向活动 run 发取消信号，
-        // 最后写 stopped ledger、通知客户端并关闭流；底层 HTTP/工具是否立即中断由各自实现决定。
+        // 停止先置取消令牌（在途模型请求会立刻 dispose / cancel），再写 stopped ledger。
+        // launch 尚未开始时直接摘掉注册；已经启动则保留令牌，等 bindContext 把同一令牌注入 context。
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("requestId", requestId);
         result.put("sessionId", sessionId);
@@ -58,9 +58,9 @@ public class AgentRunStopApplicationService {
         }
 
         boolean first = activeAgentRunRegistry.cancel(requestId, RunCancellation.REASON_USER_STOP);
-        agentRunLaunchGate.cancel(requestId);
+        boolean launchStillPending = agentRunLaunchGate.cancel(requestId);
         AgentContext ctx = run.getAgentContext();
-        if (ctx == null) {
+        if (ctx == null && launchStillPending) {
             activeAgentRunRegistry.end(requestId);
         }
         if (ctx != null) {

@@ -81,6 +81,14 @@ public abstract class ReActAgent extends BaseAgent {
     public String step() {
         // 1. 执行思考阶段，判断是否需要行动
         boolean shouldAct = think();
+        // 模型已返回、工具尚未开始，或思考被中途取消：都不再按失败继续。
+        if (context != null && context.isRunCancelled()) {
+            setState(AgentState.FINISHED);
+            if (shouldAct) {
+                act();
+            }
+            return "Terminated: User stopped";
+        }
         if (!shouldAct) {
             // think 异常会置 ERROR；不得伪装成「思考完成无需行动」
             if (getState() == AgentState.ERROR) {
@@ -148,6 +156,10 @@ public abstract class ReActAgent extends BaseAgent {
             }
 
         } catch (Exception e) {
+            if (context != null && context.isRunCancelled()) {
+                log.info("requestId: {} generateDigitalEmployee cancelled", context.getRequestId());
+                return;
+            }
             // 异常捕获：涵盖LLM调用、JSON解析、工具更新等所有异常场景
             log.error("requestId: {} generateDigitalEmployee 执行失败", context.getRequestId(), e);
         }

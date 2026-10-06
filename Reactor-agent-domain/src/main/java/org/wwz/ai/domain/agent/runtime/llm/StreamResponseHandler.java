@@ -25,7 +25,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -101,9 +100,14 @@ public class StreamResponseHandler {
                                                                               boolean emitFinalSnapshot,
                                                                               boolean pushToClient,
                                                                               int timeoutSeconds,
-                                                                              ReplayTiming runtimeTiming) {
+                                                                               ReplayTiming runtimeTiming) {
         // 文本流按“累积完整响应 -> 过滤隐藏标记 -> 计算新增片段 -> 按间隔推送”处理；
         // future 只在 complete/error 收口，避免每个 chunk 都改变上游调用契约。
+        if (context != null && context.isRunCancelled()) {
+            CompletableFuture<StringStreamResult> cancelled = new CompletableFuture<>();
+            cancelled.completeExceptionally(new LlmCancelledException(context.getRunCancelReason(), null));
+            return cancelled;
+        }
         CompletableFuture<StringStreamResult> future = new CompletableFuture<>();
         StringBuilder allContent = new StringBuilder();
         StringBuilder streamBuffer = new StringBuilder();
@@ -113,10 +117,14 @@ public class StreamResponseHandler {
         int[] emittedLength = new int[]{0};
         LlmUsageSnapshot[] usageHolder = new LlmUsageSnapshot[]{LlmUsageSnapshot.empty()};
         AtomicReference<Disposable> subscription = new AtomicReference<>();
+        java.util.function.Supplier<String> partialContent = () -> {
+            String visible = extractVisibleContent(allContent.toString(), hiddenStartMarker).trim();
+            return visible.isEmpty() ? null : visible;
+        };
 
         Disposable disposable = flux.subscribe(response -> {
             try {
-                if (abortIfInactive(context, future, subscription.get())) {
+                if (abortIfInactive(context, future, subscription.get(), partialContent)) {
                     return;
                 }
                 usageHolder[0] = usageHolder[0].mergeLatest(
@@ -143,9 +151,15 @@ public class StreamResponseHandler {
             } catch (Exception e) {
                 future.completeExceptionally(e);
             }
-        }, error -> completeExceptionallyIfActive(future, error), () -> {
+        }, error -> {
+            if (context != null && context.isRunCancelled()) {
+                abortStream(context, future, subscription.get(), partialContent);
+                return;
+            }
+            completeExceptionallyIfActive(future, error);
+        }, () -> {
             try {
-                if (abortIfInactive(context, future, subscription.get())) {
+                if (abortIfInactive(context, future, subscription.get(), partialContent)) {
                     return;
                 }
                 // onComplete 负责冲刷最后不足一个 interval 的增量，并发送可选的最终快照。
@@ -173,7 +187,7 @@ public class StreamResponseHandler {
             }
         });
         subscription.set(disposable);
-        wireStreamLifecycle(future, subscription, timeoutSeconds);
+        armStream(context, future, subscription, partialContent, timeoutSeconds);
 
         return future;
     }
@@ -213,9 +227,14 @@ public class StreamResponseHandler {
                                                                          long startTimeMs,
                                                                          boolean pushToClient,
                                                                          int timeoutSeconds,
-                                                                         ReplayTiming runtimeTiming) {
+                                                                          ReplayTiming runtimeTiming) {
         // tool-call 流同时维护 content、reasoning 和 tool-call delta 三条累积线；
         // 中间帧只聚合，只有 onComplete 才能确认参数完整并交给执行层。
+        if (context != null && context.isRunCancelled()) {
+            CompletableFuture<LLM.ToolCallResponse> cancelled = new CompletableFuture<>();
+            cancelled.completeExceptionally(new LlmCancelledException(context.getRunCancelReason(), null));
+            return cancelled;
+        }
         // 异步结果容器
         CompletableFuture<LLM.ToolCallResponse> future = new CompletableFuture<>();
 
@@ -240,11 +259,15 @@ public class StreamResponseHandler {
         int[] chunkCount = new int[]{0};
         int[] toolDeltaCount = new int[]{0};
         AtomicReference<Disposable> subscription = new AtomicReference<>();
+        java.util.function.Supplier<String> partialContent = () -> {
+            String text = allContent.toString().trim();
+            return text.isEmpty() ? null : text;
+        };
 
         Disposable disposable = flux.subscribe(
             response -> {
                 try {
-                    if (abortIfInactive(context, future, subscription.get())) {
+                    if (abortIfInactive(context, future, subscription.get(), partialContent)) {
                         return;
                     }
                     // 一个 ChatResponse 可能同时携带正文、reasoning 和多个 tool-call
@@ -317,11 +340,17 @@ public class StreamResponseHandler {
                 }
             },
 
-            error -> completeExceptionallyIfActive(future, error),
+            error -> {
+                if (context != null && context.isRunCancelled()) {
+                    abortStream(context, future, subscription.get(), partialContent);
+                    return;
+                }
+                completeExceptionallyIfActive(future, error);
+            },
 
             () -> {
                 try {
-                    if (abortIfInactive(context, future, subscription.get())) {
+                    if (abortIfInactive(context, future, subscription.get(), partialContent)) {
                         return;
                     }
                     // 完成时再次拆分隐藏思考并冲刷尾部增量，再构造完整 toolCalls；
@@ -403,9 +432,24 @@ public class StreamResponseHandler {
             }
         );
         subscription.set(disposable);
-        wireStreamLifecycle(future, subscription, timeoutSeconds);
+        armStream(context, future, subscription, partialContent, timeoutSeconds);
 
         return future;
+    }
+
+    /**
+     * 把当前订阅挂到 run 取消令牌上。stop 不必再等下一个 chunk 才能 dispose。
+     */
+    private void armStream(AgentContext context,
+                           CompletableFuture<?> future,
+                           AtomicReference<Disposable> subscription,
+                           java.util.function.Supplier<String> partialContent,
+                           int timeoutSeconds) {
+        Runnable unregister = context == null
+                ? () -> {
+                }
+                : context.registerRunAbort(() -> abortStream(context, future, subscription.get(), partialContent));
+        wireStreamLifecycle(future, subscription, timeoutSeconds, unregister);
     }
 
     /**
@@ -413,36 +457,62 @@ public class StreamResponseHandler {
      */
     private static void wireStreamLifecycle(CompletableFuture<?> future,
                                             AtomicReference<Disposable> subscription,
-                                            int timeoutSeconds) {
+                                            int timeoutSeconds,
+                                            Runnable unregister) {
         if (future == null) {
             return;
         }
+        Runnable release = () -> {
+            if (unregister != null) {
+                unregister.run();
+            }
+            disposeQuietly(subscription.get());
+        };
         if (timeoutSeconds > 0) {
             CompletableFuture.delayedExecutor(timeoutSeconds, TimeUnit.SECONDS).execute(() -> {
                 if (future.completeExceptionally(new TimeoutException(
                         "LLM stream timeout after " + timeoutSeconds + "s"))) {
-                    disposeQuietly(subscription.get());
+                    release.run();
                 }
             });
         }
-        future.whenComplete((ignored, error) -> disposeQuietly(subscription.get()));
+        future.whenComplete((ignored, error) -> release.run());
     }
 
     private static boolean abortIfInactive(AgentContext context,
                                            CompletableFuture<?> future,
-                                           Disposable disposable) {
+                                           Disposable disposable,
+                                           java.util.function.Supplier<String> partialContent) {
         if (future.isDone()) {
             disposeQuietly(disposable);
             return true;
         }
         if (context != null && context.isRunCancelled()) {
-            disposeQuietly(disposable);
-            future.completeExceptionally(new CancellationException(
-                    "LLM stream aborted: " + StringUtils.defaultIfBlank(
-                            context.getRunCancelReason(), "user_stop")));
+            abortStream(context, future, disposable, partialContent);
             return true;
         }
         return false;
+    }
+
+    private static void abortStream(AgentContext context,
+                                    CompletableFuture<?> future,
+                                    Disposable disposable,
+                                    java.util.function.Supplier<String> partialContent) {
+        if (future == null || future.isDone()) {
+            disposeQuietly(disposable);
+            return;
+        }
+        String partial = null;
+        if (partialContent != null) {
+            try {
+                partial = partialContent.get();
+            } catch (RuntimeException ignored) {
+                partial = null;
+            }
+        }
+        String reason = context == null ? null : context.getRunCancelReason();
+        future.completeExceptionally(new LlmCancelledException(reason, partial));
+        disposeQuietly(disposable);
     }
 
     private static void completeExceptionallyIfActive(CompletableFuture<?> future, Throwable error) {

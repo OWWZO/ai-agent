@@ -57,6 +57,7 @@ import java.util.function.Function;
 final class ToolExecutionPipeline {
 
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final long TOOL_BATCH_CANCEL_POLL_INTERVAL_MILLIS = 100L;
 
     private final BaseAgent agent;
     private final Map<String, ReplayTiming> runtimeTimings = new ConcurrentHashMap<>();
@@ -93,6 +94,11 @@ final class ToolExecutionPipeline {
         }
 
         ensureRuntimeTimings(commands);
+
+        AgentContext context = agent.getContext();
+        if (context != null && context.isRunCancelled()) {
+            return finishCancelledBeforeStart(commands);
+        }
 
         String soleYieldViolation = detectSoleYieldToolViolation(commands);
         if (soleYieldViolation != null) {
@@ -134,7 +140,6 @@ final class ToolExecutionPipeline {
         Map<String, Integer> dispatchIndexMapping = buildDispatchIndexMapping(commands);
         Map<String, Dispatch> dispatches = resolveAll(commands);
         Map<String, Long> toolInvocationIds = ensureToolInvocationIds(dispatches, commands);
-        AgentContext context = agent.getContext();
         if (context != null && context.getAgentRunState() != null) {
             context.getAgentRunState().bindToolInvocationIds(toolInvocationIds);
         }
@@ -189,11 +194,14 @@ final class ToolExecutionPipeline {
             if (command == null || StringUtils.isBlank(command.getId()) || result.containsKey(command.getId())) {
                 continue;
             }
+            boolean cancelled = context != null && context.isRunCancelled();
             completeToolOutcome(
                     result,
                     command,
                     dispatches,
-                    toolFailureOutcome("工具执行超时，已终止等待", "TOOL_BATCH_TIMEOUT"),
+                    cancelled
+                            ? userStopOutcome("工具执行已取消：用户停止本轮对话")
+                            : toolFailureOutcome("工具执行超时，已终止等待", "TOOL_BATCH_TIMEOUT"),
                     dispatchIndexMapping,
                     false);
         }
@@ -332,12 +340,7 @@ final class ToolExecutionPipeline {
 
         String toolName = dispatch == null ? command.getFunction().getName() : dispatch.toolName;
         if (context != null && context.isRunCancelled()) {
-            return ToolExecutionOutcome.failure(
-                    "工具未执行：用户已停止本轮对话",
-                    "工具未执行：用户已停止本轮对话",
-                    null,
-                    "USER_STOP"
-            );
+            return userStopOutcome("工具未执行：用户已停止本轮对话");
         }
         try {
             Object args = dispatch != null && dispatch.argsReady
@@ -399,7 +402,11 @@ final class ToolExecutionPipeline {
         } catch (PlanApprovalRequiredException yield) {
             throw yield;
         } catch (Exception e) {
-            log.error("{} execute tool {} failed ", context.getRequestId(), toolName, e);
+            if (context != null && context.isRunCancelled()) {
+                Thread.interrupted();
+                return userStopOutcome("工具执行已取消：用户停止本轮对话");
+            }
+            log.error("{} execute tool {} failed ", context == null ? "-" : context.getRequestId(), toolName, e);
             return ToolExecutionOutcome.failure(
                     "Tool " + toolName + " Error.",
                     "Tool " + toolName + " Error.",
@@ -445,29 +452,50 @@ final class ToolExecutionPipeline {
         return null;
     }
 
-    private void awaitToolBatch(List<CompletableFuture<Void>> futures,
-                                List<CompletableFuture<?>> executionFutures,
-                                List<ToolCall> commands) {
+    void awaitToolBatch(List<CompletableFuture<Void>> futures,
+                       List<CompletableFuture<?>> executionFutures,
+                       List<ToolCall> commands) {
         if (futures == null || futures.isEmpty()) {
             return;
         }
         CompletableFuture<Void> all = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
         long timeoutSeconds = containsTaskOutput(commands) ? 0L : resolveToolBatchTimeoutSeconds();
         AgentContext context = agent.getContext();
+        long deadlineNanos = timeoutSeconds > 0L
+                ? System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
+                : Long.MAX_VALUE;
         try {
-            if (timeoutSeconds > 0L) {
-                all.get(timeoutSeconds, TimeUnit.SECONDS);
-            } else {
-                all.get();
+            while (true) {
+                if (context != null && context.isRunCancelled()) {
+                    log.info("{} tool batch cancelled, cancelling unfinished tools",
+                            context.getRequestId());
+                    cancelToolExecutions(executionFutures);
+                    return;
+                }
+
+                long waitNanos = TimeUnit.MILLISECONDS.toNanos(TOOL_BATCH_CANCEL_POLL_INTERVAL_MILLIS);
+                if (deadlineNanos != Long.MAX_VALUE) {
+                    long remainingNanos = deadlineNanos - System.nanoTime();
+                    if (remainingNanos <= 0L) {
+                        log.error("{} tool batch timed out after {}s",
+                                context == null ? "-" : context.getRequestId(), timeoutSeconds);
+                        cancelToolExecutions(executionFutures);
+                        return;
+                    }
+                    waitNanos = Math.min(waitNanos, remainingNanos);
+                }
+
+                try {
+                    all.get(waitNanos, TimeUnit.NANOSECONDS);
+                    return;
+                } catch (TimeoutException ignored) {
+                    // Recheck cancellation and the original batch deadline.
+                }
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.warn("{} tool batch interrupted, cancelling unfinished tools",
                     context == null ? "-" : context.getRequestId());
-            cancelToolExecutions(executionFutures);
-        } catch (TimeoutException e) {
-            log.error("{} tool batch timed out after {}s",
-                    context == null ? "-" : context.getRequestId(), timeoutSeconds);
             cancelToolExecutions(executionFutures);
         } catch (ExecutionException e) {
             Throwable root = unwrapExecutionError(e.getCause());
@@ -518,6 +546,47 @@ final class ToolExecutionPipeline {
 
     private static ToolExecutionOutcome toolFailureOutcome(String message, String errorMsg) {
         return ToolExecutionOutcome.failure(message, message, null, errorMsg);
+    }
+
+    private static ToolExecutionOutcome userStopOutcome(String message) {
+        return toolFailureOutcome(message, "USER_STOP");
+    }
+
+    private static boolean isUserStop(ToolExecutionOutcome outcome) {
+        return outcome != null && "USER_STOP".equals(outcome.getErrorMsg());
+    }
+
+    static int ledgerStatus(ToolExecutionOutcome outcome) {
+        if (outcome != null && outcome.isSuccess()) {
+            return ExecutionLedgerConstants.STATUS_SUCCESS;
+        }
+        if (isUserStop(outcome)) {
+            return ExecutionLedgerConstants.STATUS_STOPPED;
+        }
+        return ExecutionLedgerConstants.STATUS_FAILED;
+    }
+
+    private Map<String, ToolExecutionOutcome> finishCancelledBeforeStart(List<ToolCall> commands) {
+        ensureRuntimeTimings(commands);
+        Map<String, Dispatch> dispatches = resolveAll(commands);
+        Map<String, Long> toolInvocationIds = ensureToolInvocationIds(dispatches, commands);
+        AgentContext context = agent.getContext();
+        if (context != null && context.getAgentRunState() != null) {
+            context.getAgentRunState().bindToolInvocationIds(toolInvocationIds);
+        }
+        Map<String, Integer> dispatchIndexMapping = buildDispatchIndexMapping(commands);
+        Map<String, ToolExecutionOutcome> result = new LinkedHashMap<>();
+        ToolExecutionOutcome cancelled = userStopOutcome("工具未执行：用户已停止本轮对话");
+        for (ToolCall command : commands) {
+            completeToolOutcome(result, command, dispatches, cancelled, dispatchIndexMapping, false);
+        }
+        Map<String, ToolExecutionOutcome> ordered = new LinkedHashMap<>(commands.size());
+        for (ToolCall command : commands) {
+            if (command != null && StringUtils.isNotBlank(command.getId())) {
+                ordered.put(command.getId(), result.get(command.getId()));
+            }
+        }
+        return ordered;
     }
 
     private static Throwable unwrapExecutionError(Throwable error) {
@@ -596,7 +665,9 @@ final class ToolExecutionPipeline {
                                            Dispatch dispatch,
                                            Integer dispatchIndex,
                                            ToolExecutionOutcome outcome) {
-        String status = outcome != null && outcome.isSuccess() ? "success" : "failed";
+        String status = outcome != null && outcome.isSuccess()
+                ? "success"
+                : isUserStop(outcome) ? "cancelled" : "failed";
         emitToolCallEvent(command, dispatch, dispatchIndex, status, true, outcome);
     }
 
@@ -715,6 +786,9 @@ final class ToolExecutionPipeline {
         if ("success".equals(status)) {
             return toolName + " 调用完成";
         }
+        if ("cancelled".equals(status)) {
+            return toolName + " 已取消";
+        }
         if ("failed".equals(status)) {
             return toolName + " 调用失败";
         }
@@ -744,9 +818,7 @@ final class ToolExecutionPipeline {
                 .sessionId(context.getSessionId())
                 .toolCallId(command.getId())
                 .toolName(toolName)
-                .status(outcome != null && outcome.isSuccess()
-                        ? ExecutionLedgerConstants.STATUS_SUCCESS
-                        : ExecutionLedgerConstants.STATUS_FAILED)
+                .status(ledgerStatus(outcome))
                     .llmObservation(outcome == null ? null : StringUtils.defaultIfBlank(
                             outcome.getLedgerObservation(), outcome.getLlmObservation()))
                 .structuredOutput(outcome == null ? null : outcome.getStructuredOutput())
