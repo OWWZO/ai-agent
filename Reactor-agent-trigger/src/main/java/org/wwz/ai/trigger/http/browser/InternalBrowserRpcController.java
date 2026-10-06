@@ -40,6 +40,9 @@ public class InternalBrowserRpcController {
             return error(null, "invalid_body", "invalid JSON body");
         }
         String userId = StringUtils.trimToNull(body.getString("userId"));
+        if (userId == null) {
+            userId = StringUtils.trimToNull(body.getString("visitorId"));
+        }
         String action = StringUtils.trimToNull(body.getString("action"));
         String id = body.getString("id");
         if (userId == null || action == null) {
@@ -53,6 +56,7 @@ public class InternalBrowserRpcController {
         }
         Map<String, Object> params = new LinkedHashMap<>(body);
         params.remove("userId");
+        params.remove("visitorId");
         Duration timeout = resolveTimeout(action, body);
         BrowserRpcResult result = hub.call(userId, action, params, timeout);
         Map<String, Object> response = new LinkedHashMap<>();
