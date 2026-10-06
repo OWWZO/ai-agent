@@ -1,6 +1,9 @@
 import api from "./index";
+import { refreshAccessToken } from "./authTransport";
 import { resolveServiceBaseUrl } from "@/utils/origin";
 import { getDeviceId } from "@/services/agentConversation";
+import { clearAuthSession, getAccessToken } from "@/stores/auth";
+import { emitAuthSessionExpired } from "@/services/authSessionExpired";
 
 const customHost = resolveServiceBaseUrl(SERVICE_BASE_URL);
 
@@ -37,16 +40,41 @@ export async function submitAcceptedCommand(
   url: string,
   body: unknown
 ): Promise<AgentQuerySubmitResult> {
-  const response = await fetch(url, {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    "X-Device-Id": getDeviceId(),
+  };
+  const accessToken = getAccessToken();
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
+
+  let response = await fetch(url, {
     method: "POST",
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      "X-Device-Id": getDeviceId(),
-    },
+    headers,
     body: JSON.stringify(body),
   });
+
+  if (response.status === 401) {
+    try {
+      const refreshedAccessToken = await refreshAccessToken();
+      response = await fetch(url, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          ...headers,
+          Authorization: `Bearer ${refreshedAccessToken}`,
+        },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      clearAuthSession();
+      emitAuthSessionExpired();
+    }
+  }
+
   const payload = (await response.json().catch(() => null)) as {
     code?: string;
     info?: string;
