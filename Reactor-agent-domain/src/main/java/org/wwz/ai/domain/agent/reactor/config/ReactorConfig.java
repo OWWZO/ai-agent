@@ -183,7 +183,7 @@ public class ReactorConfig {
     private String imageGenerationUrl;
 
     /**
-     * 图片上游 base URL（米醋 / OpenAI 兼容），例如 https://www.micuapi.ai
+     * 图片上游 base URL（OpenAI 兼容），由部署环境配置。
      */
     @Value("${autobots.autoagent.image_generation.base_url:}")
     private String imageGenerationBaseUrl;

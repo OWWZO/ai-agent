@@ -37,7 +37,7 @@ import java.util.regex.Pattern;
  * 以及 2K/4K 自动切 pro、重试与 chat fallback。
  */
 @Slf4j
-public class MicuImageGenerationClient {
+public class ImageGenerationClient {
 
     private static final MediaType JSON_MEDIA = MediaType.parse("application/json; charset=utf-8");
     private static final String NONPRO_MODEL = "gpt-image-2.5-flare";
@@ -75,11 +75,11 @@ public class MicuImageGenerationClient {
     private final String defaultGrokModel;
     private final String previewBaseUrl;
 
-    public MicuImageGenerationClient(ClientConfig config) {
+    public ImageGenerationClient(ClientConfig config) {
         this(config, new OkHttpClient());
     }
 
-    public MicuImageGenerationClient(ClientConfig config, OkHttpClient sharedClient) {
+    public ImageGenerationClient(ClientConfig config, OkHttpClient sharedClient) {
         this.baseUrl = trimTrailingSlash(Objects.requireNonNull(config.getBaseUrl(), "baseUrl"));
         this.apiKey = Objects.requireNonNull(config.getApiKey(), "apiKey");
         this.defaultModel = StringUtils.hasText(config.getDefaultModel()) ? config.getDefaultModel().trim() : NONPRO_MODEL;

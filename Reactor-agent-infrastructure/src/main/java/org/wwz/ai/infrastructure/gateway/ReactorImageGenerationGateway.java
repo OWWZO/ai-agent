@@ -11,7 +11,7 @@ import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationGate
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationGatewayRequest;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationGatewayResponse;
 import org.wwz.ai.infrastructure.gateway.dto.ConversationUploadFileDTO;
-import org.wwz.ai.infrastructure.imagegeneration.MicuImageGenerationClient;
+import org.wwz.ai.infrastructure.imagegeneration.ImageGenerationClient;
 
 import javax.annotation.Resource;
 import java.util.ArrayList;
@@ -22,7 +22,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * Java 端图片生成网关：直连米醋 / OpenAI 兼容生图接口，产物上传文件服务。
+ * Java 端图片生成网关：直连 OpenAI 兼容生图接口，产物上传文件服务。
  */
 @Slf4j
 @Component
@@ -50,9 +50,9 @@ public class ReactorImageGenerationGateway implements IReactorImageGenerationGat
 
         // 模型只从后端配置读取，忽略入口携带的 model，避免 Agent 或前端覆盖线上配置。
         // 网关屏蔽具体提供方和文件服务：先完成模型调用，再把远端/内联图片物化并上传到统一文件服务。
-        MicuImageGenerationClient client = buildClient(requestDTO.getTimeoutSeconds());
-        MicuImageGenerationClient.GenerationResult result = client.generate(
-                MicuImageGenerationClient.GenerationRequest.builder()
+        ImageGenerationClient client = buildClient(requestDTO.getTimeoutSeconds());
+        ImageGenerationClient.GenerationResult result = client.generate(
+                ImageGenerationClient.GenerationRequest.builder()
                         .requestId(requestDTO.getRequestId())
                         .prompt(requestDTO.getPrompt())
                         .mode(requestDTO.getMode())
@@ -89,7 +89,7 @@ public class ReactorImageGenerationGateway implements IReactorImageGenerationGat
                 .build();
     }
 
-    private MicuImageGenerationClient buildClient(Integer timeoutSeconds) {
+    private ImageGenerationClient buildClient(Integer timeoutSeconds) {
         String baseUrl = firstText(
                 reactorConfig.getImageGenerationBaseUrl(),
                 reactorConfig.getImageGenerationUrl()
@@ -101,8 +101,8 @@ public class ReactorImageGenerationGateway implements IReactorImageGenerationGat
         if (!StringUtils.hasText(apiKey)) {
             throw new IllegalStateException("autobots.autoagent.image_generation.api_key 未配置");
         }
-        long timeout = MicuImageGenerationClient.normalizeTimeoutSeconds(timeoutSeconds == null ? null : timeoutSeconds.longValue());
-        return new MicuImageGenerationClient(MicuImageGenerationClient.ClientConfig.builder()
+        long timeout = ImageGenerationClient.normalizeTimeoutSeconds(timeoutSeconds == null ? null : timeoutSeconds.longValue());
+        return new ImageGenerationClient(ImageGenerationClient.ClientConfig.builder()
                 .baseUrl(baseUrl)
                 .apiKey(apiKey)
                 .defaultModel(firstText(reactorConfig.getImageGenerationModel(), "gpt-image-2.5-flare"))
@@ -116,15 +116,15 @@ public class ReactorImageGenerationGateway implements IReactorImageGenerationGat
 
     private List<ImageGenerationGatewayFile> uploadGeneratedImages(String requestId,
                                                                    String rawFileName,
-                                                                   MicuImageGenerationClient client,
-                                                                   List<MicuImageGenerationClient.GeneratedImage> images) {
+                                                                   ImageGenerationClient client,
+                                                                   List<ImageGenerationClient.GeneratedImage> images) {
         if (images == null || images.isEmpty()) {
             return Collections.emptyList();
         }
         String baseName = sanitizeOutputName(rawFileName);
         List<ImageGenerationGatewayFile> files = new ArrayList<>(images.size());
         for (int i = 0; i < images.size(); i++) {
-            MicuImageGenerationClient.GeneratedImage image = images.get(i);
+            ImageGenerationClient.GeneratedImage image = images.get(i);
             // 生成结果可能是 URL、data URL 或模型返回的 Base64；materialize 统一成字节后再上传。
             byte[] bytes = client.materialize(image);
             String mimeType = client.guessMime(bytes);

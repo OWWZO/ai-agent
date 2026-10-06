@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-验证 micuapi 上 grok-4.5 是否可用，以及 503 model_not_found 是否会触发本地模型降级。
+验证兼容接口上的 grok-4.5 是否可用，以及 503 model_not_found 是否会触发本地模型降级。
 
 运行：
   cd reactor-tool
-  uv run python -m unittest tests.test_micuapi_grok_channel -v
+  uv run python -m unittest tests.test_grok_channel -v
 """
+
 from __future__ import annotations
 
 import json
@@ -53,24 +54,30 @@ class ModelNotFoundFallbackGuardTest(unittest.IsolatedAsyncioTestCase):
                 yield ""
 
         async def fake_acompletion(*args, **kwargs):
-            raise AssertionError("LiteLLM primary path should not be used when raw HTTP raises")
+            raise AssertionError(
+                "LiteLLM primary path should not be used when raw HTTP raises"
+            )
 
-        with patch.dict(
-            os.environ,
-            {
-                "OPENAI_BASE_URL": "https://www.micuapi.ai/v1/chat/completions",
-                "OPENAI_API_KEY": "test-key",
-                "OPENAI_COMPAT_ALLOW_LITELLM_FALLBACK": "false",
-                "OPENAI_COMPAT_FALLBACK_MODEL": "gpt-4",
-                "OPENAI_FALLBACK_MODEL": "gpt-4",
-            },
-            clear=False,
-        ), patch(
-            "reactor_tool.util.llm_util._raw_openai_like_request",
-            new=fake_raw,
-        ), patch(
-            "reactor_tool.util.llm_util.acompletion",
-            new=fake_acompletion,
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "OPENAI_BASE_URL": "https://compatible-provider.example/v1/chat/completions",
+                    "OPENAI_API_KEY": "test-key",
+                    "OPENAI_COMPAT_ALLOW_LITELLM_FALLBACK": "false",
+                    "OPENAI_COMPAT_FALLBACK_MODEL": "gpt-4",
+                    "OPENAI_FALLBACK_MODEL": "gpt-4",
+                },
+                clear=False,
+            ),
+            patch(
+                "reactor_tool.util.llm_util._raw_openai_like_request",
+                new=fake_raw,
+            ),
+            patch(
+                "reactor_tool.util.llm_util.acompletion",
+                new=fake_acompletion,
+            ),
         ):
             with self.assertRaises(RuntimeError) as ctx:
                 async for _ in ask_llm(
@@ -90,7 +97,7 @@ class ModelNotFoundFallbackGuardTest(unittest.IsolatedAsyncioTestCase):
         with patch.dict(
             os.environ,
             {
-                "OPENAI_BASE_URL": "https://www.micuapi.ai/v1/chat/completions",
+                "OPENAI_BASE_URL": "https://compatible-provider.example/v1/chat/completions",
                 "OPENAI_API_KEY": "sk-report-text-key",
                 "IMAGE_GENERATION_API_KEY": "sk-image-key",
                 "DASHSCOPE_API_KEY": "sk-dashscope-key",
@@ -102,30 +109,31 @@ class ModelNotFoundFallbackGuardTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(params["model"], "grok-4.5")
         self.assertEqual(params["api_key"], "sk-report-text-key")
         self.assertEqual(params["custom_llm_provider"], "openai_like")
-        self.assertIn("micuapi.ai", params["api_base"])
+        self.assertIn("compatible-provider.example", params["api_base"])
 
 
 @unittest.skipUnless(
-    os.getenv("RUN_LIVE_MICUAPI_TEST", "").strip().lower() in {"1", "true", "yes"}
+    os.getenv("RUN_LIVE_GROK_TEST", "").strip().lower() in {"1", "true", "yes"}
     or bool((os.getenv("OPENAI_API_KEY") or "").strip()),
     "需要 OPENAI_API_KEY；默认有 key 即跑 live 探测",
 )
-class MicuapiGrokLiveProbeTest(unittest.TestCase):
+class GrokLiveProbeTest(unittest.TestCase):
     """
-    用当前 .env 的 OPENAI_API_KEY 直连 micuapi，验证 grok-4.5 渠道。
+    用当前 .env 的 OPENAI_API_KEY 直连兼容接口，验证 grok-4.5 渠道。
     不经过 ask_llm 的重试/降级逻辑，直接看网关原始响应。
     """
 
-    def test_live_micuapi_grok_channel(self):
+    def test_live_grok_channel(self):
         api_key = (os.getenv("OPENAI_API_KEY") or "").strip()
         api_base = (
-            os.getenv("OPENAI_BASE_URL")
-            or os.getenv("OPENAI_API_BASE")
-            or "https://www.micuapi.ai/v1/chat/completions"
+            os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE") or ""
         ).strip()
-        model = (os.getenv("REPORT_MODEL") or os.getenv("DEFAULT_MODEL") or "grok-4.5").strip()
+        model = (
+            os.getenv("REPORT_MODEL") or os.getenv("DEFAULT_MODEL") or "grok-4.5"
+        ).strip()
 
         self.assertTrue(api_key, "OPENAI_API_KEY 为空")
+        self.assertTrue(api_base, "OPENAI_BASE_URL 为空")
 
         # 归一化到 chat/completions
         base = api_base.rstrip("/")
@@ -134,7 +142,11 @@ class MicuapiGrokLiveProbeTest(unittest.TestCase):
         elif base.endswith("/v1"):
             url = f"{base}/chat/completions"
         else:
-            url = f"{base}/v1/chat/completions" if not base.endswith("/v1/chat/completions") else base
+            url = (
+                f"{base}/v1/chat/completions"
+                if not base.endswith("/v1/chat/completions")
+                else base
+            )
 
         payload = {
             "model": model,
@@ -147,7 +159,7 @@ class MicuapiGrokLiveProbeTest(unittest.TestCase):
             "Content-Type": "application/json",
         }
 
-        print("\n=== Micuapi live probe ===")
+        print("\n=== OpenAI-compatible live probe ===")
         print(f"url={url}")
         print(f"model={model}")
         print(f"key={_mask_key(api_key)}")
@@ -178,7 +190,7 @@ class MicuapiGrokLiveProbeTest(unittest.TestCase):
                     f"（不是本地降级逻辑）。detail={message}"
                 )
             self.fail(
-                f"micuapi 调用失败 status={resp.status_code}, body={body_text[:500]}"
+                f"兼容接口调用失败 status={resp.status_code}, body={body_text[:500]}"
             )
 
         # 成功则至少有 choices
@@ -188,11 +200,11 @@ class MicuapiGrokLiveProbeTest(unittest.TestCase):
 
 
 @unittest.skipUnless(
-    os.getenv("RUN_LIVE_MICUAPI_TEST", "").strip().lower() in {"1", "true", "yes"}
+    os.getenv("RUN_LIVE_GROK_TEST", "").strip().lower() in {"1", "true", "yes"}
     or bool((os.getenv("OPENAI_API_KEY") or "").strip()),
     "需要 OPENAI_API_KEY",
 )
-class MicuapiGrokAskLlmLiveTest(unittest.IsolatedAsyncioTestCase):
+class GrokAskLlmLiveTest(unittest.IsolatedAsyncioTestCase):
     """走完整 ask_llm 路径，观察是否仍是 grok-4.5 且无换模。"""
 
     async def test_live_ask_llm_report_model(self):
