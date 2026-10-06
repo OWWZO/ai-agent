@@ -430,6 +430,15 @@ mysql -u root -p ai-agent-station < Reactor-agent-app/src/main/resources/db/sche
 mysql -u root -p ai-agent-station < Reactor-agent-app/src/main/resources/db/data.sql
 ```
 
+已有数据库升级正式账号体系时，先确认已备份并按顺序执行两份一次性迁移：
+
+```bash
+mysql -u root -p ai-agent-station < db/migrations/20261005_auth_account_session.sql
+mysql -u root -p ai-agent-station < db/migrations/20261005_user_id_ownership.sql
+```
+
+旧账号初始化和首个管理员创建属于一次性部署操作，完成后不要保留初始化脚本或初始化密码。正式启动 Backend 前必须配置随机的 `REACTOR_AUTH_JWT_SECRET`；生产环境同时设置 `REACTOR_AUTH_REFRESH_COOKIE_SECURE=true`。不要把初始化密码或 JWT secret 写入源码、SQL、日志或 Git 跟踪文件。
+
 ### 3. 启动 Python Tool Runtime
 
 `reactor-tool` 默认监听 `1601` 端口，负责远程工具、文件服务和部分 RAG 能力。
@@ -476,6 +485,8 @@ Backend 默认监听 `http://127.0.0.1:8100`。浏览器遥控扩展连接 `ws:/
 ```bash
 curl http://127.0.0.1:8100/web/health
 ```
+
+图片生成和兼容模型上游的地址、凭证通过环境变量配置，不写入源码配置文件。常用变量包括 `AUTOBOTS_AUTOAGENT_IMAGE_GENERATION_BASE_URL`、`AUTOBOTS_AUTOAGENT_IMAGE_GENERATION_API_KEY`、`AUTOBOTS_AUTOAGENT_IMAGE_GENERATION_GROK_BASE_URL` 和 `AUTOBOTS_AUTOAGENT_IMAGE_GENERATION_GROK_API_KEY`；源码启动时在 Java 进程环境中导出，使用 Compose 时可放在 `reactor-tool/.env` 中。
 
 浏览器遥控由 Java 后端直接 spawn 仓库内 `adapter-host/`（OpenCLI 1.8.8）。先构建 OpenCLI，再设入口路径：
 
