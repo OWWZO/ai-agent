@@ -4,7 +4,7 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.Mockito;
 import org.wwz.ai.application.agent.file.WorkspaceArchiveApplicationService;
-import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
+import org.wwz.ai.application.agent.authorization.ConversationSessionAuthorizationService;
 import org.wwz.ai.domain.agent.ledger.entity.DialogueSession;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeOptions;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillVirtualPaths;
@@ -40,15 +40,15 @@ public class WorkspaceArchiveApplicationServiceTest {
                 new WorkspacePathGuard(),
                 null,
                 new SkillVirtualPaths(SkillRuntimeOptions.builder().enabled(false).build()));
-        ConversationSessionOwnershipApplicationService ownership =
-                Mockito.mock(ConversationSessionOwnershipApplicationService.class);
-        Mockito.when(ownership.ensureExistingSessionAccessible("visitor-1", "session-archive-1"))
+        ConversationSessionAuthorizationService ownership =
+                Mockito.mock(ConversationSessionAuthorizationService.class);
+        Mockito.when(ownership.ensureExistingSessionAccessible("user-1", "session-archive-1"))
                 .thenReturn(DialogueSession.builder().sessionId("session-archive-1").build());
 
         WorkspaceArchiveApplicationService service =
                 new WorkspaceArchiveApplicationService(ownership, workspaceService);
         ByteArrayOutputStream output = new ByteArrayOutputStream();
-        service.writeArchive("visitor-1", "session-archive-1", output);
+        service.writeArchive("user-1", "session-archive-1", output);
 
         Set<String> entries = new HashSet<>();
         try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(output.toByteArray()))) {

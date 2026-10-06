@@ -51,7 +51,7 @@ public class WorkingMemorySessionSearchService implements SessionSearchService {
         String sessionId = trim(request.getSessionId());
         Long anchor = request.getAroundMessageId();
         String query = trim(request.getQuery());
-        String visitorId = trim(request.getVisitorId());
+        String userId = trim(request.getUserId());
         if (anchor != null && sessionId == null) {
             return error("around_message_id requires session_id");
         }
@@ -65,26 +65,26 @@ public class WorkingMemorySessionSearchService implements SessionSearchService {
             if (request.getWindow() != null && request.getWindow() <= 0) {
                 return error("window must be >= 1");
             }
-            return scroll(sessionId, visitorId, anchor, resolveWindow(request.getWindow()), roles);
+            return scroll(sessionId, userId, anchor, resolveWindow(request.getWindow()), roles);
         }
         if (query != null && sessionId != null) {
-            return discover(sessionId, request.getCurrentSessionId(), visitorId, query, limit, "session", roles);
+            return discover(sessionId, request.getCurrentSessionId(), userId, query, limit, "session", roles);
         }
         if (sessionId != null) {
-            return read(sessionId, visitorId, roles);
+            return read(sessionId, userId, roles);
         }
         if (query == null) {
-            return browse(visitorId, request.getCurrentSessionId(), limit);
+            return browse(userId, request.getCurrentSessionId(), limit);
         }
-        return discover(null, request.getCurrentSessionId(), visitorId, query, limit, request.getScope(), roles);
+        return discover(null, request.getCurrentSessionId(), userId, query, limit, request.getScope(), roles);
     }
 
     /** Legacy callers remain supported; the tool uses the request overload above. */
     @Override
-    public String search(String sessionId, String visitorId, String query, int limit, String scope) {
+    public String search(String sessionId, String userId, String query, int limit, String scope) {
         return search(SessionSearchRequest.builder()
                 .currentSessionId(sessionId)
-                .visitorId(visitorId)
+                .userId(userId)
                 .query(query)
                 .limit(limit <= 0 ? null : limit)
                 .scope(scope)
@@ -93,7 +93,7 @@ public class WorkingMemorySessionSearchService implements SessionSearchService {
 
     private String discover(String requestedSessionId,
                             String currentSessionId,
-                            String visitorId,
+                            String userId,
                             String query,
                             int limit,
                             String scope,
@@ -108,7 +108,7 @@ public class WorkingMemorySessionSearchService implements SessionSearchService {
             if (sessionScopeId == null) {
                 return error("session_id is required for scope=session");
             }
-            String denied = requireOwnedSession(sessionScopeId, visitorId);
+            String denied = requireOwnedSession(sessionScopeId, userId);
             if (denied != null) {
                 return denied;
             }
@@ -120,7 +120,7 @@ public class WorkingMemorySessionSearchService implements SessionSearchService {
         try {
             raw = "session".equals(normalizedScope)
                     ? workingMemoryMessageDao.searchFullTextBySession(sessionScopeId, query, scanLimit, roles)
-                    : searchByVisitorOrSession(visitorId, currentSessionId, query, scanLimit, true, roles);
+                    : searchByUserIdOrSession(userId, currentSessionId, query, scanLimit, true, roles);
             backend = "fulltext";
         } catch (Exception e) {
             backend = "scan";
@@ -128,7 +128,7 @@ public class WorkingMemorySessionSearchService implements SessionSearchService {
             try {
                 raw = "session".equals(normalizedScope)
                         ? workingMemoryMessageDao.scanBySession(sessionScopeId, query, scanLimit, roles)
-                        : searchByVisitorOrSession(visitorId, currentSessionId, query, scanLimit, false, roles);
+                        : searchByUserIdOrSession(userId, currentSessionId, query, scanLimit, false, roles);
             } catch (Exception scanError) {
                 log.warn("working-memory scan failed: {}", scanError.toString());
                 return error("failed to search message history: " + messageOf(scanError));
@@ -165,16 +165,16 @@ public class WorkingMemorySessionSearchService implements SessionSearchService {
         return JSON.toJSONString(payload);
     }
 
-    private List<WorkingMemorySearchMessage> searchByVisitorOrSession(String visitorId,
+    private List<WorkingMemorySearchMessage> searchByUserIdOrSession(String userId,
                                                                        String sessionId,
                                                                        String query,
                                                                        int limit,
                                                                        boolean fullText,
                                                                        List<String> roles) {
-        if (StringUtils.isNotBlank(visitorId)) {
+        if (StringUtils.isNotBlank(userId)) {
             return fullText
-                    ? workingMemoryMessageDao.searchFullTextByVisitor(visitorId.trim(), query, limit, roles)
-                    : workingMemoryMessageDao.scanByVisitor(visitorId.trim(), query, limit, roles);
+                    ? workingMemoryMessageDao.searchFullTextByUserId(userId.trim(), query, limit, roles)
+                    : workingMemoryMessageDao.scanByUserId(userId.trim(), query, limit, roles);
         }
         if (StringUtils.isBlank(sessionId)) {
             return List.of();
@@ -250,8 +250,8 @@ public class WorkingMemorySessionSearchService implements SessionSearchService {
         return result;
     }
 
-    private String scroll(String sessionId, String visitorId, long aroundMessageId, int window, List<String> roles) {
-        String denied = requireOwnedSession(sessionId, visitorId);
+    private String scroll(String sessionId, String userId, long aroundMessageId, int window, List<String> roles) {
+        String denied = requireOwnedSession(sessionId, userId);
         if (denied != null) {
             return denied;
         }
@@ -311,8 +311,8 @@ public class WorkingMemorySessionSearchService implements SessionSearchService {
         return JSON.toJSONString(payload);
     }
 
-    private String read(String sessionId, String visitorId, List<String> roles) {
-        String denied = requireOwnedSession(sessionId, visitorId);
+    private String read(String sessionId, String userId, List<String> roles) {
+        String denied = requireOwnedSession(sessionId, userId);
         if (denied != null) {
             return denied;
         }
@@ -347,8 +347,8 @@ public class WorkingMemorySessionSearchService implements SessionSearchService {
         return JSON.toJSONString(payload);
     }
 
-    private String browse(String visitorId, String currentSessionId, int limit) {
-        if (StringUtils.isBlank(visitorId)) {
+    private String browse(String userId, String currentSessionId, int limit) {
+        if (StringUtils.isBlank(userId)) {
             Map<String, Object> empty = new LinkedHashMap<>();
             empty.put("success", true);
             empty.put("mode", "browse");
@@ -358,7 +358,7 @@ public class WorkingMemorySessionSearchService implements SessionSearchService {
         }
         List<Map<String, Object>> rows;
         try {
-            rows = safeMapList(workingMemoryMessageDao.selectRecentSessions(trim(visitorId), limit + 1));
+            rows = safeMapList(workingMemoryMessageDao.selectRecentSessions(trim(userId), limit + 1));
         } catch (Exception e) {
             return error("failed to browse sessions: " + messageOf(e));
         }
@@ -390,14 +390,14 @@ public class WorkingMemorySessionSearchService implements SessionSearchService {
         return JSON.toJSONString(payload);
     }
 
-    private String requireOwnedSession(String sessionId, String visitorId) {
-        if (StringUtils.isBlank(visitorId)) {
-            return error("visitor identity required");
+    private String requireOwnedSession(String sessionId, String userId) {
+        if (StringUtils.isBlank(userId)) {
+            return error("user identity required");
         }
         try {
             Map<String, Object> row = workingMemoryMessageDao.selectSessionSummary(sessionId);
-            String owner = value(row, "visitorId", "visitor_id");
-            if (row == null || row.isEmpty() || !visitorId.equals(owner)) {
+            String owner = value(row, "userId", "user_id");
+            if (row == null || row.isEmpty() || !userId.equals(owner)) {
                 return error("session_id " + sessionId + " not found");
             }
         } catch (Exception e) {

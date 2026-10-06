@@ -3,6 +3,7 @@ package org.wwz.ai.test.domain;
 import org.junit.Assert;
 import org.junit.Test;
 import org.wwz.ai.domain.agent.ledger.model.ArtifactRecordCommand;
+import org.wwz.ai.domain.agent.ledger.model.ArtifactView;
 import org.wwz.ai.domain.agent.ledger.model.ConversationHistoryDetail;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunFinishRecord;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunStartRecord;
@@ -28,8 +29,8 @@ public class ExecutionLedgerQueryServiceTest {
     @Test
     public void shouldQueryRunDetailRecentToolsAndRecentSessionRuns() {
         ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
-        seedRun(ctx, "req-query-001", "session-query-001", "visitor-query-001", "file_tool", 1, "report-1.md");
-        seedRun(ctx, "req-query-002", "session-query-001", "visitor-query-001", "file_tool", 2, "report-2.md");
+        seedRun(ctx, "req-query-001", "session-query-001", "user-query-001", "file_tool", 1, "report-1.md");
+        seedRun(ctx, "req-query-002", "session-query-001", "user-query-001", "file_tool", 2, "report-2.md");
 
         ExecutionRunDetail detail = ctx.queryService.queryRunDetail("req-query-001");
         Assert.assertNotNull(detail);
@@ -70,8 +71,8 @@ public class ExecutionLedgerQueryServiceTest {
     @Test
     public void shouldPageSessionRunsAndClampPageSize() {
         ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
-        seedRun(ctx, "req-page-001", "session-page-001", "visitor-page-001", "file_tool", 1, "report-1.md");
-        seedRun(ctx, "req-page-002", "session-page-001", "visitor-page-001", "file_tool", 2, "report-2.md");
+        seedRun(ctx, "req-page-001", "session-page-001", "user-page-001", "file_tool", 1, "report-1.md");
+        seedRun(ctx, "req-page-002", "session-page-001", "user-page-001", "file_tool", 2, "report-2.md");
 
         var firstPage = ctx.queryService.querySessionRuns("session-page-001", -10, 1_000);
         Assert.assertEquals(2, firstPage.size());
@@ -139,8 +140,8 @@ public class ExecutionLedgerQueryServiceTest {
     @Test
     public void shouldBuildConversationHistoryWithSummaryFallback() {
         ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
-        seedRun(ctx, "req-history-001", "session-history-001", "visitor-history-001", "file_tool", 1, "report-1.md");
-        seedRun(ctx, "req-history-002", "session-history-001", "visitor-history-001", "read_tool", 2, "report-2.md");
+        seedRun(ctx, "req-history-001", "session-history-001", "user-history-001", "file_tool", 1, "report-1.md");
+        seedRun(ctx, "req-history-002", "session-history-001", "user-history-001", "read_tool", 2, "report-2.md");
 
         ConversationHistoryDetail detail = ctx.replayService.queryConversationHistory("session-history-001");
 
@@ -156,9 +157,9 @@ public class ExecutionLedgerQueryServiceTest {
     @Test
     public void shouldBatchLedgerFactsAndRichOutputsForConversationHistory() {
         ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
-        seedRun(ctx, "req-batch-history-001", "session-batch-history-001", "visitor-batch-001", "deep_search", 1, "report-1.md");
-        seedRun(ctx, "req-batch-history-002", "session-batch-history-001", "visitor-batch-001", "file_tool", 2, "report-2.md");
-        seedRun(ctx, "req-batch-history-003", "session-batch-history-001", "visitor-batch-001", "read_tool", 3, "report-3.md");
+        seedRun(ctx, "req-batch-history-001", "session-batch-history-001", "user-batch-001", "deep_search", 1, "report-1.md");
+        seedRun(ctx, "req-batch-history-002", "session-batch-history-001", "user-batch-001", "file_tool", 2, "report-2.md");
+        seedRun(ctx, "req-batch-history-003", "session-batch-history-001", "user-batch-001", "read_tool", 3, "report-3.md");
         int queryRunByRequestIdBefore = ctx.store.queryRunByRequestIdCount;
         int queryLlmByRunIdBefore = ctx.store.queryLlmByRunIdCount;
         int queryToolByRunIdBefore = ctx.store.queryToolByRunIdCount;
@@ -233,7 +234,7 @@ public class ExecutionLedgerQueryServiceTest {
                     ctx,
                     String.format("req-session-limit-%03d", index),
                     String.format("session-limit-%03d", index),
-                    String.format("visitor-limit-%03d", index),
+                    String.format("user-limit-%03d", index),
                     "file_tool",
                     index,
                     "report-limit-" + index + ".md"
@@ -250,28 +251,89 @@ public class ExecutionLedgerQueryServiceTest {
     }
 
     @Test
-    public void shouldFilterSessionQueriesByVisitorOwnership() {
+    public void shouldFilterSessionQueriesByUserIdOwnership() {
         ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
-        seedRun(ctx, "req-visitor-001", "session-visitor-001", "visitor-001", "file_tool", 1, "visitor-001.md");
-        seedRun(ctx, "req-visitor-002", "session-visitor-002", "visitor-002", "file_tool", 2, "visitor-002.md");
+        seedRun(ctx, "req-user-001", "session-user-001", "user-001", "file_tool", 1, "user-001.md");
+        seedRun(ctx, "req-user-002", "session-user-002", "user-002", "file_tool", 2, "user-002.md");
 
-        Assert.assertNotNull(ctx.queryService.querySession("visitor-001", "session-visitor-001"));
-        Assert.assertNull(ctx.queryService.querySession("visitor-002", "session-visitor-001"));
+        Assert.assertNotNull(ctx.queryService.querySession("user-001", "session-user-001"));
+        Assert.assertNull(ctx.queryService.querySession("user-002", "session-user-001"));
 
-        List<?> visitorOneSessions = ctx.queryService.queryRecentSessions("visitor-001", 20);
-        List<?> visitorTwoSessions = ctx.queryService.queryRecentSessions("visitor-002", 20);
+        List<?> userOneSessions = ctx.queryService.queryRecentSessions("user-001", 20);
+        List<?> userTwoSessions = ctx.queryService.queryRecentSessions("user-002", 20);
 
-        Assert.assertEquals(1, visitorOneSessions.size());
-        Assert.assertEquals(1, visitorTwoSessions.size());
-        Assert.assertEquals("session-visitor-001", ctx.queryService.queryRecentSessions("visitor-001", 20).get(0).getSessionId());
-        Assert.assertEquals("session-visitor-002", ctx.queryService.queryRecentSessions("visitor-002", 20).get(0).getSessionId());
-        Assert.assertTrue(ctx.queryService.queryRecentSessions("visitor-003", 20).isEmpty());
+        Assert.assertEquals(1, userOneSessions.size());
+        Assert.assertEquals(1, userTwoSessions.size());
+        Assert.assertEquals("session-user-001", ctx.queryService.queryRecentSessions("user-001", 20).get(0).getSessionId());
+        Assert.assertEquals("session-user-002", ctx.queryService.queryRecentSessions("user-002", 20).get(0).getSessionId());
+        Assert.assertTrue(ctx.queryService.queryRecentSessions("user-003", 20).isEmpty());
+    }
+
+    @Test
+    public void shouldQueryVisibleInputAndOutputArtifactsBySessionWithoutLoadingReplayFacts() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        seedRun(ctx, "req-files-001", "session-files-001", "user-files-001", "file_tool", 1, "report-1.md");
+        seedRun(ctx, "req-files-002", "session-files-001", "user-files-001", "file_tool", 2, "report-2.md");
+
+        Long firstRunId = ctx.store.runs.values().stream()
+                .filter(run -> "session-files-001".equals(run.getSessionId()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+        ctx.recorder.recordArtifacts(List.of(
+                ArtifactRecordCommand.builder()
+                        .runId(firstRunId)
+                        .requestId("req-files-001")
+                        .artifactRole(ExecutionLedgerConstants.ARTIFACT_ROLE_INPUT)
+                        .visibility(ExecutionLedgerConstants.VISIBILITY_VISIBLE)
+                        .sourceType(ExecutionLedgerConstants.SOURCE_TYPE_USER_UPLOAD)
+                        .fileName("input.csv")
+                        .storageKey("workspace/input.csv")
+                        .downloadUrl("https://files.test/download/input.csv")
+                        .previewUrl("https://files.test/preview/input.csv")
+                        .metadataJson("{\"relativePath\":\"uploads/input.csv\"}")
+                        .build(),
+                ArtifactRecordCommand.builder()
+                        .runId(firstRunId)
+                        .requestId("req-files-001")
+                        .artifactRole(ExecutionLedgerConstants.ARTIFACT_ROLE_OUTPUT)
+                        .visibility(ExecutionLedgerConstants.VISIBILITY_INTERNAL)
+                        .sourceType(ExecutionLedgerConstants.SOURCE_TYPE_TOOL_OUTPUT)
+                        .fileName("internal.md")
+                        .storageKey("workspace/internal.md")
+                        .build(),
+                ArtifactRecordCommand.builder()
+                        .runId(firstRunId)
+                        .requestId("req-files-001")
+                        .artifactRole(ExecutionLedgerConstants.ARTIFACT_ROLE_OUTPUT)
+                        .visibility(ExecutionLedgerConstants.VISIBILITY_VISIBLE)
+                        .sourceType(ExecutionLedgerConstants.SOURCE_TYPE_TOOL_OUTPUT)
+                        .fileName("deleted.md")
+                        .storageKey("workspace/deleted.md")
+                        .build()
+        ));
+        ctx.store.artifacts.values().stream()
+                .filter(artifact -> "deleted.md".equals(artifact.getFileName()))
+                .findFirst()
+                .orElseThrow()
+                .setDeleted(1);
+
+        List<ArtifactView> artifacts = ctx.queryService.querySessionArtifacts("session-files-001");
+
+        Assert.assertEquals(3, artifacts.size());
+        Assert.assertEquals("report-1.md", artifacts.get(0).getFileName());
+        Assert.assertEquals("report-2.md", artifacts.get(1).getFileName());
+        Assert.assertEquals("input.csv", artifacts.get(2).getFileName());
+        Assert.assertEquals(1, ctx.store.queryArtifactsBySessionIdCount);
+        Assert.assertEquals(0, ctx.store.queryLlmByRunIdsCount);
+        Assert.assertEquals(0, ctx.store.queryToolByRunIdsCount);
+        Assert.assertEquals(0, ctx.store.readToolOutputByInvocationIdsCount);
     }
 
     private void seedRun(ExecutionLedgerFixtureFactory.LedgerTestContext ctx,
                          String requestId,
                          String sessionId,
-                         String visitorId,
+                         String userId,
                          String toolName,
                          int dispatchIndex,
                          String fileName) {
@@ -280,7 +342,7 @@ public class ExecutionLedgerQueryServiceTest {
                 .runUid(requestId)
                 .requestId(requestId)
                 .sessionId(sessionId)
-                .visitorId(visitorId)
+                .userId(userId)
                 .entryAgent(ExecutionLedgerConstants.ENTRY_AGENT_REACT)
                 .queryText("seed:" + requestId)
                 .startedAt(now)

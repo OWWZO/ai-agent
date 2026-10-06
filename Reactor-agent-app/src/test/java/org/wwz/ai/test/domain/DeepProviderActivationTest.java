@@ -34,7 +34,7 @@ public class DeepProviderActivationTest {
     @Test
     public void openvikingRememberAndSearch() {
         OpenVikingMemoryProvider viking = new OpenVikingMemoryProvider("");
-        viking.initialize("s2", LtmOwner.visitor("v1"), Map.of());
+        viking.initialize("s2", LtmOwner.user("v1"), Map.of());
         String add = viking.handleToolCall("viking_memory", Map.of(
                 "action", "remember",
                 "category", "preference",

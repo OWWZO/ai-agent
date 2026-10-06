@@ -66,6 +66,16 @@
         ORDER BY run_id DESC, create_time ASC, id ASC
     </select>
 
+    <select id="queryBySessionId" resultMap="ArtifactRecordMap">
+        SELECT a.*
+        FROM ai_agent_artifact a
+        INNER JOIN ai_agent_dialogue_run r ON r.id = a.run_id
+        WHERE r.session_id = #{sessionId}
+          AND a.deleted = 0
+          AND a.visibility = 'visible'
+        ORDER BY a.create_time ASC, a.id ASC
+    </select>
+
     <select id="queryByToolInvocationIds" resultMap="ArtifactRecordMap">
         SELECT <include refid="artifactRecordColumns"/>
         FROM ai_agent_artifact

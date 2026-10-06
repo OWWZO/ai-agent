@@ -4,9 +4,6 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.adapter.port.BrowserOperationKind;
-import org.wwz.ai.domain.agent.adapter.port.BrowserOperationLockPort;
-import org.wwz.ai.domain.agent.adapter.port.BrowserOperationLockTimeoutException;
 import org.wwz.ai.domain.agent.adapter.port.KernelBrowserSession;
 import org.wwz.ai.domain.agent.adapter.port.KernelBrowserSessionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
@@ -55,7 +52,7 @@ public class KernelBrowserTool implements BaseTool {
         ));
         properties.put("timeout_ms", Map.of(
                 "type", "integer",
-                "description", "超时毫秒，默认 60000"
+                "description", "超时毫秒，默认 180000"
         ));
         return Map.of(
                 "type", "object",
@@ -77,9 +74,9 @@ public class KernelBrowserTool implements BaseTool {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
             return ToolResultPayload.failure("运行时未装配", "运行时未装配", null, "runtime_unavailable");
         }
-        String ownerKey = StringUtils.trimToNull(agentContext.getVisitorId());
-        if (ownerKey == null) {
-            return ToolResultPayload.failure("缺少访客身份", "缺少访客身份", null, "missing visitorId");
+        String userId = StringUtils.trimToNull(agentContext.getUserId());
+        if (userId == null) {
+            return ToolResultPayload.failure("缺少用户身份", "缺少用户身份", null, "missing userId");
         }
 
         ReactorRuntimeDependencies deps = agentContext.getRuntimeDependencies();
@@ -93,20 +90,9 @@ public class KernelBrowserTool implements BaseTool {
         if (cli == null || properties == null || !properties.isEnabled()) {
             return ToolResultPayload.failure("opencli 未配置", "opencli 未配置", null, "opencli_unavailable");
         }
-        BrowserOperationLockPort lock = deps.getOptionalBrowserOperationLockPort();
-        if (lock == null) {
-            return lockUnavailable();
-        }
-
         long budgetMs = resolveTimeout(params.get("timeout_ms"), properties);
         long started = System.nanoTime();
-        LockedExecution execution;
-        try {
-            execution = lock.execute(BrowserOperationKind.KERNEL_BROWSER, ownerKey, budgetMs, () ->
-                    executeForOwner(args, ownerKey, sessionPort, cli, properties, budgetMs, started));
-        } catch (BrowserOperationLockTimeoutException e) {
-            return lockTimeout();
-        }
+        Execution execution = executeForUser(args, userId, sessionPort, cli, properties, budgetMs, started);
         if (execution.failure != null) {
             return execution.failure;
         }
@@ -141,8 +127,8 @@ public class KernelBrowserTool implements BaseTool {
         return ToolResultPayload.okData(TOOL_NAME, fields);
     }
 
-    private LockedExecution executeForOwner(List<String> args,
-                                            String ownerKey,
+    private Execution executeForUser(List<String> args,
+                                            String userId,
                                             KernelBrowserSessionPort sessionPort,
                                             CliExecutionPort cli,
                                             OpenCliProperties properties,
@@ -150,23 +136,23 @@ public class KernelBrowserTool implements BaseTool {
                                             long startedNanos) {
         long remaining = remainingMillis(budgetMs, startedNanos);
         if (remaining <= 0) {
-            return LockedExecution.failed(lockTimeout());
+            return Execution.failed(browserTimeout());
         }
         KernelBrowserSession session;
         try {
-            session = sessionPort.resolveForOwner(ownerKey);
+            session = sessionPort.resolveForUser(userId);
         } catch (RuntimeException e) {
-            return LockedExecution.failed(ToolResultPayload.failure(
+            return Execution.failed(ToolResultPayload.failure(
                     "获取 Kernel 云端浏览器会话失败", "获取 Kernel 云端浏览器会话失败", null,
                     "kernel_browser_session_failed"));
         }
         if (session == null || StringUtils.isBlank(session.getCdpWsUrl())) {
-            return LockedExecution.failed(ToolResultPayload.failure(
+            return Execution.failed(ToolResultPayload.failure(
                     "Kernel 云端浏览器会话不可用", "Kernel 云端浏览器会话不可用", null,
                     "kernel_browser_session_unavailable"));
         }
 
-        List<String> rewritten = OpenCliArgv.rewrite(args, ownerKey, properties.getExtraArgs());
+        List<String> rewritten = OpenCliArgv.rewrite(args, properties.getExtraArgs());
         List<String> processArgs = new ArrayList<>();
         if (properties.getPrefixArgs() != null) {
             for (String prefix : properties.getPrefixArgs()) {
@@ -178,7 +164,7 @@ public class KernelBrowserTool implements BaseTool {
         processArgs.addAll(rewritten);
         Map<String, String> env = new LinkedHashMap<>();
         env.put("OPENCLI_CDP_ENDPOINT", session.getCdpWsUrl());
-        env.put("OPENCLI_CACHE_DIR", resolveCacheDir(properties, ownerKey));
+        env.put("OPENCLI_CACHE_DIR", resolveCacheDir(properties, userId));
         try {
             CliResult result = cli.exec(CliInvocation.builder()
                     .tool(properties.getCommand())
@@ -190,20 +176,15 @@ public class KernelBrowserTool implements BaseTool {
                     .capture("both")
                     .maxOutputChars(properties.getMaxOutputChars())
                     .build());
-            return LockedExecution.completed(session, result, rewritten);
+            return Execution.completed(session, result, rewritten);
         } catch (RuntimeException e) {
-            return LockedExecution.failed(ToolResultPayload.failure(
+            return Execution.failed(ToolResultPayload.failure(
                     "opencli 执行失败", "opencli 执行失败", null, "opencli_execution_failed"));
         }
     }
 
-    private static ToolResultPayload lockUnavailable() {
-        return ToolResultPayload.failure("浏览器操作锁未装配", "浏览器操作锁未装配", null, "browser_lock_unavailable");
-    }
-
-    private static ToolResultPayload lockTimeout() {
-        return ToolResultPayload.failure("云端浏览器正被占用，等待超时", "云端浏览器正被占用，等待超时", null,
-                "browser_lock_timeout");
+    private static ToolResultPayload browserTimeout() {
+        return ToolResultPayload.failure("云端浏览器操作超时", "云端浏览器操作超时", null, "browser_timeout");
     }
 
     private static long remainingMillis(long budgetMs, long startedNanos) {
@@ -211,13 +192,13 @@ public class KernelBrowserTool implements BaseTool {
         return budgetMs - Math.max(0L, elapsed);
     }
 
-    private static final class LockedExecution {
+    private static final class Execution {
         private final ToolResultPayload failure;
         private final KernelBrowserSession session;
         private final CliResult result;
         private final List<String> rewritten;
 
-        private LockedExecution(ToolResultPayload failure,
+        private Execution(ToolResultPayload failure,
                                 KernelBrowserSession session,
                                 CliResult result,
                                 List<String> rewritten) {
@@ -227,14 +208,14 @@ public class KernelBrowserTool implements BaseTool {
             this.rewritten = rewritten;
         }
 
-        private static LockedExecution failed(ToolResultPayload failure) {
-            return new LockedExecution(failure, null, null, List.of());
+        private static Execution failed(ToolResultPayload failure) {
+            return new Execution(failure, null, null, List.of());
         }
 
-        private static LockedExecution completed(KernelBrowserSession session,
+        private static Execution completed(KernelBrowserSession session,
                                                  CliResult result,
                                                  List<String> rewritten) {
-            return new LockedExecution(null, session, result, rewritten);
+            return new Execution(null, session, result, rewritten);
         }
     }
 
@@ -353,12 +334,12 @@ public class KernelBrowserTool implements BaseTool {
         return Math.min(fallback, max);
     }
 
-    private static String resolveCacheDir(OpenCliProperties properties, String ownerKey) {
+    private static String resolveCacheDir(OpenCliProperties properties, String userId) {
         String root = StringUtils.trimToNull(properties.getCacheDir());
         if (root == null) {
             root = Path.of(System.getProperty("java.io.tmpdir"), "reactor-opencli").toString();
         }
-        return Path.of(root, ownerKey).toString();
+        return Path.of(root, userId).toString();
     }
 
     private static List<String> stringList(Object raw) {

@@ -585,9 +585,9 @@ public class AgentToolCollectionFactoryTest {
                 disabledWorkspaceOptions()
         );
         BrowserRelayPort port = Mockito.mock(BrowserRelayPort.class);
-        Mockito.when(port.isOnline("visitor-1")).thenReturn(true);
+        Mockito.when(port.isOnline("user-1")).thenReturn(true);
         AgentContext ctx = buildAgentContext();
-        ctx.setVisitorId("visitor-1");
+        ctx.setUserId("user-1");
         ctx.setRuntimeDependencies(ctx.getRuntimeDependencies().toBuilder()
                 .browserRelayPort(port)
                 .cliExecutionPort(resolvableCli("node"))
@@ -596,7 +596,7 @@ public class AgentToolCollectionFactoryTest {
         AgentRequest request = AgentRequest.builder()
                 .requestId("req-001")
                 .sessionId("session-001")
-                .visitorId("visitor-1")
+                .userId("user-1")
                 .query("打开已登录页面")
                 .build();
 
@@ -620,9 +620,9 @@ public class AgentToolCollectionFactoryTest {
                 disabledWorkspaceOptions()
         );
         BrowserRelayPort port = Mockito.mock(BrowserRelayPort.class);
-        Mockito.when(port.isOnline("visitor-1")).thenReturn(false);
+        Mockito.when(port.isOnline("user-1")).thenReturn(false);
         AgentContext ctx = buildAgentContext();
-        ctx.setVisitorId("visitor-1");
+        ctx.setUserId("user-1");
         ctx.setRuntimeDependencies(ctx.getRuntimeDependencies().toBuilder()
                 .browserRelayPort(port)
                 .cliExecutionPort(resolvableCli("node"))
@@ -631,7 +631,7 @@ public class AgentToolCollectionFactoryTest {
         AgentRequest request = AgentRequest.builder()
                 .requestId("req-001")
                 .sessionId("session-001")
-                .visitorId("visitor-1")
+                .userId("user-1")
                 .query("打开已登录页面")
                 .build();
 
@@ -652,9 +652,9 @@ public class AgentToolCollectionFactoryTest {
                 disabledWorkspaceOptions()
         );
         BrowserRelayPort port = Mockito.mock(BrowserRelayPort.class);
-        Mockito.when(port.isOnline("visitor-1")).thenReturn(true);
+        Mockito.when(port.isOnline("user-1")).thenReturn(true);
         AgentContext ctx = buildAgentContext();
-        ctx.setVisitorId("visitor-1");
+        ctx.setUserId("user-1");
         ctx.setRuntimeDependencies(ctx.getRuntimeDependencies().toBuilder()
                 .browserRelayPort(port)
                 .cliExecutionPort(resolvableCli("node"))
@@ -663,7 +663,7 @@ public class AgentToolCollectionFactoryTest {
         AgentRequest request = AgentRequest.builder()
                 .requestId("req-001")
                 .sessionId("session-001")
-                .visitorId("visitor-1")
+                .userId("user-1")
                 .outputStyle("dataAgent")
                 .query("问数")
                 .build();
@@ -685,11 +685,11 @@ public class AgentToolCollectionFactoryTest {
                 disabledWorkspaceOptions()
         );
         BrowserRelayPort relay = Mockito.mock(BrowserRelayPort.class);
-        Mockito.when(relay.isOnline("visitor-1")).thenReturn(false);
+        Mockito.when(relay.isOnline("user-1")).thenReturn(false);
         KernelBrowserSessionPort kernel = Mockito.mock(KernelBrowserSessionPort.class);
         Mockito.when(kernel.isConfigured()).thenReturn(true);
         AgentContext ctx = buildAgentContext();
-        ctx.setVisitorId("visitor-1");
+        ctx.setUserId("user-1");
         ctx.setRuntimeDependencies(ctx.getRuntimeDependencies().toBuilder()
                 .browserRelayPort(relay)
                 .kernelBrowserSessionPort(kernel)
@@ -698,12 +698,12 @@ public class AgentToolCollectionFactoryTest {
                 .build());
 
         AgentRequest request = buildAgentRequest("html");
-        request.setVisitorId("visitor-1");
+        request.setUserId("user-1");
         ToolCollection toolCollection = factory.buildForReact(ctx, request);
 
         Assert.assertTrue(toolCollection.getToolMap().containsKey("kernel_browser"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("browser"));
-        Mockito.verify(relay).isOnline("visitor-1");
+        Mockito.verify(relay).isOnline("user-1");
     }
 
     @Test
@@ -719,7 +719,7 @@ public class AgentToolCollectionFactoryTest {
         KernelBrowserSessionPort kernel = Mockito.mock(KernelBrowserSessionPort.class);
         Mockito.when(kernel.isConfigured()).thenReturn(true);
         AgentContext ctx = buildAgentContext();
-        ctx.setVisitorId("visitor-1");
+        ctx.setUserId("user-1");
         ctx.setRuntimeDependencies(ctx.getRuntimeDependencies().toBuilder()
                 .kernelBrowserSessionPort(kernel)
                 .cliExecutionPort(resolvableCli("node"))
@@ -728,7 +728,7 @@ public class AgentToolCollectionFactoryTest {
         AgentRequest request = AgentRequest.builder()
                 .requestId("req-data")
                 .sessionId("session-data")
-                .visitorId("visitor-1")
+                .userId("user-1")
                 .outputStyle("dataAgent")
                 .query("问数")
                 .build();

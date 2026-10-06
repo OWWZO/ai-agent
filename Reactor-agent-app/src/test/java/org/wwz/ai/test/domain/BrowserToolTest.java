@@ -9,7 +9,6 @@ import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliInvocation;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliResult;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
-import org.wwz.ai.infrastructure.adapter.port.InProcessBrowserOperationLockAdapter;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.cli.OpenCliArgv;
 import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserTool;
@@ -36,28 +35,28 @@ public class BrowserToolTest {
     }
 
     @Test
-    public void shouldInjectVisitorSessionAndFormatOnlySupportedCommands() {
+    public void shouldPreserveBrowserArgsAndAppendFormatOnlyForSiteCommands() {
         Assert.assertEquals(
-                List.of("browser", "visitor:vis_zhangsan", "click", "12"),
-                OpenCliArgv.rewrite(List.of("browser", "click", "12"), "vis_zhangsan", List.of("-f", "json")));
+                List.of("browser", "click", "12"),
+                OpenCliArgv.rewrite(List.of("browser", "click", "12"), List.of("-f", "json")));
         Assert.assertEquals(
                 List.of("browser", "visitor:vis_zhangsan", "click", "12"),
                 OpenCliArgv.rewrite(List.of("browser", "visitor:vis_zhangsan", "click", "12"),
-                        "vis_zhangsan", List.of("-f", "json")));
+                        List.of("-f", "json")));
         Assert.assertEquals(
                 List.of("bilibili", "search", "redis", "-f", "json"),
-                OpenCliArgv.rewrite(List.of("bilibili", "search", "redis"), "vis_zhangsan", List.of("-f", "json")));
+                OpenCliArgv.rewrite(List.of("bilibili", "search", "redis"), List.of("-f", "json")));
         Assert.assertEquals(
                 List.of("xiaohongshu", "feed", "--limit", "10", "-f", "json"),
                 OpenCliArgv.rewrite(List.of("xiaohongshu", "feed", "--limit", "10", "-f", "json"),
-                        "vis_zhangsan", List.of("-f", "json")));
+                        List.of("-f", "json")));
         Assert.assertEquals(
                 List.of("bilibili", "search", "redis", "--keep-tab", "false", "-f", "json"),
                 OpenCliArgv.rewrite(List.of("bilibili", "search", "redis", "--keep-tab", "false"),
-                        "vis_zhangsan", List.of("-f", "json")));
+                        List.of("-f", "json")));
         Assert.assertEquals(
                 List.of("list", "-f", "json"),
-                OpenCliArgv.rewrite(List.of("list"), "vis_zhangsan", List.of("-f", "json")));
+                OpenCliArgv.rewrite(List.of("list"), List.of("-f", "json")));
     }
 
     @Test
@@ -85,14 +84,15 @@ public class BrowserToolTest {
         Assert.assertTrue(payload.getLedgerObservation().contains("redacted"));
         ArgumentCaptor<CliInvocation> captor = ArgumentCaptor.forClass(CliInvocation.class);
         Mockito.verify(cli).exec(captor.capture());
-        Assert.assertTrue(captor.getValue().getArgs().contains("visitor:visitor-1"));
-        Assert.assertTrue(captor.getValue().getEnv().get("OPENCLI_CACHE_DIR").replace('\\', '/').endsWith("vis_cache/visitor-1"));
+        Assert.assertEquals(List.of("main.js", "browser", "cookies"), captor.getValue().getArgs());
+        Assert.assertTrue(captor.getValue().getEnv().get("OPENCLI_CACHE_DIR").replace('\\', '/').endsWith("vis_cache/user-1"));
         Assert.assertEquals("http://127.0.0.1:8100/internal/browser/rpc", captor.getValue().getEnv().get("OPENCLI_RELAY_URL"));
+        Assert.assertFalse(captor.getValue().getEnv().containsKey("OPENCLI_SITE_SESSION"));
     }
 
     private AgentContext onlineContext(CliExecutionPort cli) {
         BrowserRelayPort relay = Mockito.mock(BrowserRelayPort.class);
-        Mockito.when(relay.isOnline("visitor-1")).thenReturn(true);
+        Mockito.when(relay.isOnline("user-1")).thenReturn(true);
         OpenCliProperties properties = new OpenCliProperties();
         properties.setEnabled(true);
         properties.setCommand("node");
@@ -101,14 +101,13 @@ public class BrowserToolTest {
         AgentContext ctx = AgentContext.builder()
                 .requestId("req-1")
                 .sessionId("session-1")
-                .visitorId("visitor-1")
+                .userId("user-1")
                 .workspaceRoot(System.getProperty("java.io.tmpdir"))
                 .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(new ReactorConfig())
                         .toBuilder()
                         .browserRelayPort(relay)
                         .cliExecutionPort(cli)
                         .openCliProperties(properties)
-                        .browserOperationLockPort(new InProcessBrowserOperationLockAdapter())
                         .build())
                 .build();
         return ctx;

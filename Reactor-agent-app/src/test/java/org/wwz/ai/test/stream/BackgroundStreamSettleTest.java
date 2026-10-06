@@ -236,7 +236,7 @@ public class BackgroundStreamSettleTest {
         SessionBackgroundTaskHub.evict(sessionId);
         ActiveAgentRunRegistry registry = new ActiveAgentRunRegistry();
         try {
-            registry.begin("req-parent", sessionId, "visitor-1");
+            registry.begin("req-parent", sessionId, "user-1");
             SessionBackgroundTaskHub.getOrCreate(sessionId, null)
                     .registerLocalAgent("后台探查", "general-purpose", "scan");
             AgentRequest request = new AgentRequest();
@@ -250,7 +250,7 @@ public class BackgroundStreamSettleTest {
 
             Assert.assertFalse(projecting.isClosed());
             Assert.assertFalse(registry.find("req-parent").isPresent());
-            registry.begin("req-next", sessionId, "visitor-1");
+            registry.begin("req-next", sessionId, "user-1");
             Assert.assertTrue(registry.find("req-next").isPresent());
         } finally {
             SessionBackgroundTaskHub.evict(sessionId);

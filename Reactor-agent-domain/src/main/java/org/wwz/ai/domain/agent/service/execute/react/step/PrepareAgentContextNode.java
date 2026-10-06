@@ -75,7 +75,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
         AgentContext agentContext = AgentContext.builder()
                 .requestId(request.getRequestId())
                 .sessionId(request.getSessionId())
-                .visitorId(request.getVisitorId())
+                .userId(request.getUserId())
                 .printer(printer)
                 .query(request.getQuery())
                 .task("")

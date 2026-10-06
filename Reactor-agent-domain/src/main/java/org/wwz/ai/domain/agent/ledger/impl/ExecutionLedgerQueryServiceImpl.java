@@ -68,6 +68,14 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
     }
 
     @Override
+    public List<ArtifactView> querySessionArtifacts(String sessionId) {
+        if (StringUtils.isBlank(sessionId)) {
+            return List.of();
+        }
+        return toArtifactViews(executionLedgerReadRepository.queryArtifactsBySessionId(sessionId));
+    }
+
+    @Override
     public DialogueRunView queryRunSummary(String requestId) {
         if (StringUtils.isBlank(requestId)) {
             return null;
@@ -201,20 +209,20 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
     }
 
     @Override
-    public DialogueSessionView querySession(String visitorId, String sessionId) {
-        if (StringUtils.isAnyBlank(visitorId, sessionId)) {
+    public DialogueSessionView querySession(String userId, String sessionId) {
+        if (StringUtils.isAnyBlank(userId, sessionId)) {
             return null;
         }
-        return restoreSessionTitle(executionLedgerReadRepository.querySession(visitorId, sessionId));
+        return restoreSessionTitle(executionLedgerReadRepository.querySession(userId, sessionId));
     }
 
     @Override
-    public List<DialogueSessionView> queryRecentSessions(String visitorId, int limit) {
-        if (StringUtils.isBlank(visitorId)) {
+    public List<DialogueSessionView> queryRecentSessions(String userId, int limit) {
+        if (StringUtils.isBlank(userId)) {
             return List.of();
         }
         return restoreSessionTitles(
-                executionLedgerReadRepository.queryRecentSessions(visitorId, normalizeLimit(limit))
+                executionLedgerReadRepository.queryRecentSessions(userId, normalizeLimit(limit))
         );
     }
 
@@ -333,7 +341,7 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
                 .runUid(run.getRunUid())
                 .requestId(run.getRequestId())
                 .sessionId(run.getSessionId())
-                .visitorId(run.getVisitorId())
+                .userId(run.getUserId())
                 .entryAgent(run.getEntryAgent())
                 .status(run.getStatus())
                 .queryText(run.getQueryText())

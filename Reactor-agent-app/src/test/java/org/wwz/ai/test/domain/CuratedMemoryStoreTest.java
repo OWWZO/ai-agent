@@ -49,7 +49,7 @@ public class CuratedMemoryStoreTest {
 
     @Test
     public void replaceAndRemoveBySubstring() {
-        LtmOwner owner = LtmOwner.visitor("v1");
+        LtmOwner owner = LtmOwner.user("v1");
         store.add(owner, CuratedMemoryScope.CURATED, "deploy port is 8080", "s", "r", "tool");
         Assert.assertTrue(store.replace(owner, CuratedMemoryScope.CURATED, "8080", "deploy port is 9090", "s", "r", "tool").isSuccess());
         Assert.assertTrue(store.listActive(owner, CuratedMemoryScope.CURATED).get(0).getContent().contains("9090"));

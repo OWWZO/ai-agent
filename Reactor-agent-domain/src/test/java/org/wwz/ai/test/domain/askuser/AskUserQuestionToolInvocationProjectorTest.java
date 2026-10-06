@@ -61,11 +61,11 @@ public class AskUserQuestionToolInvocationProjectorTest {
             @Override public Optional<UserQuestionRecord> findByResumeRequestId(String resumeRequestId) { return Optional.empty(); }
             @Override public List<UserQuestionRecord> listOpenBySessionId(String sessionId) { return List.of(); }
             @Override public boolean hasOpenBySessionId(String sessionId) { return false; }
-            @Override public boolean casAnswerPending(String questionId, String visitorId, Map<String, String> answers, String resumeRequestId) { return false; }
-            @Override public boolean casClaimResume(String resumeRequestId, String visitorId) { return false; }
+            @Override public boolean casAnswerPending(String questionId, String userId, Map<String, String> answers, String resumeRequestId) { return false; }
+            @Override public boolean casClaimResume(String resumeRequestId, String userId) { return false; }
             @Override public boolean markAnswered(String questionId) { return false; }
             @Override public boolean markStatus(String questionId, String status) { return false; }
-            @Override public boolean casCancel(String questionId, String visitorId) { return false; }
+            @Override public boolean casCancel(String questionId, String userId) { return false; }
         };
 
         List<ProjectedReplayEvent> events = new AskUserQuestionToolInvocationProjector(repository)
@@ -100,11 +100,11 @@ public class AskUserQuestionToolInvocationProjectorTest {
             @Override public Optional<UserQuestionRecord> findByResumeRequestId(String resumeRequestId) { return Optional.empty(); }
             @Override public List<UserQuestionRecord> listOpenBySessionId(String sessionId) { return List.of(persisted); }
             @Override public boolean hasOpenBySessionId(String sessionId) { return false; }
-            @Override public boolean casAnswerPending(String questionId, String visitorId, Map<String, String> answers, String resumeRequestId) { return false; }
-            @Override public boolean casClaimResume(String resumeRequestId, String visitorId) { return false; }
+            @Override public boolean casAnswerPending(String questionId, String userId, Map<String, String> answers, String resumeRequestId) { return false; }
+            @Override public boolean casClaimResume(String resumeRequestId, String userId) { return false; }
             @Override public boolean markAnswered(String questionId) { return false; }
             @Override public boolean markStatus(String questionId, String status) { return false; }
-            @Override public boolean casCancel(String questionId, String visitorId) { return false; }
+            @Override public boolean casCancel(String questionId, String userId) { return false; }
         };
 
         List<ProjectedReplayEvent> events = new AskUserQuestionToolInvocationProjector(repository)

@@ -1,7 +1,7 @@
 package org.wwz.ai.types.agent.exception;
 
 /**
- * 同一访客已有进行中的 Agent run 时拒绝新启动。
+ * 同一用户已有进行中的 Agent run 时拒绝新启动。
  */
 public class AgentConcurrentRunException extends RuntimeException {
 

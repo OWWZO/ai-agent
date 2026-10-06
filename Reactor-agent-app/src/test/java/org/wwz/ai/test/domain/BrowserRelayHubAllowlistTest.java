@@ -26,31 +26,31 @@ public class BrowserRelayHubAllowlistTest {
         BrowserRelayHub hub = new BrowserRelayHub(new BrowserRelayProperties());
         WebSocketSession session = Mockito.mock(WebSocketSession.class);
         Map<String, Object> attrs = new HashMap<>();
-        attrs.put("visitorId", "visitor-1");
+        attrs.put("userId", "user-1");
         Mockito.when(session.isOpen()).thenReturn(true);
         Mockito.when(session.getId()).thenReturn("s1");
         Mockito.when(session.getAttributes()).thenReturn(attrs);
-        hub.register("visitor-1", session);
+        hub.register("user-1", session);
 
-        BrowserRpcResult eval = hub.call("visitor-1", "eval", Map.of(), Duration.ofSeconds(5));
+        BrowserRpcResult eval = hub.call("user-1", "eval", Map.of(), Duration.ofSeconds(5));
         Assert.assertFalse(eval.isOk());
         Assert.assertEquals("unsupported_action", eval.getErrorCode());
 
-        BrowserRpcResult site = hub.call("visitor-1", "site", Map.of(), Duration.ofSeconds(5));
+        BrowserRpcResult site = hub.call("user-1", "site", Map.of(), Duration.ofSeconds(5));
         Assert.assertFalse(site.isOk());
         Assert.assertEquals("unsupported_action", site.getErrorCode());
 
-        BrowserRpcResult cookies = hub.call("visitor-1", "cookies", Map.of(), Duration.ofMillis(20));
+        BrowserRpcResult cookies = hub.call("user-1", "cookies", Map.of(), Duration.ofMillis(20));
         Assert.assertNotEquals("unsupported_action", cookies.getErrorCode());
 
-        BrowserRpcResult bind = hub.call("visitor-1", "bind", Map.of(), Duration.ofMillis(20));
+        BrowserRpcResult bind = hub.call("user-1", "bind", Map.of(), Duration.ofMillis(20));
         Assert.assertNotEquals("unsupported_action", bind.getErrorCode());
     }
 
     @Test
     public void shouldAcceptLeaseReleaseWithoutExtension() {
         BrowserRelayHub hub = new BrowserRelayHub(new BrowserRelayProperties());
-        BrowserRpcResult released = hub.call("visitor-1", "lease-release", Map.of(), Duration.ofSeconds(1));
+        BrowserRpcResult released = hub.call("user-1", "lease-release", Map.of(), Duration.ofSeconds(1));
         Assert.assertTrue(released.isOk());
     }
 
@@ -59,7 +59,7 @@ public class BrowserRelayHubAllowlistTest {
         BrowserRelayHub hub = new BrowserRelayHub(new BrowserRelayProperties());
         WebSocketSession session = Mockito.mock(WebSocketSession.class);
         Map<String, Object> attrs = new HashMap<>();
-        attrs.put("visitorId", "visitor-1");
+        attrs.put("userId", "user-1");
         Mockito.when(session.isOpen()).thenReturn(true);
         Mockito.when(session.getId()).thenReturn("s1");
         Mockito.when(session.getAttributes()).thenReturn(attrs);
@@ -70,10 +70,10 @@ public class BrowserRelayHubAllowlistTest {
             sent.countDown();
             return null;
         }).when(session).sendMessage(Mockito.any(TextMessage.class));
-        hub.register("visitor-1", session);
+        hub.register("user-1", session);
 
         CompletableFuture<BrowserRpcResult> call = CompletableFuture.supplyAsync(
-                () -> hub.call("visitor-1", "exec", Map.of(), Duration.ofSeconds(5)));
+                () -> hub.call("user-1", "exec", Map.of(), Duration.ofSeconds(5)));
         Assert.assertTrue(sent.await(1, TimeUnit.SECONDS));
         String id = com.alibaba.fastjson.JSON.parseObject(outgoing.get().getPayload()).getString("id");
         hub.onText(session, com.alibaba.fastjson.JSON.toJSONString(Map.of(
@@ -92,7 +92,7 @@ public class BrowserRelayHubAllowlistTest {
         BrowserRelayHub hub = new BrowserRelayHub(new BrowserRelayProperties());
         WebSocketSession session = Mockito.mock(WebSocketSession.class);
         Map<String, Object> attrs = new HashMap<>();
-        attrs.put("visitorId", "visitor-1");
+        attrs.put("userId", "user-1");
         Mockito.when(session.isOpen()).thenReturn(true);
         Mockito.when(session.getId()).thenReturn("s1");
         Mockito.when(session.getAttributes()).thenReturn(attrs);
@@ -103,12 +103,12 @@ public class BrowserRelayHubAllowlistTest {
             sent.countDown();
             return null;
         }).when(session).sendMessage(Mockito.any(TextMessage.class));
-        hub.register("visitor-1", session);
+        hub.register("user-1", session);
 
         CompletableFuture<BrowserRpcResult> first = CompletableFuture.supplyAsync(
-                () -> hub.call("visitor-1", "exec", Map.of("id", "rpc-first"), Duration.ofSeconds(5)));
+                () -> hub.call("user-1", "exec", Map.of("id", "rpc-first"), Duration.ofSeconds(5)));
         CompletableFuture<BrowserRpcResult> second = CompletableFuture.supplyAsync(
-                () -> hub.call("visitor-1", "tabs", Map.of("id", "rpc-second"), Duration.ofSeconds(5)));
+                () -> hub.call("user-1", "tabs", Map.of("id", "rpc-second"), Duration.ofSeconds(5)));
 
         Assert.assertTrue(sent.await(1, TimeUnit.SECONDS));
         Assert.assertEquals(2, outgoing.size());
@@ -148,7 +148,7 @@ public class BrowserRelayHubAllowlistTest {
         BrowserRelayHub hub = new BrowserRelayHub(new BrowserRelayProperties());
         WebSocketSession session = Mockito.mock(WebSocketSession.class);
         Map<String, Object> attrs = new HashMap<>();
-        attrs.put("visitorId", "visitor-1");
+        attrs.put("userId", "user-1");
         Mockito.when(session.isOpen()).thenReturn(true);
         Mockito.when(session.getId()).thenReturn("s1");
         Mockito.when(session.getAttributes()).thenReturn(attrs);
@@ -159,14 +159,14 @@ public class BrowserRelayHubAllowlistTest {
             sent.countDown();
             return null;
         }).when(session).sendMessage(Mockito.any(TextMessage.class));
-        hub.register("visitor-1", session);
+        hub.register("user-1", session);
 
         CompletableFuture<BrowserRpcResult> original = CompletableFuture.supplyAsync(
-                () -> hub.call("visitor-1", "exec", Map.of("id", "rpc-1"), Duration.ofSeconds(5)));
+                () -> hub.call("user-1", "exec", Map.of("id", "rpc-1"), Duration.ofSeconds(5)));
         Assert.assertTrue(sent.await(1, TimeUnit.SECONDS));
 
         BrowserRpcResult duplicate = hub.call(
-                "visitor-1", "tabs", Map.of("id", "rpc-1"), Duration.ofSeconds(1));
+                "user-1", "tabs", Map.of("id", "rpc-1"), Duration.ofSeconds(1));
         Assert.assertFalse(duplicate.isOk());
         Assert.assertEquals("duplicate_rpc_id", duplicate.getErrorCode());
         Assert.assertEquals(1, outgoing.size());

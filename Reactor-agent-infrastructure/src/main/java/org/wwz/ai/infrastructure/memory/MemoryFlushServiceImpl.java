@@ -216,8 +216,8 @@ public class MemoryFlushServiceImpl implements MemoryFlushService {
             IExecutionLedgerReadRepository ledger = ledgerReadRepositoryProvider.getIfAvailable();
             if (ledger != null && StringUtils.isNotBlank(sessionId)) {
                 DialogueSession session = ledger.querySessionEntity(sessionId);
-                if (session != null && StringUtils.isNotBlank(session.getVisitorId())) {
-                    return LtmOwnerResolver.resolve(session.getVisitorId(), null);
+                if (session != null && StringUtils.isNotBlank(session.getUserId())) {
+                    return LtmOwnerResolver.resolve(session.getUserId(), null);
                 }
             }
         } catch (Exception e) {

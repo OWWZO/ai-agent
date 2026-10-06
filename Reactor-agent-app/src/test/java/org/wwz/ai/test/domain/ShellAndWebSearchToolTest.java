@@ -133,11 +133,11 @@ public class ShellAndWebSearchToolTest {
         com.alibaba.fastjson.JSONObject request = JSON.parseObject(capturedBody.get());
         Assert.assertEquals(workspaceRoot, request.getString("workspaceRoot"));
         Assert.assertEquals("session-bash-align", request.getString("sessionId"));
-        Assert.assertEquals("visitor:anonymous", request.getString("ownerKey"));
+        Assert.assertEquals("user:anonymous", request.getString("ownerKey"));
     }
 
     @Test
-    public void bashShouldSendVisitorOwnerKey() {
+    public void bashShouldSendUserOwnerKey() {
         java.util.concurrent.atomic.AtomicReference<String> capturedBody = new java.util.concurrent.atomic.AtomicReference<>();
         RemoteHttpPort httpPort = request -> {
             capturedBody.set(request.getBody());
@@ -150,7 +150,7 @@ public class ShellAndWebSearchToolTest {
         AgentContext context = AgentContext.builder()
                 .requestId("req-bash-owner")
                 .sessionId("session-bash-owner")
-                .visitorId("v1")
+                .userId("v1")
                 .productFiles(new ArrayList<>())
                 .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
                 .build();
@@ -160,11 +160,11 @@ public class ShellAndWebSearchToolTest {
 
         ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of("command", "echo ok"));
         Assert.assertFalse(Boolean.TRUE.equals(payload.getFailed()));
-        Assert.assertEquals("visitor:v1", JSON.parseObject(capturedBody.get()).getString("ownerKey"));
+        Assert.assertEquals("user:v1", JSON.parseObject(capturedBody.get()).getString("ownerKey"));
     }
 
     @Test
-    public void bashShouldResolveOwnerKeyFromVisitorOrLtmOwner() {
+    public void bashShouldResolveOwnerKeyFromUserOrLtmOwner() {
         java.util.concurrent.atomic.AtomicReference<String> capturedBody = new java.util.concurrent.atomic.AtomicReference<>();
         RemoteHttpPort httpPort = request -> {
             capturedBody.set(request.getBody());
@@ -175,23 +175,23 @@ public class ShellAndWebSearchToolTest {
         SkillRuntimeOptions skillOptions = SkillRuntimeOptions.builder().enabled(false).build();
         BashTool tool = new BashTool(skillOptions, new SkillVirtualPaths(skillOptions));
 
-        AgentContext visitorContext = AgentContext.builder()
-                .requestId("req-bash-visitor")
-                .sessionId("session-bash-visitor")
-                .visitorId("v1")
+        AgentContext userContext = AgentContext.builder()
+                .requestId("req-bash-user")
+                .sessionId("session-bash-user")
+                .userId("v1")
                 .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
                 .build();
-        tool.setAgentContext(visitorContext);
+        tool.setAgentContext(userContext);
         tool.execute(Map.of("command", "echo ok"));
-        Assert.assertEquals("visitor:v1", JSON.parseObject(capturedBody.get()).getString("ownerKey"));
+        Assert.assertEquals("user:v1", JSON.parseObject(capturedBody.get()).getString("ownerKey"));
 
-        AgentContext userContext = AgentContext.builder()
+        AgentContext ltmOwnerContext = AgentContext.builder()
                 .requestId("req-bash-user")
                 .sessionId("session-bash-user")
                 .ltmOwner(LtmOwner.user("erp-1"))
                 .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
                 .build();
-        tool.setAgentContext(userContext);
+        tool.setAgentContext(ltmOwnerContext);
         tool.execute(Map.of("command", "echo ok"));
         Assert.assertEquals("user:erp-1", JSON.parseObject(capturedBody.get()).getString("ownerKey"));
     }

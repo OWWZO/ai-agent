@@ -18,6 +18,8 @@ public interface IArtifactLedgerDao {
 
     List<ArtifactRecord> queryByRunIds(@Param("runIds") List<Long> runIds);
 
+    List<ArtifactRecord> queryBySessionId(@Param("sessionId") String sessionId);
+
     List<ArtifactRecord> queryByToolInvocationIds(@Param("toolInvocationIds") List<Long> toolInvocationIds);
 
     List<ArtifactRecord> queryInputArtifactsByRunIds(@Param("runIds") List<Long> runIds);

@@ -22,7 +22,7 @@ public class AgentRunInjectDegradeTest {
     @Test
     public void turnClosedDegradesToNewRun() {
         ActiveAgentRunRegistry registry = new ActiveAgentRunRegistry();
-        registry.begin("req-closed", "sess-1", "visitor-1");
+        registry.begin("req-closed", "sess-1", "user-1");
         AgentContext context = AgentContext.builder()
                 .requestId("req-closed")
                 .sessionId("sess-1")

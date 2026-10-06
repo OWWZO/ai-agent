@@ -257,7 +257,7 @@ public class ImageGenerationToolTest {
 
     private ReactorConfig buildConfig() {
         ReactorConfig reactorConfig = new ReactorConfig();
-        ReflectionTestUtils.setField(reactorConfig, "imageGenerationBaseUrl", "https://www.micuapi.ai");
+        ReflectionTestUtils.setField(reactorConfig, "imageGenerationBaseUrl", "https://image-provider.example");
         ReflectionTestUtils.setField(reactorConfig, "imageGenerationApiKey", "test-key");
         ReflectionTestUtils.setField(reactorConfig, "imageGenerationModel", "gpt-image-2.5-flare");
         return reactorConfig;

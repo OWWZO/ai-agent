@@ -24,7 +24,7 @@ import org.wwz.ai.infrastructure.dao.reactor.IDialogueRunLedgerDao;
 import org.wwz.ai.infrastructure.dao.reactor.IDialogueSessionLedgerDao;
 import org.wwz.ai.infrastructure.dao.reactor.ILlmInvocationLedgerDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolInvocationLedgerDao;
-import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
+import org.wwz.ai.application.agent.authorization.ConversationSessionAuthorizationService;
 import org.wwz.ai.trigger.http.agent.AgentConversationHistoryController;
 
 import java.lang.reflect.Field;
@@ -132,8 +132,8 @@ public class ReplayProjectorBeanTopologyTest {
         }
 
         @Bean
-        public ConversationSessionOwnershipApplicationService conversationSessionOwnershipApplicationService() {
-            return Mockito.mock(ConversationSessionOwnershipApplicationService.class);
+        public ConversationSessionAuthorizationService conversationSessionAuthorizationService() {
+            return Mockito.mock(ConversationSessionAuthorizationService.class);
         }
     }
 }

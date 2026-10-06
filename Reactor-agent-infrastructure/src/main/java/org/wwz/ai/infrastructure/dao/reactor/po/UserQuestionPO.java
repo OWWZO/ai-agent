@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 public class UserQuestionPO {
     private Long id;
     private String questionId;
-    private String visitorId;
+    private String userId;
     private String sessionId;
     private Long sourceRunId;
     private String sourceRequestId;

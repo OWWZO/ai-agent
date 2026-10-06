@@ -18,11 +18,12 @@ import org.wwz.ai.domain.agent.ledger.model.tooloutput.FileToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRef;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolStructuredOutput;
 import org.wwz.ai.trigger.http.agent.AgentConversationHistoryController;
+import org.wwz.ai.trigger.http.agent.vo.ArtifactReferenceRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationHistoryPageRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationRunReplayRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationSessionRespVO;
-import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
-import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
+import org.wwz.ai.application.agent.authorization.ConversationSessionAuthorizationService;
+import org.wwz.ai.types.agent.user.UserRequestContext;
 import org.wwz.ai.types.enums.ResponseCode;
 
 import java.time.LocalDateTime;
@@ -35,13 +36,13 @@ import java.util.Map;
 public class ConversationHistoryControllerTest {
 
     @Before
-    public void bindVisitor() {
-        VisitorRequestContext.bind("visitor-test");
+    public void bindUser() {
+        UserRequestContext.bind("user-test");
     }
 
     @After
-    public void clearVisitor() {
-        VisitorRequestContext.clear();
+    public void clearUser() {
+        UserRequestContext.clear();
     }
 
     @Test
@@ -57,8 +58,8 @@ public class ConversationHistoryControllerTest {
         AgentConversationHistoryController controller = new AgentConversationHistoryController();
         ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
         ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
-        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
-                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
+        ReflectionTestUtils.setField(controller, "conversationSessionAuthorizationService",
+                Mockito.mock(ConversationSessionAuthorizationService.class));
 
         int artifactQueriesBefore = ctx.store.queryArtifactsByRunIdsCount;
         int toolQueriesBefore = ctx.store.queryToolByRunIdsCount;
@@ -96,8 +97,8 @@ public class ConversationHistoryControllerTest {
         AgentConversationHistoryController controller = new AgentConversationHistoryController();
         ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
         ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
-        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
-                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
+        ReflectionTestUtils.setField(controller, "conversationSessionAuthorizationService",
+                Mockito.mock(ConversationSessionAuthorizationService.class));
 
         Response<ConversationHistoryPageRespVO> response = controller.detail(
                 "session-full-summary-001", 20, null);
@@ -110,6 +111,96 @@ public class ConversationHistoryControllerTest {
     }
 
     @Test
+    public void shouldReturnVisibleInputAndOutputFilesAcrossSessionRuns() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        seedRun(ctx, "req-files-001", "session-files-001", "file_tool",
+                "第一轮生成文件", LocalDateTime.of(2026, 5, 2, 10, 0, 0),
+                ExecutionLedgerConstants.STATUS_SUCCESS, "summary:req-files-001", "report-1.md");
+        seedRun(ctx, "req-files-002", "session-files-001", "file_tool",
+                "第二轮生成文件", LocalDateTime.of(2026, 5, 2, 10, 5, 0),
+                ExecutionLedgerConstants.STATUS_SUCCESS, "summary:req-files-002", "report-2.md");
+
+        Long firstRunId = ctx.store.runs.values().stream()
+                .filter(run -> "session-files-001".equals(run.getSessionId()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+        ctx.recorder.recordArtifacts(List.of(
+                ArtifactRecordCommand.builder()
+                        .runId(firstRunId)
+                        .requestId("req-files-001")
+                        .artifactRole(ExecutionLedgerConstants.ARTIFACT_ROLE_INPUT)
+                        .visibility(ExecutionLedgerConstants.VISIBILITY_VISIBLE)
+                        .sourceType(ExecutionLedgerConstants.SOURCE_TYPE_USER_UPLOAD)
+                        .fileName("input.csv")
+                        .storageKey("workspace/input.csv")
+                        .downloadUrl("https://file.example.com/download/input.csv")
+                        .previewUrl("https://file.example.com/preview/input.csv")
+                        .metadataJson("{\"relativePath\":\"uploads/input.csv\"}")
+                        .build(),
+                ArtifactRecordCommand.builder()
+                        .runId(firstRunId)
+                        .requestId("req-files-001")
+                        .artifactRole(ExecutionLedgerConstants.ARTIFACT_ROLE_OUTPUT)
+                        .visibility(ExecutionLedgerConstants.VISIBILITY_INTERNAL)
+                        .sourceType(ExecutionLedgerConstants.SOURCE_TYPE_TOOL_OUTPUT)
+                        .fileName("internal.md")
+                        .storageKey("workspace/internal.md")
+                        .build(),
+                ArtifactRecordCommand.builder()
+                        .runId(firstRunId)
+                        .requestId("req-files-001")
+                        .artifactRole(ExecutionLedgerConstants.ARTIFACT_ROLE_OUTPUT)
+                        .visibility(ExecutionLedgerConstants.VISIBILITY_VISIBLE)
+                        .sourceType(ExecutionLedgerConstants.SOURCE_TYPE_TOOL_OUTPUT)
+                        .fileName("deleted.md")
+                        .storageKey("workspace/deleted.md")
+                        .build()
+        ));
+        ctx.store.artifacts.values().stream()
+                .filter(artifact -> "report-1.md".equals(artifact.getFileName()))
+                .findFirst()
+                .orElseThrow()
+                .setMetadataJson("{\"relativePath\":\"reports/report-1.md\"}");
+        ctx.store.artifacts.values().stream()
+                .filter(artifact -> "deleted.md".equals(artifact.getFileName()))
+                .findFirst()
+                .orElseThrow()
+                .setDeleted(1);
+
+        AgentConversationHistoryController controller = new AgentConversationHistoryController();
+        ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
+        ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
+        ReflectionTestUtils.setField(controller, "conversationSessionAuthorizationService",
+                Mockito.mock(ConversationSessionAuthorizationService.class));
+
+        Response<List<ArtifactReferenceRespVO>> response = controller.files("session-files-001");
+
+        Assert.assertEquals(ResponseCode.SUCCESS.getCode(), response.getCode());
+        Assert.assertNotNull(response.getData());
+        Assert.assertEquals(3, response.getData().size());
+        ArtifactReferenceRespVO report = response.getData().stream()
+                .filter(file -> "report-1.md".equals(file.getDisplayName()))
+                .findFirst()
+                .orElseThrow();
+        Assert.assertEquals("reports/report-1.md", report.getRelativePath());
+        Assert.assertEquals("oss://report-1.md", report.getResourceKey());
+        Assert.assertEquals("https://file.example.com/preview/report-1.md", report.getPreviewUrl());
+        Assert.assertEquals("https://file.example.com/download/report-1.md", report.getDownloadUrl());
+
+        ArtifactReferenceRespVO input = response.getData().stream()
+                .filter(file -> "input.csv".equals(file.getDisplayName()))
+                .findFirst()
+                .orElseThrow();
+        Assert.assertEquals("uploads/input.csv", input.getRelativePath());
+        Assert.assertEquals("workspace/input.csv", input.getResourceKey());
+        Assert.assertEquals(1, ctx.store.queryArtifactsBySessionIdCount);
+        Assert.assertEquals(0, ctx.store.queryLlmByRunIdsCount);
+        Assert.assertEquals(0, ctx.store.queryToolByRunIdsCount);
+        Assert.assertEquals(0, ctx.store.readToolOutputByInvocationIdsCount);
+    }
+
+    @Test
     public void shouldReplayOneRunOnlyAfterSessionOwnershipLookup() {
         ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
         seedRun(ctx, "req-replay-001", "session-replay-001", "file_tool",
@@ -119,8 +210,8 @@ public class ConversationHistoryControllerTest {
         AgentConversationHistoryController controller = new AgentConversationHistoryController();
         ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
         ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
-        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
-                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
+        ReflectionTestUtils.setField(controller, "conversationSessionAuthorizationService",
+                Mockito.mock(ConversationSessionAuthorizationService.class));
 
         Response<ConversationRunReplayRespVO> response = controller.replay("req-replay-001");
 
@@ -140,15 +231,15 @@ public class ConversationHistoryControllerTest {
                 "private run", LocalDateTime.of(2026, 5, 2, 10, 0, 0),
                 ExecutionLedgerConstants.STATUS_SUCCESS, "summary:req-owned-001", "private.md");
 
-        ConversationSessionOwnershipApplicationService ownership =
-                Mockito.mock(ConversationSessionOwnershipApplicationService.class);
+        ConversationSessionAuthorizationService ownership =
+                Mockito.mock(ConversationSessionAuthorizationService.class);
         Mockito.doThrow(new RuntimeException("denied"))
                 .when(ownership)
-                .ensureExistingSessionAccessible("visitor-test", "session-owned-001");
+                .ensureExistingSessionAccessible("user-test", "session-owned-001");
         AgentConversationHistoryController controller = new AgentConversationHistoryController();
         ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
         ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
-        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService", ownership);
+        ReflectionTestUtils.setField(controller, "conversationSessionAuthorizationService", ownership);
 
         int llmQueriesBefore = ctx.store.queryLlmByRunIdCount;
         int toolQueriesBefore = ctx.store.queryToolByRunIdCount;
@@ -159,6 +250,30 @@ public class ConversationHistoryControllerTest {
         Assert.assertEquals(llmQueriesBefore, ctx.store.queryLlmByRunIdCount);
         Assert.assertEquals(toolQueriesBefore, ctx.store.queryToolByRunIdCount);
         Assert.assertEquals(artifactQueriesBefore, ctx.store.queryArtifactsByRunIdCount);
+    }
+
+    @Test
+    public void shouldRejectSessionFilesBeforeLoadingArtifactsWhenOwnershipFails() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        seedRun(ctx, "req-files-owned-001", "session-files-owned-001", "file_tool",
+                "private files", LocalDateTime.of(2026, 5, 2, 10, 0, 0),
+                ExecutionLedgerConstants.STATUS_SUCCESS, "summary:req-files-owned-001", "private.md");
+
+        ConversationSessionAuthorizationService ownership =
+                Mockito.mock(ConversationSessionAuthorizationService.class);
+        Mockito.doThrow(new RuntimeException("denied"))
+                .when(ownership)
+                .ensureExistingSessionAccessible("user-test", "session-files-owned-001");
+        AgentConversationHistoryController controller = new AgentConversationHistoryController();
+        ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
+        ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
+        ReflectionTestUtils.setField(controller, "conversationSessionAuthorizationService", ownership);
+
+        int artifactQueriesBefore = ctx.store.queryArtifactsBySessionIdCount;
+        Response<List<ArtifactReferenceRespVO>> response = controller.files("session-files-owned-001");
+
+        Assert.assertEquals(ResponseCode.UN_ERROR.getCode(), response.getCode());
+        Assert.assertEquals(artifactQueriesBefore, ctx.store.queryArtifactsBySessionIdCount);
     }
 
     @Test
@@ -177,8 +292,8 @@ public class ConversationHistoryControllerTest {
         AgentConversationHistoryController controller = new AgentConversationHistoryController();
         ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
         ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
-        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
-                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
+        ReflectionTestUtils.setField(controller, "conversationSessionAuthorizationService",
+                Mockito.mock(ConversationSessionAuthorizationService.class));
 
         Response<ConversationHistoryPageRespVO> first = controller.detail("session-cursor-001", 1, null);
         Assert.assertEquals(ResponseCode.SUCCESS.getCode(), first.getCode());
@@ -210,8 +325,8 @@ public class ConversationHistoryControllerTest {
         AgentConversationHistoryController controller = new AgentConversationHistoryController();
         ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
         ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
-        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
-                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
+        ReflectionTestUtils.setField(controller, "conversationSessionAuthorizationService",
+                Mockito.mock(ConversationSessionAuthorizationService.class));
 
         Response<List<ConversationSessionRespVO>> response = controller.list(20);
 
@@ -246,8 +361,8 @@ public class ConversationHistoryControllerTest {
         AgentConversationHistoryController controller = new AgentConversationHistoryController();
         ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
         ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
-        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
-                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
+        ReflectionTestUtils.setField(controller, "conversationSessionAuthorizationService",
+                Mockito.mock(ConversationSessionAuthorizationService.class));
 
         Response<ConversationHistoryPageRespVO> response = controller.detail("session-react-structured-001", 20, null);
 
@@ -277,8 +392,8 @@ public class ConversationHistoryControllerTest {
         AgentConversationHistoryController controller = new AgentConversationHistoryController();
         ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
         ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
-        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
-                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
+        ReflectionTestUtils.setField(controller, "conversationSessionAuthorizationService",
+                Mockito.mock(ConversationSessionAuthorizationService.class));
 
         Response<ConversationHistoryPageRespVO> response = controller.detail("session-plan-solve-001", 20, null);
 
@@ -307,8 +422,8 @@ public class ConversationHistoryControllerTest {
         AgentConversationHistoryController controller = new AgentConversationHistoryController();
         ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
         ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
-        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
-                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
+        ReflectionTestUtils.setField(controller, "conversationSessionAuthorizationService",
+                Mockito.mock(ConversationSessionAuthorizationService.class));
 
         Response<List<ConversationSessionRespVO>> response = controller.list(null);
 
@@ -330,8 +445,8 @@ public class ConversationHistoryControllerTest {
         AgentConversationHistoryController controller = new AgentConversationHistoryController();
         ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
         ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
-        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
-                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
+        ReflectionTestUtils.setField(controller, "conversationSessionAuthorizationService",
+                Mockito.mock(ConversationSessionAuthorizationService.class));
 
         Response<ConversationHistoryPageRespVO> response = controller.detail("session-history-stop-001", 20, null);
 
@@ -358,8 +473,8 @@ public class ConversationHistoryControllerTest {
         AgentConversationHistoryController controller = new AgentConversationHistoryController();
         ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
         ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
-        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
-                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
+        ReflectionTestUtils.setField(controller, "conversationSessionAuthorizationService",
+                Mockito.mock(ConversationSessionAuthorizationService.class));
 
         Response<ConversationHistoryPageRespVO> response = controller.detail("session-missing-001", 20, null);
 
@@ -424,7 +539,7 @@ public class ConversationHistoryControllerTest {
                 .runUid(requestId)
                 .requestId(requestId)
                 .sessionId(sessionId)
-                .visitorId("visitor-test")
+                .userId("user-test")
                 .entryAgent(entryAgent)
                 .queryText(queryText)
                 .startedAt(startedAt)

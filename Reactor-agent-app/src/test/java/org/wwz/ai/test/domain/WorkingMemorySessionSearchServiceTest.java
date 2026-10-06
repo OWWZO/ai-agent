@@ -58,11 +58,11 @@ public class WorkingMemorySessionSearchServiceTest {
     public void discoveryReturnsLightweightHitWithoutSessionDump() {
         IWorkingMemoryMessageDao dao = mock(IWorkingMemoryMessageDao.class);
         WorkingMemorySearchMessage hit = message(2L, "request-1", 1, "Remember the billing decision", "USER", 2);
-        when(dao.searchFullTextByVisitor(eq("visitor-1"), eq("billing"), eq(4), anyList())).thenReturn(List.of(hit));
+        when(dao.searchFullTextByUserId(eq("user-1"), eq("billing"), eq(4), anyList())).thenReturn(List.of(hit));
         when(dao.selectSessionSummary("session-1")).thenReturn(ownedSummary());
 
         String result = new WorkingMemorySessionSearchService(dao).search(SessionSearchRequest.builder()
-                .visitorId("visitor-1")
+                .userId("user-1")
                 .query("billing")
                 .limit(1)
                 .scope("user")
@@ -72,7 +72,7 @@ public class WorkingMemorySessionSearchServiceTest {
         Assert.assertTrue(payload.getBooleanValue("success"));
         Assert.assertEquals("discover", payload.getString("mode"));
         Assert.assertEquals("USER,ASSISTANT", payload.getString("role_filter"));
-        verify(dao).searchFullTextByVisitor(eq("visitor-1"), eq("billing"), eq(4), eq(List.of("USER", "ASSISTANT")));
+        verify(dao).searchFullTextByUserId(eq("user-1"), eq("billing"), eq(4), eq(List.of("USER", "ASSISTANT")));
         verify(dao, never()).selectHistoryBySession(any());
         JSONObject entry = payload.getJSONArray("results").getJSONObject(0);
         Assert.assertEquals(2L, entry.getLongValue("match_message_id"));
@@ -89,12 +89,12 @@ public class WorkingMemorySessionSearchServiceTest {
     public void discoveryAcceptsExplicitToolRoleFilter() {
         IWorkingMemoryMessageDao dao = mock(IWorkingMemoryMessageDao.class);
         WorkingMemorySearchMessage toolHit = message(9L, "request-9", 0, "GenUI HtmlFrame is a separate path", "TOOL", 1);
-        when(dao.searchFullTextByVisitor(eq("visitor-1"), eq("GenUI"), eq(4), eq(List.of("TOOL"))))
+        when(dao.searchFullTextByUserId(eq("user-1"), eq("GenUI"), eq(4), eq(List.of("TOOL"))))
                 .thenReturn(List.of(toolHit));
 
         JSONObject payload = JSON.parseObject(new WorkingMemorySessionSearchService(dao).search(
                 SessionSearchRequest.builder()
-                        .visitorId("visitor-1")
+                        .userId("user-1")
                         .query("GenUI")
                         .limit(1)
                         .roleFilter("tool")
@@ -110,12 +110,12 @@ public class WorkingMemorySessionSearchServiceTest {
         IWorkingMemoryMessageDao dao = mock(IWorkingMemoryMessageDao.class);
         WorkingMemorySearchMessage currentReady = message("session-current", 1L, "r1", 0, "GenUI in current", "USER", 1);
         WorkingMemorySearchMessage other = message("session-other", 2L, "r2", 0, "GenUI elsewhere", "USER", 1);
-        when(dao.searchFullTextByVisitor(eq("visitor-1"), eq("GenUI"), eq(8), anyList()))
+        when(dao.searchFullTextByUserId(eq("user-1"), eq("GenUI"), eq(8), anyList()))
                 .thenReturn(List.of(currentReady, other));
 
         JSONObject payload = JSON.parseObject(new WorkingMemorySessionSearchService(dao).search(
                 SessionSearchRequest.builder()
-                        .visitorId("visitor-1")
+                        .userId("user-1")
                         .currentSessionId("session-current")
                         .query("GenUI")
                         .limit(2)
@@ -132,12 +132,12 @@ public class WorkingMemorySessionSearchServiceTest {
     public void discoveryKeepsInvalidHitsFromCurrentSession() {
         IWorkingMemoryMessageDao dao = mock(IWorkingMemoryMessageDao.class);
         WorkingMemorySearchMessage currentInvalid = message("session-current", 3L, "r3", 0, "old GenUI before compact", "USER", 2);
-        when(dao.searchFullTextByVisitor(eq("visitor-1"), eq("GenUI"), eq(4), anyList()))
+        when(dao.searchFullTextByUserId(eq("user-1"), eq("GenUI"), eq(4), anyList()))
                 .thenReturn(List.of(currentInvalid));
 
         JSONObject payload = JSON.parseObject(new WorkingMemorySessionSearchService(dao).search(
                 SessionSearchRequest.builder()
-                        .visitorId("visitor-1")
+                        .userId("user-1")
                         .currentSessionId("session-current")
                         .query("GenUI")
                         .limit(1)
@@ -156,11 +156,11 @@ public class WorkingMemorySessionSearchServiceTest {
         when(dao.searchFullTextBySession(eq("session-current"), eq("GenUI"), eq(4), anyList()))
                 .thenReturn(List.of(currentReady));
         when(dao.selectSessionSummary("session-current")).thenReturn(Map.of(
-                "visitorId", "visitor-1", "title", "Current"));
+                "userId", "user-1", "title", "Current"));
 
         JSONObject payload = JSON.parseObject(new WorkingMemorySessionSearchService(dao).search(
                 SessionSearchRequest.builder()
-                        .visitorId("visitor-1")
+                        .userId("user-1")
                         .currentSessionId("session-current")
                         .query("GenUI")
                         .limit(1)
@@ -176,12 +176,12 @@ public class WorkingMemorySessionSearchServiceTest {
     public void discoveryDropsFullTextHitsThatDoNotContainQuery() {
         IWorkingMemoryMessageDao dao = mock(IWorkingMemoryMessageDao.class);
         WorkingMemorySearchMessage junk = message(1L, "r", 0, "unrelated popular session about spring", "USER", 1);
-        when(dao.searchFullTextByVisitor(eq("visitor-1"), eq("zqv9_no_such_session_token_71x"), eq(40), anyList()))
+        when(dao.searchFullTextByUserId(eq("user-1"), eq("zqv9_no_such_session_token_71x"), eq(40), anyList()))
                 .thenReturn(List.of(junk));
 
         JSONObject payload = JSON.parseObject(new WorkingMemorySessionSearchService(dao).search(
                 SessionSearchRequest.builder()
-                        .visitorId("visitor-1")
+                        .userId("user-1")
                         .query("zqv9_no_such_session_token_71x")
                         .limit(10)
                         .build()));
@@ -202,7 +202,7 @@ public class WorkingMemorySessionSearchServiceTest {
 
         JSONObject payload = JSON.parseObject(new WorkingMemorySessionSearchService(dao).search(
                 SessionSearchRequest.builder()
-                        .visitorId("visitor-1")
+                        .userId("user-1")
                         .sessionId("session-1")
                         .query("Spring AI")
                         .limit(1)
@@ -221,7 +221,7 @@ public class WorkingMemorySessionSearchServiceTest {
 
         JSONObject payload = JSON.parseObject(new WorkingMemorySessionSearchService(dao).search(
                 SessionSearchRequest.builder()
-                        .visitorId("visitor-1")
+                        .userId("user-1")
                         .sessionId("session-1")
                         .query("Spring AI")
                         .aroundMessageId(3L)
@@ -238,7 +238,7 @@ public class WorkingMemorySessionSearchServiceTest {
 
         JSONObject payload = JSON.parseObject(new WorkingMemorySessionSearchService(dao).search(
                 SessionSearchRequest.builder()
-                        .visitorId("visitor-1")
+                        .userId("user-1")
                         .aroundMessageId(3L)
                         .build()));
 
@@ -252,14 +252,14 @@ public class WorkingMemorySessionSearchServiceTest {
 
         JSONObject payload = JSON.parseObject(new WorkingMemorySessionSearchService(dao).search(
                 SessionSearchRequest.builder()
-                        .visitorId("visitor-1")
+                        .userId("user-1")
                         .query("billing")
                         .limit(0)
                         .build()));
 
         Assert.assertFalse(payload.getBooleanValue("success"));
         Assert.assertTrue(payload.getString("error").contains("limit"));
-        verify(dao, never()).searchFullTextByVisitor(any(), any(), anyInt(), anyList());
+        verify(dao, never()).searchFullTextByUserId(any(), any(), anyInt(), anyList());
     }
 
     @Test
@@ -269,7 +269,7 @@ public class WorkingMemorySessionSearchServiceTest {
 
         JSONObject payload = JSON.parseObject(new WorkingMemorySessionSearchService(dao).search(
                 SessionSearchRequest.builder()
-                        .visitorId("visitor-1")
+                        .userId("user-1")
                         .sessionId("session-1")
                         .aroundMessageId(1L)
                         .window(0)
@@ -290,7 +290,7 @@ public class WorkingMemorySessionSearchServiceTest {
                 message(5L, "r", 4, "five", "USER", 1)));
 
         String result = new WorkingMemorySessionSearchService(dao).search(SessionSearchRequest.builder()
-                .visitorId("visitor-1")
+                .userId("user-1")
                 .sessionId("session-1")
                 .aroundMessageId(3L)
                 .window(1)
@@ -322,7 +322,7 @@ public class WorkingMemorySessionSearchServiceTest {
 
         JSONObject payload = JSON.parseObject(new WorkingMemorySessionSearchService(dao).search(
                 SessionSearchRequest.builder()
-                        .visitorId("visitor-1")
+                        .userId("user-1")
                         .sessionId("session-1")
                         .aroundMessageId(1L)
                         .window(2)
@@ -343,7 +343,7 @@ public class WorkingMemorySessionSearchServiceTest {
 
         JSONObject payload = JSON.parseObject(new WorkingMemorySessionSearchService(dao).search(
                 SessionSearchRequest.builder()
-                        .visitorId("visitor-1")
+                        .userId("user-1")
                         .sessionId("session-1")
                         .aroundMessageId(3L)
                         .window(5)
@@ -365,7 +365,7 @@ public class WorkingMemorySessionSearchServiceTest {
 
         JSONObject payload = JSON.parseObject(new WorkingMemorySessionSearchService(dao).search(
                 SessionSearchRequest.builder()
-                        .visitorId("visitor-1")
+                        .userId("user-1")
                         .sessionId("session-1")
                         .aroundMessageId(2L)
                         .window(2)
@@ -385,7 +385,7 @@ public class WorkingMemorySessionSearchServiceTest {
 
         JSONObject payload = JSON.parseObject(new WorkingMemorySessionSearchService(dao).search(
                 SessionSearchRequest.builder()
-                        .visitorId("visitor-1")
+                        .userId("user-1")
                         .sessionId("session-1")
                         .window(2)
                         .build()));
@@ -407,7 +407,7 @@ public class WorkingMemorySessionSearchServiceTest {
 
         JSONObject payload = JSON.parseObject(new WorkingMemorySessionSearchService(dao).search(
                 SessionSearchRequest.builder()
-                        .visitorId("visitor-1")
+                        .userId("user-1")
                         .sessionId("session-1")
                         .roleFilter("USER")
                         .build()));
@@ -422,11 +422,11 @@ public class WorkingMemorySessionSearchServiceTest {
     @Test
     public void readRejectsForeignSession() {
         IWorkingMemoryMessageDao dao = mock(IWorkingMemoryMessageDao.class);
-        when(dao.selectSessionSummary("session-1")).thenReturn(Map.of("visitorId", "someone-else"));
+        when(dao.selectSessionSummary("session-1")).thenReturn(Map.of("userId", "someone-else"));
 
         JSONObject payload = JSON.parseObject(new WorkingMemorySessionSearchService(dao).search(
                 SessionSearchRequest.builder()
-                        .visitorId("visitor-1")
+                        .userId("user-1")
                         .sessionId("session-1")
                         .build()));
 
@@ -436,13 +436,13 @@ public class WorkingMemorySessionSearchServiceTest {
     }
 
     @Test
-    public void browseReturnsRecentSessionsForVisitor() {
+    public void browseReturnsRecentSessionsForUser() {
         IWorkingMemoryMessageDao dao = mock(IWorkingMemoryMessageDao.class);
-        when(dao.selectRecentSessions("visitor-1", 3)).thenReturn(List.of(
+        when(dao.selectRecentSessions("user-1", 3)).thenReturn(List.of(
                 Map.of("sessionId", "session-2", "title", "Recent", "latestQueryText", "latest question")));
 
         JSONObject payload = JSON.parseObject(new WorkingMemorySessionSearchService(dao).search(
-                SessionSearchRequest.builder().visitorId("visitor-1").limit(2).build()));
+                SessionSearchRequest.builder().userId("user-1").limit(2).build()));
 
         Assert.assertEquals("browse", payload.getString("mode"));
         Assert.assertEquals("session-2", payload.getJSONArray("results").getJSONObject(0).getString("session_id"));
@@ -450,7 +450,7 @@ public class WorkingMemorySessionSearchServiceTest {
     }
 
     @Test
-    public void browseWithoutVisitorReturnsEmpty() {
+    public void browseWithoutUserReturnsEmpty() {
         IWorkingMemoryMessageDao dao = mock(IWorkingMemoryMessageDao.class);
 
         JSONObject payload = JSON.parseObject(new WorkingMemorySessionSearchService(dao).search(
@@ -512,7 +512,7 @@ public class WorkingMemorySessionSearchServiceTest {
     }
 
     private static Map<String, Object> ownedSummary() {
-        return Map.of("visitorId", "visitor-1", "title", "Billing", "lastActiveAt", "2026-08-31T00:00");
+        return Map.of("userId", "user-1", "title", "Billing", "lastActiveAt", "2026-08-31T00:00");
     }
 
     private static WorkingMemorySearchMessage message(Long id,

@@ -126,18 +126,23 @@ public class ExecutionLedgerReadRepository implements IExecutionLedgerReadReposi
     }
 
     @Override
-    public DialogueSessionView querySession(String visitorId, String sessionId) {
-        return dialogueSessionLedgerDao.querySessionViewByVisitor(visitorId, sessionId);
+    public DialogueSessionView querySession(String userId, String sessionId) {
+        return dialogueSessionLedgerDao.querySessionViewByUserId(userId, sessionId);
     }
 
     @Override
-    public List<DialogueSessionView> queryRecentSessions(String visitorId, int limit) {
-        // visitor 过滤在 DAO 层执行，避免先查全量 session 再在内存中泄露或误混访客数据。
-        return dialogueSessionLedgerDao.queryRecentSessionsByVisitor(visitorId, limit);
+    public List<DialogueSessionView> queryRecentSessions(String userId, int limit) {
+        // 用户过滤在 DAO 层执行，避免先查全量 session 再在内存中泄露或混入其他用户数据。
+        return dialogueSessionLedgerDao.queryRecentSessionsByUserId(userId, limit);
     }
 
     @Override
     public List<ArtifactRecord> queryArtifactsByRunIds(List<Long> runIds) {
         return artifactLedgerDao.queryByRunIds(runIds);
+    }
+
+    @Override
+    public List<ArtifactRecord> queryArtifactsBySessionId(String sessionId) {
+        return artifactLedgerDao.queryBySessionId(sessionId);
     }
 }

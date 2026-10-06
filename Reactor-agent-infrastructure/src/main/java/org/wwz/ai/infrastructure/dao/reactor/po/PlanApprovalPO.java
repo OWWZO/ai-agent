@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 public class PlanApprovalPO {
     private Long id;
     private String approvalId;
-    private String visitorId;
+    private String userId;
     private String sessionId;
     private Long sourceRunId;
     private String sourceRequestId;

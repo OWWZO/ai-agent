@@ -3,7 +3,6 @@ package org.wwz.ai.domain.agent.runtime;
 import lombok.Builder;
 import lombok.Value;
 import org.springframework.core.env.Environment;
-import org.wwz.ai.domain.agent.adapter.port.BrowserOperationLockPort;
 import org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort;
 import org.wwz.ai.domain.agent.adapter.port.KernelBrowserSessionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
@@ -62,9 +61,6 @@ public class ReactorRuntimeDependencies {
 
     /** 可选：每用户 Kernel 云端浏览器 session */
     KernelBrowserSessionPort kernelBrowserSessionPort;
-
-    /** 同一浏览器资源的进程内互斥；缺失时浏览器工具必须失败，不能无锁执行 */
-    BrowserOperationLockPort browserOperationLockPort;
 
     OpenCliProperties openCliProperties;
 
@@ -148,10 +144,6 @@ public class ReactorRuntimeDependencies {
 
     public KernelBrowserSessionPort getOptionalKernelBrowserSessionPort() {
         return kernelBrowserSessionPort;
-    }
-
-    public BrowserOperationLockPort getOptionalBrowserOperationLockPort() {
-        return browserOperationLockPort;
     }
 
     public Executor requireLlmExecutor() {

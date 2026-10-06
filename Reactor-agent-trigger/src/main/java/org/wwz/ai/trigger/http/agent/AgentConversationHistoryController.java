@@ -6,7 +6,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.wwz.ai.api.response.Response;
-import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
+import org.wwz.ai.application.agent.authorization.ConversationSessionAuthorizationService;
+import org.apache.commons.lang3.StringUtils;
+import org.wwz.ai.domain.agent.ledger.model.ArtifactView;
 import org.wwz.ai.domain.agent.ledger.model.ConversationHistoryPage;
 import org.wwz.ai.domain.agent.ledger.model.ConversationRunReplay;
 import org.wwz.ai.domain.agent.ledger.model.ConversationRunSummary;
@@ -14,12 +16,14 @@ import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionView;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerQueryService;
+import org.wwz.ai.domain.agent.ledger.replay.ArtifactRelativePath;
 import org.wwz.ai.domain.agent.ledger.replay.ConversationHistoryReplayService;
+import org.wwz.ai.trigger.http.agent.vo.ArtifactReferenceRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationHistoryPageRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationRunReplayRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationRunSummaryRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationSessionRespVO;
-import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
+import org.wwz.ai.types.agent.user.UserRequestContext;
 import org.wwz.ai.types.enums.ResponseCode;
 
 import javax.annotation.Resource;
@@ -40,13 +44,13 @@ public class AgentConversationHistoryController {
     private ConversationHistoryReplayService conversationHistoryReplayService;
 
     @Resource
-    private ConversationSessionOwnershipApplicationService conversationSessionOwnershipApplicationService;
+    private ConversationSessionAuthorizationService conversationSessionAuthorizationService;
 
     @GetMapping("/sessions")
     public Response<List<ConversationSessionRespVO>> list(
             @RequestParam(name = "limit", defaultValue = "20") Integer limit) {
-        String visitorId = VisitorRequestContext.requireVisitorId();
-        List<ConversationSessionRespVO> sessions = executionLedgerQueryService.queryRecentSessions(visitorId, limit == null ? 20 : limit)
+        String userId = UserRequestContext.requireUserId();
+        List<ConversationSessionRespVO> sessions = executionLedgerQueryService.queryRecentSessions(userId, limit == null ? 20 : limit)
                 .stream()
                 .map(this::toSessionRespVO)
                 .collect(Collectors.toList());
@@ -64,8 +68,8 @@ public class AgentConversationHistoryController {
             @RequestParam(name = "limit", defaultValue = "20") Integer limit,
             @RequestParam(name = "after", required = false) String after) {
         try {
-            conversationSessionOwnershipApplicationService.ensureExistingSessionAccessible(
-                    VisitorRequestContext.requireVisitorId(),
+            conversationSessionAuthorizationService.ensureExistingSessionAccessible(
+                    UserRequestContext.requireUserId(),
                     sessionId
             );
             ConversationHistoryPage page = conversationHistoryReplayService.queryConversationHistoryPage(
@@ -86,6 +90,32 @@ public class AgentConversationHistoryController {
         }
     }
 
+    @GetMapping("/sessions/{sessionId}/files")
+    public Response<List<ArtifactReferenceRespVO>> files(
+            @PathVariable("sessionId") String sessionId) {
+        try {
+            conversationSessionAuthorizationService.ensureExistingSessionAccessible(
+                    UserRequestContext.requireUserId(),
+                    sessionId
+            );
+            List<ArtifactReferenceRespVO> files = executionLedgerQueryService
+                    .querySessionArtifacts(sessionId)
+                    .stream()
+                    .map(this::toArtifactReferenceRespVO)
+                    .collect(Collectors.toList());
+            return Response.<List<ArtifactReferenceRespVO>>builder()
+                    .code(ResponseCode.SUCCESS.getCode())
+                    .info(ResponseCode.SUCCESS.getInfo())
+                    .data(files)
+                    .build();
+        } catch (Exception e) {
+            return Response.<List<ArtifactReferenceRespVO>>builder()
+                    .code(ResponseCode.UN_ERROR.getCode())
+                    .info(e.getMessage())
+                    .build();
+        }
+    }
+
     @GetMapping("/runs/{requestId}/replay")
     public Response<ConversationRunReplayRespVO> replay(
             @PathVariable("requestId") String requestId) {
@@ -94,9 +124,9 @@ public class AgentConversationHistoryController {
             if (run == null || run.getSessionId() == null) {
                 throw new IllegalArgumentException("requestId 对应的 run 不存在");
             }
-            // 先由 requestId 定位 session，再校验当前 visitor，最后才加载 replay 明细。
-            conversationSessionOwnershipApplicationService.ensureExistingSessionAccessible(
-                    VisitorRequestContext.requireVisitorId(),
+            // 先由 requestId 定位 session，再校验当前 userId，最后才加载 replay 明细。
+            conversationSessionAuthorizationService.ensureExistingSessionAccessible(
+                    UserRequestContext.requireUserId(),
                     run.getSessionId()
             );
             ConversationRunReplay replay = conversationHistoryReplayService.queryRunReplay(requestId);
@@ -202,6 +232,26 @@ public class AgentConversationHistoryController {
                 .durationMs(run.getDurationMs())
                 .contextUsage(replay.getContextUsage())
                 .replayFrames(replay.getReplayFrames() == null ? List.of() : replay.getReplayFrames())
+                .build();
+    }
+
+    private ArtifactReferenceRespVO toArtifactReferenceRespVO(ArtifactView artifact) {
+        String downloadUrl = artifact == null ? null : artifact.getDownloadUrl();
+        String previewUrl = artifact == null ? null : artifact.getPreviewUrl();
+        boolean missing = StringUtils.isBlank(downloadUrl) && StringUtils.isBlank(previewUrl);
+        return ArtifactReferenceRespVO.builder()
+                .artifactType(artifact == null ? null : artifact.getMimeType())
+                .displayName(artifact == null ? null : artifact.getFileName())
+                .relativePath(ArtifactRelativePath.resolve(artifact))
+                .resourceKey(artifact == null
+                        ? null
+                        : StringUtils.defaultIfBlank(artifact.getStorageKey(), artifact.getFileName()))
+                .downloadUrl(downloadUrl)
+                .previewUrl(previewUrl)
+                .fileSize(artifact == null ? null : artifact.getFileSize())
+                .mimeType(artifact == null ? null : artifact.getMimeType())
+                .missing(missing)
+                .missingReason(missing ? "artifact_not_found" : null)
                 .build();
     }
 

@@ -16,18 +16,18 @@ import java.util.concurrent.atomic.AtomicReference;
 public class SessionSearchToolTest {
 
     @Test
-    public void delegatesWithVisitorAndDefaultUserScope() {
-        AtomicReference<String> capturedVisitor = new AtomicReference<>();
+    public void delegatesWithUserIdAndDefaultUserScope() {
+        AtomicReference<String> capturedUserId = new AtomicReference<>();
         AtomicReference<String> capturedScope = new AtomicReference<>();
-        SessionSearchService stub = (sessionId, visitorId, query, limit, scope) -> {
-            capturedVisitor.set(visitorId);
+        SessionSearchService stub = (sessionId, userId, query, limit, scope) -> {
+            capturedUserId.set(userId);
             capturedScope.set(scope);
-            return "session_search hits (1) scope=" + scope + " visitor=" + visitorId
+            return "session_search hits (1) scope=" + scope + " userId=" + userId
                     + ":\n- sessionId=" + sessionId + " query: " + query;
         };
         AgentContext ctx = AgentContext.builder()
                 .sessionId("sess-1")
-                .ltmOwner(LtmOwner.visitor("visitor-abc"))
+                .ltmOwner(LtmOwner.user("user-abc"))
                 .runtimeDependencies(ReactorRuntimeDependencies.builder()
                         .sessionSearchService(stub)
                         .build())
@@ -43,7 +43,7 @@ public class SessionSearchToolTest {
         Assert.assertEquals("session_search", data.get("tool"));
         Assert.assertEquals(Boolean.TRUE, data.get("ok"));
         Assert.assertTrue(String.valueOf(data.get("result")).contains("小猫"));
-        Assert.assertEquals("visitor-abc", capturedVisitor.get());
+        Assert.assertEquals("user-abc", capturedUserId.get());
         Assert.assertEquals("user", capturedScope.get());
     }
 
@@ -64,13 +64,13 @@ public class SessionSearchToolTest {
     @Test
     public void respectsSessionScope() {
         AtomicReference<String> capturedScope = new AtomicReference<>();
-        SessionSearchService stub = (sessionId, visitorId, query, limit, scope) -> {
+        SessionSearchService stub = (sessionId, userId, query, limit, scope) -> {
             capturedScope.set(scope);
             return "ok";
         };
         AgentContext ctx = AgentContext.builder()
                 .sessionId("sess-1")
-                .ltmOwner(LtmOwner.visitor("v1"))
+                .ltmOwner(LtmOwner.user("v1"))
                 .runtimeDependencies(ReactorRuntimeDependencies.builder()
                         .sessionSearchService(stub)
                         .build())
@@ -103,10 +103,10 @@ public class SessionSearchToolTest {
             }
 
             @Override
-            public String search(String sessionId, String visitorId, String query, int limit, String scope) {
+            public String search(String sessionId, String userId, String query, int limit, String scope) {
                 return search(org.wwz.ai.domain.agent.memory.ltm.SessionSearchRequest.builder()
                         .currentSessionId(sessionId)
-                        .visitorId(visitorId)
+                        .userId(userId)
                         .query(query)
                         .limit(limit)
                         .scope(scope)
@@ -115,7 +115,7 @@ public class SessionSearchToolTest {
         };
         AgentContext ctx = AgentContext.builder()
                 .sessionId("sess-1")
-                .ltmOwner(LtmOwner.visitor("v1"))
+                .ltmOwner(LtmOwner.user("v1"))
                 .runtimeDependencies(ReactorRuntimeDependencies.builder()
                         .sessionSearchService(stub)
                         .build())
@@ -128,7 +128,7 @@ public class SessionSearchToolTest {
 
     @Test
     public void exposesStructuredServiceResultAtToolTopLevel() {
-        SessionSearchService stub = (sessionId, visitorId, query, limit, scope) ->
+        SessionSearchService stub = (sessionId, userId, query, limit, scope) ->
                 "{\"success\":true,\"mode\":\"browse\",\"results\":[],\"count\":0}";
         AgentContext ctx = AgentContext.builder()
                 .sessionId("sess-1")

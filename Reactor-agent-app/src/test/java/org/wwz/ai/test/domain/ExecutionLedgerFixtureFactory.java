@@ -129,12 +129,12 @@ public final class ExecutionLedgerFixtureFactory {
     static Long activateRun(AgentContext context,
                             AgentExecutionRecorder recorder,
                             String entryAgent,
-                            String visitorId) {
+                            String userId) {
         Long runId = recorder.createRun(org.wwz.ai.domain.agent.ledger.model.DialogueRunStartRecord.builder()
                 .runUid(context.getRequestId())
                 .requestId(context.getRequestId())
                 .sessionId(context.getSessionId())
-                .visitorId(visitorId)
+                .userId(userId)
                 .entryAgent(entryAgent)
                 .queryText(context.getQuery())
                 .startedAt(LocalDateTime.now())
@@ -251,6 +251,7 @@ public final class ExecutionLedgerFixtureFactory {
         int queryToolByRunIdsCount;
         int queryArtifactsByRunIdCount;
         int queryArtifactsByRunIdsCount;
+        int queryArtifactsBySessionIdCount;
         int readToolOutputByInvocationIdCount;
         int readToolOutputByInvocationIdsCount;
     }
@@ -527,8 +528,8 @@ public final class ExecutionLedgerFixtureFactory {
                         .build();
                 store.sessions.put(session.getId(), session);
             }
-            if (isBlank(session.getVisitorId())) {
-                session.setVisitorId(record.getVisitorId());
+            if (isBlank(session.getUserId())) {
+                session.setUserId(record.getUserId());
             }
             session.setTitle(record.getTitle());
             session.setStatus(record.getStatus());
@@ -562,7 +563,7 @@ public final class ExecutionLedgerFixtureFactory {
             return DialogueSession.builder()
                     .id(session.getId())
                     .sessionId(session.getSessionId())
-                    .visitorId(session.getVisitorId())
+                    .userId(session.getUserId())
                     .deleted(session.getDeleted())
                     .build();
         }
@@ -590,18 +591,18 @@ public final class ExecutionLedgerFixtureFactory {
         }
 
         @Override
-        public DialogueSessionView querySessionViewByVisitor(String visitorId, String sessionId) {
+        public DialogueSessionView querySessionViewByUserId(String userId, String sessionId) {
             DialogueSession session = queryBySessionId(sessionId);
-            if (session == null || !equalsNullable(visitorId, session.getVisitorId())) {
+            if (session == null || !equalsNullable(userId, session.getUserId())) {
                 return null;
             }
             return toSessionView(session);
         }
 
         @Override
-        public List<DialogueSessionView> queryRecentSessionsByVisitor(String visitorId, int limit) {
+        public List<DialogueSessionView> queryRecentSessionsByUserId(String userId, int limit) {
             return store.sessions.values().stream()
-                    .filter(item -> item.getDeleted() == 0 && equalsNullable(visitorId, item.getVisitorId()))
+                    .filter(item -> item.getDeleted() == 0 && equalsNullable(userId, item.getUserId()))
                     .sorted(Comparator.comparing(DialogueSession::getLastActiveAt, Comparator.nullsLast(Comparator.reverseOrder()))
                             .thenComparing(DialogueSession::getId, Comparator.reverseOrder()))
                     .limit(limit)
@@ -864,6 +865,20 @@ public final class ExecutionLedgerFixtureFactory {
         }
 
         @Override
+        public List<ArtifactRecord> queryBySessionId(String sessionId) {
+            store.queryArtifactsBySessionIdCount++;
+            return store.artifacts.values().stream()
+                    .filter(item -> item.getDeleted() == 0
+                            && ExecutionLedgerConstants.VISIBILITY_VISIBLE.equals(item.getVisibility())
+                            && store.runs.containsKey(item.getRunId())
+                            && sessionId.equals(store.runs.get(item.getRunId()).getSessionId()))
+                    .sorted(Comparator.comparing(ArtifactRecord::getCreateTime)
+                            .thenComparing(ArtifactRecord::getId))
+                    .map(ExecutionLedgerFixtureFactory::cloneArtifact)
+                    .toList();
+        }
+
+        @Override
         public List<ArtifactRecord> queryByToolInvocationIds(List<Long> toolInvocationIds) {
             return store.artifacts.values().stream()
                     .filter(item -> item.getDeleted() == 0
@@ -953,7 +968,7 @@ public final class ExecutionLedgerFixtureFactory {
                 .runUid(run.getRunUid())
                 .requestId(run.getRequestId())
                 .sessionId(run.getSessionId())
-                .visitorId(run.getVisitorId())
+                .userId(run.getUserId())
                 .entryAgent(run.getEntryAgent())
                 .status(run.getStatus())
                 .queryText(run.getQueryText())
@@ -979,7 +994,7 @@ public final class ExecutionLedgerFixtureFactory {
         return DialogueSession.builder()
                 .id(session.getId())
                 .sessionId(session.getSessionId())
-                .visitorId(session.getVisitorId())
+                .userId(session.getUserId())
                 .title(session.getTitle())
                 .status(session.getStatus())
                 .latestRequestId(session.getLatestRequestId())
@@ -1109,7 +1124,7 @@ public final class ExecutionLedgerFixtureFactory {
                 .runUid(run.getRunUid())
                 .requestId(run.getRequestId())
                 .sessionId(run.getSessionId())
-                .visitorId(run.getVisitorId())
+                .userId(run.getUserId())
                 .entryAgent(run.getEntryAgent())
                 .status(run.getStatus())
                 .queryText(run.getQueryText())
@@ -1133,7 +1148,7 @@ public final class ExecutionLedgerFixtureFactory {
         return DialogueSessionView.builder()
                 .id(session.getId())
                 .sessionId(session.getSessionId())
-                .visitorId(session.getVisitorId())
+                .userId(session.getUserId())
                 .title(session.getTitle())
                 .status(session.getStatus())
                 .latestRequestId(session.getLatestRequestId())

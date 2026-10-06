@@ -78,12 +78,12 @@ public class RequestDesktopControlToolInvocationProjectorTest {
             }
 
             @Override
-            public boolean casCompletePending(String controlId, String visitorId, String resumeRequestId) {
+            public boolean casCompletePending(String controlId, String userId, String resumeRequestId) {
                 return false;
             }
 
             @Override
-            public boolean casClaimResume(String resumeRequestId, String visitorId) {
+            public boolean casClaimResume(String resumeRequestId, String userId) {
                 return false;
             }
 
@@ -98,7 +98,7 @@ public class RequestDesktopControlToolInvocationProjectorTest {
             }
 
             @Override
-            public boolean casCancel(String controlId, String visitorId) {
+            public boolean casCancel(String controlId, String userId) {
                 return false;
             }
         };

@@ -15,7 +15,6 @@ import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
 import org.wwz.ai.domain.agent.runtime.tool.browser.KernelBrowserTool;
-import org.wwz.ai.infrastructure.adapter.port.InProcessBrowserOperationLockAdapter;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
 import org.wwz.ai.types.agent.config.OpenCliProperties;
@@ -35,10 +34,10 @@ public class KernelBrowserToolTest {
         CliExecutionPort cli = mockSuccessfulCli("connected to " + cdpWsUrl);
         KernelBrowserSessionPort sessionPort = Mockito.mock(KernelBrowserSessionPort.class);
         Mockito.when(sessionPort.isConfigured()).thenReturn(true);
-        Mockito.when(sessionPort.resolveForOwner("visitor-1")).thenReturn(KernelBrowserSession.builder()
-                .ownerKey("visitor-1")
+        Mockito.when(sessionPort.resolveForUser("user-1")).thenReturn(KernelBrowserSession.builder()
+                .userId("user-1")
                 .kernelSessionId("session-1")
-                .kernelBrowserName("rb-visitor-1")
+                .kernelBrowserName("rb-user-1")
                 .cdpWsUrl(cdpWsUrl)
                 .reconstructed(false)
                 .build());
@@ -59,7 +58,7 @@ public class KernelBrowserToolTest {
         Assert.assertFalse(invocation.getEnv().containsKey("OPENCLI_RELAY_SECRET"));
         Assert.assertFalse(invocation.getEnv().containsKey("OPENCLI_RELAY_VISITOR_ID"));
         Assert.assertEquals(List.of("KERNEL_API_KEY"), invocation.getUnsetEnv());
-        Assert.assertTrue(invocation.getArgs().contains("visitor:visitor-1"));
+        Assert.assertEquals(List.of("main.js", "browser", "list"), invocation.getArgs());
         Assert.assertFalse(JSON.toJSONString(payload).contains(cdpWsUrl));
     }
 
@@ -68,10 +67,10 @@ public class KernelBrowserToolTest {
         CliExecutionPort cli = mockSuccessfulCli("{\"ok\":true}");
         KernelBrowserSessionPort sessionPort = Mockito.mock(KernelBrowserSessionPort.class);
         Mockito.when(sessionPort.isConfigured()).thenReturn(true);
-        Mockito.when(sessionPort.resolveForOwner("visitor-1")).thenReturn(KernelBrowserSession.builder()
-                .ownerKey("visitor-1")
+        Mockito.when(sessionPort.resolveForUser("user-1")).thenReturn(KernelBrowserSession.builder()
+                .userId("user-1")
                 .kernelSessionId("session-2")
-                .kernelBrowserName("rb-visitor-1")
+                .kernelBrowserName("rb-user-1")
                 .cdpWsUrl("wss://proxy.kernel.example/browser/session-2")
                 .reconstructed(true)
                 .build());
@@ -85,14 +84,14 @@ public class KernelBrowserToolTest {
     }
 
     @Test
-    public void shouldSerializeKernelCallsForSameOwner() throws Exception {
+    public void shouldRunKernelCallsForSameOwnerConcurrently() throws Exception {
         String cdpWsUrl = "wss://proxy.kernel.example/browser/session-1";
         KernelBrowserSessionPort sessionPort = Mockito.mock(KernelBrowserSessionPort.class);
         Mockito.when(sessionPort.isConfigured()).thenReturn(true);
-        Mockito.when(sessionPort.resolveForOwner("visitor-1")).thenReturn(KernelBrowserSession.builder()
-                .ownerKey("visitor-1")
+        Mockito.when(sessionPort.resolveForUser("user-1")).thenReturn(KernelBrowserSession.builder()
+                .userId("user-1")
                 .kernelSessionId("session-1")
-                .kernelBrowserName("rb-visitor-1")
+                .kernelBrowserName("rb-user-1")
                 .cdpWsUrl(cdpWsUrl)
                 .reconstructed(false)
                 .build());
@@ -130,7 +129,7 @@ public class KernelBrowserToolTest {
         try {
             Assert.assertTrue(firstEntered.await(1, TimeUnit.SECONDS));
             second = CompletableFuture.supplyAsync(() -> tool.execute(input));
-            Assert.assertFalse(secondEntered.await(200, TimeUnit.MILLISECONDS));
+            Assert.assertTrue(secondEntered.await(1, TimeUnit.SECONDS));
         } finally {
             release.countDown();
         }
@@ -140,7 +139,7 @@ public class KernelBrowserToolTest {
         ToolResultPayload secondPayload = (ToolResultPayload) second.get(1, TimeUnit.SECONDS);
         Assert.assertFalse(Boolean.TRUE.equals(firstPayload.getFailed()));
         Assert.assertFalse(Boolean.TRUE.equals(secondPayload.getFailed()));
-        Assert.assertEquals(1, maxActive.get());
+        Assert.assertEquals(2, maxActive.get());
         Mockito.verify(cli, Mockito.times(2)).exec(Mockito.any(CliInvocation.class));
     }
 
@@ -175,12 +174,11 @@ public class KernelBrowserToolTest {
                 .cliExecutionPort(cli)
                 .openCliProperties(properties)
                 .kernelBrowserSessionPort(sessionPort)
-                .browserOperationLockPort(new InProcessBrowserOperationLockAdapter())
                 .build();
         return AgentContext.builder()
                 .requestId("req-1")
                 .sessionId("session-1")
-                .visitorId("visitor-1")
+                .userId("user-1")
                 .workspaceRoot(System.getProperty("java.io.tmpdir"))
                 .runtimeDependencies(dependencies)
                 .build();

@@ -15,7 +15,7 @@ public class ActiveAgentRunRegistryTest {
     @Test
     public void shouldDetachStreamWithoutCancellingRunWhenClientDisconnects() {
         ActiveAgentRunRegistry registry = new ActiveAgentRunRegistry();
-        registry.begin("req-disconnect", "session-1", "visitor-1");
+        registry.begin("req-disconnect", "session-1", "user-1");
         AbortableStream stream = new AbortableStream();
 
         registry.bindStream("req-disconnect", stream);
@@ -29,7 +29,7 @@ public class ActiveAgentRunRegistryTest {
     @Test
     public void shouldNotLetOldStreamAbortDetachNewStream() {
         ActiveAgentRunRegistry registry = new ActiveAgentRunRegistry();
-        registry.begin("req-rebind", "session-1", "visitor-1");
+        registry.begin("req-rebind", "session-1", "user-1");
         AbortableStream oldStream = new AbortableStream();
         AbortableStream newStream = new AbortableStream();
 
@@ -44,20 +44,32 @@ public class ActiveAgentRunRegistryTest {
     @Test
     public void shouldCancelRunWhenUserExplicitlyStops() {
         ActiveAgentRunRegistry registry = new ActiveAgentRunRegistry();
-        registry.begin("req-stop", "session-1", "visitor-1");
+        registry.begin("req-stop", "session-1", "user-1");
 
         Assert.assertTrue(registry.cancel("req-stop", RunCancellation.REASON_USER_STOP));
         Assert.assertTrue("显式停止仍应取消后台 run", registry.isCancelled("req-stop"));
     }
 
     @Test
-    public void shouldRejectSecondRunForSameVisitor() {
+    public void shouldAllowConcurrentRunsForSameUserAcrossSessions() {
         ActiveAgentRunRegistry registry = new ActiveAgentRunRegistry();
-        registry.begin("req-a", "session-a", "visitor-1");
+        registry.begin("req-a", "session-a", "user-1");
+        registry.begin("req-b", "session-b", "user-1");
+
+        Assert.assertEquals("req-a", registry.findBySessionId("session-a").orElseThrow().getRequestId());
+        Assert.assertEquals("req-b", registry.findBySessionId("session-b").orElseThrow().getRequestId());
+        Assert.assertFalse(registry.find("req-a").orElseThrow().getCancellation().isCancelled());
+        Assert.assertFalse(registry.find("req-b").orElseThrow().getCancellation().isCancelled());
+    }
+
+    @Test
+    public void shouldRejectSecondRunForSameSession() {
+        ActiveAgentRunRegistry registry = new ActiveAgentRunRegistry();
+        registry.begin("req-a", "session-a", "user-1");
 
         try {
-            registry.begin("req-b", "session-b", "visitor-1");
-            Assert.fail("同一 visitor 第二路 run 应被拒绝");
+            registry.begin("req-b", "session-a", "user-1");
+            Assert.fail("同一 session 第二路 run 应被拒绝");
         } catch (AgentConcurrentRunException e) {
             Assert.assertEquals("req-a", e.getActiveRequestId());
             Assert.assertEquals("session-a", e.getActiveSessionId());
@@ -66,13 +78,14 @@ public class ActiveAgentRunRegistryTest {
 
         Assert.assertTrue(registry.find("req-a").isPresent());
         Assert.assertFalse(registry.find("req-b").isPresent());
+        Assert.assertEquals("req-a", registry.findBySessionId("session-a").orElseThrow().getRequestId());
     }
 
     @Test
-    public void shouldAllowAnotherVisitorConcurrently() {
+    public void shouldAllowAnotherUserConcurrently() {
         ActiveAgentRunRegistry registry = new ActiveAgentRunRegistry();
-        registry.begin("req-a", "session-a", "visitor-1");
-        registry.begin("req-b", "session-b", "visitor-2");
+        registry.begin("req-a", "session-a", "user-1");
+        registry.begin("req-b", "session-b", "user-2");
 
         Assert.assertTrue(registry.find("req-a").isPresent());
         Assert.assertTrue(registry.find("req-b").isPresent());
@@ -81,13 +94,13 @@ public class ActiveAgentRunRegistryTest {
     @Test
     public void shouldAllowNewRunAfterEnd() {
         ActiveAgentRunRegistry registry = new ActiveAgentRunRegistry();
-        registry.begin("req-a", "session-a", "visitor-1");
+        registry.begin("req-a", "session-a", "user-1");
         registry.end("req-a");
-        registry.begin("req-b", "session-b", "visitor-1");
+        registry.begin("req-b", "session-a", "user-1");
 
         Assert.assertFalse(registry.find("req-a").isPresent());
-        Assert.assertTrue(registry.find("req-b").isPresent());
-        Assert.assertEquals("req-b", registry.findByVisitorId("visitor-1").orElseThrow().getRequestId());
+        Assert.assertEquals("req-b", registry.find("req-b").orElseThrow().getRequestId());
+        Assert.assertEquals("req-b", registry.findBySessionId("session-a").orElseThrow().getRequestId());
     }
 
     private static class AbortableStream implements AgentMessageStream {

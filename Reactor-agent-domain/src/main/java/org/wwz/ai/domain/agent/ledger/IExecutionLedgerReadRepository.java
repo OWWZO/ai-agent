@@ -59,9 +59,11 @@ public interface IExecutionLedgerReadRepository {
 
     DialogueSession querySessionOwnership(String sessionId);
 
-    DialogueSessionView querySession(String visitorId, String sessionId);
+    DialogueSessionView querySession(String userId, String sessionId);
 
-    List<DialogueSessionView> queryRecentSessions(String visitorId, int limit);
+    List<DialogueSessionView> queryRecentSessions(String userId, int limit);
 
     List<ArtifactRecord> queryArtifactsByRunIds(List<Long> runIds);
+
+    List<ArtifactRecord> queryArtifactsBySessionId(String sessionId);
 }

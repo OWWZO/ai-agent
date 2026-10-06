@@ -5,6 +5,7 @@ import org.wwz.ai.domain.agent.ledger.model.DialogueSessionView;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionRunDetail;
 import org.wwz.ai.domain.agent.ledger.model.RunCursor;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
+import org.wwz.ai.domain.agent.ledger.model.ArtifactView;
 
 import java.util.List;
 
@@ -17,6 +18,9 @@ public interface ExecutionLedgerQueryService {
     int MAX_SESSION_RUN_PAGE_SIZE = 100;
 
     ExecutionRunDetail queryRunDetail(String requestId);
+
+    /** 只读取当前会话可见的输入/输出 artifact，不展开 run 回放明细。 */
+    List<ArtifactView> querySessionArtifacts(String sessionId);
 
     /** 只读取 run 主表字段，用于 ownership 校验和轻量摘要。 */
     DialogueRunView queryRunSummary(String requestId);
@@ -48,7 +52,7 @@ public interface ExecutionLedgerQueryService {
 
     List<DialogueSessionView> queryRecentSessions(int limit);
 
-    DialogueSessionView querySession(String visitorId, String sessionId);
+    DialogueSessionView querySession(String userId, String sessionId);
 
-    List<DialogueSessionView> queryRecentSessions(String visitorId, int limit);
+    List<DialogueSessionView> queryRecentSessions(String userId, int limit);
 }

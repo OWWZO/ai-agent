@@ -45,9 +45,9 @@ public class KernelBrowserSessionServiceTest {
         fixture.http.enqueueCreate(FakeHttp.response(200, browser("session-a", browserName,
                 CDP_URL, "https://kernel.example/live/session-a")));
 
-        KernelBrowserSession session = fixture.adapter.resolveForOwner(OWNER_A);
+        KernelBrowserSession session = fixture.adapter.resolveForUser(OWNER_A);
 
-        Assert.assertEquals(OWNER_A, session.getOwnerKey());
+        Assert.assertEquals(OWNER_A, session.getUserId());
         Assert.assertEquals("session-a", session.getKernelSessionId());
         Assert.assertEquals(browserName, session.getKernelBrowserName());
         Assert.assertEquals(CDP_URL, session.getCdpWsUrl());
@@ -75,13 +75,13 @@ public class KernelBrowserSessionServiceTest {
         String browserName = browserName(OWNER_A);
         fixture.http.enqueueCreate(FakeHttp.response(200, browser("session-a", browserName,
                 CDP_URL, "https://kernel.example/live/session-a")));
-        fixture.adapter.resolveForOwner(OWNER_A);
+        fixture.adapter.resolveForUser(OWNER_A);
 
         String freshCdpUrl = "wss://kernel.example/cdp/session-a-fresh";
         fixture.http.whenGet("session-a", FakeHttp.response(200, browser("session-a", browserName,
                 freshCdpUrl, "https://kernel.example/live/session-a")));
 
-        KernelBrowserSession second = fixture.adapter.resolveForOwner(OWNER_A);
+        KernelBrowserSession second = fixture.adapter.resolveForUser(OWNER_A);
 
         Assert.assertEquals("session-a", second.getKernelSessionId());
         Assert.assertEquals(freshCdpUrl, second.getCdpWsUrl());
@@ -99,8 +99,8 @@ public class KernelBrowserSessionServiceTest {
         fixture.http.enqueueCreate(FakeHttp.response(200, browser("session-b", browserName(OWNER_B),
                 "wss://kernel.example/cdp/b", "https://kernel.example/live/b")));
 
-        KernelBrowserSession ownerA = fixture.adapter.resolveForOwner(OWNER_A);
-        KernelBrowserSession ownerB = fixture.adapter.resolveForOwner(OWNER_B);
+        KernelBrowserSession ownerA = fixture.adapter.resolveForUser(OWNER_A);
+        KernelBrowserSession ownerB = fixture.adapter.resolveForUser(OWNER_B);
 
         Assert.assertEquals("session-a", ownerA.getKernelSessionId());
         Assert.assertEquals("session-b", ownerB.getKernelSessionId());
@@ -123,7 +123,7 @@ public class KernelBrowserSessionServiceTest {
         fixture.http.enqueueCreate(FakeHttp.response(200, browser("session-new", browserName,
                 "wss://kernel.example/cdp/new", "https://kernel.example/live/new")));
 
-        KernelBrowserSession session = fixture.adapter.resolveForOwner(OWNER_A);
+        KernelBrowserSession session = fixture.adapter.resolveForUser(OWNER_A);
 
         Assert.assertEquals("session-new", session.getKernelSessionId());
         Assert.assertTrue(session.isReconstructed());
@@ -143,7 +143,7 @@ public class KernelBrowserSessionServiceTest {
         fixture.http.enqueueCreate(FakeHttp.response(200, browser("session-a", browserName,
                 CDP_URL, "https://kernel.example/live/session-a")));
 
-        fixture.adapter.resolveForOwner(OWNER_A);
+        fixture.adapter.resolveForUser(OWNER_A);
 
         FakeHttp.CreateCall createCall = fixture.http.createCalls.get(0);
         Assert.assertNull(createCall.profileName);
@@ -159,7 +159,7 @@ public class KernelBrowserSessionServiceTest {
         fixture.http.whenGet(browserName, FakeHttp.response(200, browser("session-recovered", browserName,
                 "wss://kernel.example/cdp/recovered", "https://kernel.example/live/recovered")));
 
-        KernelBrowserSession session = fixture.adapter.resolveForOwner(OWNER_A);
+        KernelBrowserSession session = fixture.adapter.resolveForUser(OWNER_A);
 
         Assert.assertEquals("session-recovered", session.getKernelSessionId());
         Assert.assertFalse(session.isReconstructed());
@@ -181,11 +181,11 @@ public class KernelBrowserSessionServiceTest {
         CountDownLatch start = new CountDownLatch(1);
         Future<KernelBrowserSession> first = executor.submit(() -> {
             start.await(5, TimeUnit.SECONDS);
-            return fixture.adapter.resolveForOwner(OWNER_A);
+            return fixture.adapter.resolveForUser(OWNER_A);
         });
         Future<KernelBrowserSession> second = executor.submit(() -> {
             start.await(5, TimeUnit.SECONDS);
-            return fixture.adapter.resolveForOwner(OWNER_A);
+            return fixture.adapter.resolveForUser(OWNER_A);
         });
         start.countDown();
 
@@ -206,8 +206,8 @@ public class KernelBrowserSessionServiceTest {
         fixture.putRow(row(OWNER_A, "session-a", browserName(OWNER_A)));
         fixture.http.deleteResponse = FakeHttp.response(404, "gone");
 
-        fixture.adapter.deleteForOwner(OWNER_A);
-        fixture.adapter.deleteForOwner(OWNER_A);
+        fixture.adapter.deleteForUser(OWNER_A);
+        fixture.adapter.deleteForUser(OWNER_A);
 
         Assert.assertTrue(fixture.rows.isEmpty());
         Assert.assertEquals(List.of("session-a"), fixture.http.deleteCalls);
@@ -222,7 +222,7 @@ public class KernelBrowserSessionServiceTest {
                 API_KEY + " cdp_ws_url=" + CDP_URL + "?jwt=" + JWT);
 
         try {
-            fixture.adapter.resolveForOwner(OWNER_A);
+            fixture.adapter.resolveForUser(OWNER_A);
             Assert.fail("Expected the Kernel request to fail");
         } catch (IllegalStateException expected) {
             String message = expected.getMessage();
@@ -266,14 +266,14 @@ public class KernelBrowserSessionServiceTest {
     }
 
     @Test
-    public void statusForOwnerDoesNotReturnOrFetchCdpEndpoint() {
+    public void statusForUserDoesNotReturnOrFetchCdpEndpoint() {
         Fixture fixture = new Fixture();
         LocalDateTime lastUsedAt = LocalDateTime.of(2026, 9, 29, 10, 0);
         AiAgentKernelBrowserSession row = row(OWNER_A, "session-a", browserName(OWNER_A));
         row.setLastUsedAt(lastUsedAt);
         fixture.putRow(row);
 
-        KernelBrowserSessionStatus status = fixture.adapter.statusForOwner(OWNER_A);
+        KernelBrowserSessionStatus status = fixture.adapter.statusForUser(OWNER_A);
 
         Assert.assertTrue(status.isExists());
         Assert.assertEquals("session-a", status.getKernelSessionId());
@@ -284,14 +284,14 @@ public class KernelBrowserSessionServiceTest {
     }
 
     @Test
-    public void resolveRejectsBlankOwnerKey() {
+    public void resolveRejectsBlankUserId() {
         Fixture fixture = new Fixture();
 
         try {
-            fixture.adapter.resolveForOwner("  ");
-            Assert.fail("Expected blank ownerKey validation");
+            fixture.adapter.resolveForUser("  ");
+            Assert.fail("Expected blank userId validation");
         } catch (IllegalArgumentException expected) {
-            Assert.assertEquals("ownerKey must not be blank", expected.getMessage());
+            Assert.assertEquals("userId must not be blank", expected.getMessage());
         }
     }
 

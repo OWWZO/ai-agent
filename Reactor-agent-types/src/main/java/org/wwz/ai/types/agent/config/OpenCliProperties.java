@@ -18,9 +18,9 @@ public class OpenCliProperties {
 
     private List<String> extraArgs = new ArrayList<>(List.of("-f", "json"));
 
-    private long defaultTimeoutMs = 60_000L;
+    private long defaultTimeoutMs = 180_000L;
 
-    private long maxTimeoutMs = 180_000L;
+    private long maxTimeoutMs = 540_000L;
 
     private int maxOutputChars = 200_000;
 

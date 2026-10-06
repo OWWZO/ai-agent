@@ -238,8 +238,9 @@ public class InMemoryCuratedMemoryStore implements CuratedMemoryStore {
 
     public static LtmOwnerType parseOwnerType(String raw) {
         if (raw == null) {
-            return LtmOwnerType.VISITOR;
+            return LtmOwnerType.USER;
         }
-        return LtmOwnerType.valueOf(raw.trim().toUpperCase());
+        String type = raw.trim().toUpperCase();
+        return "VISITOR".equals(type) ? LtmOwnerType.USER : LtmOwnerType.valueOf(type);
     }
 }

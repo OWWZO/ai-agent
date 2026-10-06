@@ -4,9 +4,6 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.adapter.port.BrowserOperationKind;
-import org.wwz.ai.domain.agent.adapter.port.BrowserOperationLockPort;
-import org.wwz.ai.domain.agent.adapter.port.BrowserOperationLockTimeoutException;
 import org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliInvocation;
@@ -52,7 +49,7 @@ public class BrowserTool implements BaseTool {
         ));
         properties.put("timeout_ms", Map.of(
                 "type", "integer",
-                "description", "超时毫秒，默认 60000"
+                "description", "超时毫秒，默认 180000"
         ));
         return Map.of(
                 "type", "object",
@@ -75,66 +72,18 @@ public class BrowserTool implements BaseTool {
             return ToolResultPayload.failure("运行时未装配", "运行时未装配", null, "runtime_unavailable");
         }
         ReactorRuntimeDependencies deps = agentContext.getRuntimeDependencies();
-        String visitorId = StringUtils.trimToNull(agentContext.getVisitorId());
-        if (visitorId == null) {
-            return ToolResultPayload.failure("缺少访客身份", "缺少访客身份", null, "missing visitorId");
+        String userId = StringUtils.trimToNull(agentContext.getUserId());
+        if (userId == null) {
+            return ToolResultPayload.failure("缺少用户身份", "缺少用户身份", null, "missing userId");
         }
         CliExecutionPort cli = deps.getOptionalCliExecutionPort();
         OpenCliProperties properties = deps.getOpenCliProperties();
         if (cli == null || properties == null || !properties.isEnabled()) {
             return ToolResultPayload.failure("opencli 未配置", "opencli 未配置", null, "opencli_unavailable");
         }
-        BrowserOperationLockPort lock = deps.getOptionalBrowserOperationLockPort();
-        if (lock == null) {
-            return lockUnavailable();
-        }
         long budgetMs = resolveTimeout(params.get("timeout_ms"), properties);
         long started = System.nanoTime();
-        LockedExecution execution;
-        try {
-            execution = lock.execute(BrowserOperationKind.USER_BROWSER, visitorId, budgetMs, () -> {
-                long remaining = remainingMillis(budgetMs, started);
-                if (remaining <= 0) {
-                    return LockedExecution.failed(lockTimeout());
-                }
-                BrowserRelayPort relay = deps.getOptionalBrowserRelayPort();
-                if (relay == null || !relay.isOnline(visitorId)) {
-                    return LockedExecution.failed(ToolResultPayload.failure(
-                            "浏览器未连接", "浏览器未连接", null, "browser_offline"));
-                }
-                List<String> rewritten = OpenCliArgv.rewrite(args, visitorId, properties.getExtraArgs());
-                List<String> processArgs = new ArrayList<>();
-                if (properties.getPrefixArgs() != null) {
-                    for (String prefix : properties.getPrefixArgs()) {
-                        if (StringUtils.isNotBlank(prefix)) {
-                            processArgs.add(prefix);
-                        }
-                    }
-                }
-                processArgs.addAll(rewritten);
-                Map<String, String> env = new LinkedHashMap<>();
-                env.put("OPENCLI_RELAY_URL", resolveRelayUrl(properties, deps));
-                env.put("OPENCLI_RELAY_VISITOR_ID", visitorId);
-                String secret = resolveSecret(deps);
-                if (StringUtils.isNotBlank(secret)) {
-                    env.put("OPENCLI_RELAY_SECRET", secret);
-                }
-                env.put("OPENCLI_CACHE_DIR", resolveCacheDir(properties, visitorId));
-                env.put("OPENCLI_SITE_SESSION", "persistent");
-                CliResult result = cli.exec(CliInvocation.builder()
-                        .tool(properties.getCommand())
-                        .args(processArgs)
-                        .cwd(agentContext.getWorkspaceRoot())
-                        .env(env)
-                        .timeoutMs(remaining)
-                        .capture("both")
-                        .maxOutputChars(properties.getMaxOutputChars())
-                        .build());
-                return LockedExecution.completed(result, rewritten);
-            });
-        } catch (BrowserOperationLockTimeoutException e) {
-            return lockTimeout();
-        }
+        Execution execution = executeCli(deps, args, userId, cli, properties, budgetMs, started);
         if (execution.failure != null) {
             return execution.failure;
         }
@@ -163,12 +112,54 @@ public class BrowserTool implements BaseTool {
         return ToolResultPayload.okData(TOOL_NAME, fields);
     }
 
-    private static ToolResultPayload lockUnavailable() {
-        return ToolResultPayload.failure("浏览器操作锁未装配", "浏览器操作锁未装配", null, "browser_lock_unavailable");
+    private Execution executeCli(ReactorRuntimeDependencies deps,
+                                       List<String> args,
+                                       String userId,
+                                       CliExecutionPort cli,
+                                       OpenCliProperties properties,
+                                       long budgetMs,
+                                       long started) {
+        long remaining = remainingMillis(budgetMs, started);
+        if (remaining <= 0) {
+            return Execution.failed(browserTimeout());
+        }
+        BrowserRelayPort relay = deps.getOptionalBrowserRelayPort();
+        if (relay == null || !relay.isOnline(userId)) {
+            return Execution.failed(ToolResultPayload.failure(
+                    "浏览器未连接", "浏览器未连接", null, "browser_offline"));
+        }
+        List<String> rewritten = OpenCliArgv.rewrite(args, properties.getExtraArgs());
+        List<String> processArgs = new ArrayList<>();
+        if (properties.getPrefixArgs() != null) {
+            for (String prefix : properties.getPrefixArgs()) {
+                if (StringUtils.isNotBlank(prefix)) {
+                    processArgs.add(prefix);
+                }
+            }
+        }
+        processArgs.addAll(rewritten);
+        Map<String, String> env = new LinkedHashMap<>();
+        env.put("OPENCLI_RELAY_URL", resolveRelayUrl(properties, deps));
+        env.put("OPENCLI_RELAY_VISITOR_ID", userId);
+        String secret = resolveSecret(deps);
+        if (StringUtils.isNotBlank(secret)) {
+            env.put("OPENCLI_RELAY_SECRET", secret);
+        }
+        env.put("OPENCLI_CACHE_DIR", resolveCacheDir(properties, userId));
+        CliResult result = cli.exec(CliInvocation.builder()
+                .tool(properties.getCommand())
+                .args(processArgs)
+                .cwd(agentContext.getWorkspaceRoot())
+                .env(env)
+                .timeoutMs(remaining)
+                .capture("both")
+                .maxOutputChars(properties.getMaxOutputChars())
+                .build());
+        return Execution.completed(result, rewritten);
     }
 
-    private static ToolResultPayload lockTimeout() {
-        return ToolResultPayload.failure("浏览器正被占用，等待超时", "浏览器正被占用，等待超时", null, "browser_lock_timeout");
+    private static ToolResultPayload browserTimeout() {
+        return ToolResultPayload.failure("浏览器操作超时", "浏览器操作超时", null, "browser_timeout");
     }
 
     private static long remainingMillis(long budgetMs, long startedNanos) {
@@ -176,23 +167,23 @@ public class BrowserTool implements BaseTool {
         return budgetMs - Math.max(0L, elapsed);
     }
 
-    private static final class LockedExecution {
+    private static final class Execution {
         private final ToolResultPayload failure;
         private final CliResult result;
         private final List<String> rewritten;
 
-        private LockedExecution(ToolResultPayload failure, CliResult result, List<String> rewritten) {
+        private Execution(ToolResultPayload failure, CliResult result, List<String> rewritten) {
             this.failure = failure;
             this.result = result;
             this.rewritten = rewritten;
         }
 
-        private static LockedExecution failed(ToolResultPayload failure) {
-            return new LockedExecution(failure, null, List.of());
+        private static Execution failed(ToolResultPayload failure) {
+            return new Execution(failure, null, List.of());
         }
 
-        private static LockedExecution completed(CliResult result, List<String> rewritten) {
-            return new LockedExecution(null, result, rewritten);
+        private static Execution completed(CliResult result, List<String> rewritten) {
+            return new Execution(null, result, rewritten);
         }
     }
 
@@ -297,12 +288,12 @@ public class BrowserTool implements BaseTool {
         return "";
     }
 
-    private static String resolveCacheDir(OpenCliProperties properties, String visitorId) {
+    private static String resolveCacheDir(OpenCliProperties properties, String userId) {
         String root = StringUtils.trimToNull(properties.getCacheDir());
         if (root == null) {
             root = Path.of(System.getProperty("java.io.tmpdir"), "reactor-opencli").toString();
         }
-        return Path.of(root, visitorId).toString();
+        return Path.of(root, userId).toString();
     }
 
     @SuppressWarnings("unchecked")

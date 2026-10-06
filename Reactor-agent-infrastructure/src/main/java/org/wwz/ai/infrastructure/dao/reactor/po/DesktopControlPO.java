@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 public class DesktopControlPO {
     private Long id;
     private String controlId;
-    private String visitorId;
+    private String userId;
     private String sessionId;
     private String ownerKey;
     private Long sourceRunId;

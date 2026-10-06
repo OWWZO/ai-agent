@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * 进程内活跃 run 索引：requestId → 上下文/取消标志/当前观察流。
  * 供 POST /stop 定位当前执行，也供 SSE 断开时解绑观察流。
- * <p>同一 visitor 同一时间只允许一个活跃 run，避免多会话并发观察流互相挤死。</p>
+ * <p>同一 session 同时只有一个活跃 run；SSE 断开只解绑观察流。</p>
  */
 @Slf4j
 @Component
@@ -31,17 +31,17 @@ public class ActiveAgentRunRegistry {
     public static final class ActiveRun {
         private final String requestId;
         private final String sessionId;
-        private final String visitorId;
+        private final String userId;
         private final RunCancellation cancellation;
         /** 控制面 inject 队列：与 AgentContext 共享，不 begin 第二次 run */
         private final ConcurrentLinkedQueue<PendingInjectMessage> pendingInjects = new ConcurrentLinkedQueue<>();
         private volatile AgentContext agentContext;
         private final AtomicReference<AgentMessageStream> stream = new AtomicReference<>();
 
-        public ActiveRun(String requestId, String sessionId, String visitorId, RunCancellation cancellation) {
+        public ActiveRun(String requestId, String sessionId, String userId, RunCancellation cancellation) {
             this.requestId = requestId;
             this.sessionId = sessionId;
-            this.visitorId = visitorId;
+            this.userId = userId;
             this.cancellation = cancellation;
         }
 
@@ -53,8 +53,8 @@ public class ActiveAgentRunRegistry {
             return sessionId;
         }
 
-        public String getVisitorId() {
-            return visitorId;
+        public String getUserId() {
+            return userId;
         }
 
         public RunCancellation getCancellation() {
@@ -87,9 +87,7 @@ public class ActiveAgentRunRegistry {
     }
 
     private final Map<String, ActiveRun> byRequestId = new ConcurrentHashMap<>();
-    /** visitorId → requestId，保证同一访客单并发。 */
-    private final Map<String, String> byVisitorId = new ConcurrentHashMap<>();
-    /** sessionId → requestId，供 GET 旁观按会话挂流。 */
+    /** sessionId → requestId，供 GET 旁观按会话挂流，并保证同一会话只有一个活跃 run。 */
     private final Map<String, String> bySessionId = new ConcurrentHashMap<>();
 
     @Resource
@@ -102,7 +100,7 @@ public class ActiveAgentRunRegistry {
     private org.wwz.ai.domain.agent.runtime.planmode.IPlanApprovalRepository planApprovalRepository;
 
     /**
-     * @deprecated 使用 {@link #begin(String, String, String)} 传入 visitorId 以启用单并发准入
+     * @deprecated 使用 {@link #begin(String, String, String)}。仍转调三参数方法。
      */
     @Deprecated
     public ActiveRun begin(String requestId, String sessionId) {
@@ -110,9 +108,10 @@ public class ActiveAgentRunRegistry {
     }
 
     /**
-     * 注册活跃 run。同一 visitor 若已有其它 requestId 在跑，抛出 {@link AgentConcurrentRunException}。
+     * 注册活跃 run。同一 session 若已有另一个仍存活的 requestId，抛出 {@link AgentConcurrentRunException}。
+     * 同一 userId 的不同 session 可以同时 begin。
      */
-    public ActiveRun begin(String requestId, String sessionId, String visitorId) {
+    public ActiveRun begin(String requestId, String sessionId, String userId) {
         // begin 只建立进程内索引和取消令牌，不代表 ledger 已初始化；真正的运行账本
         // 仍由执行节点负责创建，避免取消注册表承担持久化职责。
         if (StringUtils.isBlank(requestId)) {
@@ -123,15 +122,18 @@ public class ActiveAgentRunRegistry {
         if (existingRun != null) {
             return existingRun;
         }
-        String vid = StringUtils.trimToNull(visitorId);
-
-        if (vid != null) {
-            String existingRequestId = byVisitorId.putIfAbsent(vid, rid);
-            if (existingRequestId != null && !existingRequestId.equals(rid)) {
+        String sid = StringUtils.trimToNull(sessionId);
+        if (sid != null) {
+            String existingRequestId = bySessionId.get(sid);
+            if (existingRequestId != null
+                    && !existingRequestId.equals(rid)
+                    && byRequestId.containsKey(existingRequestId)) {
                 ActiveRun existing = byRequestId.get(existingRequestId);
-                String existingSession = existing == null ? null : existing.getSessionId();
-                log.warn("reject concurrent run visitorId={} activeRequestId={} activeSessionId={} newRequestId={}",
-                        vid, existingRequestId, existingSession, rid);
+                String existingSession = existing == null || StringUtils.isBlank(existing.getSessionId())
+                        ? sid
+                        : existing.getSessionId();
+                log.warn("reject concurrent run sessionId={} activeRequestId={} activeSessionId={} newRequestId={}",
+                        sid, existingRequestId, existingSession, rid);
                 throw new AgentConcurrentRunException(
                         CONCURRENT_RUN_MESSAGE,
                         existingRequestId,
@@ -139,14 +141,15 @@ public class ActiveAgentRunRegistry {
             }
         }
 
+        String vid = StringUtils.trimToNull(userId);
         RunCancellation cancellation = new RunCancellation();
         ActiveRun run = new ActiveRun(rid, sessionId, vid, cancellation);
         ActiveRun previous = byRequestId.put(rid, run);
         if (previous != null) {
             log.warn("replace active run record requestId={}", rid);
         }
-        if (StringUtils.isNotBlank(sessionId)) {
-            bySessionId.put(sessionId.trim(), rid);
+        if (sid != null) {
+            bySessionId.put(sid, rid);
         }
         return run;
     }
@@ -240,17 +243,6 @@ public class ActiveAgentRunRegistry {
         return find(requestId);
     }
 
-    public Optional<ActiveRun> findByVisitorId(String visitorId) {
-        if (StringUtils.isBlank(visitorId)) {
-            return Optional.empty();
-        }
-        String requestId = byVisitorId.get(visitorId.trim());
-        if (StringUtils.isBlank(requestId)) {
-            return Optional.empty();
-        }
-        return find(requestId);
-    }
-
     public void end(String requestId) {
         // end 只移除进程内索引；run 的最终状态已经由 ledger finishRun 持久化，不能
         // 因为内存清理而丢失历史查询所需事实。
@@ -259,13 +251,8 @@ public class ActiveAgentRunRegistry {
         }
         String rid = requestId.trim();
         ActiveRun removed = byRequestId.remove(rid);
-        if (removed != null) {
-            if (StringUtils.isNotBlank(removed.getVisitorId())) {
-                byVisitorId.remove(removed.getVisitorId(), rid);
-            }
-            if (StringUtils.isNotBlank(removed.getSessionId())) {
-                bySessionId.remove(removed.getSessionId(), rid);
-            }
+        if (removed != null && StringUtils.isNotBlank(removed.getSessionId())) {
+            bySessionId.remove(removed.getSessionId().trim(), rid);
         }
     }
 
