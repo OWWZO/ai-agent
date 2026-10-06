@@ -8,6 +8,7 @@ import org.wwz.ai.domain.agent.runtime.tool.skill.SkillDefinition;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillDescriptor;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillLoadException;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillMarkdownParser;
+import org.wwz.ai.domain.agent.runtime.tool.skill.SkillPackageService;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillPathGuard;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeOptions;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillScriptDiscoverer;
@@ -79,6 +80,34 @@ public class SkillRegistryTest {
             Assert.assertTrue(e.getMessage().contains("Ambiguous skill name"));
         }
         Assert.assertEquals("duplicate-skill", skillRegistry.getRequired("builtin:skill-a").getName());
+    }
+
+    @Test
+    public void shouldIgnoreNestedSkillDocumentsInsideTopLevelSkillPackage() throws Exception {
+        Path rootDirectory = Files.createTempDirectory("skill-registry-nested");
+        Path topLevelSkill = rootDirectory.resolve("answer-me-with-html");
+        createSkillDirectory(topLevelSkill, "answer-me-with-html", "顶层技能");
+        createSkillDirectory(
+                topLevelSkill.resolve("skills").resolve("answer-me-with-html"),
+                "answer-me-with-html",
+                "技能包内的附带副本"
+        );
+
+        DefaultSkillRegistry skillRegistry = createRegistry(true, rootDirectory.toString());
+        skillRegistry.refresh();
+
+        Assert.assertEquals(1, skillRegistry.list().size());
+        Assert.assertEquals(
+                topLevelSkill.toAbsolutePath().normalize(),
+                skillRegistry.getRequired("answer-me-with-html").getBasePath().toAbsolutePath().normalize()
+        );
+        Assert.assertEquals(
+                1,
+                new SkillPackageService(
+                        SkillRuntimeOptions.builder().enabled(true).directories(List.of(rootDirectory.toString())).build(),
+                        skillRegistry
+                ).listInstalled().size()
+        );
     }
 
     private DefaultSkillRegistry createRegistry(boolean enabled, String... directories) {

@@ -257,11 +257,10 @@ public class DefaultSkillRegistry implements SkillRegistry, SkillCatalog {
     }
 
     private List<Path> findSkillDirectories(Path rootDirectory) {
-        try (var pathStream = Files.walk(rootDirectory)) {
+        try (var pathStream = Files.list(rootDirectory)) {
             return pathStream
-                    .filter(Files::isRegularFile)
-                    .filter(path -> "SKILL.md".equals(path.getFileName().toString()))
-                    .map(Path::getParent)
+                    .filter(Files::isDirectory)
+                    .filter(path -> Files.isRegularFile(path.resolve("SKILL.md")))
                     .sorted(Comparator.comparing(path -> path.toAbsolutePath().normalize().toString()))
                     .toList();
         } catch (IOException e) {
