@@ -4,6 +4,8 @@ import {
   applyGuardError,
   createConversationDraftController,
   isSessionControlPackage,
+  planFollowIdleReplay,
+  planObservationClose,
   resolveLatestContextUsage,
   resolveRunReplayState,
 } from "./useConversationStream";
@@ -385,5 +387,49 @@ describe("useConversationStream helpers", () => {
     expect(chat?.loading).toBe(false);
     expect(chat?.metrics?.status).toBe("SUCCESS");
     expect(chat?.tip).not.toBe("需要你的帮助");
+  });
+
+  it("released 或已经看到 follow_idle 时不写断开文案、不重连", () => {
+    expect(
+      planObservationClose({
+        released: true,
+        sawFollowIdle: false,
+        chatRunning: true,
+      })
+    ).toEqual({ writeDisconnectHint: false, reconnect: false });
+    expect(
+      planObservationClose({
+        released: false,
+        sawFollowIdle: true,
+        chatRunning: true,
+      })
+    ).toEqual({ writeDisconnectHint: false, reconnect: false });
+  });
+
+  it("没看到 follow_idle、仍在跑、且不是 released 时才写文案并重连", () => {
+    expect(
+      planObservationClose({
+        released: false,
+        sawFollowIdle: false,
+        chatRunning: true,
+      })
+    ).toEqual({ writeDisconnectHint: true, reconnect: true });
+    expect(
+      planObservationClose({
+        released: false,
+        sawFollowIdle: false,
+        chatRunning: false,
+      })
+    ).toEqual({ writeDisconnectHint: false, reconnect: false });
+  });
+
+  it("follow_idle 只有明确终态才停止，账本仍为 RUNNING 时继续重连", () => {
+    expect(planFollowIdleReplay("SUCCESS")).toBe("stop");
+    expect(planFollowIdleReplay("FAILED")).toBe("stop");
+    expect(planFollowIdleReplay("STOPPED")).toBe("stop");
+    expect(planFollowIdleReplay("TIMEOUT")).toBe("stop");
+    expect(planFollowIdleReplay("WAITING_INPUT")).toBe("stop");
+    expect(planFollowIdleReplay("RUNNING")).toBe("reconnect");
+    expect(planFollowIdleReplay("UNKNOWN")).toBe("reconnect");
   });
 });

@@ -2,10 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRequest } from "ahooks";
 import { Button } from "antd";
 import { Download } from "lucide-react";
-import { renderAsync } from "docx-preview";
 import { downloadFile } from "@/utils";
 import { normalizeFileUrlForBrowser } from "@/utils/fileUrl";
 import { ViewerPanelShell } from "@/components/ui/viewer-panel-shell";
+import { loadDocxPreview } from "@/lib/lazy/docxPreview";
 import Loading from "./Loading";
 import DocumentFallback from "./DocumentFallback";
 
@@ -89,15 +89,22 @@ const WordRenderer: ReactorType.FC<WordRendererProps> = React.memo((props) => {
     let cancelled = false;
     setRenderError(null);
     setRenderReady(false);
+    const container = bodyRef.current;
+    if (!container) {
+      return;
+    }
 
     const run = async () => {
       await Promise.resolve();
-      const container = bodyRef.current;
-      if (cancelled || !container) {
+      if (cancelled) {
         return;
       }
       container.innerHTML = "";
       try {
+        const { renderAsync } = await loadDocxPreview();
+        if (cancelled || !bodyRef.current) {
+          return;
+        }
         await renderAsync(buffer, container, undefined, {
           className: "docx-preview",
           inWrapper: true,
@@ -125,9 +132,7 @@ const WordRenderer: ReactorType.FC<WordRendererProps> = React.memo((props) => {
 
     return () => {
       cancelled = true;
-      if (bodyRef.current) {
-        bodyRef.current.innerHTML = "";
-      }
+      container.innerHTML = "";
     };
   }, [buffer, legacyOnly]);
 

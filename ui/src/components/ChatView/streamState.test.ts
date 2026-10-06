@@ -6,6 +6,7 @@ import {
   isChatItemFollowable,
   isChatItemRunning,
   isParentLoopLive,
+  planSessionObservation,
   isHitlYieldEvent,
   isStructuredDataOnlyTask,
   isTimelineToolActive,
@@ -462,5 +463,162 @@ describe("HITL yield parking", () => {
     expect(parked.loading).toBe(false);
     expect(parked.metrics?.status).toBe("WAITING_INPUT");
     expect(parked.tip).toBe(WAITING_USER_HELP_HINT);
+  });
+});
+
+const DISCONNECT_TIP = "连接暂时断开，任务仍在后台执行";
+
+describe("planSessionObservation", () => {
+  it("跨会话 abort，当前健康连接不 follow", () => {
+    const plan = planSessionObservation({
+      conversationId: "b",
+      chats: [
+        {
+          requestId: "req-b",
+          loading: true,
+          metrics: { status: "RUNNING" },
+        } as CHAT.ChatItem,
+      ],
+      live: [
+        { conversationId: "a", aborted: false },
+        { conversationId: "b", aborted: false },
+      ],
+      disconnectTip: DISCONNECT_TIP,
+    });
+
+    expect(plan.abortConversationIds).toEqual(["a"]);
+    expect(plan.followRequestId).toBeNull();
+    expect(plan.clearDisconnectTip).toBe(false);
+  });
+
+  it("同会话死连接（aborted 仍为 false 且 tip 为断开语）会 abort 并 follow", () => {
+    const plan = planSessionObservation({
+      conversationId: "a",
+      chats: [
+        {
+          requestId: "req-a",
+          loading: true,
+          tip: DISCONNECT_TIP,
+          metrics: { status: "RUNNING" },
+        } as CHAT.ChatItem,
+      ],
+      live: [
+        { conversationId: "b", aborted: false },
+        { conversationId: "a", aborted: false },
+      ],
+      disconnectTip: DISCONNECT_TIP,
+    });
+
+    expect(plan.abortConversationIds).toEqual(["b", "a"]);
+    expect(plan.followRequestId).toBe("req-a");
+    expect(plan.clearDisconnectTip).toBe(true);
+  });
+
+  it("健康连接不 follow", () => {
+    const plan = planSessionObservation({
+      conversationId: "a",
+      chats: [
+        {
+          requestId: "req-a",
+          loading: true,
+          tip: "正在推进任务…",
+          metrics: { status: "RUNNING" },
+        } as CHAT.ChatItem,
+      ],
+      live: [{ conversationId: "a", aborted: false }],
+      disconnectTip: DISCONNECT_TIP,
+    });
+
+    expect(plan.followRequestId).toBeNull();
+    expect(plan.clearDisconnectTip).toBe(false);
+    expect(plan.abortConversationIds).not.toContain("a");
+  });
+
+  it("WAITING_INPUT 不 follow", () => {
+    const plan = planSessionObservation({
+      conversationId: "a",
+      chats: [
+        {
+          requestId: "req-a",
+          loading: false,
+          tip: "需要你的帮助",
+          metrics: { status: "WAITING_INPUT" },
+        } as CHAT.ChatItem,
+      ],
+      live: [{ conversationId: "a", aborted: false }],
+      disconnectTip: DISCONNECT_TIP,
+    });
+
+    expect(plan.followRequestId).toBeNull();
+    expect(plan.clearDisconnectTip).toBe(false);
+    expect(plan.abortConversationIds).not.toContain("a");
+  });
+
+  it("pending AskUser 不 follow", () => {
+    const plan = planSessionObservation({
+      conversationId: "a",
+      chats: [
+        {
+          requestId: "req-a",
+          loading: true,
+          metrics: { status: "RUNNING" },
+          multiAgent: {
+            tasks: [[
+              {
+                messageType: "ask_user_question",
+                resultMap: { status: "pending" },
+              },
+            ]],
+          },
+        } as CHAT.ChatItem,
+      ],
+      live: [{ conversationId: "a", aborted: false }],
+      disconnectTip: DISCONNECT_TIP,
+    });
+
+    expect(plan.followRequestId).toBeNull();
+    expect(plan.clearDisconnectTip).toBe(false);
+    expect(plan.abortConversationIds).not.toContain("a");
+  });
+
+  it("仅 RUNNING 且没有活流时 follow", () => {
+    const plan = planSessionObservation({
+      conversationId: "a",
+      chats: [
+        {
+          requestId: "req-a",
+          loading: true,
+          metrics: { status: "RUNNING" },
+        } as CHAT.ChatItem,
+      ],
+      live: [{ conversationId: "b", aborted: false }],
+      disconnectTip: DISCONNECT_TIP,
+    });
+
+    expect(plan.abortConversationIds).toEqual(["b"]);
+    expect(plan.followRequestId).toBe("req-a");
+    expect(plan.clearDisconnectTip).toBe(false);
+  });
+
+  it("没有目标 chat 时不 abort 当前流", () => {
+    const plan = planSessionObservation({
+      conversationId: "a",
+      chats: [
+        {
+          requestId: "req-a",
+          loading: false,
+          metrics: { status: "SUCCESS" },
+        } as CHAT.ChatItem,
+      ],
+      live: [
+        { conversationId: "a", aborted: false },
+        { conversationId: "b", aborted: false },
+      ],
+      disconnectTip: DISCONNECT_TIP,
+    });
+
+    expect(plan.followRequestId).toBeNull();
+    expect(plan.clearDisconnectTip).toBe(false);
+    expect(plan.abortConversationIds).toEqual(["b"]);
   });
 });

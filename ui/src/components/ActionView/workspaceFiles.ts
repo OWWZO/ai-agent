@@ -115,6 +115,45 @@ export function buildUserUploadFileTask(
 }
 
 /**
+ * 将会话级 artifact 清单包装为普通 fileListOnly 任务，复用现有文件聚合链。
+ */
+export function buildSessionFileManifestTask(
+  files?: CHAT.TFile[] | null,
+  messageTime?: string
+): PanelItemType | null {
+  const fileInfo = (files || [])
+    .filter((file) => Boolean(file?.name))
+    .map((file) => ({
+      fileName: file.name,
+      displayName: file.name,
+      domainUrl: file.previewUrl || file.url || file.downloadUrl || "",
+      ossUrl: file.downloadUrl || file.url || file.previewUrl || "",
+      previewUrl: file.previewUrl || file.url || file.downloadUrl || "",
+      downloadUrl: file.downloadUrl || file.url || file.previewUrl || "",
+      fileSize: file.size,
+      resourceKey: file.resourceKey,
+      relativePath: file.relativePath,
+      originFileName: file.originFileName,
+      missing: file.missing,
+      missingReason: file.missingReason,
+      mimeType: file.mimeType,
+      artifactType: file.type,
+    }));
+  if (!fileInfo.length) {
+    return null;
+  }
+  return {
+    messageType: "file",
+    messageTime: messageTime || "",
+    resultMap: {
+      messageType: "file",
+      fileListOnly: true,
+      fileInfo,
+    },
+  } as unknown as PanelItemType;
+}
+
+/**
  * 收集单轮会话的文件任务，供流式更新时按 chat 对象复用历史结果。
  */
 export function collectChatFileTasks(chat?: CHAT.ChatItem | null): PanelItemType[] {
@@ -189,8 +228,8 @@ export function workspaceFileKey(
   if (!file) {
     return "";
   }
-  return workspaceRelativePath(file) ||
-    file.resourceKey ||
+  return file.resourceKey ||
+    workspaceRelativePath(file) ||
     file.url ||
     file.downloadUrl ||
     file.name ||

@@ -1648,6 +1648,25 @@ function handleNonStreamingMessage(
   if (taskIndex !== -1) {
     const taskGroup = currentChat.multiAgent.tasks[taskIndex];
 
+    if (
+      nextTask.messageType === "result" ||
+      nextTask.messageType === "task_summary"
+    ) {
+      const existingIndex = findToolIndex(
+        currentChat.multiAgent.tasks,
+        taskIndex,
+        nextTask.messageId,
+        nextTask.messageType
+      );
+      if (existingIndex !== -1) {
+        taskGroup[existingIndex] = preserveTaskTiming(
+          taskGroup[existingIndex],
+          nextTask
+        );
+        return;
+      }
+    }
+
     // GenUI patch: merge onto latest ui_tree (any task group; plan steps may differ).
     // 始终保留 patch 事件进 multiAgent.tasks，findFeaturedGenUi 才能在最终回复区重放。
     if (nextTask.messageType === "ui_patch") {

@@ -76,6 +76,9 @@ type Props = {
   /** 外部回填（Undo 上一轮 user query） */
   draftMessage?: string | null;
   onDraftConsumed?: () => void;
+  /** 当前会话未发送的输入草稿 */
+  draftValue?: string;
+  onDraftChange?: (value: string) => void;
 };
 
 type InputModeKey = "think" | "research";
@@ -152,9 +155,13 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     onSelectionChange,
     draftMessage = null,
     onDraftConsumed,
+    draftValue = "",
+    onDraftChange,
   } = props;
 
-  const [question, setQuestion] = useState("");
+  const [question, setQuestion] = useState(() =>
+    draftValue.slice(0, MAX_QUERY_CHARS)
+  );
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false);
@@ -258,13 +265,20 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
   });
 
   useEffect(() => {
+    const nextDraft = draftValue.slice(0, MAX_QUERY_CHARS);
+    setQuestion((previous) => (previous === nextDraft ? previous : nextDraft));
+  }, [draftValue]);
+
+  useEffect(() => {
     if (!draftMessage) return;
-    setQuestion(draftMessage.slice(0, MAX_QUERY_CHARS));
+    const nextDraft = draftMessage.slice(0, MAX_QUERY_CHARS);
+    setQuestion(nextDraft);
+    onDraftChange?.(nextDraft);
     onDraftConsumed?.();
     requestAnimationFrame(() => {
       textareaRef.current?.focus();
     });
-  }, [draftMessage, onDraftConsumed]);
+  }, [draftMessage, onDraftChange, onDraftConsumed]);
 
   const handleAttachmentError = useCallback((error: PromptInputAttachmentError) => {
     if (error.code === "accept") {
@@ -313,7 +327,10 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
   };
 
   const handleQuestionChange = (value: string) => {
-    setQuestion(value.length > MAX_QUERY_CHARS ? value.slice(0, MAX_QUERY_CHARS) : value);
+    const nextQuestion =
+      value.length > MAX_QUERY_CHARS ? value.slice(0, MAX_QUERY_CHARS) : value;
+    setQuestion(nextQuestion);
+    onDraftChange?.(nextQuestion);
   };
 
   const handleSubmit = ({ text }: { text: string; files: unknown[] }) => {
@@ -323,6 +340,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     if (busy && onInject) {
       void Promise.resolve(onInject(trimmed));
       setQuestion("");
+      onDraftChange?.("");
       setForcePlanMode(false);
       return;
     }
@@ -344,6 +362,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     );
 
     setQuestion("");
+    onDraftChange?.("");
     setForcePlanMode(false);
     clearAttachmentUploads();
   };
@@ -362,7 +381,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
       const nextValue = (
         question.slice(0, selectionStart) + "\n" + question.slice(selectionEnd)
       ).slice(0, MAX_QUERY_CHARS);
-      setQuestion(nextValue);
+      handleQuestionChange(nextValue);
       requestAnimationFrame(() => {
         const caret = Math.min(selectionStart + 1, nextValue.length);
         textarea.selectionStart = caret;

@@ -149,11 +149,14 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
       url: file.url || catalogHit?.url || "",
       type: file.type || catalogHit?.type || "",
       size: file.size ?? catalogHit?.size ?? 0,
+      previewUrl: file.previewUrl || file.url || catalogHit?.previewUrl || catalogHit?.url,
       downloadUrl: file.downloadUrl || file.url || catalogHit?.downloadUrl,
       missing: file.missing ?? catalogHit?.missing,
       missingReason: file.missingReason || catalogHit?.missingReason,
       resourceKey: file.resourceKey || catalogHit?.resourceKey,
       mimeType: file.mimeType ?? catalogHit?.mimeType,
+      originFileName: file.originFileName || catalogHit?.originFileName,
+      relativePath: file.relativePath || catalogHit?.relativePath,
       messageTime: catalogHit?.messageTime,
       task:
         catalogHit?.task ||

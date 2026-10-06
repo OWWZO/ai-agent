@@ -1,11 +1,11 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Empty, Input } from "antd";
 import { useRequest } from "ahooks";
-import * as XLSX from "xlsx";
 import { Search } from "lucide-react";
 
 import Loading from "./Loading";
 import { cn } from "@/lib/utils";
+import { loadXlsx, type XlsxModule } from "@/lib/lazy/xlsx";
 import { copyText } from "@/utils";
 import { normalizeFileUrlForBrowser } from "@/utils/fileUrl";
 
@@ -89,14 +89,18 @@ const buildSheetGrid = (name: string, matrix: unknown[][]): SheetGrid => {
   return { name, rows, colCount, rowCount, truncated };
 };
 
-const parseWorkbook = (data: ArrayBuffer | string, fileType: "csv" | "excel"): WorkbookView => {
+const parseWorkbook = (
+  xlsx: XlsxModule,
+  data: ArrayBuffer | string,
+  fileType: "csv" | "excel"
+): WorkbookView => {
   if (fileType === "csv") {
     const text = typeof data === "string" ? data : new TextDecoder("utf-8").decode(data);
-    const workbook = XLSX.read(text, { type: "string", raw: false, FS: "," });
+    const workbook = xlsx.read(text, { type: "string", raw: false, FS: "," });
     const sheetName = workbook.SheetNames[0] || "Sheet1";
     const worksheet = workbook.Sheets[sheetName];
     const matrix = worksheet
-      ? (XLSX.utils.sheet_to_json(worksheet, {
+      ? (xlsx.utils.sheet_to_json(worksheet, {
           header: 1,
           defval: "",
           raw: false,
@@ -106,11 +110,11 @@ const parseWorkbook = (data: ArrayBuffer | string, fileType: "csv" | "excel"): W
     return { sheets: [buildSheetGrid(sheetName || "Sheet1", matrix)] };
   }
 
-  const workbook = XLSX.read(data, { type: "array", cellDates: true });
+  const workbook = xlsx.read(data, { type: "array", cellDates: true });
   const sheets = workbook.SheetNames.map((name) => {
     const worksheet = workbook.Sheets[name];
     const matrix = worksheet
-      ? (XLSX.utils.sheet_to_json(worksheet, {
+      ? (xlsx.utils.sheet_to_json(worksheet, {
           header: 1,
           defval: "",
           raw: false,
@@ -171,11 +175,11 @@ const TableRenderer: ReactorType.FC<TableRendererProps> = memo((props) => {
 
       if (fileType === "excel") {
         const buffer = await res.arrayBuffer();
-        return parseWorkbook(buffer, "excel");
+        return parseWorkbook(await loadXlsx(), buffer, "excel");
       }
 
       const text = await res.text();
-      return parseWorkbook(text, "csv");
+      return parseWorkbook(await loadXlsx(), text, "csv");
     },
     {
       refreshDeps: [resolvedUrl, missingReason, fileType],

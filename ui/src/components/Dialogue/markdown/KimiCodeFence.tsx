@@ -8,13 +8,16 @@ import {
 } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { codeToTokens, type BundledLanguage, type ThemedToken } from "shiki";
+import type { BundledLanguage, ThemedToken } from "shiki";
+import { loadShiki } from "@/lib/lazy/shiki";
 
 type DiffRow = {
   type: "add" | "del" | "hunk" | "ctx";
   sign: string;
   text: string;
 };
+
+const TEXT_LANGUAGE = "text" as BundledLanguage;
 
 export function parseDiffLines(code: string): DiffRow[] {
   return code.split("\n").map((line) => {
@@ -141,11 +144,19 @@ async function tokenizeCode(
   language: BundledLanguage,
   dark: boolean
 ): Promise<ThemedToken[][]> {
-  const result = await codeToTokens(code, {
-    lang: language,
-    theme: dark ? "github-dark" : "github-light",
-  });
-  return result.tokens;
+  const { codeToTokens } = await loadShiki();
+  const tokenize = (lang: BundledLanguage) =>
+    codeToTokens(code, {
+      lang,
+      theme: dark ? "github-dark" : "github-light",
+    });
+
+  try {
+    return (await tokenize(language)).tokens;
+  } catch {
+    if (language === TEXT_LANGUAGE) throw new Error("Shiki language unavailable");
+    return (await tokenize(TEXT_LANGUAGE)).tokens;
+  }
 }
 
 export const KimiCodeFence = memo(function KimiCodeFence({

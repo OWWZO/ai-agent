@@ -10,10 +10,10 @@ import {
   type HTMLAttributes,
   useContext,
   useEffect,
-  useRef,
   useState,
 } from "react";
-import { type BundledLanguage, codeToHtml, type ShikiTransformer } from "shiki";
+import type { BundledLanguage, ShikiTransformer } from "shiki";
+import { loadShiki } from "@/lib/lazy/shiki";
 
 type CodeBlockProps = HTMLAttributes<HTMLDivElement> & {
   code: string;
@@ -24,6 +24,8 @@ type CodeBlockProps = HTMLAttributes<HTMLDivElement> & {
 type CodeBlockContextType = {
   code: string;
 };
+
+const TEXT_LANGUAGE = "text" as BundledLanguage;
 
 const CodeBlockContext = createContext<CodeBlockContextType>({
   code: "",
@@ -55,24 +57,33 @@ export async function highlightCode(
   language: BundledLanguage,
   showLineNumbers = false
 ) {
+  const { codeToHtml } = await loadShiki();
   // 同时生成浅色和深色主题，调用方可按主题切换而无需重复执行 Shiki。
   const transformers: ShikiTransformer[] = showLineNumbers
     ? [lineNumberTransformer]
     : [];
 
-  // 与 kimi-web Markdown.vue 一致：github-light / github-dark
-  return await Promise.all([
-    codeToHtml(code, {
-      lang: language,
-      theme: "github-light",
-      transformers,
-    }),
-    codeToHtml(code, {
-      lang: language,
-      theme: "github-dark",
-      transformers,
-    }),
-  ]);
+  const render = (lang: BundledLanguage) =>
+    Promise.all([
+      codeToHtml(code, {
+        lang,
+        theme: "github-light",
+        transformers,
+      }),
+      codeToHtml(code, {
+        lang,
+        theme: "github-dark",
+        transformers,
+      }),
+    ]);
+
+  try {
+    // 与 kimi-web Markdown.vue 一致：github-light / github-dark
+    return await render(language);
+  } catch (error) {
+    if (language === TEXT_LANGUAGE) throw error;
+    return await render(TEXT_LANGUAGE);
+  }
 }
 
 export const CodeBlock = ({
@@ -84,20 +95,27 @@ export const CodeBlock = ({
   ...props
 }: CodeBlockProps) => {
   const [html, setHtml] = useState<string>("");
-  // 异步高亮完成后只允许已挂载实例更新状态，避免卸载后的 Promise 回调写入旧组件。
-  const mounted = useRef(false);
+  const [highlightError, setHighlightError] = useState(false);
 
   useEffect(() => {
     // code/language 变化会重新高亮；清理函数撤销本轮结果的状态写入资格。
-    highlightCode(code, language, showLineNumbers).then(([light]) => {
-      if (!mounted.current) {
-        setHtml(light);
-        mounted.current = true;
-      }
-    });
+    let cancelled = false;
+    setHtml("");
+    setHighlightError(false);
+    void highlightCode(code, language, showLineNumbers)
+      .then(([light]) => {
+        if (!cancelled) {
+          setHtml(light);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setHighlightError(true);
+        }
+      });
 
     return () => {
-      mounted.current = false;
+      cancelled = true;
     };
   }, [code, language, showLineNumbers]);
 
@@ -110,11 +128,17 @@ export const CodeBlock = ({
         subtitle="Source"
         {...props}
       >
-        <div
-          className="max-h-[min(70vh,560px)] overflow-auto rounded-lg px-3 py-2.5 sm:px-4 sm:py-3 shadow-[inset_0_1px_0_oklch(1_0_0_/_0.06)] dark:shadow-[inset_0_1px_0_oklch(1_0_0_/_0.04)] [&>pre]:m-0 [&>pre]:bg-transparent! [&>pre]:p-0 [&>pre]:text-foreground! [&>pre]:text-sm [&>pre]:!whitespace-pre-wrap [&>pre]:break-words [&>pre]:[overflow-wrap:anywhere] [&_code]:font-mono [&_code]:text-sm"
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
+        {highlightError ? (
+          <pre className="max-h-[min(70vh,560px)] overflow-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-sm sm:px-4 sm:py-3">
+            {code}
+          </pre>
+        ) : (
+          <div
+            className="max-h-[min(70vh,560px)] overflow-auto rounded-lg px-3 py-2.5 sm:px-4 sm:py-3 shadow-[inset_0_1px_0_oklch(1_0_0_/_0.06)] dark:shadow-[inset_0_1px_0_oklch(1_0_0_/_0.04)] [&>pre]:m-0 [&>pre]:bg-transparent! [&>pre]:p-0 [&>pre]:text-foreground! [&>pre]:text-sm [&>pre]:!whitespace-pre-wrap [&>pre]:break-words [&>pre]:[overflow-wrap:anywhere] [&_code]:font-mono [&_code]:text-sm"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        )}
       </ViewerPanelShell>
     </CodeBlockContext.Provider>
   );

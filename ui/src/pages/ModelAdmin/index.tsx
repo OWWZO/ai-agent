@@ -55,7 +55,7 @@ type TestResult = { ok: boolean; ms: number; message?: string };
 const EMPTY_EDITOR = (preset?: ProviderPreset): EditorState => ({
   modelId: "",
   modelName: "",
-  baseUrl: preset?.baseUrl ?? "https://www.micuapi.ai/v1",
+  baseUrl: preset?.baseUrl ?? "",
   apiKey: "",
   completionsPath: preset?.completionsPath ?? "/chat/completions",
   embeddingsPath: "/embeddings",
@@ -65,7 +65,7 @@ const EMPTY_EDITOR = (preset?: ProviderPreset): EditorState => ({
   supportsThinking: 0,
   contextWindow: null,
   status: 1,
-  providerId: preset?.id ?? "micu",
+  providerId: preset?.id ?? "custom",
 });
 
 function maskKey(key?: string) {

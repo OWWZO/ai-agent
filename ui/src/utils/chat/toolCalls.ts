@@ -283,6 +283,9 @@ export function resolveToolCallActionText(task: CHAT.Task) {
   if (status === "failed") {
     return "工具调用失败";
   }
+  if (status === "cancelled") {
+    return "已取消";
+  }
   if (status === "streaming" || status === "preparing") {
     return "正在生成工具参数";
   }

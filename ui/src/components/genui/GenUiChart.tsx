@@ -1,11 +1,11 @@
-import { FC, memo, useEffect, useMemo, useRef } from "react";
-import * as echarts from "echarts";
-import type { EChartsOption } from "echarts";
+import { FC, memo, useEffect, useMemo, useRef, useState } from "react";
+import type { EChartsOption, EChartsType } from "echarts";
 import {
   WORKSPACE_RESIZE_END_EVENT,
   WORKSPACE_RESIZING_SELECTOR,
   isWorkspaceResizeEventFor,
 } from "@/utils/workspaceResize";
+import { loadEcharts } from "@/lib/lazy/echarts";
 
 type SeriesItem = { name?: string; values?: number[] };
 
@@ -34,8 +34,11 @@ const GenUiChart: FC<Props> = memo(
     showGrid = true,
   }) => {
     const ref = useRef<HTMLDivElement | null>(null);
-    const instance = useRef<echarts.EChartsType | null>(null);
+    const instance = useRef<EChartsType | null>(null);
     const resizeFrameRef = useRef<number | null>(null);
+    const [chartStatus, setChartStatus] = useState<
+      "idle" | "loading" | "ready" | "error"
+    >("idle");
 
     const option: EChartsOption = useMemo(() => {
       // option 只依赖可序列化 props；饼图和坐标图分别使用 ECharts 的数据模型。
@@ -148,14 +151,42 @@ const GenUiChart: FC<Props> = memo(
       };
     }, [title, chart, categories, series, stacked, showLegend, showGrid]);
 
+    const empty =
+      !series.length ||
+      (chart?.toLowerCase() === "pie"
+        ? !(series[0]?.values || []).length
+        : series.every((s) => !(s.values || []).length));
+
     useEffect(() => {
-      if (!ref.current) return;
-      // 实例在 DOM 容器上复用，option 更新只替换配置。
-      if (!instance.current) {
-        instance.current = echarts.init(ref.current);
+      const node = ref.current;
+      if (!node || empty) {
+        setChartStatus("idle");
+        return;
       }
-      instance.current.setOption(option, true);
-    }, [option]);
+
+      let cancelled = false;
+      setChartStatus("loading");
+      void loadEcharts()
+        .then((echarts) => {
+          if (cancelled || !ref.current) return;
+          // 实例在 DOM 容器上复用，option 更新只替换配置。
+          if (!instance.current) {
+            instance.current = echarts.init(ref.current);
+          }
+          instance.current.setOption(option, true);
+          setChartStatus("ready");
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            console.error("加载 ECharts 失败", error);
+            setChartStatus("error");
+          }
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }, [empty, option]);
 
     useEffect(() => {
       const node = ref.current;
@@ -207,12 +238,6 @@ const GenUiChart: FC<Props> = memo(
       };
     }, []);
 
-    const empty =
-      !series.length ||
-      (chart?.toLowerCase() === "pie"
-        ? !(series[0]?.values || []).length
-        : series.every((s) => !(s.values || []).length));
-
     if (empty) {
       return (
         <div className="rounded-xl border border-dashed border-[var(--chat-border)] bg-[var(--chat-surface-muted)]/40 px-4 py-8 text-center text-sm text-[var(--chat-text-soft)]">
@@ -224,7 +249,7 @@ const GenUiChart: FC<Props> = memo(
     return (
       <div className="w-full min-w-0 space-y-1">
         <div
-          className="w-full min-h-[240px] max-h-[min(52vh,560px)] aspect-[16/9] rounded-xl border border-[var(--chat-border)]/50 bg-[var(--chat-surface)] p-2"
+          className="relative w-full min-h-[240px] max-h-[min(52vh,560px)] aspect-[16/9] rounded-xl border border-[var(--chat-border)]/50 bg-[var(--chat-surface)] p-2"
           style={
             height && height !== 280
               ? { minHeight: Math.max(200, height), height, maxHeight: "none", aspectRatio: "auto" }
@@ -232,6 +257,16 @@ const GenUiChart: FC<Props> = memo(
           }
         >
           <div ref={ref} className="h-full w-full" />
+          {chartStatus === "loading" ? (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-[var(--chat-text-soft)]">
+              加载图表中
+            </div>
+          ) : null}
+          {chartStatus === "error" ? (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-[var(--chat-text-soft)]">
+              图表加载失败
+            </div>
+          ) : null}
         </div>
       </div>
     );

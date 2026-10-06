@@ -43,6 +43,22 @@ describe("GeneralInput", () => {
     expect(html).not.toContain("thinking-shimmer");
   });
 
+  it("恢复当前会话保存的未发送草稿", () => {
+    const html = renderToStaticMarkup(
+      <GeneralInput
+        sessionId="session-new"
+        placeholder="请输入问题"
+        showBtn={false}
+        disabled={false}
+        size="default"
+        draftValue="你好"
+        send={vi.fn()}
+      />
+    );
+
+    expect(html).toContain(">你好</textarea>");
+  });
+
   it("输入工具条不再展示输出格式入口", () => {
     const html = renderToStaticMarkup(
       <GeneralInput

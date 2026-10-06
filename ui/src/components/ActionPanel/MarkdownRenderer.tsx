@@ -5,7 +5,7 @@ import { Empty, Image, Modal } from 'antd';
 import classNames from 'classnames';
 import { Expand, X } from 'lucide-react';
 import { usePanelContext } from './PanelProvider';
-import mermaid from 'mermaid';
+import { loadMermaid } from '@/lib/lazy/mermaid';
 import {
   DiffCodeFence,
   KimiCodeFence,
@@ -16,7 +16,6 @@ import {
   rewriteMarkdownArtifactRefs,
 } from '@/utils/markdownArtifacts';
 import type { BundledLanguage } from 'shiki';
-import { bundledLanguages } from 'shiki';
 
 /** 终答 Markdown 内嵌图：点击 antd Image 预览放大 */
 const MarkdownImagePreview: ReactorType.FC<{
@@ -122,12 +121,34 @@ const MarkdownMediaPlayer: ReactorType.FC<{
 
 const Mermaid: ReactorType.FC = (props) => {
   const { children } = props;
-  const ref = useRef(null);
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [loadError, setLoadError] = useState(false);
+
   useEffect(() => {
-    if (ref.current) {
-      mermaid.contentLoaded();
-    }
+    let cancelled = false;
+    setLoadError(false);
+
+    void loadMermaid()
+      .then(({ default: mermaid }) => {
+        if (cancelled || !ref.current) return;
+        mermaid.contentLoaded();
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error('加载 Mermaid 失败', error);
+          setLoadError(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [children]);
+
+  if (loadError) {
+    return <pre className="overflow-auto">{children}</pre>;
+  }
+
   return (
     <div className="mermaid" ref={ref}>
       {children}
@@ -174,9 +195,7 @@ const CodeBlock: ReactorType.FC<{
 
   if (isBlock && match) {
     const rawLang = match[1];
-    const safeLanguage = (
-      rawLang in bundledLanguages ? rawLang : "text"
-    ) as BundledLanguage;
+    const safeLanguage = rawLang as BundledLanguage;
     return <KimiCodeFence code={trimmed} language={safeLanguage} />;
   }
 

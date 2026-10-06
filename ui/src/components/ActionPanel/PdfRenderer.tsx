@@ -8,17 +8,18 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import * as pdfjs from "pdfjs-dist";
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
-import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { downloadFile } from "@/utils";
 import { normalizeFileUrlForBrowser } from "@/utils/fileUrl";
 import pdfIcon from "@/assets/icon/pdf.png";
 import Loading from "./Loading";
 import DocumentFallback from "./DocumentFallback";
 import { cn } from "@/lib/utils";
-
-pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+import {
+  loadPdfjs,
+  loadPdfWorkerUrl,
+  type PdfjsModule,
+} from "@/lib/lazy/pdfjs";
 
 const LOADING_CLASS = "mr-32";
 const MAX_AUTO_PAGES = 80;
@@ -70,9 +71,10 @@ const ToolbarIconBtn: React.FC<{
 
 const PdfPageView: React.FC<{
   page: PDFPageProxy;
+  pdfjs: PdfjsModule;
   scale: number;
   pageNumber: number;
-}> = ({ page, scale, pageNumber }) => {
+}> = ({ page, pdfjs, scale, pageNumber }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const textLayerRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({
@@ -157,7 +159,7 @@ const PdfPageView: React.FC<{
     return () => {
       cancelled = true;
     };
-  }, [page, scale]);
+  }, [page, pdfjs, scale]);
 
   return (
     <div
@@ -333,7 +335,7 @@ const PdfRenderer: React.FC<PdfRendererProps> = React.memo((props) => {
 
   const displayName = fileName || "document.pdf";
 
-  const { data: pdfDoc, loading, error } = useRequest(
+  const { data: pdfResult, loading, error } = useRequest(
     async () => {
       // URL/缺失原因变化会重新获取文档；先读完整 buffer 再交给 pdfjs，避免把
       // 远端响应流的生命周期泄漏到页面组件。
@@ -342,25 +344,43 @@ const PdfRenderer: React.FC<PdfRendererProps> = React.memo((props) => {
       const response = await fetch(resolvedUrl);
       if (!response.ok) throw new Error("Network response was not ok");
       const buffer = await response.arrayBuffer();
-      return (await pdfjs.getDocument({ data: buffer })
+      const [pdfjs, workerUrl] = await Promise.all([
+        loadPdfjs(),
+        loadPdfWorkerUrl(),
+      ]);
+      pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+      const doc = (await pdfjs.getDocument({ data: buffer })
         .promise) as PDFDocumentProxy;
+      return {
+        doc,
+        pdfjs,
+      };
     },
     {
       refreshDeps: [resolvedUrl, missingReason],
       onSuccess: async (doc) => {
         // 只预加载前 MAX_AUTO_PAGES 页，保留页数用于导航；超大 PDF 通过下载原件
         // 获取完整内容，避免首次打开一次性创建过多 PDFPageProxy。
-        setPageCount(doc.numPages);
+        setPageCount(doc.doc.numPages);
         setJumpPage(1);
-        const limit = Math.min(doc.numPages, MAX_AUTO_PAGES);
+        const limit = Math.min(doc.doc.numPages, MAX_AUTO_PAGES);
         const loaded: PDFPageProxy[] = [];
         for (let i = 1; i <= limit; i += 1) {
-          loaded.push(await doc.getPage(i));
+          loaded.push(await doc.doc.getPage(i));
         }
         setPages(loaded);
       },
     }
   );
+
+  useEffect(() => {
+    const documentProxy = pdfResult?.doc;
+    return () => {
+      // PDF.js 文档会持有 worker、页面代理和解码缓存；切换文件或卸载预览时必须释放，
+      // 否则多次打开大 PDF 会把旧文档留在内存中，增加后台标签页被回收的概率。
+      void documentProxy?.cleanup();
+    };
+  }, [pdfResult]);
 
   const scrollToPage = (pageNum: number) => {
     // 页码输入统一夹在 [1, pageCount]，并通过 DOM data-page 定位已经加载的页；
@@ -426,7 +446,7 @@ const PdfRenderer: React.FC<PdfRendererProps> = React.memo((props) => {
     );
   }
 
-  if (error || !pdfDoc) {
+  if (error || !pdfResult) {
     return (
       <DocumentFallback
         label="PDF"
@@ -516,6 +536,7 @@ const PdfRenderer: React.FC<PdfRendererProps> = React.memo((props) => {
             <PdfPageView
               key={index + 1}
               page={page}
+              pdfjs={pdfResult.pdfjs}
               scale={scale}
               pageNumber={index + 1}
             />

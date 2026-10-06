@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildSessionFileManifestTask,
   buildWorkspaceTree,
   collectSessionFileTasks,
   collectWorkspaceFiles,
   flattenTasksWithFiles,
 } from "./workspaceFiles";
+import { isFileListOnlyTask, normalizeSessionArtifactFiles } from "@/utils/taskArtifacts";
 
 describe("workspaceFiles session aggregation", () => {
   it("flattens nested children file tasks", () => {
@@ -226,5 +228,67 @@ describe("workspaceFiles session aggregation", () => {
       "css",
       "index.html",
     ]);
+  });
+
+  it("converts a session manifest into a fileListOnly task with stable links", () => {
+    const files = normalizeSessionArtifactFiles([
+      {
+        artifactType: "text/markdown",
+        displayName: "report.md",
+        relativePath: "reports/report.md",
+        resourceKey: "workspace/report.md",
+        previewUrl: "https://files.test/preview/report.md",
+        downloadUrl: "https://files.test/download/report.md",
+        fileSize: 1234,
+        mimeType: "text/markdown",
+        missing: false,
+      },
+    ], "session-001");
+    const task = buildSessionFileManifestTask(files);
+
+    expect(task).not.toBeNull();
+    expect(isFileListOnlyTask(task)).toBe(true);
+    const collected = collectWorkspaceFiles(task ? [task] : []);
+    expect(collected).toHaveLength(1);
+    expect(collected[0]).toMatchObject({
+      name: "report.md",
+      relativePath: "reports/report.md",
+      previewUrl: "https://files.test/preview/report.md",
+      downloadUrl: "https://files.test/download/report.md",
+      resourceKey: "workspace/report.md",
+    });
+  });
+
+  it("deduplicates manifest files with the same replay artifact", () => {
+    const manifestFiles = normalizeSessionArtifactFiles([
+      {
+        artifactType: "text/markdown",
+        displayName: "report.md",
+        relativePath: "reports/report.md",
+        resourceKey: "workspace/report.md",
+        previewUrl: "https://files.test/preview/report.md",
+        downloadUrl: "https://files.test/download/report.md",
+      },
+    ]);
+    const manifestTask = buildSessionFileManifestTask(manifestFiles);
+    const replayTask = {
+      messageType: "tool_result",
+      artifactRefs: [
+        {
+          fileName: "report.md",
+          relativePath: "reports/report.md",
+          resourceKey: "workspace/report.md",
+          previewUrl: "https://files.test/preview/report.md",
+          downloadUrl: "https://files.test/download/report.md",
+        },
+      ],
+    } as any;
+
+    const files = collectWorkspaceFiles([
+      replayTask,
+      ...(manifestTask ? [manifestTask] : []),
+    ]);
+    expect(files).toHaveLength(1);
+    expect(files[0]?.resourceKey).toBe("workspace/report.md");
   });
 });

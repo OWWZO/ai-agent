@@ -1,4 +1,12 @@
-import type { ConversationSessionItem } from "@/services/agentConversation";
+import type {
+  ConversationHistoryPage,
+  ConversationRunReplay,
+  ConversationSessionItem,
+} from "@/services/agentConversation";
+import {
+  hydrateConversationFromSummaryPage,
+  mergeRunReplayIntoConversation,
+} from "@/utils/conversationHistory";
 
 /**
  * 首页只自动恢复当前 tab 中仍在执行的会话。
@@ -18,4 +26,31 @@ export function resolveInitialSessionId(params: {
   return storedSession && String(storedSession.status).toUpperCase() === "RUNNING"
     ? storedSession.sessionId
     : null;
+}
+
+export async function hydrateSessionWithRunningReplay(
+  page: ConversationHistoryPage,
+  loadReplay: (requestId: string) => Promise<ConversationRunReplay>,
+  onReplayError?: (requestId: string, error: unknown) => void
+): Promise<CHAT.ConversationHistory> {
+  const conversation = hydrateConversationFromSummaryPage(page);
+  const runningChat = [...conversation.chatList]
+    .reverse()
+    .find(
+      (chat) =>
+        chat.requestId &&
+        String(chat.metrics?.status || "").toUpperCase() === "RUNNING"
+    );
+
+  if (!runningChat?.requestId) {
+    return conversation;
+  }
+
+  try {
+    const replay = await loadReplay(runningChat.requestId);
+    return mergeRunReplayIntoConversation(conversation, replay);
+  } catch (error) {
+    onReplayError?.(runningChat.requestId, error);
+    return conversation;
+  }
 }

@@ -11,13 +11,6 @@ export type ProviderPreset = {
 /** 常用厂商预设：选中后自动填 baseUrl / path，key 仍手填 */
 export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
-    id: "micu",
-    label: "Micu / 兼容中转",
-    baseUrl: "https://www.micuapi.ai/v1",
-    completionsPath: "/chat/completions",
-    keyHint: "中转站后台复制 API Key",
-  },
-  {
     id: "openai",
     label: "OpenAI",
     baseUrl: "https://api.openai.com/v1",

@@ -26,7 +26,7 @@ type PlanComposerBarProps = {
 
 /**
  * 依附在输入框上方的计划条（ExitPlanMode / PlanSolve stages）。
- * plan_approval 源对齐 Kimi ApprovalCard plan_review 视觉。
+ * plan_approval 源对齐 ApprovalCard plan_review 视觉。
  */
 const PlanComposerBar: FC<PlanComposerBarProps> = memo(
   ({ chat, taskList, structuredPlan, loading }) => {

@@ -34,4 +34,22 @@ describe("conversationHistoryApi", () => {
       "/api/agent/conversation/runs/request-001/replay"
     );
   });
+
+  it("requests the encoded session file manifest", async () => {
+    const files = [
+      {
+        displayName: "report.md",
+        relativePath: "reports/report.md",
+        resourceKey: "workspace/report.md",
+      },
+    ];
+    getMock.mockResolvedValueOnce(files);
+
+    await expect(
+      conversationHistoryApi.getSessionFiles("session/with spaces")
+    ).resolves.toEqual(files);
+    expect(getMock).toHaveBeenCalledWith(
+      "/api/agent/conversation/sessions/session%2Fwith%20spaces/files"
+    );
+  });
 });

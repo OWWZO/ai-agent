@@ -12,10 +12,12 @@ describe("ConversationSidebar", () => {
           activeView="chat"
           recentSessions={[]}
           recentSessionsLoading={false}
+          user={null}
           onNewChat={() => {}}
           onSelectSession={() => {}}
           onChangeView={() => {}}
           onManageFeaturedConversation={() => {}}
+          onLogout={() => {}}
         />
       </MemoryRouter>
     );
@@ -32,12 +34,14 @@ describe("ConversationSidebar", () => {
           activeView="chat"
           recentSessions={[]}
           recentSessionsLoading={false}
+          user={null}
           sidebarPanel="task-files"
           taskList={[]}
           onNewChat={() => {}}
           onSelectSession={() => {}}
           onChangeView={() => {}}
           onManageFeaturedConversation={() => {}}
+          onLogout={() => {}}
           onCloseTaskFiles={() => {}}
         />
       </MemoryRouter>

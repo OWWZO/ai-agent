@@ -278,6 +278,7 @@ export const normalizeTaskFile = (
     url: previewUrl || downloadUrl || "",
     type: toExtension(name, raw.artifactType || raw.type),
     size: toSize(raw.fileSize ?? raw.size),
+    previewUrl: previewUrl || undefined,
     downloadUrl: downloadUrl || undefined,
     missing,
     missingReason: firstText(
@@ -290,6 +291,20 @@ export const normalizeTaskFile = (
     relativePath: relativePath || undefined,
   };
 };
+
+export function normalizeSessionArtifactFiles(
+  artifacts?: MESSAGE.ArtifactReference[] | null,
+  sessionId?: string
+): CHAT.TFile[] {
+  return (artifacts || [])
+    .map((artifact) => normalizeTaskFile({
+      ...artifact,
+      fileName: artifact.displayName,
+      originFileName: artifact.originFileName || artifact.relativePath,
+      type: artifact.artifactType,
+    }, { sessionId }))
+    .filter((file): file is CHAT.TFile => Boolean(file));
+}
 
 export const artifactRefsToFileInfo = (artifactRefs?: unknown[]) => {
   if (!Array.isArray(artifactRefs) || !artifactRefs.length) {

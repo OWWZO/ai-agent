@@ -25,13 +25,14 @@ const HERO_TYPEWRITER_TEXTS = [
 export default function WelcomeView(props: {
   currentConversation: CHAT.ConversationHistory;
   product: CHAT.Product;
-  visitorUsername?: string;
   videoModalOpen?: string;
   featuredCards: FeaturedConversationCardModel[];
   onSelectionChange: (selection: {
     product: CHAT.Product;
     deepThink: boolean;
   }) => void;
+  inputDraft?: string;
+  onInputDraftChange?: (draft: string) => void;
   onSend: (inputInfo: CHAT.TInputInfo) => void;
   onSendQuestion: (query: SuggestedQuestion) => void;
   onOpenVideo: (url: string) => void;
@@ -144,6 +145,8 @@ export default function WelcomeView(props: {
                 disabled={false}
                 product={props.product}
                 deepThink={props.currentConversation.deepThink}
+                draftValue={props.inputDraft}
+                onDraftChange={props.onInputDraftChange}
                 send={props.onSend}
                 onSelectionChange={props.onSelectionChange}
               />

@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   deriveConversationMetaFromInput,
+  getConversationDraft,
   mergeLocalRecentConversations,
   mergeRecentSessions,
+  resolveLocalSessionSelection,
+  setConversationDraft,
   shouldApplyConversationToView,
   shouldHydrateConversationHistory,
   toRecentSessionItem,
@@ -92,6 +95,40 @@ describe("homeState", () => {
       runCount: 0,
     });
     expect(session?.lastActiveAt).toBe(new Date(2000).toISOString());
+  });
+
+  it("选择尚未持久化的空会话时应直接使用本地快照", () => {
+    const localDraft = {
+      sessionId: "session-new",
+      chatList: [],
+      dataChatList: [],
+    } as unknown as CHAT.ConversationHistory;
+
+    expect(
+      resolveLocalSessionSelection([localDraft], "session-new")
+    ).toEqual({
+      localConversation: localDraft,
+      shouldLoadRemote: false,
+    });
+    expect(resolveLocalSessionSelection([], "session-new")).toEqual({
+      localConversation: undefined,
+      shouldLoadRemote: true,
+    });
+  });
+
+  it("输入草稿按会话保存，切换会话后仍可恢复", () => {
+    const drafts = setConversationDraft({}, "session-new", "你好");
+    const draftsAfterSwitch = setConversationDraft(drafts, "session-other", "");
+
+    expect(getConversationDraft(draftsAfterSwitch, "session-new")).toBe("你好");
+    expect(getConversationDraft(draftsAfterSwitch, "session-other")).toBe("");
+
+    const draftsAfterSubmit = setConversationDraft(
+      draftsAfterSwitch,
+      "session-new",
+      ""
+    );
+    expect(getConversationDraft(draftsAfterSubmit, "session-new")).toBe("");
   });
 
   it("本地当前会话应置顶并按 sessionId 覆盖服务端旧条目", () => {

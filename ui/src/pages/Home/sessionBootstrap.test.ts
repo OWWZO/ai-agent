@@ -1,6 +1,126 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type {
+  ConversationHistoryPage,
+  ConversationReplayFrame,
+  ConversationRunReplay,
+} from "@/services/agentConversation";
+import { buildConversationTaskData, combineData } from "@/utils/chat";
 
-import { resolveInitialSessionId } from "./sessionBootstrap";
+import {
+  hydrateSessionWithRunningReplay,
+  resolveInitialSessionId,
+} from "./sessionBootstrap";
+
+function createReplayFrame(eventData: MESSAGE.EventData): ConversationReplayFrame {
+  return {
+    reqId: "req-running",
+    status: "success",
+    finished: false,
+    resultMap: { eventData },
+  };
+}
+
+function createRunningPage(): ConversationHistoryPage {
+  return {
+    sessionId: "session-running",
+    title: "执行中的会话",
+    status: "RUNNING",
+    deepThink: false,
+    runCount: 2,
+    finishedRunCount: 1,
+    failedRunCount: 0,
+    runs: [
+      {
+        requestId: "req-completed",
+        status: "SUCCESS",
+        queryPreview: "已完成的问题",
+        finalSummaryPreview: "已完成的结论",
+        hasReplay: true,
+      },
+      {
+        requestId: "req-running",
+        status: "RUNNING",
+        queryPreview: "正在执行的问题",
+        hasReplay: true,
+      },
+    ],
+  };
+}
+
+function createPlanEvent(): MESSAGE.EventData {
+  return {
+    taskId: "task-running",
+    taskOrder: 1,
+    messageType: "plan",
+    messageOrder: 1,
+    messageId: "plan-running",
+    resultMap: {
+      title: "恢复的执行计划",
+      stages: ["分析"],
+      steps: ["读取资料"],
+      stepStatus: ["in_progress"],
+      notes: [""],
+    } as unknown as MESSAGE.Task,
+  };
+}
+
+function createToolCallEvent(): MESSAGE.EventData {
+  return {
+    taskId: "task-running",
+    taskOrder: 1,
+    messageType: "task",
+    messageOrder: 2,
+    messageId: "tool-call-running",
+    resultMap: {
+      requestId: "req-running",
+      messageId: "tool-call-running",
+      messageType: "tool_call",
+      finish: false,
+      isFinal: false,
+      resultMap: {
+        messageType: "tool_call",
+        status: "running",
+        toolName: "read_file",
+        toolCallId: "call-running",
+        summary: "读取资料",
+        input: { fileName: "brief.md" },
+      },
+    } as unknown as MESSAGE.Task,
+  } as unknown as MESSAGE.EventData;
+}
+
+function createResultEvent(): MESSAGE.EventData {
+  return {
+    taskId: "task-running",
+    taskOrder: 1,
+    messageType: "task",
+    messageOrder: 3,
+    messageId: "result-running",
+    resultMap: {
+      requestId: "req-running",
+      messageId: "result-running",
+      messageType: "result",
+      messageTime: "1714620002000",
+      finish: true,
+      isFinal: true,
+      result: "最终结论",
+      taskSummary: "最终结论",
+    } as unknown as MESSAGE.Task,
+  } as unknown as MESSAGE.EventData;
+}
+
+function createReplay(
+  status: string,
+  replayFrames: ConversationReplayFrame[] = []
+): ConversationRunReplay {
+  return {
+    requestId: "req-running",
+    sessionId: "session-running",
+    status,
+    queryText: "正在执行的问题",
+    replayFrames,
+  };
+}
 
 describe("sessionBootstrap", () => {
   const sessions = [
@@ -64,5 +184,115 @@ describe("sessionBootstrap", () => {
         storedSessionId: "session-001",
       })
     ).toBeNull();
+  });
+
+  it("summary hydrate 后 replay 当前 RUNNING run，保留其它历史 run", async () => {
+    const replay = createReplay("RUNNING", [
+      createReplayFrame(createPlanEvent()),
+      createReplayFrame(createToolCallEvent()),
+    ]);
+    const loadReplay = vi.fn(async () => replay);
+
+    const conversation = await hydrateSessionWithRunningReplay(
+      createRunningPage(),
+      loadReplay
+    );
+
+    expect(loadReplay).toHaveBeenCalledOnce();
+    expect(loadReplay).toHaveBeenCalledWith("req-running");
+    expect(conversation.chatList.map((chat) => chat.requestId)).toEqual([
+      "req-completed",
+      "req-running",
+    ]);
+    expect(conversation.chatList[0].conclusion?.result).toBe("已完成的结论");
+    expect(conversation.chatList[1].loading).toBe(true);
+    expect(conversation.chatList[1].metrics?.status).toBe("RUNNING");
+    expect(conversation.chatList[1].replayLoaded).toBe(true);
+    expect(conversation.chatList[1].multiAgent.plan?.title).toBe(
+      "恢复的执行计划"
+    );
+    expect(
+      conversation.chatList[1].multiAgent.tasks.flat().filter(
+        (task) => task.messageType === "tool_call"
+      )
+    ).toHaveLength(1);
+  });
+
+  it("replay 与 follow SSE 收到同一工具事件时保持单张卡片", async () => {
+    const toolCall = createToolCallEvent();
+    const conversation = await hydrateSessionWithRunningReplay(
+      createRunningPage(),
+      async () => createReplay("RUNNING", [createReplayFrame(toolCall)])
+    );
+    const chat = conversation.chatList[1];
+    const afterFollow = buildConversationTaskData(
+      combineData(toolCall, chat),
+      conversation.deepThink
+    ).currentChat;
+
+    expect(
+      afterFollow.multiAgent.tasks.flat().filter(
+        (task) => task.messageType === "tool_call"
+      )
+    ).toHaveLength(1);
+  });
+
+  it("replay 与 follow SSE 收到同一最终事件时不重复结论", async () => {
+    const replayResult = createResultEvent();
+    const followResult = createResultEvent();
+    const page = createRunningPage();
+    page.runCount = 1;
+    page.finishedRunCount = 0;
+    page.runs = [page.runs[1]];
+    const conversation = await hydrateSessionWithRunningReplay(
+      page,
+      async () => createReplay("SUCCESS", [createReplayFrame(replayResult)])
+    );
+    const chat = conversation.chatList[0];
+    expect(
+      chat.multiAgent.tasks.flat().filter((task) => task.messageType === "result")
+    ).toHaveLength(1);
+    const afterFollow = buildConversationTaskData(
+      combineData(followResult, chat),
+      conversation.deepThink
+    ).currentChat;
+
+    expect(afterFollow.conclusion?.result).toBe("最终结论");
+    expect(
+      afterFollow.multiAgent.tasks.flat().filter(
+        (task) => task.messageType === "result"
+      )
+    ).toHaveLength(1);
+  });
+
+  it("replay 期间 run 结束时使用终态，不再保留 loading", async () => {
+    const conversation = await hydrateSessionWithRunningReplay(
+      createRunningPage(),
+      async () => ({
+        ...createReplay("SUCCESS"),
+        finalSummaryText: "已完成",
+      })
+    );
+
+    expect(conversation.chatList[1].loading).toBe(false);
+    expect(conversation.chatList[1].metrics?.status).toBe("SUCCESS");
+    expect(conversation.chatList[1].conclusion?.result).toBe("已完成");
+  });
+
+  it("replay 请求失败时保留 RUNNING shell 并报告 requestId", async () => {
+    const error = new Error("replay unavailable");
+    const onReplayError = vi.fn();
+    const conversation = await hydrateSessionWithRunningReplay(
+      createRunningPage(),
+      async () => {
+        throw error;
+      },
+      onReplayError
+    );
+
+    expect(conversation.chatList[1].loading).toBe(true);
+    expect(conversation.chatList[1].metrics?.status).toBe("RUNNING");
+    expect(conversation.chatList[1].replayLoaded).toBe(false);
+    expect(onReplayError).toHaveBeenCalledWith("req-running", error);
   });
 });

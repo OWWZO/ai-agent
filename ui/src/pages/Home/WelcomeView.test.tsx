@@ -26,7 +26,6 @@ describe("WelcomeView featured cards", () => {
         img: "icon-chat",
         color: "text-[#4040FF]",
       } as unknown as CHAT.Product,
-      visitorUsername: "visitor",
       videoModalOpen: undefined,
       onSelectionChange: () => {},
       onSend: () => {},

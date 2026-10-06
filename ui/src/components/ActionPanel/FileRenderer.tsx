@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useRequest } from "ahooks";
 import { Alert } from "antd";
 import type { BundledLanguage } from "shiki";
-import { bundledLanguages } from "shiki";
 import MarkdownRenderer from "./MarkdownRenderer";
 import HTMLRenderer from "./HTMLRenderer";
 import ImageRenderer from "./ImageRenderer";
@@ -104,11 +103,7 @@ const getFileExtension = (fileName?: string): string => {
 };
 
 const resolveLanguage = (ext: string): BundledLanguage => {
-  const mapped = LANG_ALIAS[ext] || ext;
-  if (mapped in bundledLanguages) {
-    return mapped as BundledLanguage;
-  }
-  return "text" as BundledLanguage;
+  return (LANG_ALIAS[ext] || ext || "text") as BundledLanguage;
 };
 
 const resolveUnavailableReason = (error: Error) => {
@@ -130,18 +125,40 @@ const SourceCodeView: React.FC<{
   className?: string;
 }> = ({ code, language, className }) => {
   const [html, setHtml] = useState("");
+  const [highlightError, setHighlightError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    highlightCode(code, language, true).then(([light]) => {
-      if (!cancelled) {
-        setHtml(light);
-      }
-    });
+    setHtml("");
+    setHighlightError(false);
+    void highlightCode(code, language, true)
+      .then(([light]) => {
+        if (!cancelled) {
+          setHtml(light);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setHighlightError(true);
+        }
+      });
     return () => {
       cancelled = true;
     };
   }, [code, language]);
+
+  if (highlightError) {
+    return (
+      <pre
+        className={cn(
+          "ws-source-view h-full min-h-0 w-full overflow-auto bg-white px-2 py-1 font-mono text-[13px] leading-[1.7] sm:px-3",
+          className
+        )}
+      >
+        {code}
+      </pre>
+    );
+  }
 
   if (!html) {
     return <Loading className={LOADING_CLASS} />;

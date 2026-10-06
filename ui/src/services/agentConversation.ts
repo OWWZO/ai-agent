@@ -19,12 +19,6 @@ export function getDeviceHeaders(): Record<string, string> {
   return { "X-Device-Id": getDeviceId() };
 }
 
-export interface VisitorBootstrapInfo {
-  visitorId: string;
-  username?: string;
-  named: boolean;
-}
-
 export interface ConversationSessionItem {
   sessionId: string;
   title: string;
@@ -89,6 +83,8 @@ export interface ConversationRunReplay {
   replayFrames: ConversationReplayFrame[];
 }
 
+export type ConversationSessionFile = MESSAGE.ArtifactReference;
+
 export interface ConversationHistoryPage {
   sessionId: string;
   title: string;
@@ -120,13 +116,6 @@ export interface ConversationHistoryQuery {
   after?: string | null;
 }
 
-export const visitorApi = {
-  bootstrap: () =>
-    api.get<VisitorBootstrapInfo>(`/api/agent/visitor/bootstrap`) as unknown as Promise<VisitorBootstrapInfo>,
-  naming: (username: string) =>
-    api.post<VisitorBootstrapInfo>(`/api/agent/visitor/naming`, { username }) as unknown as Promise<VisitorBootstrapInfo>,
-};
-
 export const conversationHistoryApi = {
   listSessions: (limit = 20) =>
     api.get<ConversationSessionItem[]>(
@@ -137,6 +126,10 @@ export const conversationHistoryApi = {
       `/api/agent/conversation/sessions/${encodeURIComponent(sessionId)}`,
       params
     ) as unknown as Promise<ConversationHistoryPage>,
+  getSessionFiles: (sessionId: string) =>
+    api.get<ConversationSessionFile[]>(
+      `/api/agent/conversation/sessions/${encodeURIComponent(sessionId)}/files`
+    ) as unknown as Promise<ConversationSessionFile[]>,
   getRunReplay: (requestId: string) =>
     api.get<ConversationRunReplay>(
       `/api/agent/conversation/runs/${encodeURIComponent(requestId)}/replay`

@@ -1,10 +1,11 @@
-import { FC, memo, useEffect, useMemo, useRef } from "react";
-import * as THREE from "three";
+import { FC, memo, useEffect, useMemo, useRef, useState } from "react";
+import type * as Three from "three";
 import {
   WORKSPACE_RESIZE_END_EVENT,
   WORKSPACE_RESIZE_START_EVENT,
   isWorkspaceResizeEventFor,
 } from "@/utils/workspaceResize";
+import { loadThree, type ThreeModule } from "@/lib/lazy/three";
 import { buildThreeJsSceneDocument } from "./threeJsSceneDocument";
 
 type GeometryKind =
@@ -82,14 +83,15 @@ function parseCameraZ(value: unknown): number {
 }
 
 function fitCameraToObject(
-  camera: THREE.PerspectiveCamera,
-  object: THREE.Object3D,
+  three: ThreeModule,
+  camera: Three.PerspectiveCamera,
+  object: Three.Object3D,
   zoom = 1
 ): void {
-  const box = new THREE.Box3().setFromObject(object);
+  const box = new three.Box3().setFromObject(object);
   if (box.isEmpty()) return;
-  const size = box.getSize(new THREE.Vector3());
-  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new three.Vector3());
+  const center = box.getCenter(new three.Vector3());
   const maxDim = Math.max(size.x, size.y, size.z, 0.001);
   const fov = (camera.fov * Math.PI) / 180;
   const fitH = maxDim / (2 * Math.tan(fov / 2));
@@ -173,34 +175,38 @@ function inferSceneOptions(props: Props): SceneOptions {
   };
 }
 
-function createGeometry(kind: GeometryKind, detail: number): THREE.BufferGeometry {
+function createGeometry(
+  three: ThreeModule,
+  kind: GeometryKind,
+  detail: number
+): Three.BufferGeometry {
   switch (kind) {
     case "box":
-      return new THREE.BoxGeometry(1.8, 1.8, 1.8);
+      return new three.BoxGeometry(1.8, 1.8, 1.8);
     case "sphere":
-      return new THREE.SphereGeometry(1.45, 48, 32);
+      return new three.SphereGeometry(1.45, 48, 32);
     case "octahedron":
-      return new THREE.OctahedronGeometry(1.65, detail);
+      return new three.OctahedronGeometry(1.65, detail);
     case "dodecahedron":
-      return new THREE.DodecahedronGeometry(1.55, detail);
+      return new three.DodecahedronGeometry(1.55, detail);
     case "tetrahedron":
-      return new THREE.TetrahedronGeometry(1.85, detail);
+      return new three.TetrahedronGeometry(1.85, detail);
     case "torusKnot":
-      return new THREE.TorusKnotGeometry(1.05, 0.32, 160, 18);
+      return new three.TorusKnotGeometry(1.05, 0.32, 160, 18);
     case "icosahedron":
     default:
-      return new THREE.IcosahedronGeometry(1.65, detail);
+      return new three.IcosahedronGeometry(1.65, detail);
   }
 }
 
-function disposeObject(obj: THREE.Object3D): void {
+function disposeObject(obj: Three.Object3D): void {
   // Three.js 不会因为从 scene 移除对象就自动释放 GPU 资源，effect 重建或组件卸载时必须
   // 显式 dispose geometry/material，避免聊天页面多次渲染后显存持续增长。
   obj.traverse((child) => {
-    const mesh = child as THREE.Mesh | THREE.LineSegments | THREE.Points;
-    const maybeGeometry = mesh.geometry as THREE.BufferGeometry | undefined;
+    const mesh = child as Three.Mesh | Three.LineSegments | Three.Points;
+    const maybeGeometry = mesh.geometry as Three.BufferGeometry | undefined;
     if (maybeGeometry?.dispose) maybeGeometry.dispose();
-    const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
+    const material = mesh.material as Three.Material | Three.Material[] | undefined;
     if (Array.isArray(material)) {
       material.forEach((m) => m.dispose());
     } else if (material?.dispose) {
@@ -211,6 +217,9 @@ function disposeObject(obj: THREE.Object3D): void {
 
 const GenUiThreeJsFrame: FC<Props> = memo((props) => {
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const [threeStatus, setThreeStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
   const options = useMemo(() => inferSceneOptions(props), [props]);
   const sceneScript = typeof props.sceneScript === "string" ? props.sceneScript.trim() : "";
   const scriptedDocument = useMemo(
@@ -225,185 +234,214 @@ const GenUiThreeJsFrame: FC<Props> = memo((props) => {
     const host = hostRef.current;
     if (!host || sceneScript) return;
 
-    const scene = new THREE.Scene();
-    // 每次 options 变化都建立完整的独立 scene；清理函数会销毁旧 renderer，避免旧动画
-    // 循环继续引用已卸载的 DOM 节点。
-    scene.background = new THREE.Color(options.background);
-    scene.fog = new THREE.Fog(options.background, 8, 28);
-
-    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000);
-    camera.position.set(0, 0.15, options.cameraZ);
-
-    const renderer = new THREE.WebGLRenderer({
-      antialias: options.dpr > 1,
-      alpha: false,
-      powerPreference: "high-performance",
-    });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, options.dpr));
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.domElement.style.display = "block";
-    renderer.domElement.style.width = "100%";
-    renderer.domElement.style.height = "100%";
-    host.appendChild(renderer.domElement);
-
-    const group = new THREE.Group();
-    scene.add(group);
-
-    const geometry = createGeometry(options.geometry, options.detail);
-    const material = new THREE.MeshPhysicalMaterial({
-      color: options.color,
-      metalness: 0.35,
-      roughness: 0.24,
-      clearcoat: 0.5,
-      transparent: true,
-      opacity: 0.9,
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    group.add(mesh);
-
-    if (options.wireframe) {
-      const edges = new THREE.EdgesGeometry(geometry);
-      const edgeMaterial = new THREE.LineBasicMaterial({
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.38,
-      });
-      group.add(new THREE.LineSegments(edges, edgeMaterial));
-    }
-
-    const core = new THREE.Mesh(
-      new THREE.IcosahedronGeometry(0.5, 0),
-      new THREE.MeshBasicMaterial({ color: options.accentColor })
-    );
-    group.add(core);
-
-    const orbiters: THREE.Mesh[] = [];
-    for (let i = 0; i < options.orbiters; i += 1) {
-      const orbiter = new THREE.Mesh(
-        new THREE.OctahedronGeometry(0.11 + (i % 3) * 0.03, 0),
-        new THREE.MeshStandardMaterial({
-          color: i % 2 === 0 ? options.accentColor : options.color,
-          emissive: i % 2 === 0 ? options.accentColor : options.color,
-          emissiveIntensity: 0.25,
-          roughness: 0.45,
-        })
-      );
-      orbiter.userData.angle = (i / Math.max(options.orbiters, 1)) * Math.PI * 2;
-      orbiter.userData.radius = 2.25 + (i % 4) * 0.13;
-      orbiter.userData.speed = 0.3 + (i % 5) * 0.04;
-      scene.add(orbiter);
-      orbiters.push(orbiter);
-    }
-
-    let particles: THREE.Points | null = null;
-    if (options.particles > 0) {
-      const particleGeometry = new THREE.BufferGeometry();
-      const positions = new Float32Array(options.particles * 3);
-      for (let i = 0; i < positions.length; i += 1) {
-        positions[i] = (Math.random() - 0.5) * 12;
-      }
-      particleGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-      particles = new THREE.Points(
-        particleGeometry,
-        new THREE.PointsMaterial({
-          color: 0x94a3b8,
-          size: 0.025,
-          transparent: true,
-          opacity: 0.55,
-        })
-      );
-      scene.add(particles);
-    }
-
-    scene.add(new THREE.AmbientLight(0xffffff, 0.36));
-    const key = new THREE.DirectionalLight(0xffffff, 1.25);
-    key.position.set(4, 5, 6);
-    scene.add(key);
-    const rim = new THREE.DirectionalLight(options.color, 0.75);
-    rim.position.set(-5, -2, -4);
-    scene.add(rim);
-    const point = new THREE.PointLight(options.accentColor, 0.8, 10);
-    point.position.set(0, 2, 2);
-    scene.add(point);
-
-    let visible = true;
     let disposed = false;
-    let frameId: number | null = null;
-    let resizeFrameId: number | null = null;
-    let resizing = false;
-    const clock = new THREE.Clock();
+    let cleanup: (() => void) | undefined;
+    setThreeStatus("loading");
 
-    const resize = () => {
-      const rect = host.getBoundingClientRect();
-      const width = Math.max(Math.floor(rect.width), 1);
-      const height = Math.max(Math.floor(rect.height), 1);
-      camera.aspect = width / height;
-      renderer.setSize(width, height, false);
-      fitCameraToObject(camera, group, options.cameraZ / 5);
-      const dist = camera.position.length();
-      scene.fog = new THREE.Fog(options.background, dist + 1.5, dist + 14);
-    };
-    const scheduleResize = () => {
-      if (resizing) return;
-      if (resizeFrameId !== null) return;
-      resizeFrameId = requestAnimationFrame(() => {
-        resizeFrameId = null;
-        if (!disposed && !resizing) resize();
-      });
-    };
+    const initialize = async () => {
+      try {
+        const THREE = await loadThree();
+        if (disposed || !hostRef.current) return;
 
-    function tick() {
-      frameId = null;
-      if (disposed || !visible || resizing) return;
-      const t = clock.getElapsedTime();
-      if (options.autoRotate) {
-        group.rotation.x = t * 0.18 * options.rotateSpeed;
-        group.rotation.y = t * 0.36 * options.rotateSpeed;
-        core.rotation.y = -t * 0.55 * options.rotateSpeed;
-      }
-      particles?.rotation.set(t * 0.015, t * 0.04, 0);
-      orbiters.forEach((orbiter, i) => {
-        const angle = (orbiter.userData.angle as number) + t * (orbiter.userData.speed as number);
-        const radius = orbiter.userData.radius as number;
-        orbiter.position.set(
-          Math.cos(angle) * radius,
-          Math.sin(angle * 1.7 + i) * 0.72,
-          Math.sin(angle) * radius
+        const scene = new THREE.Scene();
+        // 每次 options 变化都建立完整的独立 scene；清理函数会销毁旧 renderer，避免旧动画
+        // 循环继续引用已卸载的 DOM 节点。
+        scene.background = new THREE.Color(options.background);
+        scene.fog = new THREE.Fog(options.background, 8, 28);
+
+        const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000);
+        camera.position.set(0, 0.15, options.cameraZ);
+
+        const renderer = new THREE.WebGLRenderer({
+          antialias: options.dpr > 1,
+          alpha: false,
+          powerPreference: "high-performance",
+        });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, options.dpr));
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.domElement.style.display = "block";
+        renderer.domElement.style.width = "100%";
+        renderer.domElement.style.height = "100%";
+        host.appendChild(renderer.domElement);
+
+        const group = new THREE.Group();
+        scene.add(group);
+
+        const geometry = createGeometry(THREE, options.geometry, options.detail);
+        const material = new THREE.MeshPhysicalMaterial({
+          color: options.color,
+          metalness: 0.35,
+          roughness: 0.24,
+          clearcoat: 0.5,
+          transparent: true,
+          opacity: 0.9,
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        group.add(mesh);
+
+        if (options.wireframe) {
+          const edges = new THREE.EdgesGeometry(geometry);
+          const edgeMaterial = new THREE.LineBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.38,
+          });
+          group.add(new THREE.LineSegments(edges, edgeMaterial));
+        }
+
+        const core = new THREE.Mesh(
+          new THREE.IcosahedronGeometry(0.5, 0),
+          new THREE.MeshBasicMaterial({ color: options.accentColor })
         );
-        orbiter.rotation.x += 0.018;
-        orbiter.rotation.y += 0.024;
-      });
-      renderer.render(scene, camera);
-      frameId = requestAnimationFrame(tick);
-    }
+        group.add(core);
 
-    const onResizeStart = (event: Event) => {
-      if (!isWorkspaceResizeEventFor(event, host)) return;
-      resizing = true;
-      if (frameId !== null) {
-        cancelAnimationFrame(frameId);
-        frameId = null;
-      }
-      if (resizeFrameId !== null) {
-        cancelAnimationFrame(resizeFrameId);
-        resizeFrameId = null;
-      }
-    };
-    const onResizeEnd = (event: Event) => {
-      if (!isWorkspaceResizeEventFor(event, host)) return;
-      resizing = false;
-      scheduleResize();
-      if (visible && frameId === null) {
-        tick();
-      }
-    };
-    document.addEventListener(WORKSPACE_RESIZE_START_EVENT, onResizeStart);
-    document.addEventListener(WORKSPACE_RESIZE_END_EVENT, onResizeEnd);
+        const orbiters: Three.Mesh[] = [];
+        for (let i = 0; i < options.orbiters; i += 1) {
+          const orbiter = new THREE.Mesh(
+            new THREE.OctahedronGeometry(0.11 + (i % 3) * 0.03, 0),
+            new THREE.MeshStandardMaterial({
+              color: i % 2 === 0 ? options.accentColor : options.color,
+              emissive: i % 2 === 0 ? options.accentColor : options.color,
+              emissiveIntensity: 0.25,
+              roughness: 0.45,
+            })
+          );
+          orbiter.userData.angle = (i / Math.max(options.orbiters, 1)) * Math.PI * 2;
+          orbiter.userData.radius = 2.25 + (i % 4) * 0.13;
+          orbiter.userData.speed = 0.3 + (i % 5) * 0.04;
+          scene.add(orbiter);
+          orbiters.push(orbiter);
+        }
 
-    resize();
-    const resizeObserver = new ResizeObserver(scheduleResize);
-    resizeObserver.observe(host);
-    const intersectionObserver =
+        let particles: Three.Points | null = null;
+        if (options.particles > 0) {
+          const particleGeometry = new THREE.BufferGeometry();
+          const positions = new Float32Array(options.particles * 3);
+          for (let i = 0; i < positions.length; i += 1) {
+            positions[i] = (Math.random() - 0.5) * 12;
+          }
+          particleGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+          particles = new THREE.Points(
+            particleGeometry,
+            new THREE.PointsMaterial({
+              color: 0x94a3b8,
+              size: 0.025,
+              transparent: true,
+              opacity: 0.55,
+            })
+          );
+          scene.add(particles);
+        }
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.36));
+        const key = new THREE.DirectionalLight(0xffffff, 1.25);
+        key.position.set(4, 5, 6);
+        scene.add(key);
+        const rim = new THREE.DirectionalLight(options.color, 0.75);
+        rim.position.set(-5, -2, -4);
+        scene.add(rim);
+        const point = new THREE.PointLight(options.accentColor, 0.8, 10);
+        point.position.set(0, 2, 2);
+        scene.add(point);
+
+        let visible = true;
+        let frameId: number | null = null;
+        let resizeFrameId: number | null = null;
+        let resizing = false;
+        const clock = new THREE.Clock();
+
+        const resize = () => {
+          const rect = host.getBoundingClientRect();
+          const width = Math.max(Math.floor(rect.width), 1);
+          const height = Math.max(Math.floor(rect.height), 1);
+          camera.aspect = width / height;
+          renderer.setSize(width, height, false);
+          fitCameraToObject(THREE, camera, group, options.cameraZ / 5);
+          const dist = camera.position.length();
+          scene.fog = new THREE.Fog(options.background, dist + 1.5, dist + 14);
+        };
+        const scheduleResize = () => {
+          if (resizing) return;
+          if (resizeFrameId !== null) return;
+          resizeFrameId = requestAnimationFrame(() => {
+            resizeFrameId = null;
+            if (!disposed && !resizing) resize();
+          });
+        };
+
+        function tick() {
+          frameId = null;
+          if (
+            disposed ||
+            !visible ||
+            resizing ||
+            document.visibilityState !== "visible"
+          ) {
+            return;
+          }
+          const t = clock.getElapsedTime();
+          if (options.autoRotate) {
+            group.rotation.x = t * 0.18 * options.rotateSpeed;
+            group.rotation.y = t * 0.36 * options.rotateSpeed;
+            core.rotation.y = -t * 0.55 * options.rotateSpeed;
+          }
+          particles?.rotation.set(t * 0.015, t * 0.04, 0);
+          orbiters.forEach((orbiter, i) => {
+            const angle = (orbiter.userData.angle as number) + t * (orbiter.userData.speed as number);
+            const radius = orbiter.userData.radius as number;
+            orbiter.position.set(
+              Math.cos(angle) * radius,
+              Math.sin(angle * 1.7 + i) * 0.72,
+              Math.sin(angle) * radius
+            );
+            orbiter.rotation.x += 0.018;
+            orbiter.rotation.y += 0.024;
+          });
+          renderer.render(scene, camera);
+          frameId = requestAnimationFrame(tick);
+        }
+
+        const onVisibilityChange = () => {
+          if (document.visibilityState === "visible") {
+            if (visible && !resizing && frameId === null) {
+              tick();
+            }
+            return;
+          }
+          if (frameId !== null) {
+            cancelAnimationFrame(frameId);
+            frameId = null;
+          }
+        };
+
+        const onResizeStart = (event: Event) => {
+          if (!isWorkspaceResizeEventFor(event, host)) return;
+          resizing = true;
+          if (frameId !== null) {
+            cancelAnimationFrame(frameId);
+            frameId = null;
+          }
+          if (resizeFrameId !== null) {
+            cancelAnimationFrame(resizeFrameId);
+            resizeFrameId = null;
+          }
+        };
+        const onResizeEnd = (event: Event) => {
+          if (!isWorkspaceResizeEventFor(event, host)) return;
+          resizing = false;
+          scheduleResize();
+          if (visible && frameId === null) {
+            tick();
+          }
+        };
+        document.addEventListener(WORKSPACE_RESIZE_START_EVENT, onResizeStart);
+        document.addEventListener(WORKSPACE_RESIZE_END_EVENT, onResizeEnd);
+        document.addEventListener("visibilitychange", onVisibilityChange);
+
+        resize();
+        const resizeObserver = new ResizeObserver(scheduleResize);
+        resizeObserver.observe(host);
+        const intersectionObserver =
       typeof IntersectionObserver === "undefined"
         ? null
         : new IntersectionObserver(([entry]) => {
@@ -417,24 +455,39 @@ const GenUiThreeJsFrame: FC<Props> = memo((props) => {
             frameId = null;
           }
         });
-    intersectionObserver?.observe(host);
-    tick();
+        intersectionObserver?.observe(host);
+        tick();
+
+        cleanup = () => {
+          // 清理顺序先阻止下一帧，再断开观察器、移除 canvas、释放场景资源和 renderer，
+          // 覆盖 React effect 重跑与组件卸载两种生命周期。
+          document.removeEventListener(WORKSPACE_RESIZE_START_EVENT, onResizeStart);
+          document.removeEventListener(WORKSPACE_RESIZE_END_EVENT, onResizeEnd);
+          document.removeEventListener("visibilitychange", onVisibilityChange);
+          resizeObserver.disconnect();
+          intersectionObserver?.disconnect();
+          if (frameId !== null) cancelAnimationFrame(frameId);
+          if (resizeFrameId !== null) cancelAnimationFrame(resizeFrameId);
+          if (renderer.domElement.parentNode === host) {
+            host.removeChild(renderer.domElement);
+          }
+          disposeObject(scene);
+          renderer.dispose();
+        };
+        setThreeStatus("ready");
+      } catch (error) {
+        if (!disposed) {
+          console.error("加载 Three.js 资源失败", error);
+          setThreeStatus("error");
+        }
+      }
+    };
+
+    void initialize();
 
     return () => {
       disposed = true;
-      // 清理顺序先阻止下一帧，再断开观察器、移除 canvas、释放场景资源和 renderer，
-      // 覆盖 React effect 重跑与组件卸载两种生命周期。
-      document.removeEventListener(WORKSPACE_RESIZE_START_EVENT, onResizeStart);
-      document.removeEventListener(WORKSPACE_RESIZE_END_EVENT, onResizeEnd);
-      resizeObserver.disconnect();
-      intersectionObserver?.disconnect();
-      if (frameId !== null) cancelAnimationFrame(frameId);
-      if (resizeFrameId !== null) cancelAnimationFrame(resizeFrameId);
-      if (renderer.domElement.parentNode === host) {
-        host.removeChild(renderer.domElement);
-      }
-      disposeObject(scene);
-      renderer.dispose();
+      cleanup?.();
     };
   }, [options, sceneScript]);
 
@@ -451,7 +504,7 @@ const GenUiThreeJsFrame: FC<Props> = memo((props) => {
   };
 
   return (
-    <figure className="overflow-hidden rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)]">
+    <figure className="relative overflow-hidden rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)]">
       {sceneScript ? (
         <iframe
           title={options.title}
@@ -470,6 +523,16 @@ const GenUiThreeJsFrame: FC<Props> = memo((props) => {
           style={frameStyle}
         />
       )}
+      {!sceneScript && threeStatus === "loading" ? (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-white/70">
+          加载 Three.js 场景…
+        </div>
+      ) : null}
+      {!sceneScript && threeStatus === "error" ? (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-white/70">
+          Three.js 场景加载失败
+        </div>
+      ) : null}
     </figure>
   );
 });

@@ -40,6 +40,57 @@ export function shouldHydrateConversationHistory(params: {
   );
 }
 
+function isEmptyConversationDraft(conversation: CHAT.ConversationHistory) {
+  return (
+    conversation.chatList.length === 0 &&
+    conversation.dataChatList.length === 0
+  );
+}
+
+export function resolveLocalSessionSelection(
+  localConversations: CHAT.ConversationHistory[],
+  sessionId: string
+) {
+  const localConversation = localConversations.find(
+    (conversation) => conversation.sessionId === sessionId
+  );
+
+  return {
+    localConversation,
+    shouldLoadRemote: !localConversation || !isEmptyConversationDraft(localConversation),
+  };
+}
+
+export type ConversationDrafts = Record<string, string>;
+
+export function getConversationDraft(
+  drafts: ConversationDrafts,
+  sessionId: string
+) {
+  return drafts[sessionId] || "";
+}
+
+export function setConversationDraft(
+  drafts: ConversationDrafts,
+  sessionId: string,
+  draft: string
+) {
+  if (!sessionId || drafts[sessionId] === draft) {
+    return drafts;
+  }
+
+  if (!draft) {
+    const next = { ...drafts };
+    delete next[sessionId];
+    return next;
+  }
+
+  return {
+    ...drafts,
+    [sessionId]: draft,
+  };
+}
+
 function resolveConversationStatus(conversation: CHAT.ConversationHistory) {
   const latestChat = conversation.chatList[conversation.chatList.length - 1];
   if (latestChat?.metrics?.status) {
@@ -125,13 +176,6 @@ export function mergeRecentSessions(
   });
 
   return Array.from(merged.values()).slice(0, 20);
-}
-
-function isEmptyConversationDraft(conversation: CHAT.ConversationHistory) {
-  return (
-    conversation.chatList.length === 0 &&
-    conversation.dataChatList.length === 0
-  );
 }
 
 function conversationRunCount(conversation: CHAT.ConversationHistory) {

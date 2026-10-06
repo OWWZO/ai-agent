@@ -1,22 +1,20 @@
 import {
+  lazy,
   memo,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
+import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { Menu } from "lucide-react";
 import ChatView from "@/components/ChatView";
+import Loading from "@/components/ActionPanel/Loading";
 import { DURATION, EASE_OUT, useMotionConfig } from "@/lib/motion";
-import WorkspaceMRag from "@/pages/WorkspaceMRag";
-import WorkspaceImageGeneration from "@/pages/WorkspaceImageGeneration";
-import WorkspaceSop from "@/pages/WorkspaceSop";
-import SubAgentAdmin from "@/pages/SubAgentAdmin";
-import ModelAdmin from "@/pages/ModelAdmin";
-import CapabilityLibrary from "@/pages/CapabilityLibrary";
-import FeaturedConversations from "@/pages/FeaturedConversations";
 import {
   GENERIC_TASK_PRODUCT,
   getProductByType,
@@ -31,10 +29,15 @@ import {
 } from "@/utils";
 import {
   conversationHistoryApi,
-  visitorApi,
-  type VisitorBootstrapInfo,
+  type ConversationRunReplay,
   type ConversationSessionItem,
 } from "@/services/agentConversation";
+import { authApi } from "@/services/auth";
+import { useAuth } from "@/stores/auth";
+import {
+  buildFeaturedConversationDetailPath,
+  ROUTES,
+} from "@/router/routes";
 import {
   featuredConversationApi,
   type FeaturedConversationCard,
@@ -44,7 +47,6 @@ import {
   type FeaturedConversationAdminRecord,
 } from "@/services/featuredConversationAdmin";
 import {
-  hydrateConversationFromSummaryPage,
   isHistoryDetailEmpty,
   mergeConversationHistoryPage,
   mergeRunReplayIntoConversation,
@@ -54,21 +56,21 @@ import { readActiveRun } from "@/utils/activeRunStorage";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   deriveConversationMetaFromInput,
+  getConversationDraft,
   mergeLocalRecentConversations,
   mergeRecentSessions,
+  resolveLocalSessionSelection,
   shouldApplyConversationToView,
+  setConversationDraft,
   toRecentSessionItem,
 } from "./homeState";
 import FeaturedConversationAdminPanel from "./FeaturedConversationAdminPanel";
-import { resolveInitialSessionId } from "./sessionBootstrap";
-import { useRecentSessions } from "./useRecentSessions";
 import {
-  resolveVisitorWorkspaceStage,
-  shouldBootstrapVisitor,
-  shouldLoadVisitorProtectedData,
-} from "./visitorGate";
-import VisitorBootstrapScreen from "./VisitorBootstrapScreen";
-import VisitorLoginGate from "./VisitorLoginGate";
+  hydrateSessionWithRunningReplay,
+  resolveInitialSessionId,
+} from "./sessionBootstrap";
+import { useRecentSessions } from "./useRecentSessions";
+import { loadCachedSessionFiles } from "./sessionWorkspaceFiles";
 import WelcomeView from "./WelcomeView";
 import ConversationSidebar from "./ConversationSidebar";
 import type { PanelItemType } from "@/components/ActionPanel";
@@ -76,6 +78,7 @@ import {
   workspaceFileKey,
   type WorkspaceFileItem,
 } from "@/components/ActionView/workspaceFiles";
+import { normalizeSessionArtifactFiles } from "@/utils/taskArtifacts";
 import {
   buildFeaturedConversationFormState,
   canFeatureConversationSession,
@@ -99,6 +102,25 @@ type SidebarView =
 type InitialState = {
   productType: string;
 };
+
+const LazyWorkspaceMRag = lazy(() => import("@/pages/WorkspaceMRag"));
+const LazyWorkspaceImageGeneration = lazy(
+  () => import("@/pages/WorkspaceImageGeneration")
+);
+const LazyWorkspaceSop = lazy(() => import("@/pages/WorkspaceSop"));
+const LazySubAgentAdmin = lazy(() => import("@/pages/SubAgentAdmin"));
+const LazyModelAdmin = lazy(() => import("@/pages/ModelAdmin"));
+const LazyCapabilityLibrary = lazy(() => import("@/pages/CapabilityLibrary"));
+const LazyFeaturedConversations = lazy(
+  () => import("@/pages/FeaturedConversations")
+);
+
+const WorkspaceLoading: ReactorType.FC = () => (
+  <Loading loading className="h-full min-h-[240px]" />
+);
+
+const WorkspaceContent: ReactorType.FC<{ children: ReactNode }> = ({ children }) =>
+  <Suspense fallback={<WorkspaceLoading />}>{children}</Suspense>;
 
 const EMPTY_INPUT: CHAT.TInputInfo = {
   message: "",
@@ -174,9 +196,10 @@ const createInitialState = (): InitialState => {
 
 const Home: ReactorType.FC<HomeProps> = memo(() => {
   // Home 持有跨页面的会话壳状态：当前 conversation 负责聊天，侧栏/工作区
-  // 状态负责视图切换，访客 bootstrap 则决定哪些受保护数据可以开始加载。
+  // 状态负责视图切换；认证状态由应用启动时的 Cookie refresh 恢复。
+  const navigate = useNavigate();
+  const auth = useAuth();
   const initialRef = useRef<InitialState>(createInitialState());
-  const initializedVisitorIdRef = useRef<string | null>(null);
   const conversationBootstrapResolvedRef = useRef(false);
   const {
     recentSessions,
@@ -198,6 +221,9 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     []
   );
   const [selectedTaskFileKey, setSelectedTaskFileKey] = useState("");
+  const [conversationDrafts, setConversationDrafts] = useState<
+    Record<string, string>
+  >({});
   type ChatViewApi = {
     openFile: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
   };
@@ -218,27 +244,47 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     useState<FeaturedConversationAdminRecord | null>(null);
   const [featuredAdminForm, setFeaturedAdminForm] =
     useState<FeaturedConversationFormState>(EMPTY_FEATURED_FORM);
-  const [visitorBootstrap, setVisitorBootstrap] = useState<VisitorBootstrapInfo>();
-  const [visitorBootstrapLoaded, setVisitorBootstrapLoaded] = useState(false);
-  const [visitorBootstrapLoading, setVisitorBootstrapLoading] = useState(false);
-  const [visitorNamingLoading, setVisitorNamingLoading] = useState(false);
   const [conversationBootstrapLoading, setConversationBootstrapLoading] =
     useState(false);
   const [historyPageLoading, setHistoryPageLoading] = useState(false);
   const historyPageRequestsRef = useRef<Map<string, Promise<void>>>(new Map());
-  const runReplayRequestsRef = useRef<Map<string, Promise<void>>>(new Map());
+  const runReplayRequestsRef = useRef<
+    Map<string, Promise<ConversationRunReplay>>
+  >(new Map());
+  const sessionWorkspaceFilesCacheRef = useRef<Map<string, CHAT.TFile[]>>(
+    new Map()
+  );
+  const sessionWorkspaceFileRequestsRef = useRef<
+    Map<string, Promise<CHAT.TFile[]>>
+  >(new Map());
   const sessionSelectionVersionRef = useRef(0);
+  const loadRunReplay = useCallback(
+    (sessionId: string, requestId: string) => {
+      const key = `${sessionId}::${requestId}`;
+      const inFlight = runReplayRequestsRef.current.get(key);
+      if (inFlight) {
+        return inFlight;
+      }
 
-  const visitorWorkspaceStage = resolveVisitorWorkspaceStage({
-    bootstrapLoaded: visitorBootstrapLoaded,
-    bootstrapLoading: visitorBootstrapLoading,
-    visitorNamed: visitorBootstrap?.named,
-  });
-  const visitorProtectedDataReady = shouldLoadVisitorProtectedData({
-    bootstrapLoaded: visitorBootstrapLoaded,
-    bootstrapLoading: visitorBootstrapLoading,
-    visitorNamed: visitorBootstrap?.named,
-  });
+      const request = conversationHistoryApi
+        .getRunReplay(requestId)
+        .finally(() => {
+          runReplayRequestsRef.current.delete(key);
+        });
+      runReplayRequestsRef.current.set(key, request);
+      return request;
+    },
+    []
+  );
+  const reportRunningReplayError = useCallback(
+    (requestId: string, error: unknown) => {
+      console.error(
+        `加载运行中会话回放失败 (requestId=${requestId})`,
+        error
+      );
+    },
+    []
+  );
 
   const closeMobileSidebar = useCallback(() => {
     setMobileSidebarOpen(false);
@@ -266,6 +312,80 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     useState<CHAT.ConversationHistory>(() =>
       createConversation({productType: initialRef.current.productType,})
     );
+  const currentConversationRef = useRef(currentConversation);
+  currentConversationRef.current = currentConversation;
+  const currentInputDraft = getConversationDraft(
+    conversationDrafts,
+    currentConversation.sessionId
+  );
+  const updateCurrentInputDraft = useCallback((draft: string) => {
+    const sessionId = currentConversationRef.current.sessionId;
+    setConversationDrafts((previous) =>
+      setConversationDraft(previous, sessionId, draft)
+    );
+  }, []);
+  const [sessionWorkspaceFilesState, setSessionWorkspaceFilesState] = useState<{
+    sessionId: string;
+    files: CHAT.TFile[];
+  }>({
+    sessionId: "",
+    files: [],
+  });
+
+  const loadSessionWorkspaceFiles = useCallback((sessionId: string) => {
+    const normalizedSessionId = sessionId?.trim();
+    if (!normalizedSessionId) {
+      return Promise.resolve([] as CHAT.TFile[]);
+    }
+
+    return loadCachedSessionFiles<CHAT.TFile[]>(
+      normalizedSessionId,
+      sessionWorkspaceFilesCacheRef.current,
+      sessionWorkspaceFileRequestsRef.current,
+      async (id) => {
+        const files = await conversationHistoryApi.getSessionFiles(id);
+        return normalizeSessionArtifactFiles(files, id);
+      }
+    )
+      .then((files) => {
+        if (currentConversationRef.current.sessionId === normalizedSessionId) {
+          setSessionWorkspaceFilesState({
+            sessionId: normalizedSessionId,
+            files,
+          });
+        }
+        return files;
+      })
+      .catch((error) => {
+        console.error(
+          `加载会话文件清单失败 (sessionId=${normalizedSessionId})`,
+          error
+        );
+        return [] as CHAT.TFile[];
+      });
+  }, []);
+
+  useEffect(() => {
+    setSessionWorkspaceFilesState({
+      sessionId: currentConversation.sessionId,
+      files: sessionWorkspaceFilesCacheRef.current.get(currentConversation.sessionId) || [],
+    });
+  }, [currentConversation.sessionId]);
+
+  const ensureCurrentSessionWorkspaceFiles = useCallback(() => {
+    if (!currentConversation.chatList.length) {
+      return;
+    }
+    void loadSessionWorkspaceFiles(currentConversation.sessionId);
+  }, [
+    currentConversation.chatList.length,
+    currentConversation.sessionId,
+    loadSessionWorkspaceFiles,
+  ]);
+  const visibleSessionWorkspaceFiles =
+    sessionWorkspaceFilesState.sessionId === currentConversation.sessionId
+      ? sessionWorkspaceFilesState.files
+      : [];
 
   const displayedRecentSessions = useMemo(
     () =>
@@ -313,43 +433,8 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   }, [loadFeaturedCards]);
 
   useEffect(() => {
-    if (!shouldBootstrapVisitor({
-      bootstrapLoaded: visitorBootstrapLoaded,
-      bootstrapLoading: visitorBootstrapLoading,
-    })) {
-      return;
-    }
-    // bootstrap 只允许一次在途请求；加载态由状态机控制，避免 effect 依赖变化
-    // 时重复初始化访客身份。
-    setVisitorBootstrapLoading(true);
-    visitorApi
-      .bootstrap()
-      .then((info) => {
-        setVisitorBootstrap(info);
-        setVisitorBootstrapLoaded(true);
-      })
-      .catch((error) => {
-        console.error("加载访客状态失败", error);
-      })
-      .finally(() => {
-        setVisitorBootstrapLoading(false);
-      });
-  }, [visitorBootstrapLoaded, visitorBootstrapLoading]);
-
-  useEffect(() => {
-    if (!visitorProtectedDataReady) {
-      initializedVisitorIdRef.current = null;
-      return;
-    }
-    const visitorId = visitorBootstrap?.visitorId;
-    if (!visitorId || initializedVisitorIdRef.current === visitorId) {
-      return;
-    }
-
-    // 访客身份确认后才加载会话列表。disposed 保护异步结果，防止组件卸载或
-    // 身份切换后，旧请求把 currentConversation 写回新的页面状态。
+    // Session data loads after the app has completed its silent cookie refresh.
     let disposed = false;
-    initializedVisitorIdRef.current = visitorId;
     setConversationBootstrapLoading(true);
 
     refreshRecentSessions(true)
@@ -372,13 +457,19 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
           return;
         }
 
+        void loadSessionWorkspaceFiles(initialSessionId);
+
         return conversationHistoryApi
           .getSessionDetail(initialSessionId, { limit: HISTORY_PAGE_SIZE })
           .then(async (detail) => {
             if (disposed || !detail || isHistoryDetailEmpty(detail)) {
               return;
             }
-            const hydrated = hydrateConversationFromSummaryPage(detail);
+            const hydrated = await hydrateSessionWithRunningReplay(
+              detail,
+              (requestId) => loadRunReplay(initialSessionId, requestId),
+              reportRunningReplayError
+            );
             const restored = await restoreHitlForSession(hydrated);
             if (disposed) {
               return;
@@ -407,8 +498,9 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     };
   }, [
     refreshRecentSessions,
-    visitorBootstrap?.visitorId,
-    visitorProtectedDataReady,
+    loadRunReplay,
+    loadSessionWorkspaceFiles,
+    reportRunningReplayError,
   ]);
 
   useEffect(() => {
@@ -480,6 +572,8 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
         ...override,
       });
       setCurrentConversation(nextConversation);
+      setWorkspaceTaskList([]);
+      setSelectedTaskFileKey("");
       upsertLocalRecentSession(nextConversation);
       resetInput();
     },
@@ -504,37 +598,41 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   const handleSelectRecentSession = useCallback(
     (session: ConversationSessionItem) => {
       const selectionVersion = ++sessionSelectionVersionRef.current;
-      // 先切换壳状态，再异步加载详情；本地草稿优先，避免已在内存中的流式会话
-      // 被历史接口返回的旧快照覆盖。
-      const localConversation = localRecentConversationsRef.current.find(
-        (item) => item.sessionId === session.sessionId
+      setWorkspaceTaskList([]);
+      setSelectedTaskFileKey("");
+      setHistoryPageLoading(false);
+      setActiveView("chat");
+
+      const localSelection = resolveLocalSessionSelection(
+        localRecentConversationsRef.current,
+        session.sessionId
       );
-      if (localConversation) {
-        setHistoryPageLoading(false);
-        setCurrentConversation(localConversation);
-        setActiveView("chat");
+      if (!localSelection.shouldLoadRemote && localSelection.localConversation) {
+        // 新建但尚未发送过消息的会话只存在前端，不能向后端请求不存在的详情。
+        setCurrentConversation(localSelection.localConversation);
         resetInput();
-        void restoreHitlForSession(localConversation).then((restored) => {
-          if (selectionVersion === sessionSelectionVersionRef.current) {
-            setCurrentConversation(restored);
-          }
-        });
         return;
       }
 
-      setHistoryPageLoading(false);
-      setActiveView("chat");
+      void loadSessionWorkspaceFiles(session.sessionId);
+      // 切换已有会话始终从后端读取最新详情，避免用前端流式缓存覆盖已完成状态。
       conversationHistoryApi
         .getSessionDetail(session.sessionId, { limit: HISTORY_PAGE_SIZE })
         .then(async (detail) => {
-          if (
-            selectionVersion !== sessionSelectionVersionRef.current ||
-            !detail ||
-            isHistoryDetailEmpty(detail)
-          ) {
+          if (selectionVersion !== sessionSelectionVersionRef.current) {
             return;
           }
-          const hydrated = hydrateConversationFromSummaryPage(detail);
+          if (!detail || isHistoryDetailEmpty(detail)) {
+            if (localSelection.localConversation) {
+              setCurrentConversation(localSelection.localConversation);
+            }
+            return;
+          }
+          const hydrated = await hydrateSessionWithRunningReplay(
+            detail,
+            (requestId) => loadRunReplay(session.sessionId, requestId),
+            reportRunningReplayError
+          );
           const restored = await restoreHitlForSession(hydrated);
           if (selectionVersion !== sessionSelectionVersionRef.current) {
             return;
@@ -544,24 +642,21 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
         })
         .catch((error) => {
           if (selectionVersion === sessionSelectionVersionRef.current) {
+            if (localSelection.localConversation) {
+              setCurrentConversation(localSelection.localConversation);
+              return;
+            }
             console.error("加载历史会话详情失败", error);
           }
         });
     },
-    [resetInput]
+    [loadRunReplay, loadSessionWorkspaceFiles, reportRunningReplayError, resetInput]
   );
 
   const requestRunReplay = useCallback(
     (requestId: string) => {
       const sessionId = currentConversation.sessionId;
-      const key = `${sessionId}::${requestId}`;
-      const inFlight = runReplayRequestsRef.current.get(key);
-      if (inFlight) {
-        return inFlight;
-      }
-
-      const request = conversationHistoryApi
-        .getRunReplay(requestId)
+      return loadRunReplay(sessionId, requestId)
         .then((replay) => {
           setCurrentConversation((previous) =>
             previous.sessionId === sessionId
@@ -570,17 +665,13 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
           );
         })
         .catch((error) => {
-          // 删除 in-flight 后允许下一次选中/展示同一 run 时重试。
-          console.error("加载会话 run 回放失败", error);
-        })
-        .finally(() => {
-          runReplayRequestsRef.current.delete(key);
+          console.error(
+            `加载会话 run 回放失败 (requestId=${requestId})`,
+            error
+          );
         });
-
-      runReplayRequestsRef.current.set(key, request);
-      return request;
     },
-    [currentConversation.sessionId]
+    [currentConversation.sessionId, loadRunReplay]
   );
 
   const loadMoreHistory = useCallback(() => {
@@ -629,21 +720,6 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     }
     setSessionId(currentConversation.sessionId);
   }, [conversationBootstrapLoading, currentConversation.sessionId]);
-
-  const handleSubmitVisitorName = useCallback((username: string) => {
-    setVisitorNamingLoading(true);
-    visitorApi
-      .naming(username.trim())
-      .then((info) => {
-        setVisitorBootstrap(info);
-      })
-      .catch((error) => {
-        console.error("提交访客用户名失败", error);
-      })
-      .finally(() => {
-        setVisitorNamingLoading(false);
-      });
-  }, []);
 
   const changeInputInfo = useCallback(
     (info: CHAT.TInputInfo) => {
@@ -739,7 +815,10 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
         return;
       }
 
-      const operator = visitorBootstrap?.username || featuredAdminForm.operator;
+      const operator =
+        auth.user?.nickname?.trim() ||
+        auth.user?.account ||
+        featuredAdminForm.operator;
       setFeaturedAdminDialogOpen(true);
       setFeaturedAdminLoading(true);
       setFeaturedAdminTargetSession(session);
@@ -760,7 +839,12 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
           setFeaturedAdminLoading(false);
         });
     },
-    [featuredAdminForm.operator, syncFeaturedAdminRecord, visitorBootstrap?.username]
+    [
+      auth.user?.account,
+      auth.user?.nickname,
+      featuredAdminForm.operator,
+      syncFeaturedAdminRecord,
+    ]
   );
 
   const handleSaveFeaturedDraft = useCallback(
@@ -893,6 +977,10 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
   const handleSidebarChangeView = useCallback(
     (view: SidebarView) => {
+      if (view === "featured" && auth.status !== "authenticated") {
+        navigate(ROUTES.FEATURED_CONVERSATIONS);
+        return;
+      }
       sessionSelectionVersionRef.current += 1;
       if (view === "featured") {
         setFeaturedEntryId("");
@@ -902,15 +990,25 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       closeMobileSidebar();
       setActiveView(view);
     },
-    [closeMobileSidebar]
+    [auth.status, closeMobileSidebar, navigate]
   );
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await authApi.logout();
+    } catch (error) {
+      console.error("退出登录失败", error);
+    }
+    navigate(ROUTES.LOGIN, { replace: true });
+  }, [navigate]);
 
   const handleSidebarOpenTaskFiles = useCallback(() => {
     sessionSelectionVersionRef.current += 1;
+    ensureCurrentSessionWorkspaceFiles();
     setActiveView("chat");
     setWorkspaceImmersive(false);
     setSidebarPanel("task-files");
-  }, []);
+  }, [ensureCurrentSessionWorkspaceFiles]);
 
   const handleSidebarCloseTaskFiles = useCallback(() => {
     setSidebarPanel("sessions");
@@ -935,7 +1033,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       recentSessions: displayedRecentSessions,
       recentSessionsLoading,
       selectedSessionId: currentConversation.sessionId,
-      visitorUsername: visitorBootstrap?.username,
+      user: auth.user,
       sidebarPanel,
       taskList: workspaceTaskList,
       selectedTaskFileKey,
@@ -947,9 +1045,11 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       onCloseTaskFiles: handleSidebarCloseTaskFiles,
       onSelectTaskFile: handleSidebarSelectTaskFile,
       onRefreshTaskFiles: handleSidebarRefreshTaskFiles,
+      onLogout: handleLogout,
     }),
     [
       activeView,
+      auth.user,
       currentConversation.sessionId,
       displayedRecentSessions,
       handleOpenFeaturedAdmin,
@@ -960,30 +1060,13 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       handleSidebarRefreshTaskFiles,
       handleSidebarSelectSession,
       handleSidebarSelectTaskFile,
+      handleLogout,
       recentSessionsLoading,
       selectedTaskFileKey,
       sidebarPanel,
-      visitorBootstrap?.username,
       workspaceTaskList,
     ]
   );
-
-  if (visitorWorkspaceStage === "bootstrapping") {
-    return <VisitorBootstrapScreen />;
-  }
-
-  if (visitorWorkspaceStage === "ready" && conversationBootstrapLoading) {
-    return <VisitorBootstrapScreen />;
-  }
-
-  if (visitorWorkspaceStage === "naming") {
-    return (
-      <VisitorLoginGate
-        loading={visitorNamingLoading}
-        onSubmit={handleSubmitVisitorName}
-      />
-    );
-  }
 
   return (
     <div className="h-full w-full bg-[var(--page-gradient)] text-foreground">
@@ -1045,22 +1128,36 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
           ) : null}
           <div className={contentContainerClassName}>
             {activeView === "mrag" ? (
-              <WorkspaceMRag embedded />
+              <WorkspaceContent>
+                <LazyWorkspaceMRag embedded />
+              </WorkspaceContent>
             ) : activeView === "image-generation" ? (
-              <WorkspaceImageGeneration embedded />
+              <WorkspaceContent>
+                <LazyWorkspaceImageGeneration embedded />
+              </WorkspaceContent>
             ) : activeView === "sop" ? (
-              <WorkspaceSop embedded />
+              <WorkspaceContent>
+                <LazyWorkspaceSop embedded />
+              </WorkspaceContent>
             ) : activeView === "sub-agents" ? (
-              <SubAgentAdmin embedded />
+              <WorkspaceContent>
+                <LazySubAgentAdmin embedded />
+              </WorkspaceContent>
             ) : activeView === "models" ? (
-              <ModelAdmin embedded />
+              <WorkspaceContent>
+                <LazyModelAdmin embedded />
+              </WorkspaceContent>
             ) : activeView === "capabilities" ? (
-              <CapabilityLibrary embedded />
+              <WorkspaceContent>
+                <LazyCapabilityLibrary embedded />
+              </WorkspaceContent>
             ) : activeView === "featured" ? (
-              <FeaturedConversations
-                embedded
-                initialFeaturedId={featuredEntryId}
-              />
+              <WorkspaceContent>
+                <LazyFeaturedConversations
+                  embedded
+                  initialFeaturedId={featuredEntryId}
+                />
+              </WorkspaceContent>
             ) : (
               <AnimatePresence mode="wait" initial={false}>
                 {canRenderChatView ? (
@@ -1077,6 +1174,8 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
                   >
                     <ChatView
                       inputInfo={inputInfo}
+                      inputDraft={currentInputDraft}
+                      onInputDraftChange={updateCurrentInputDraft}
                       product={product}
                       conversation={currentConversation}
                       onConversationChange={updateConversation}
@@ -1085,10 +1184,13 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
                       historyLoading={historyPageLoading}
                       onInputConsumed={onInputConsumed}
                       onTaskListChange={setWorkspaceTaskList}
+                      sessionWorkspaceFiles={visibleSessionWorkspaceFiles}
+                      onEnsureSessionFiles={ensureCurrentSessionWorkspaceFiles}
                       onRegisterApi={(api) => {
                         chatViewApiRef.current = api;
                       }}
                       onOpenTaskFiles={() => {
+                        ensureCurrentSessionWorkspaceFiles();
                         setWorkspaceImmersive(false);
                         setSidebarPanel("task-files");
                         setMobileSidebarOpen(true);
@@ -1110,20 +1212,29 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
                   >
                     <WelcomeView
                       currentConversation={currentConversation}
+                      inputDraft={currentInputDraft}
                       product={product}
-                      visitorUsername={visitorBootstrap?.username}
                       videoModalOpen={videoModalOpen}
                       onSelectionChange={handleInputSelectionChange}
+                      onInputDraftChange={updateCurrentInputDraft}
                       onSend={changeInputInfo}
                       onSendQuestion={toSendMessage}
                       onOpenVideo={setVideoModalOpen}
                       onCloseVideo={() => setVideoModalOpen(undefined)}
                       featuredCards={featuredCards}
                       onOpenFeaturedConversations={() => {
+                        if (auth.status !== "authenticated") {
+                          navigate(ROUTES.FEATURED_CONVERSATIONS);
+                          return;
+                        }
                         setFeaturedEntryId("");
                         setActiveView("featured");
                       }}
                       onOpenFeaturedDetail={(featuredId) => {
+                        if (auth.status !== "authenticated") {
+                          navigate(buildFeaturedConversationDetailPath(featuredId));
+                          return;
+                        }
                         setFeaturedEntryId(featuredId);
                         setActiveView("featured");
                       }}

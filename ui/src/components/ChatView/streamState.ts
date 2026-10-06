@@ -742,6 +742,85 @@ export function hasPendingAskUserQuestion(chat?: CHAT.ChatItem | null): boolean 
   return false;
 }
 
+export type LiveObservation = {
+  conversationId: string;
+  aborted: boolean;
+};
+
+export type ObservationPlan = {
+  abortConversationIds: string[];
+  followRequestId: string | null;
+  clearDisconnectTip: boolean;
+};
+
+/**
+ * 切到某个会话时该拆哪些观察流、要不要 follow。
+ * 健康连接（未 abort 且不是断线提示）不重挂；等人回答也不跟。
+ */
+export function planSessionObservation(input: {
+  conversationId: string;
+  chats: CHAT.ChatItem[];
+  live: LiveObservation[];
+  disconnectTip: string;
+}): ObservationPlan {
+  const abortOthers = input.live
+    .filter((entry) => entry.conversationId !== input.conversationId)
+    .map((entry) => entry.conversationId);
+  const idle: ObservationPlan = {
+    abortConversationIds: abortOthers,
+    followRequestId: null,
+    clearDisconnectTip: false,
+  };
+
+  const chats = input.chats || [];
+  let target: CHAT.ChatItem | undefined;
+  for (let index = chats.length - 1; index >= 0; index -= 1) {
+    const chat = chats[index];
+    if (!chat) {
+      continue;
+    }
+    const status = String(chat.metrics?.status || "").toUpperCase();
+    if (status === "WAITING_INPUT" || hasPendingAskUserQuestion(chat)) {
+      return idle;
+    }
+    const requestId = String(chat.requestId || "").trim();
+    if (!requestId) {
+      continue;
+    }
+    if (
+      isChatItemFollowable(chat) ||
+      status === "RUNNING" ||
+      chat.tip === input.disconnectTip
+    ) {
+      target = chat;
+      break;
+    }
+  }
+
+  if (!target?.requestId) {
+    return idle;
+  }
+
+  const currentLive = input.live.find(
+    (entry) => entry.conversationId === input.conversationId
+  );
+  if (
+    currentLive &&
+    currentLive.aborted === false &&
+    target.tip !== input.disconnectTip
+  ) {
+    return idle;
+  }
+
+  return {
+    abortConversationIds: currentLive
+      ? [...abortOthers, input.conversationId]
+      : abortOthers,
+    followRequestId: String(target.requestId),
+    clearDisconnectTip: target.tip === input.disconnectTip,
+  };
+}
+
 export function markDesktopControlCompleted(
   chat: CHAT.ChatItem,
   controlId?: string

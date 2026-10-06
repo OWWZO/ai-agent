@@ -77,6 +77,7 @@ import {
   collectChatFileTasks,
   collectSessionFileTasks,
   collectWorkspaceFiles,
+  buildSessionFileManifestTask,
   flattenTasksWithFiles,
 } from "@/components/ActionView/workspaceFiles";
 import { collectSessionArtifactFiles } from "@/utils/markdownArtifacts";
@@ -89,6 +90,8 @@ type ChatViewApi = {
 
 type Props = {
   inputInfo: CHAT.TInputInfo;
+  inputDraft?: string;
+  onInputDraftChange?: (draft: string) => void;
   product?: CHAT.Product;
   conversation: CHAT.ConversationHistory;
   readOnly?: boolean;
@@ -100,6 +103,8 @@ type Props = {
   onTaskListChange?: (
     taskList: ReturnType<typeof collectSessionFileTasks>
   ) => void;
+  sessionWorkspaceFiles?: CHAT.TFile[];
+  onEnsureSessionFiles?: () => void;
   onRequestRunReplay?: (requestId: string) => Promise<unknown> | void;
   onLoadMoreHistory?: () => Promise<void> | void;
   historyLoading?: boolean;
@@ -167,12 +172,16 @@ type SessionFileTasks = ReturnType<typeof collectSessionFileTasks>;
 const ChatView: ReactorType.FC<Props> = (props) => {
   const {
     inputInfo: inputInfoProp,
+    inputDraft = "",
+    onInputDraftChange,
     product,
     conversation,
     readOnly = false,
     onConversationChange,
     onInputConsumed,
     onTaskListChange,
+    sessionWorkspaceFiles = [],
+    onEnsureSessionFiles,
     onRequestRunReplay,
     onLoadMoreHistory,
     historyLoading = false,
@@ -408,6 +417,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   });
 
   const openRightWorkspace = useMemoizedFn(() => {
+    onEnsureSessionFiles?.();
     setWorkspaceOpenRequested(true);
     setIsRightCollapsed(false);
     changeActionStatus(true);
@@ -815,6 +825,11 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     return getProductByType(conversation.productType || product?.type);
   }, [conversation.productType, product?.type]);
 
+  const sessionFileManifestTask = useMemo(
+    () => buildSessionFileManifestTask(sessionWorkspaceFiles),
+    [sessionWorkspaceFiles]
+  );
+
   // 会话级文件任务：跨多轮累计，避免新请求清空侧栏文件列表
   const sessionFileTasksCacheRef = useRef<{
     conversationId: string;
@@ -842,6 +857,9 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     }
 
     const next: SessionFileTasks = [];
+    if (sessionFileManifestTask) {
+      next.push(sessionFileManifestTask);
+    }
     for (const chat of conversation.chatList) {
       let chatTasks = cache.chatTasks.get(chat);
       if (!chatTasks) {
@@ -866,7 +884,12 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     cache.tasks = next;
     cache.snapshots = nextSnapshots;
     return next;
-  }, [conversation.chatList, conversation.id, taskList]);
+  }, [
+    conversation.chatList,
+    conversation.id,
+    sessionFileManifestTask,
+    taskList,
+  ]);
 
   useEffect(() => {
     // 侧栏「会话文件」消费会话级任务，而非仅当前轮 taskList
@@ -891,8 +914,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       ...collectSessionArtifactFiles(deferredChatList),
     ]) {
       const key =
-        file.relativePath ||
         file.resourceKey ||
+        file.relativePath ||
         file.url ||
         file.downloadUrl ||
         file.name;
@@ -1118,6 +1141,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             onInject={sessionBusy ? (text) => void injectActiveRun(text) : undefined}
             draftMessage={composerDraft}
             onDraftConsumed={clearComposerDraft}
+            draftValue={inputDraft}
+            onDraftChange={onInputDraftChange}
             product={currentProduct}
             deepThink={conversation.deepThink}
             send={(info) =>
@@ -1497,6 +1522,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
               />
             ) : (
               <ActionView
+                key={conversation.id}
                 activeTask={activeTask}
                 streamTask={workspaceStreamTask}
                 pendingPreviewFile={pendingPreviewFile}
@@ -1561,6 +1587,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                   disabled={loading}
                   product={currentProduct}
                   deepThink={false}
+                  draftValue={inputDraft}
+                  onDraftChange={onInputDraftChange}
                   send={(info) =>
                     sendDataMessage({
                       ...info,

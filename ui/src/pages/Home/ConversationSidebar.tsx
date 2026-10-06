@@ -15,8 +15,12 @@ import {
   WandSparkles,
   X,
   FolderOpen,
+  LogOut,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import type { ConversationSessionItem } from "@/services/agentConversation";
+import type { AuthUser } from "@/stores/auth";
+import { ROUTES } from "@/router/routes";
 import type { PanelItemType } from "@/components/ActionPanel";
 import TaskFileSidebar, { type WorkspaceFileItem } from "@/components/ActionView/TaskFileSidebar";
 
@@ -79,12 +83,59 @@ const navItems: NavItem[] = [
 
 type SidebarPanel = "sessions" | "task-files";
 
+function AccountSummary(props: {
+  user: AuthUser | null;
+  onLogout: () => void;
+}) {
+  const { user, onLogout } = props;
+  if (!user) {
+    return (
+      <Link
+        to={ROUTES.LOGIN}
+        className="flex h-9 items-center px-2.5 text-[13px] font-medium text-[var(--chat-text-soft)] hover:text-[var(--chat-text)]"
+      >
+        登录 / 注册
+      </Link>
+    );
+  }
+
+  const account = user.account?.trim();
+  const displayName =
+    user.nickname?.trim() || user.username?.trim() || account || "用户";
+
+  return (
+    <div className="flex min-w-0 items-center gap-2.5 px-2.5 py-1.5">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--chat-accent)] text-[12px] font-semibold text-white">
+        {displayName.slice(0, 1).toUpperCase()}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13px] font-medium text-[var(--chat-text)]">
+          {displayName}
+        </div>
+        {account && account !== displayName ? (
+          <div className="truncate text-[11px] text-[var(--chat-text-muted)]">
+            {account}
+          </div>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        onClick={onLogout}
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--chat-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--chat-text)]"
+        aria-label="退出登录"
+      >
+        <LogOut className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
 type ConversationSidebarProps = {
   activeView: SidebarView;
   recentSessions: ConversationSessionItem[];
   recentSessionsLoading: boolean;
   selectedSessionId?: string;
-  visitorUsername?: string;
+  user: AuthUser | null;
   sidebarPanel?: SidebarPanel;
   taskList?: PanelItemType[];
   selectedTaskFileKey?: string;
@@ -97,6 +148,7 @@ type ConversationSidebarProps = {
   onSelectTaskFile?: (file: WorkspaceFileItem) => void;
   onRefreshTaskFiles?: () => void;
   onRequestClose?: () => void;
+  onLogout: () => void;
 };
 
 const ConversationSidebar = memo(function ConversationSidebar(
@@ -107,7 +159,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
     recentSessions,
     recentSessionsLoading,
     selectedSessionId,
-    visitorUsername,
+    user,
     sidebarPanel = "sessions",
     taskList,
     selectedTaskFileKey,
@@ -120,6 +172,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
     onSelectTaskFile,
     onRefreshTaskFiles,
     onRequestClose,
+    onLogout,
   } = props;
 
   const [searchOpen, setSearchOpen] = useState(false);
@@ -279,20 +332,9 @@ const ConversationSidebar = memo(function ConversationSidebar(
             onBack={() => onCloseTaskFiles?.()}
             onRefresh={onRefreshTaskFiles}
           />
-          {visitorUsername ? (
-            <div className="shrink-0 border-t border-[var(--chat-border)]/50 px-3 py-2.5">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--chat-accent)] text-[12px] font-semibold text-white">
-                  {visitorUsername.slice(0, 1).toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13px] font-medium text-[var(--chat-text)]">
-                    {visitorUsername}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : null}
+          <div className="shrink-0 border-t border-[var(--chat-border)]/50 px-3 py-2.5">
+            <AccountSummary user={user} onLogout={onLogout} />
+          </div>
         </div>
       ) : (
         <>
@@ -442,16 +484,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
               <FolderOpen className="h-4 w-4 shrink-0 text-[var(--chat-text-muted)]" />
               <span>查看当前会话的文件</span>
             </button>
-            {visitorUsername ? (
-              <div className="mt-1 flex items-center gap-2.5 px-2.5 py-1.5">
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--chat-accent)] text-[11px] font-semibold text-white">
-                  {visitorUsername.slice(0, 1).toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1 truncate text-[12px] font-medium text-[var(--chat-text-soft)]">
-                  {visitorUsername}
-                </div>
-              </div>
-            ) : null}
+            <AccountSummary user={user} onLogout={onLogout} />
           </div>
         </>
       )}

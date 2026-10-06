@@ -63,6 +63,7 @@ import {
   isChatItemRunning,
   isHitlYieldEvent,
   isParentLoopLive,
+  planSessionObservation,
   markAskUserQuestionsAnswered,
   markDesktopControlCompleted,
   markPlanApprovalsDecided,
@@ -129,12 +130,51 @@ type UseConversationStreamResult = {
 const CONNECTION_LOST_HINT = "连接暂时断开，任务仍在后台执行";
 const CONCURRENT_RUN_HINT =
   "已有任务在进行中，请等待完成或先停止后再试";
+
+export type ObservationClosePlan = {
+  writeDisconnectHint: boolean;
+  reconnect: boolean;
+};
+
+export function planObservationClose(input: {
+  released: boolean;
+  sawFollowIdle: boolean;
+  chatRunning: boolean;
+}): ObservationClosePlan {
+  if (input.released || input.sawFollowIdle || !input.chatRunning) {
+    return { writeDisconnectHint: false, reconnect: false };
+  }
+  return { writeDisconnectHint: true, reconnect: true };
+}
+
+export type FollowIdleReplayPlan = "stop" | "reconnect";
+
+export function planFollowIdleReplay(status?: string): FollowIdleReplayPlan {
+  const normalized = String(status || "").toUpperCase();
+  if (
+    ["SUCCESS", "FAILED", "STOPPED", "TIMEOUT", "WAITING_INPUT"].includes(
+      normalized
+    )
+  ) {
+    return "stop";
+  }
+  // follow_idle 只说明当前进程没有可挂载的投影，不等于 run 已经结束。
+  // Ledger 落终态和投影注销可能存在短暂顺序差，RUNNING/未知状态必须继续观察。
+  return "reconnect";
+}
+
+function withoutStaleDisconnectTip(chat: CHAT.ChatItem): CHAT.ChatItem {
+  if (chat.tip !== CONNECTION_LOST_HINT) {
+    return chat;
+  }
+  return { ...chat, tip: "" };
+}
 const FOLLOW_RECONNECT_BASE_DELAY = 800;
 const FOLLOW_RECONNECT_MAX_DELAY = 15_000;
 /** RUNNING 期间允许持续退避；不再在 6 次后永久放弃 */
 const FOLLOW_RECONNECT_ATTEMPT_CAP = 20;
 
-/** 每个会话至多一条活 SSE；切会话不 abort，后台继续写回对应 conversation。 */
+/** 每个会话至多一条活 SSE；切走时拆掉非当前会话，同一时刻只观察正在看的那一条。 */
 type LiveStreamEntry = {
   conversationId: string;
   requestId: string;
@@ -441,6 +481,13 @@ export function useConversationStream(
   const activeRequestIdRef = useRef<string | null>(null);
   const streamAbortControllerRef = useRef<AbortController | null>(null);
   const liveStreamsRef = useRef<Map<string, LiveStreamEntry>>(new Map());
+  /** 切会话主动拆掉的观察流。关闭回调看到它就返回，避免当成断线去重连。 */
+  const releasedObservationsRef = useRef<Set<AbortController>>(new Set());
+  /** follow_idle 回放进行中的 requestId。页签恢复不要再叠一次 GET。 */
+  const idleResyncRequestIdsRef = useRef<Set<string>>(new Set());
+  const applySessionObservationRef = useRef<
+    (conversationId: string, chats: CHAT.ChatItem[]) => void
+  >(() => {});
   const followReconnectTimersRef = useRef<Map<string, number>>(new Map());
   const followReconnectAttemptsRef = useRef<Map<string, number>>(new Map());
   const followReconnectContextsRef = useRef<Map<string, FollowReconnectContext>>(
@@ -519,6 +566,25 @@ export function useConversationStream(
   const hasConversationLiveStream = useMemoizedFn((conversationId: string) => {
     const entry = liveStreamsRef.current.get(conversationId);
     return !!entry && !entry.controller.signal.aborted;
+  });
+
+  const markObservationReleased = useMemoizedFn((controller: AbortController) => {
+    releasedObservationsRef.current.add(controller);
+  });
+
+  const releaseLiveObservation = useMemoizedFn((conversationId: string) => {
+    const entry = liveStreamsRef.current.get(conversationId);
+    if (!entry) {
+      return;
+    }
+    markObservationReleased(entry.controller);
+    clearFollowReconnectTimer(entry.requestId);
+    followReconnectContextsRef.current.delete(entry.requestId);
+    liveStreamsRef.current.delete(conversationId);
+    if (streamAbortControllerRef.current === entry.controller) {
+      streamAbortControllerRef.current = null;
+    }
+    entry.controller.abort();
   });
 
   const workspaceTaskThrottle = useRafThrottle<CHAT.Task | undefined>(
@@ -689,7 +755,7 @@ export function useConversationStream(
   }, [conversation]);
 
   useEffect(() => {
-    // 切会话只切换前台 UI；后台会话的 SSE / follow 重连继续跑，禁止 abort、禁止清重连定时器。
+    // 切会话只保留当前这一条观察流；断线或仍在跑则先拆再 follow。
     resetWorkspaceTaskThrottle(undefined);
     resetThoughtThrottle({});
     setTaskList([]);
@@ -724,6 +790,10 @@ export function useConversationStream(
       streamAbortControllerRef.current = null;
       setLoading(false);
     }
+    applySessionObservationRef.current(
+      conversationId,
+      conversation.chatList || []
+    );
   }, [
     conversation.id,
     resetThoughtThrottle,
@@ -792,6 +862,7 @@ export function useConversationStream(
       clearFollowReconnectTimer();
       followReconnectContextsRef.current.clear();
       liveStreamsRef.current.forEach((entry) => {
+        markObservationReleased(entry.controller);
         entry.controller.abort();
       });
       liveStreamsRef.current.clear();
@@ -804,6 +875,7 @@ export function useConversationStream(
     cancelThoughtThrottle,
     cancelWorkspaceTaskThrottle,
     clearFollowReconnectTimer,
+    markObservationReleased,
   ]);
 
   /**
@@ -842,22 +914,24 @@ export function useConversationStream(
     const productType = cached?.productType ?? baseConversation.productType;
     const normalizedDeepThink = Boolean(cached?.deepThink ?? baseConversation.deepThink);
 
+    const observedSeed = withoutStaleDisconnectTip({
+      ...seedChat,
+      metrics: {
+        ...(seedChat.metrics || {}),
+        status: seedChat.metrics?.status || "RUNNING",
+      },
+    });
     followReconnectContextsRef.current.set(requestId, {
       conversationId,
       sessionId,
       requestId,
       productType,
       deepThink: normalizedDeepThink,
-      seedChat: {
-        ...seedChat,
-        metrics: {
-          ...(seedChat.metrics || {}),
-          status: seedChat.metrics?.status || "RUNNING",
-        },
-      },
+      seedChat: observedSeed,
     });
     const previous = liveStreamsRef.current.get(conversationId);
-    if (previous && previous.requestId !== requestId) {
+    if (previous) {
+      markObservationReleased(previous.controller);
       previous.controller.abort();
     }
     const abortController = new AbortController();
@@ -884,13 +958,8 @@ export function useConversationStream(
       conversationRef.current.id === conversationId &&
       activeRequestIdRef.current === requestId;
 
-    let currentChat: CHAT.ChatItem = {
-      ...seedChat,
-      metrics: {
-        ...(seedChat.metrics || {}),
-        status: seedChat.metrics?.status || "RUNNING",
-      },
-    };
+    let currentChat: CHAT.ChatItem = observedSeed;
+    let sawFollowIdle = false;
 
     const draftBase: CHAT.ConversationHistory =
       conversationSnapshotsRef.current.get(conversationId) ||
@@ -1028,6 +1097,8 @@ export function useConversationStream(
      * 只补拉当前 run 的 rich replay，不能用整个 session detail 覆盖其它 run 的最新状态。
      */
     const applyFollowIdleReplay = async () => {
+      sawFollowIdle = true;
+      idleResyncRequestIdsRef.current.add(requestId);
       const streamStillActive = isActiveStream();
       clearFollowReconnectTimer(requestId);
       unbindLiveStream(conversationId, abortController);
@@ -1090,14 +1161,25 @@ export function useConversationStream(
         }
 
         const hydratedStatus = String(hydrated.metrics?.status || "").toUpperCase();
-        if (hydratedStatus === "RUNNING") {
-          // ledger 仍显示运行中时，follow_idle 只是观察流暂时脱离 registry；保留
-          // RUNNING 状态并继续 follow，不能把一个未完成 run 误收口成 SUCCESS。
+        if (planFollowIdleReplay(hydratedStatus) === "reconnect") {
+          const reconnectContext = followReconnectContextsRef.current.get(requestId);
           currentChat = {
             ...hydrated,
             loading: true,
             tip: CONNECTION_LOST_HINT,
+            metrics: {
+              ...(hydrated.metrics || {}),
+              status: "RUNNING",
+            },
           };
+          followReconnectContextsRef.current.set(requestId, {
+            conversationId,
+            sessionId,
+            requestId,
+            productType: reconnectContext?.productType ?? productType,
+            deepThink: reconnectContext?.deepThink ?? normalizedDeepThink,
+            seedChat: { ...currentChat },
+          });
           commitConversation(conversationId, {
             ...history,
             id: conversationId,
@@ -1108,7 +1190,7 @@ export function useConversationStream(
           if (streamStillActive) {
             setLoading(true);
           }
-          scheduleFollowReconnect(conversationId, requestId);
+          scheduleFollowReconnect(conversationId, requestId, 300);
           return;
         }
 
@@ -1122,7 +1204,7 @@ export function useConversationStream(
           tip: "",
           metrics: {
             ...(hydrated.metrics || {}),
-            status: ["SUCCESS", "FAILED", "STOPPED", "TIMEOUT"].includes(hydratedStatus)
+            status: ["SUCCESS", "FAILED", "STOPPED", "TIMEOUT", "RUNNING"].includes(hydratedStatus)
               ? hydrated.metrics?.status
               : "SUCCESS",
           },
@@ -1160,6 +1242,8 @@ export function useConversationStream(
             ? "SUCCESS"
             : undefined
         );
+      } finally {
+        idleResyncRequestIdsRef.current.delete(requestId);
       }
     };
 
@@ -1393,13 +1477,25 @@ export function useConversationStream(
         body: null,
         lastEventId: initialEventSeq > 0 ? String(initialEventSeq) : undefined,
         signal: abortController.signal,
+        openWhenHidden: false,
         retryOnError: false,
         handleEventId: (eventId) => updateActiveRunEvent(sessionId, eventId),
         parser: parseAgentAnswer,
         handleMessage,
         handleError: (error) => {
+          if (
+            releasedObservationsRef.current.has(abortController) ||
+            sawFollowIdle
+          ) {
+            return;
+          }
           console.error("follow SSE error", error);
-          if (!isChatItemRunning(currentChat)) {
+          const closePlan = planObservationClose({
+            released: false,
+            sawFollowIdle: false,
+            chatRunning: isChatItemRunning(currentChat),
+          });
+          if (!closePlan.reconnect) {
             return;
           }
           const live = liveStreamsRef.current.get(conversationId);
@@ -1419,18 +1515,31 @@ export function useConversationStream(
             scheduleNonChatFlush(true);
             return;
           }
-          currentChat = {
-            ...currentChat,
-            tip: CONNECTION_LOST_HINT,
-          };
+          if (closePlan.writeDisconnectHint) {
+            currentChat = {
+              ...currentChat,
+              tip: CONNECTION_LOST_HINT,
+            };
+          }
           pendingConversation = draftController.replaceLastItem({ ...currentChat });
           scheduleNonChatFlush(false);
           scheduleFollowReconnect(conversationId, requestId);
         },
         handleClose: () => {
+          if (
+            releasedObservationsRef.current.has(abortController) ||
+            sawFollowIdle
+          ) {
+            return;
+          }
           scheduleNonChatFlush(true);
           queueMicrotask(() => {
-            if (!isChatItemRunning(currentChat)) {
+            const closePlan = planObservationClose({
+              released: releasedObservationsRef.current.has(abortController),
+              sawFollowIdle,
+              chatRunning: isChatItemRunning(currentChat),
+            });
+            if (!closePlan.reconnect) {
               return;
             }
             const live = liveStreamsRef.current.get(conversationId);
@@ -1452,10 +1561,12 @@ export function useConversationStream(
             }
             // EOF 也可能来自代理/浏览器提前收流；只要没有收到 follow_idle，
             // 就继续续绑，避免把仍在后台执行的 run 错误收口为失败。
-            currentChat = {
-              ...currentChat,
-              tip: CONNECTION_LOST_HINT,
-            };
+            if (closePlan.writeDisconnectHint) {
+              currentChat = {
+                ...currentChat,
+                tip: CONNECTION_LOST_HINT,
+              };
+            }
             pendingConversation = draftController.replaceLastItem({ ...currentChat });
             scheduleNonChatFlush(false);
             scheduleFollowReconnect(conversationId, requestId, 300);
@@ -1469,6 +1580,43 @@ export function useConversationStream(
     );
   });
 
+  applySessionObservationRef.current = (conversationId, chats) => {
+    const plan = planSessionObservation({
+      conversationId,
+      chats,
+      live: [...liveStreamsRef.current.values()].map((entry) => ({
+        conversationId: entry.conversationId,
+        aborted: entry.controller.signal.aborted,
+      })),
+      disconnectTip: CONNECTION_LOST_HINT,
+    });
+    plan.abortConversationIds.forEach((id) => {
+      releaseLiveObservation(id);
+    });
+    if (plan.clearDisconnectTip) {
+      const base =
+        conversationRef.current.id === conversationId
+          ? conversationRef.current
+          : conversationSnapshotsRef.current.get(conversationId) ||
+            conversationRef.current;
+      const chatList = (base.chatList || []).map((chat) =>
+        chat.tip === CONNECTION_LOST_HINT ? { ...chat, tip: "" } : chat
+      );
+      const next = {
+        ...base,
+        id: conversationId,
+        chatList,
+      };
+      if (conversationRef.current.id === conversationId) {
+        conversationRef.current = next;
+      }
+      commitConversation(conversationId, next);
+    }
+    if (plan.followRequestId) {
+      followActiveRun(plan.followRequestId);
+    }
+  };
+
   const scheduleFollowReconnect = useMemoizedFn((
     conversationId: string,
     requestId: string,
@@ -1479,19 +1627,6 @@ export function useConversationStream(
     }
     if (hasConversationLiveStream(conversationId)) {
       return;
-    }
-
-    const ctx = followReconnectContextsRef.current.get(requestId);
-    if (ctx) {
-      followReconnectContextsRef.current.set(requestId, {
-        ...ctx,
-        conversationId,
-        seedChat: {
-          ...ctx.seedChat,
-          loading: true,
-          tip: CONNECTION_LOST_HINT,
-        },
-      });
     }
 
     const attempt = followReconnectAttemptsRef.current.get(requestId) ?? 0;
@@ -1568,7 +1703,8 @@ export function useConversationStream(
     }
 
     const previous = liveStreamsRef.current.get(conversationId);
-    if (previous && previous.requestId !== resumeRequestId) {
+    if (previous) {
+      markObservationReleased(previous.controller);
       previous.controller.abort();
     }
     const abortController = new AbortController();
@@ -1734,6 +1870,7 @@ export function useConversationStream(
     };
 
     let resumeReplayInFlight = false;
+    let sawFollowIdle = false;
     const resyncAfterResumeDisconnect = async () => {
       if (resumeSettled || resumeReplayInFlight) {
         return;
@@ -1743,6 +1880,7 @@ export function useConversationStream(
         return;
       }
       resumeReplayInFlight = true;
+      idleResyncRequestIdsRef.current.add(resumeRequestId);
       try {
         const { replay, history, chat: hydrated, status } =
           await resyncAfterFollowIdle(
@@ -1754,21 +1892,6 @@ export function useConversationStream(
           return;
         }
         if (!hydrated) {
-          parkResumeStream();
-          return;
-        }
-
-        if (status === "RUNNING") {
-          currentChat = {
-            ...hydrated,
-            loading: true,
-            tip: CONNECTION_LOST_HINT,
-            metrics: {
-              ...(hydrated.metrics || {}),
-              status: "RUNNING",
-            },
-          };
-          commitResumeReplay(history, currentChat);
           parkResumeStream();
           return;
         }
@@ -1797,6 +1920,11 @@ export function useConversationStream(
           return;
         }
 
+        if (status === "RUNNING" && planFollowIdleReplay(status) === "stop") {
+          settleResumeReplay(history, hydrated, "RUNNING", "");
+          return;
+        }
+
         // 未知状态不能擅自判定成功，继续观察同一个 Run B。
         parkResumeStream();
       } catch (error) {
@@ -1804,6 +1932,7 @@ export function useConversationStream(
         parkResumeStream();
       } finally {
         resumeReplayInFlight = false;
+        idleResyncRequestIdsRef.current.delete(resumeRequestId);
       }
     };
 
@@ -1833,6 +1962,7 @@ export function useConversationStream(
       }
       followReconnectAttemptsRef.current.set(resumeRequestId, 0);
       if (packageType === "follow_idle") {
+        sawFollowIdle = true;
         void resyncAfterResumeDisconnect();
         return;
       }
@@ -1974,22 +2104,43 @@ export function useConversationStream(
           body: null,
           lastEventId: undefined,
           signal: abortController.signal,
+          openWhenHidden: false,
           retryOnError: false,
           handleEventId: (eventId) => updateActiveRunEvent(sessionId, eventId),
           parser: parseAgentAnswer,
           handleMessage,
           handleError: (error) => {
+            if (
+              releasedObservationsRef.current.has(abortController) ||
+              sawFollowIdle
+            ) {
+              return;
+            }
             console.error(`${options.errorLabel} resume SSE error`, error);
             queueMicrotask(() => {
-              if (resumeSettled) {
+              if (
+                releasedObservationsRef.current.has(abortController) ||
+                sawFollowIdle ||
+                resumeSettled
+              ) {
                 return;
               }
               void resyncAfterResumeDisconnect();
             });
           },
           handleClose: () => {
+            if (
+              releasedObservationsRef.current.has(abortController) ||
+              sawFollowIdle
+            ) {
+              return;
+            }
             queueMicrotask(() => {
-              if (resumeSettled) {
+              if (
+                releasedObservationsRef.current.has(abortController) ||
+                sawFollowIdle ||
+                resumeSettled
+              ) {
                 return;
               }
               void resyncAfterResumeDisconnect();
@@ -2058,6 +2209,9 @@ export function useConversationStream(
     }
     const kickReconnect = () => {
       followReconnectContextsRef.current.forEach((ctx, requestId) => {
+        if (idleResyncRequestIdsRef.current.has(requestId)) {
+          return;
+        }
         if (hasConversationLiveStream(ctx.conversationId)) {
           return;
         }
@@ -2134,39 +2288,6 @@ export function useConversationStream(
     const { message, deepThink } = inputInfo;
     const normalizedDeepThink = Boolean(deepThink);
 
-    // 开 SSE 之前拦截：任意其它会话仍在跑（活流 / follow 上下文 / 快照 loading）则直接拒绝。
-    // 本会话内允许覆盖重发；跨会话禁止，避免双 SSE 互挤。
-    let blockedByOtherRun = false;
-    liveStreamsRef.current.forEach((entry, otherId) => {
-      if (otherId !== conversationId && !entry.controller.signal.aborted) {
-        blockedByOtherRun = true;
-      }
-    });
-    if (!blockedByOtherRun) {
-      followReconnectContextsRef.current.forEach((ctx) => {
-        if (
-          ctx.conversationId !== conversationId &&
-          isParentLoopLive(ctx.seedChat)
-        ) {
-          blockedByOtherRun = true;
-        }
-      });
-    }
-    if (!blockedByOtherRun) {
-      conversationSnapshotsRef.current.forEach((snapshot, otherId) => {
-        if (otherId === conversationId) {
-          return;
-        }
-        if ((snapshot.chatList || []).some((chat) => isParentLoopLive(chat))) {
-          blockedByOtherRun = true;
-        }
-      });
-    }
-    if (blockedByOtherRun) {
-      antdMessage.warning(CONCURRENT_RUN_HINT);
-      return;
-    }
-
     const lastChat = (baseConversation.chatList || [])[baseConversation.chatList.length - 1];
     const parentLoopLive =
       !skipInjectRef.current &&
@@ -2198,7 +2319,10 @@ export function useConversationStream(
     const previous = liveStreamsRef.current.get(conversationId);
     // 一个会话只保留一个前端观察连接；新 run 必须绑定新的 controller，
     // 否则旧回调会继续占用 activeRequestIdRef，导致 stop/inject 操作旧 run。
-    previous?.controller.abort();
+    if (previous) {
+      markObservationReleased(previous.controller);
+      previous.controller.abort();
+    }
     const abortController = new AbortController();
     bindForegroundStream(conversationId, requestId, abortController);
     saveActiveRun(baseConversation.sessionId, requestId);
@@ -2684,6 +2808,9 @@ export function useConversationStream(
     };
 
     const handleError = (error: unknown) => {
+      if (releasedObservationsRef.current.has(abortController)) {
+        return;
+      }
       console.error("SSE stream error", error);
       // HTTP 绑定/网关错误发生在 SSE 建立前，后端尚未创建 session/run，不能进入 follow。
       if (!streamOpened) {
@@ -2733,8 +2860,14 @@ export function useConversationStream(
     };
 
     const handleClose = () => {
+      if (releasedObservationsRef.current.has(abortController)) {
+        return;
+      }
       scheduleNonChatFlush(true);
       queueMicrotask(() => {
+        if (releasedObservationsRef.current.has(abortController)) {
+          return;
+        }
         if (!shouldKeepObserving()) {
           return;
         }
@@ -2800,6 +2933,7 @@ export function useConversationStream(
           body: null,
           lastEventId: undefined,
           signal: abortController.signal,
+          openWhenHidden: false,
           retryOnError: false,
           handleOpen: () => {
             streamOpened = true;
@@ -2870,8 +3004,10 @@ export function useConversationStream(
       console.warn("stop run failed", error);
     } finally {
       clearActiveRun(requestId);
+      followReconnectContextsRef.current.delete(requestId);
       const live = liveStreamsRef.current.get(activeConversation.id);
       if (live && live.requestId === requestId) {
+        markObservationReleased(live.controller);
         live.controller.abort();
         unbindLiveStream(activeConversation.id, live.controller);
       }
