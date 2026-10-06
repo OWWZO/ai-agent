@@ -10,8 +10,8 @@ reactor:
     extra-args:
       - -f
       - json
-    default-timeout-ms: 60000
-    max-timeout-ms: 180000
+    default-timeout-ms: 180000
+    max-timeout-ms: 540000
     max-output-chars: 200000
   host-cli:
     enabled: true
