@@ -46,6 +46,21 @@ public class AuthenticationFilterTest {
     }
 
     @Test
+    public void browserRelayHandshakeRemainsAnonymousToJwtFilter() throws Exception {
+        AuthApplicationService authService = Mockito.mock(AuthApplicationService.class);
+        AuthenticationFilter filter = new AuthenticationFilter(authService, new ObjectMapper());
+        MockHttpServletRequest request = request("/api/agent/browser/relay");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockHttpServletResponse[] reached = new MockHttpServletResponse[1];
+
+        filter.doFilter(request, response, (ignoredRequest, servletResponse) ->
+                reached[0] = (MockHttpServletResponse) servletResponse);
+
+        Assert.assertSame(response, reached[0]);
+        Mockito.verifyNoInteractions(authService);
+    }
+
+    @Test
     public void validAccessTokenBindsAndClearsUserContext() throws Exception {
         AuthApplicationService authService = Mockito.mock(AuthApplicationService.class);
         Mockito.when(authService.verifyAccessToken("access-token"))

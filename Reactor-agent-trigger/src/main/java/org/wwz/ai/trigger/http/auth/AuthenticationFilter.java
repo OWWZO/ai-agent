@@ -47,6 +47,9 @@ public final class AuthenticationFilter extends OncePerRequestFilter {
                 || "/api/agent/featured-conversations".equals(path)
                 || "/api/agent/featured-conversations/".equals(path)
                 || "/api/agent/featured-conversations/home".equals(path)
+                // Relay handshakes authenticate with the pairing token in the WebSocket interceptor.
+                || "/api/agent/browser/relay".equals(path)
+                || "/api/agent/browser/relay/".equals(path)
                 || path.startsWith("/internal/");
     }
 
