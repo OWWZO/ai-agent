@@ -31,11 +31,11 @@ public class JwtTokenService {
     private final Clock clock;
 
     @Autowired
-    public JwtTokenService(@Value("${auth.jwt.secret:}") String secret,
+    public JwtTokenService(JwtSecretProvider secretProvider,
                            @Value("${auth.jwt.issuer:reactor}") String issuer,
                            @Value("${auth.jwt.access-token-ttl-seconds:900}") long accessTokenTtlSeconds,
                            Clock clock) {
-        this(secret, issuer, Duration.ofSeconds(Math.max(1, accessTokenTtlSeconds)), clock);
+        this(secretProvider.resolve(), issuer, Duration.ofSeconds(Math.max(1, accessTokenTtlSeconds)), clock);
     }
 
     public JwtTokenService(String secret, String issuer, Duration accessTokenTtl, Clock clock) {
