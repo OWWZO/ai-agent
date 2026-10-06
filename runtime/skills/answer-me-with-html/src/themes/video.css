@@ -1,0 +1,121 @@
+/* Video player: the 1920×1080 stage scales to the window. All colors come from theme variables.
+   Theme-specific video tokens and decorations live in each theme's definition (themes/<name>.js). */
+html[data-video] {
+  /* Player controls stay out of the picture and ignore the theme: one fixed set of dark tokens */
+  --v-ctl-bg: #0b0d11; --v-ctl-line: #1d2330; --v-ctl-fg: #c9d1dc; --v-ctl-muted: #5b6576;
+  --v-ctl-btn: #141922; --v-ctl-btn-line: #2a3240; --v-ctl-accent: #58c4dd; --v-ctl-white: #fff;
+  --v-letterbox: #000;
+  --v-stage: var(--bg);
+  --v-cap-fg: var(--ink); --v-cap-bg: var(--paper); --v-cap-border: var(--line);
+  --v-title-font: var(--head-font);
+  --v-glow: none;
+}
+html[data-video], html[data-video] body { background: var(--v-letterbox); height: 100%; overflow: hidden; }
+html[data-video] body { font-size: 22px; }
+
+.amv-viewport { position: fixed; inset: 0 0 56px 0; overflow: hidden; }
+.amv-stage {
+  position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; overflow: hidden;
+  background: var(--v-stage); color: var(--ink); transform-origin: 50% 50%;
+}
+.amv-camera { position: absolute; inset: 0; transform-origin: 0 0; }
+.amv-overlay { position: absolute; inset: 0; pointer-events: none; }
+.amv-ghost { position: absolute; left: 0; top: 0; transform-origin: 0 0; margin: 0; }
+.amv-ghost svg { display: block; max-width: none; overflow: visible; }
+
+/* ── Sheet frame (hidden unless a theme shows it) ── */
+.amv-sheet { display: none; }
+.amv-ruler { position: absolute; display: flex; font: 13px/1 var(--font-mono); color: var(--ink-3); }
+.amv-ruler span { flex: 1; display: flex; align-items: center; justify-content: center; }
+.amv-ruler--top, .amv-ruler--bottom { left: 24px; right: 24px; height: 24px; }
+.amv-ruler--top { top: 0; }
+.amv-ruler--bottom { bottom: 0; }
+.amv-ruler--left, .amv-ruler--right { top: 24px; bottom: 24px; width: 24px; flex-direction: column; }
+.amv-ruler--left { left: 0; }
+.amv-ruler--right { right: 0; }
+.amv-ruler--top span + span, .amv-ruler--bottom span + span { border-left: 1px solid var(--line); }
+.amv-ruler--left span + span, .amv-ruler--right span + span { border-top: 1px solid var(--line); }
+
+/* ── Scenes ── */
+.amv-scene { position: absolute; inset: 0; visibility: hidden; }
+.amv-scene-head {
+  position: absolute; left: 72px; right: 72px; top: 72px; height: 64px; visibility: hidden;
+  display: flex; align-items: stretch; border: var(--bw) solid var(--line); background: var(--paper);
+  border-radius: var(--radius); overflow: hidden; color: var(--ink);
+}
+.amv-scene-n {
+  display: flex; align-items: center; justify-content: center; min-width: 64px; padding: 0 14px;
+  background: var(--head-bg); color: var(--head-fg); font: 700 30px var(--font-sans);
+}
+.amv-scene-title { flex: 1; display: flex; align-items: center; padding: 0 22px; font: 600 32px var(--v-title-font); }
+.amv-scene-meta { display: flex; align-items: center; padding: 0 22px; font: 16px var(--font-mono); color: var(--ink-2); letter-spacing: 0.06em; }
+
+.amv-body { position: absolute; left: 96px; right: 96px; top: 160px; height: 760px; display: grid; place-items: center; }
+.amv-fit { width: max-content; max-width: 1100px; transform-origin: 50% 50%; display: flex; flex-direction: column; gap: 28px; }
+.amv-fit .am-diagram { overflow: visible; }
+.amv-fit .am-diagram svg { max-width: none; overflow: visible; }
+.amv-fit .am-md { font-size: 26px; line-height: 1.6; }
+.amv-fit table { font-size: 24px; }
+.amv-fit th { font-size: 17px; }
+
+/* ── Title card ── */
+.amv-scene--title { display: grid; place-items: center; text-align: center; }
+.amv-title-wrap { max-width: 1500px; display: flex; flex-direction: column; align-items: center; }
+.amv-title { margin: 0; font: 700 96px/1.15 var(--v-title-font); color: var(--ink); letter-spacing: -0.01em; text-wrap: balance; }
+.amv-subtitle { margin: 26px 0 0; font: 36px var(--v-title-font); color: var(--accent); }
+.amv-intro { margin-top: 36px; font-size: 28px; color: var(--ink-2); }
+.amv-titleblock {
+  display: flex; margin-top: 56px; border: var(--bw) solid var(--line); border-radius: var(--radius);
+  background: var(--paper); text-align: left; overflow: hidden;
+}
+.amv-titleblock div { padding: 16px 30px; display: flex; flex-direction: column; gap: 6px; }
+.amv-titleblock div + div { border-left: 1px solid var(--line); }
+.amv-titleblock b { font: 600 16px var(--font-mono); color: var(--ink-3); letter-spacing: 0.08em; }
+.amv-titleblock span { font: 28px var(--font-sans); color: var(--ink); }
+
+/* ── Captions ── */
+.amv-caption {
+  position: absolute; left: 0; right: 0; bottom: 76px; display: flex; justify-content: center; pointer-events: none;
+}
+.amv-caption span {
+  max-width: 1500px; padding: 12px 28px; border-radius: var(--radius); text-align: center;
+  font: 500 38px/1.45 var(--font-sans); color: var(--v-cap-fg); background: var(--v-cap-bg);
+  border: var(--bw) solid var(--v-cap-border);
+}
+.amv-caption span:empty { display: none; }
+.amv-caption b { color: var(--accent); font-weight: 700; }
+
+/* ── Highlight when narration names an element; edge labels stay grey until named ── */
+html[data-video] .am-diagram .am-edge-label text { fill: var(--ink-2); }
+.amv-hl .am-node-shape, .amv-hl .am-actor {
+  stroke: var(--accent); stroke-width: 3; fill: var(--accent-bg); filter: var(--v-glow);
+}
+html[data-video] .am-diagram .amv-hl text, html[data-video] .am-diagram text.amv-hl { fill: var(--accent); font-weight: 600; }
+.amv-hl .am-edge { stroke: var(--accent); stroke-width: 2.4; }
+.amv-hl.am-tree-box, .amv-hl.am-tl-item, .amv-hl.am-lim, .amv-hl.am-kv-cell, li.amv-hl > .am-tree-label, tr.amv-hl td, .amv-hl.am-seg {
+  color: var(--accent); outline: 2.5px solid var(--accent); outline-offset: 4px; border-radius: 4px;
+}
+
+/* ── Player controls (outside the picture) ── */
+.amv-bigplay {
+  position: absolute; left: 50%; top: 50%; width: 132px; height: 132px; margin: -66px 0 0 -66px; border-radius: 50%;
+  border: 2px solid var(--v-ctl-white); background: rgba(0, 0, 0, 0.55); color: var(--v-ctl-white); font-size: 54px; cursor: pointer;
+  padding-left: 10px;
+}
+.amv-bigplay[hidden] { display: none; }
+.amv-controls {
+  position: fixed; left: 0; right: 0; bottom: 0; height: 56px; display: flex; align-items: center; gap: 14px;
+  padding: 0 18px; background: var(--v-ctl-bg); border-top: 1px solid var(--v-ctl-line); color: var(--v-ctl-fg); font: 13px -apple-system, "Segoe UI", sans-serif;
+}
+.amv-btn { width: 36px; height: 32px; border: 1px solid var(--v-ctl-btn-line); border-radius: 6px; background: var(--v-ctl-btn); color: var(--v-ctl-white); cursor: pointer; }
+.amv-time { font-family: ui-monospace, Menlo, monospace; min-width: 96px; }
+.amv-track { position: relative; flex: 1; }
+.amv-seek { width: 100%; accent-color: var(--v-ctl-accent); }
+.amv-marks { position: absolute; left: 0; right: 0; top: -6px; height: 6px; pointer-events: none; }
+.amv-marks i { position: absolute; top: 0; width: 2px; height: 6px; background: var(--v-ctl-accent); }
+.amv-brand { color: var(--v-ctl-muted); font-size: 12px; white-space: nowrap; }
+
+/* Export mode: stage only, 1:1, no scaling */
+html[data-export] .amv-controls, html[data-export] .amv-bigplay { display: none; }
+html[data-export] .amv-viewport { inset: 0; }
+html[data-export] .amv-stage { left: 0; top: 0; transform: none !important; }

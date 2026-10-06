@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Answer me with HTML">
+  <rect x="1" y="1" width="62" height="62" rx="6" fill="#16181d" stroke="#8b929e" stroke-width="1.5"/>
+  <text x="32" y="38" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="30" font-weight="700" fill="#ffffff">A</text>
+  <path d="M17 45 V50 H47 V45" fill="none" stroke="#6ea8ff" stroke-width="2.5"/>
+</svg>

@@ -1,0 +1,53 @@
+{
+  "name": "answer-me-with-html",
+  "version": "0.4.11",
+  "description": "Answer hard questions with a one-page HTML: the model writes a short Markdown draft; the bundled CLI handles templates, SVG auto-layout and an STE controlled-writing check.",
+  "type": "module",
+  "bin": {
+    "am": "bin/am.js",
+    "answer-me-with-html": "bin/am.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "skills",
+    "examples"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test --test-timeout=120000 test/*.test.js",
+    "coverage": "node --test --experimental-test-coverage --test-coverage-exclude=\"test/**\" --test-coverage-exclude=\"skills/**\" --test-coverage-lines=85 --test-coverage-functions=85 --test-coverage-branches=80 test/*.test.js",
+    "smoke:install": "node scripts/smoke-install.mjs",
+    "snapshot": "node scripts/snapshot.mjs",
+    "release": "node scripts/release.mjs"
+  },
+  "keywords": [
+    "llm",
+    "agent",
+    "skill",
+    "html",
+    "explainer",
+    "diagram",
+    "ste100"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@dagrejs/dagre": "^3.1.1",
+    "marked": "^18.0.14"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/QingYunA/answer-me-with-html.git"
+  },
+  "homepage": "https://github.com/QingYunA/answer-me-with-html#readme",
+  "bugs": {
+    "url": "https://github.com/QingYunA/answer-me-with-html/issues"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "yaml": "^2.9.1"
+  }
+}
