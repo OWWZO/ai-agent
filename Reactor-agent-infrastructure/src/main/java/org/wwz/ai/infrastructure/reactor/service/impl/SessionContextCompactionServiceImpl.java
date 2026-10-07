@@ -231,7 +231,7 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
         if (!compactor.shouldCompact(decisionEstimate.getEstimatedTokens(), budget)) {
             log.info("context-token skip compact sessionId={} scope={} {} threshold={}",
                     sessionId, scope, decisionEstimate.toLogLine(), budget.threshold());
-            String microCompactId = maybePersistIfChanged(sessionId, scope, requestId, messages, current, originalTokens, "micro-only", budget);
+            String microCompactId = maybePersistIfChanged(sessionId, scope, requestId, messages, current, "micro-only", budget);
             if (current != messages && !current.equals(messages)) {
                 recordCompactionEvent(sessionId, requestId, messages, current, originalTokens, "micro-only", budget, null, microCompactId);
             }
@@ -316,7 +316,7 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
             return originalSnapshot;
         }
         compacted = compacted == null ? current : compacted;
-        String compactRequestId = maybePersistIfChanged(sessionId, scope, requestId, messages, compacted, originalTokens, strategy, budget);
+        String compactRequestId = maybePersistIfChanged(sessionId, scope, requestId, messages, compacted, strategy, budget);
         recordCompactionEvent(sessionId, requestId, messages, compacted, originalTokens, strategy, budget, error, compactRequestId);
         // 压缩后提醒：可用 memory / session_search 找回耐久事实与账本细节
         return MemoryFlushPolicy.prependPostCompactReminder(compacted);
@@ -727,12 +727,16 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
                                          String requestId,
                                          List<Message> original,
                                          List<Message> result,
-                                         int originalTokens,
                                          String strategy,
                                          CompactionBudget budget) {
         if (!persistProjection || STRATEGY_ABORT_UNCHANGED.equals(strategy) || result == null || result.isEmpty()) {
             return null;
         }
+        if (result.equals(original)) {
+            return null;
+        }
+        // 压缩收益只比较消息 token，避免 system/tools 固定 token 被误判为消息节省。
+        int before = compactor.estimateTokens(original);
         int after = compactor.estimateTokens(result);
         boolean hasHandoff = false;
         for (Message message : result) {
@@ -742,7 +746,7 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
             }
         }
         boolean structural = result.size() < original.size() || hasHandoff;
-        boolean tokenSaved = after < originalTokens;
+        boolean tokenSaved = after < before;
         if (!structural && !tokenSaved) {
             return null;
         }
@@ -751,7 +755,7 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
         }
         String compactRequestId = tryPersist(sessionId, memoryScope, requestId, result);
         log.info("persist compacted projection sessionId={} scope={} strategy={} tokens {}->{} compactRequestId={}",
-                sessionId, memoryScope, strategy, originalTokens, after, compactRequestId);
+                sessionId, memoryScope, strategy, before, after, compactRequestId);
         return compactRequestId;
     }
 

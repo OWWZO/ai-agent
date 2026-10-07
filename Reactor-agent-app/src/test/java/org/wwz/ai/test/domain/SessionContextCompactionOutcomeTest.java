@@ -24,8 +24,10 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 public class SessionContextCompactionOutcomeTest {
@@ -219,6 +221,63 @@ public class SessionContextCompactionOutcomeTest {
         Assert.assertEquals(0, daoWrites.get());
     }
 
+    @Test
+    public void unchangedMessagesAreNotPersistedWhenRequestTokensIncludeLargeSystemPrompt() {
+        SessionWorkingMemoryService workingMemory = mock(SessionWorkingMemoryService.class);
+        AtomicReference<WorkingMemoryCompactionEvent> audited = new AtomicReference<>();
+        List<Message> messages = List.of(Message.userMessage("short request", null));
+        RecordingService service = new RecordingService(
+                audited, messages, null, workingMemory, true, false, 5);
+        PromptShape shape = PromptShape.functionCall(
+                Message.systemMessage("S".repeat(8_000), null), messages, null);
+        int requestTokens = ContextTokenTracker.estimateCurrent(null, shape, new TokenCounter())
+                .getEstimatedTokens();
+        Assert.assertTrue(requestTokens > new WorkingMemoryCompactor().estimateTokens(messages));
+
+        service.applyIfNeededMidRun("s-unchanged", "main", "req-unchanged", messages,
+                null, shape, null);
+
+        verify(workingMemory, never()).replaceReadyProjection(anyString(), anyString(), anyString(), any());
+    }
+
+    @Test
+    public void microcompactPersistsWhenItClearsToolContentWithoutReducingMessageCount() {
+        SessionWorkingMemoryService workingMemory = mock(SessionWorkingMemoryService.class);
+        AtomicReference<WorkingMemoryCompactionEvent> audited = new AtomicReference<>();
+        List<Message> messages = List.of(
+                Message.toolMessage("legacy-output ".repeat(900), "call-old", null),
+                Message.toolMessage("recent result", "call-recent", null));
+        RecordingService service = new RecordingService(
+                audited, null, null, workingMemory, true, true, 1);
+        List<Message> expected = List.of(
+                Message.toolMessage(CompactionBudget.CLEARED_TOOL_RESULT, "call-old", null),
+                messages.get(1));
+        WorkingMemoryCompactor compactor = new WorkingMemoryCompactor();
+        Assert.assertTrue(compactor.estimateTokens(expected) < compactor.estimateTokens(messages));
+
+        List<Message> out = service.applyIfNeeded("s-micro-persist", "main", "req-micro", messages);
+
+        Assert.assertEquals(messages.size(), out.size());
+        verify(workingMemory, times(1)).replaceReadyProjection(
+                eq("s-micro-persist"), eq("main"), anyString(), eq(expected));
+    }
+
+    @Test
+    public void fullCompactionPersistsWhenItShortensTheMessageList() {
+        SessionWorkingMemoryService workingMemory = mock(SessionWorkingMemoryService.class);
+        AtomicReference<WorkingMemoryCompactionEvent> audited = new AtomicReference<>();
+        List<Message> compactResult = List.of(
+                Message.userMessage("compacted checkpoint", null),
+                Message.assistantMessage("latest reply", null));
+        RecordingService service = new RecordingService(
+                audited, compactResult, null, workingMemory, true, false, 5);
+
+        service.applyIfNeeded("s-full-persist", "main", "req-full", oversizedMessages());
+
+        verify(workingMemory, times(1)).replaceReadyProjection(
+                eq("s-full-persist"), eq("main"), anyString(), eq(compactResult));
+    }
+
     private static List<Message> oversizedMessages() {
         List<Message> messages = new ArrayList<>();
         for (int i = 0; i < 20; i++) {
@@ -236,18 +295,32 @@ public class SessionContextCompactionOutcomeTest {
         private List<Message> fallbackResult;
         private Exception failWith;
         private boolean forceCircuit;
+        private final boolean microEnabled;
+        private final int microKeepRecentToolResults;
 
         private RecordingService(AtomicReference<WorkingMemoryCompactionEvent> audited,
                                  List<Message> compactResult,
                                  Exception failWith) {
-            super(nullProvider(), null, recordingDao(audited),
-                    true, true, false, false,
+            this(audited, compactResult, failWith, null, false, false, 5);
+        }
+
+        private RecordingService(AtomicReference<WorkingMemoryCompactionEvent> audited,
+                                 List<Message> compactResult,
+                                 Exception failWith,
+                                 SessionWorkingMemoryService workingMemory,
+                                 boolean persistProjection,
+                                 boolean microEnabled,
+                                 int microKeepRecentToolResults) {
+            super(nullProvider(), workingMemory, recordingDao(audited),
+                    true, true, microEnabled, false,
                     0.50d, 20, 1, 200,
-                    3, 0.2d, 4000, 5, 8000,
-                    false, true, false, true);
+                    3, 0.2d, 4000, microKeepRecentToolResults, 8000,
+                    persistProjection, true, false, true);
             this.audited = audited;
             this.compactResult = compactResult;
             this.failWith = failWith;
+            this.microEnabled = microEnabled;
+            this.microKeepRecentToolResults = microKeepRecentToolResults;
         }
 
         @Override
@@ -263,7 +336,7 @@ public class SessionContextCompactionOutcomeTest {
             return CompactionBudget.builder()
                     .enabled(true)
                     .llmEnabled(true)
-                    .microEnabled(false)
+                    .microEnabled(microEnabled)
                     .sessionMemoryEnabled(false)
                     .contextWindow(2_000)
                     .thresholdPercent(0.50d)
@@ -281,7 +354,7 @@ public class SessionContextCompactionOutcomeTest {
                     .contentTailChars(1500)
                     .summaryInputMaxChars(160000)
                     .summarizerTimeoutSeconds(120)
-                    .microKeepRecentToolResults(5)
+                    .microKeepRecentToolResults(microKeepRecentToolResults)
                     .microToolResultMaxChars(8000)
                     .build();
         }
