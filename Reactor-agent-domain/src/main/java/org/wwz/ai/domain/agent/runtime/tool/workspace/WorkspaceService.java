@@ -127,17 +127,6 @@ public class WorkspaceService {
         return name == null ? "path" : name.toString();
     }
 
-    /** 错误/日志串脱敏：去掉 Windows/Unix 绝对路径片段。 */
-    public static String redactHostPaths(String text) {
-        if (text == null || text.isEmpty()) {
-            return text;
-        }
-        String out = text;
-        out = out.replaceAll("(?i)[a-z]:\\\\[^\\s\"']+", "<host-path>");
-        out = out.replaceAll("(?i)/(?:Users|home|var|tmp|opt|mnt|data|private)(?:/[^\\s\"']+)+", "<host-path>");
-        return out;
-    }
-
     private Path resolveCandidate(Path workspaceRoot, String rawPath) {
         if (StringUtils.isBlank(rawPath)) {
             throw new WorkspaceAccessException("path is required");

@@ -15,7 +15,6 @@ import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspacePaths;
-import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 
 import java.util.LinkedHashMap;
@@ -114,17 +113,13 @@ public class CodeExecutionTool implements BaseTool {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("tool", "code_execution");
             data.put("status", response.getString("status"));
-            data.put("stdout", WorkspaceService.redactHostPaths(
-                    StringUtils.defaultString(response.getString("stdout"))));
-            data.put("stderr", WorkspaceService.redactHostPaths(
-                    StringUtils.defaultString(response.getString("stderr"))));
+            data.put("stdout", StringUtils.defaultString(response.getString("stdout")));
+            data.put("stderr", StringUtils.defaultString(response.getString("stderr")));
             if (response.get("result") != null) {
-                Object result = response.get("result");
-                data.put("result", result instanceof String s
-                        ? WorkspaceService.redactHostPaths(s) : result);
+                data.put("result", response.get("result"));
             }
             if (StringUtils.isNotBlank(response.getString("error"))) {
-                data.put("error", WorkspaceService.redactHostPaths(response.getString("error")));
+                data.put("error", response.getString("error"));
             }
             if (!fileInfo.isEmpty()) {
                 List<Map<String, Object>> files = new java.util.ArrayList<>();

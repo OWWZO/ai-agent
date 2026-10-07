@@ -17,7 +17,6 @@ import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeOptions;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillVirtualPaths;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspacePaths;
-import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -152,17 +151,15 @@ public class BashTool implements BaseTool {
                     && response.get("exit_code") == null) {
                 // FastAPI 错误体 {"message": "..."}
                 return ToolResultPayload.failureFrom(
-                        WorkspaceService.redactHostPaths(response.getString("message")), null);
+                        response.getString("message"), null);
             }
 
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("tool", TOOL_NAME);
             data.put("ok", Boolean.TRUE);
             data.put("exit_code", firstNonNull(response.get("exitCode"), response.get("exit_code")));
-            data.put("stdout", WorkspaceService.redactHostPaths(
-                    StringUtils.defaultString(response.getString("stdout"))));
-            data.put("stderr", WorkspaceService.redactHostPaths(
-                    StringUtils.defaultString(response.getString("stderr"))));
+            data.put("stdout", StringUtils.defaultString(response.getString("stdout")));
+            data.put("stderr", StringUtils.defaultString(response.getString("stderr")));
             data.put("truncated", Boolean.TRUE.equals(response.getBoolean("truncated")));
             data.put("timed_out", Boolean.TRUE.equals(
                     firstNonNull(response.getBoolean("timedOut"), response.getBoolean("timed_out"))));
@@ -249,7 +246,7 @@ public class BashTool implements BaseTool {
                     input,
                     e);
             return ToolResultPayload.failureFrom(
-                    "bash 执行失败: " + WorkspaceService.redactHostPaths(e.getMessage()),
+                    "bash 执行失败: " + e.getMessage(),
                     null);
         }
     }

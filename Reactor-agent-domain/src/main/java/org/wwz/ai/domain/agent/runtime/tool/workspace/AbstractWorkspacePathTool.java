@@ -73,14 +73,13 @@ public abstract class AbstractWorkspacePathTool implements BaseTool {
         return ToolResultPayload.okData(getName(), fields);
     }
 
-    /** 失败：使用 Error 前缀（消息脱敏，不暴露宿主绝对路径）。 */
+    /** 失败：使用 Error 前缀并保留原始错误消息。 */
     protected ToolResultPayload failResult(String message) {
-        String safe = WorkspaceService.redactHostPaths(message);
         Map<String, Object> detail = new java.util.LinkedHashMap<>();
         detail.put("type", "tool_error");
         detail.put("tool", getName());
-        detail.put("message", safe);
-        return ToolResultPayload.failureFrom(safe, detail);
+        detail.put("message", message);
+        return ToolResultPayload.failureFrom(message, detail);
     }
 
     /** Agent 可见路径：skills/... 或会话相对路径。 */
@@ -88,8 +87,7 @@ public abstract class AbstractWorkspacePathTool implements BaseTool {
         try {
             return workspaceService.toAgentVisiblePath(requireWorkspaceRoot(), absolutePath);
         } catch (Exception e) {
-            return WorkspaceService.redactHostPaths(
-                    absolutePath == null ? null : absolutePath.toString());
+            return absolutePath == null ? null : absolutePath.toString();
         }
     }
 

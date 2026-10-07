@@ -55,6 +55,53 @@ public class CodeExecutionToolTest {
     }
 
     @Test
+    public void shouldPreserveAbsolutePathsInOutputAndErrors() {
+        String windowsPath = "C:\\Users\\WWZ\\project\\output.csv";
+        String unixPath = "/home/agent/workspace/error.log";
+        String resultPath = "/tmp/generated/chart.png";
+        String errorPath = "D:\\runtime\\python\\script.py";
+        RemoteHttpPort httpPort = request -> JSON.toJSONString(Map.of(
+                "status", "error",
+                "stdout", windowsPath,
+                "stderr", unixPath,
+                "result", resultPath,
+                "error", errorPath,
+                "fileInfo", java.util.List.of()));
+        ReactorConfig config = new ReactorConfig();
+        ReflectionTestUtils.setField(config, "codeInterpreterUrl", "http://reactor-tool");
+        AgentContext context = AgentContext.builder()
+                .requestId("req-code-paths")
+                .sessionId("session-code-paths")
+                .productFiles(new ArrayList<>())
+                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .build();
+        ToolArtifactSource artifactSource = ToolArtifactSource.builder()
+                .sessionId(context.getSessionId())
+                .requestId(context.getRequestId())
+                .toolCallId("call-code-paths")
+                .toolName("code_execution")
+                .build();
+        CodeExecutionTool tool = new CodeExecutionTool();
+        tool.setAgentContext(context);
+
+        ToolResultPayload payload;
+        context.bindCurrentToolArtifactSource(artifactSource);
+        try {
+            payload = (ToolResultPayload) tool.execute(Map.of("source", "result = 1"));
+        } finally {
+            context.clearCurrentToolArtifactSource();
+        }
+        Map<?, ?> data = (Map<?, ?>) payload.getLlmData();
+
+        Assert.assertTrue(payload.getFailed());
+        Assert.assertEquals(windowsPath, data.get("stdout"));
+        Assert.assertEquals(unixPath, data.get("stderr"));
+        Assert.assertEquals(resultPath, data.get("result"));
+        Assert.assertEquals(errorPath, data.get("error"));
+        Assert.assertEquals(errorPath, payload.getErrorMsg());
+    }
+
+    @Test
     public void shouldSendAgentContextWorkspaceRootToSandbox() {
         java.util.concurrent.atomic.AtomicReference<String> capturedBody = new java.util.concurrent.atomic.AtomicReference<>();
         RemoteHttpPort httpPort = request -> {

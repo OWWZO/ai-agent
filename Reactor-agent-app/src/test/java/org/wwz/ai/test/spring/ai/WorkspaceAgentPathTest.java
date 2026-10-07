@@ -40,12 +40,6 @@ public class WorkspaceAgentPathTest {
             Assert.assertEquals("out/note.txt", service.toAgentVisiblePath(ws, note));
             Assert.assertEquals(".", service.toAgentVisiblePath(ws, ws));
             Assert.assertEquals("skills", service.toAgentVisiblePath(ws, lib));
-
-            String redacted = WorkspaceService.redactHostPaths(
-                    "failed under C:\\Users\\WWZ\\AppData\\Local\\Temp\\x and /home/u/proj");
-            Assert.assertFalse(redacted.contains("Users"));
-            Assert.assertFalse(redacted.contains("/home/"));
-            Assert.assertTrue(redacted.contains("<host-path>"));
         } finally {
             delete(lib);
             delete(ws);

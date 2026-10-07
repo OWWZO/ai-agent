@@ -102,6 +102,35 @@ public class ShellAndWebSearchToolTest {
     }
 
     @Test
+    public void bashShouldPreserveAbsolutePathsInOutput() {
+        String windowsPath = "C:\\Users\\WWZ\\AppData\\Local\\Temp\\output.csv";
+        String unixPath = "/home/agent/workspace/error.log";
+        RemoteHttpPort httpPort = request -> JSON.toJSONString(Map.of(
+                "exitCode", 0,
+                "stdout", windowsPath,
+                "stderr", unixPath,
+                "truncated", false,
+                "timedOut", false,
+                "durationMs", 1));
+        ReactorConfig config = new ReactorConfig();
+        ReflectionTestUtils.setField(config, "codeInterpreterUrl", "http://reactor-tool");
+        AgentContext context = AgentContext.builder()
+                .requestId("req-bash-paths")
+                .sessionId("session-bash-paths")
+                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .build();
+        SkillRuntimeOptions skillOptions = SkillRuntimeOptions.builder().enabled(false).build();
+        BashTool tool = new BashTool(skillOptions, new SkillVirtualPaths(skillOptions));
+        tool.setAgentContext(context);
+
+        ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of("command", "run"));
+        Map<?, ?> data = (Map<?, ?>) payload.getLlmData();
+
+        Assert.assertEquals(windowsPath, data.get("stdout"));
+        Assert.assertEquals(unixPath, data.get("stderr"));
+    }
+
+    @Test
     public void bashShouldSendAgentContextWorkspaceRootToSandbox() {
         java.util.concurrent.atomic.AtomicReference<String> capturedBody = new java.util.concurrent.atomic.AtomicReference<>();
         RemoteHttpPort httpPort = request -> {
