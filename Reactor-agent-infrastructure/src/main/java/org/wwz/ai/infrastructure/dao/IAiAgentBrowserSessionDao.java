@@ -2,23 +2,23 @@ package org.wwz.ai.infrastructure.dao;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
-import org.wwz.ai.infrastructure.dao.po.AiAgentKernelBrowserSession;
+import org.wwz.ai.infrastructure.dao.po.AiAgentBrowserSession;
 
 import java.time.LocalDateTime;
 
 /**
- * Owner-to-Kernel Browser session mapping DAO.
+ * Owner-to-Agent Browser session mapping DAO.
  */
 @Mapper
-public interface IAiAgentKernelBrowserSessionDao {
+public interface IAiAgentBrowserSessionDao {
 
-    int insert(AiAgentKernelBrowserSession row);
+    int insert(AiAgentBrowserSession row);
 
-    AiAgentKernelBrowserSession queryByOwnerKey(@Param("ownerKey") String ownerKey);
+    AiAgentBrowserSession queryByOwnerKey(@Param("ownerKey") String ownerKey);
 
-    AiAgentKernelBrowserSession queryByKernelBrowserName(@Param("kernelBrowserName") String kernelBrowserName);
+    AiAgentBrowserSession queryByAgentBrowserName(@Param("agentBrowserName") String agentBrowserName);
 
-    int updateSession(AiAgentKernelBrowserSession row);
+    int updateSession(AiAgentBrowserSession row);
 
     int updateLastUsedAt(@Param("ownerKey") String ownerKey, @Param("lastUsedAt") LocalDateTime lastUsedAt);
 

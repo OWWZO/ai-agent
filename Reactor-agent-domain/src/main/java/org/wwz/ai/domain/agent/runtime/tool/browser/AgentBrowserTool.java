@@ -4,8 +4,8 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.adapter.port.KernelBrowserSession;
-import org.wwz.ai.domain.agent.adapter.port.KernelBrowserSessionPort;
+import org.wwz.ai.domain.agent.adapter.port.AgentBrowserSession;
+import org.wwz.ai.domain.agent.adapter.port.AgentBrowserSessionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliInvocation;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliResult;
@@ -24,11 +24,11 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 @Setter
-public class KernelBrowserTool implements BaseTool {
+public class AgentBrowserTool implements BaseTool {
 
-    public static final String TOOL_NAME = "kernel_browser";
+    public static final String TOOL_NAME = "agent_browser";
     private static final String KERNEL_API_KEY = "KERNEL_API_KEY";
-    private static final String REBUILT_NOTICE = "云端浏览器已重建，之前的页面状态已丢失。";
+    private static final String REBUILT_NOTICE = "Agent 浏览器已重建，之前的页面状态已丢失。";
 
     private AgentContext agentContext;
 
@@ -39,7 +39,7 @@ public class KernelBrowserTool implements BaseTool {
 
     @Override
     public String getDescription() {
-        return "远程操作当前用户的云端浏览器。";
+        return "远程操作当前用户的 Agent 浏览器。";
     }
 
     @Override
@@ -80,10 +80,10 @@ public class KernelBrowserTool implements BaseTool {
         }
 
         ReactorRuntimeDependencies deps = agentContext.getRuntimeDependencies();
-        KernelBrowserSessionPort sessionPort = deps.getOptionalKernelBrowserSessionPort();
+        AgentBrowserSessionPort sessionPort = deps.getOptionalAgentBrowserSessionPort();
         if (sessionPort == null || !sessionPort.isConfigured()) {
-            return ToolResultPayload.failure("Kernel 云端浏览器未配置", "Kernel 云端浏览器未配置", null,
-                    "kernel_browser_unavailable");
+            return ToolResultPayload.failure("Agent 浏览器未配置", "Agent 浏览器未配置", null,
+                    "agent_browser_unavailable");
         }
         CliExecutionPort cli = deps.getOptionalCliExecutionPort();
         OpenCliProperties properties = deps.getOpenCliProperties();
@@ -96,7 +96,7 @@ public class KernelBrowserTool implements BaseTool {
         if (execution.failure != null) {
             return execution.failure;
         }
-        KernelBrowserSession session = execution.session;
+        AgentBrowserSession session = execution.session;
         CliResult result = execution.result;
         List<String> rewritten = execution.rewritten;
         Map<String, Object> fields = toFields(result, session.getCdpWsUrl());
@@ -129,7 +129,7 @@ public class KernelBrowserTool implements BaseTool {
 
     private Execution executeForUser(List<String> args,
                                             String userId,
-                                            KernelBrowserSessionPort sessionPort,
+                                             AgentBrowserSessionPort sessionPort,
                                             CliExecutionPort cli,
                                             OpenCliProperties properties,
                                             long budgetMs,
@@ -138,18 +138,18 @@ public class KernelBrowserTool implements BaseTool {
         if (remaining <= 0) {
             return Execution.failed(browserTimeout());
         }
-        KernelBrowserSession session;
+        AgentBrowserSession session;
         try {
             session = sessionPort.resolveForUser(userId);
         } catch (RuntimeException e) {
             return Execution.failed(ToolResultPayload.failure(
-                    "获取 Kernel 云端浏览器会话失败", "获取 Kernel 云端浏览器会话失败", null,
-                    "kernel_browser_session_failed"));
+                    "获取 Agent 浏览器会话失败", "获取 Agent 浏览器会话失败", null,
+                    "agent_browser_session_failed"));
         }
         if (session == null || StringUtils.isBlank(session.getCdpWsUrl())) {
             return Execution.failed(ToolResultPayload.failure(
-                    "Kernel 云端浏览器会话不可用", "Kernel 云端浏览器会话不可用", null,
-                    "kernel_browser_session_unavailable"));
+                    "Agent 浏览器会话不可用", "Agent 浏览器会话不可用", null,
+                    "agent_browser_session_unavailable"));
         }
 
         List<String> rewritten = OpenCliArgv.rewrite(args, properties.getExtraArgs());
@@ -184,7 +184,7 @@ public class KernelBrowserTool implements BaseTool {
     }
 
     private static ToolResultPayload browserTimeout() {
-        return ToolResultPayload.failure("云端浏览器操作超时", "云端浏览器操作超时", null, "browser_timeout");
+        return ToolResultPayload.failure("Agent 浏览器操作超时", "Agent 浏览器操作超时", null, "browser_timeout");
     }
 
     private static long remainingMillis(long budgetMs, long startedNanos) {
@@ -194,12 +194,12 @@ public class KernelBrowserTool implements BaseTool {
 
     private static final class Execution {
         private final ToolResultPayload failure;
-        private final KernelBrowserSession session;
+        private final AgentBrowserSession session;
         private final CliResult result;
         private final List<String> rewritten;
 
         private Execution(ToolResultPayload failure,
-                                KernelBrowserSession session,
+                                 AgentBrowserSession session,
                                 CliResult result,
                                 List<String> rewritten) {
             this.failure = failure;
@@ -212,7 +212,7 @@ public class KernelBrowserTool implements BaseTool {
             return new Execution(failure, null, null, List.of());
         }
 
-        private static Execution completed(KernelBrowserSession session,
+        private static Execution completed(AgentBrowserSession session,
                                                  CliResult result,
                                                  List<String> rewritten) {
             return new Execution(null, session, result, rewritten);

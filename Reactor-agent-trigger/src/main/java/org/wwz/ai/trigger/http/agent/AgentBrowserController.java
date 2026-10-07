@@ -8,27 +8,27 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.wwz.ai.api.response.Response;
-import org.wwz.ai.application.agent.kernelbrowser.KernelBrowserApplicationService;
-import org.wwz.ai.domain.agent.adapter.port.KernelBrowserLiveView;
-import org.wwz.ai.domain.agent.adapter.port.KernelBrowserSessionStatus;
+import org.wwz.ai.application.agent.agentbrowser.AgentBrowserApplicationService;
+import org.wwz.ai.domain.agent.adapter.port.AgentBrowserLiveView;
+import org.wwz.ai.domain.agent.adapter.port.AgentBrowserSessionStatus;
 import org.wwz.ai.types.agent.user.UserRequestContext;
 import org.wwz.ai.types.enums.ResponseCode;
 
 @RestController
-@RequestMapping("/api/agent/kernel-browser")
-public class AgentKernelBrowserController {
+@RequestMapping("/api/agent/agent-browser")
+public class AgentBrowserController {
 
-    private final KernelBrowserApplicationService kernelBrowserApplicationService;
+    private final AgentBrowserApplicationService agentBrowserApplicationService;
 
-    public AgentKernelBrowserController(KernelBrowserApplicationService kernelBrowserApplicationService) {
-        this.kernelBrowserApplicationService = kernelBrowserApplicationService;
+    public AgentBrowserController(AgentBrowserApplicationService agentBrowserApplicationService) {
+        this.agentBrowserApplicationService = agentBrowserApplicationService;
     }
 
     @PostMapping("/ensure")
-    public ResponseEntity<Response<KernelBrowserLiveView>> ensure() {
-        KernelBrowserLiveView liveView = kernelBrowserApplicationService.ensure(
+    public ResponseEntity<Response<AgentBrowserLiveView>> ensure() {
+        AgentBrowserLiveView liveView = agentBrowserApplicationService.ensure(
                 UserRequestContext.requireUserId());
-        Response<KernelBrowserLiveView> response = Response.<KernelBrowserLiveView>builder()
+        Response<AgentBrowserLiveView> response = Response.<AgentBrowserLiveView>builder()
                 .code(ResponseCode.SUCCESS.getCode())
                 .info(ResponseCode.SUCCESS.getInfo())
                 .data(liveView)
@@ -39,10 +39,10 @@ public class AgentKernelBrowserController {
     }
 
     @GetMapping("/status")
-    public Response<KernelBrowserSessionStatus> status() {
-        KernelBrowserSessionStatus status = kernelBrowserApplicationService.status(
+    public Response<AgentBrowserSessionStatus> status() {
+        AgentBrowserSessionStatus status = agentBrowserApplicationService.status(
                 UserRequestContext.requireUserId());
-        return Response.<KernelBrowserSessionStatus>builder()
+        return Response.<AgentBrowserSessionStatus>builder()
                 .code(ResponseCode.SUCCESS.getCode())
                 .info(ResponseCode.SUCCESS.getInfo())
                 .data(status)
@@ -51,7 +51,7 @@ public class AgentKernelBrowserController {
 
     @DeleteMapping("/session")
     public Response<Void> reset() {
-        kernelBrowserApplicationService.reset(UserRequestContext.requireUserId());
+        agentBrowserApplicationService.reset(UserRequestContext.requireUserId());
         return Response.<Void>builder()
                 .code(ResponseCode.SUCCESS.getCode())
                 .info(ResponseCode.SUCCESS.getInfo())

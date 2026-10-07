@@ -26,7 +26,7 @@ import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspacePathGuard;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceRuntimeOptions;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
 import org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort;
-import org.wwz.ai.domain.agent.adapter.port.KernelBrowserSessionPort;
+import org.wwz.ai.domain.agent.adapter.port.AgentBrowserSessionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.types.agent.config.HostCliProperties;
 import org.wwz.ai.types.agent.config.OpenCliProperties;
@@ -675,7 +675,7 @@ public class AgentToolCollectionFactoryTest {
     }
 
     @Test
-    public void shouldRegisterKernelBrowserWhenConfiguredEvenIfRelayOffline() {
+    public void shouldRegisterAgentBrowserWhenConfiguredEvenIfRelayOffline() {
         AgentToolCollectionFactory factory = newFactory(
                 buildReactorConfig(),
                 Mockito.mock(McpToolExecutor.class),
@@ -686,13 +686,13 @@ public class AgentToolCollectionFactoryTest {
         );
         BrowserRelayPort relay = Mockito.mock(BrowserRelayPort.class);
         Mockito.when(relay.isOnline("user-1")).thenReturn(false);
-        KernelBrowserSessionPort kernel = Mockito.mock(KernelBrowserSessionPort.class);
-        Mockito.when(kernel.isConfigured()).thenReturn(true);
+        AgentBrowserSessionPort agentBrowser = Mockito.mock(AgentBrowserSessionPort.class);
+        Mockito.when(agentBrowser.isConfigured()).thenReturn(true);
         AgentContext ctx = buildAgentContext();
         ctx.setUserId("user-1");
         ctx.setRuntimeDependencies(ctx.getRuntimeDependencies().toBuilder()
                 .browserRelayPort(relay)
-                .kernelBrowserSessionPort(kernel)
+                .agentBrowserSessionPort(agentBrowser)
                 .cliExecutionPort(resolvableCli("node"))
                 .openCliProperties(enabledOpenCli())
                 .build());
@@ -701,13 +701,13 @@ public class AgentToolCollectionFactoryTest {
         request.setUserId("user-1");
         ToolCollection toolCollection = factory.buildForReact(ctx, request);
 
-        Assert.assertTrue(toolCollection.getToolMap().containsKey("kernel_browser"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("agent_browser"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("browser"));
         Mockito.verify(relay).isOnline("user-1");
     }
 
     @Test
-    public void shouldNotRegisterKernelBrowserForDataAgent() {
+    public void shouldNotRegisterAgentBrowserForDataAgent() {
         AgentToolCollectionFactory factory = newFactory(
                 buildReactorConfig(),
                 Mockito.mock(McpToolExecutor.class),
@@ -716,12 +716,12 @@ public class AgentToolCollectionFactoryTest {
                 disabledWorkspaceService(),
                 disabledWorkspaceOptions()
         );
-        KernelBrowserSessionPort kernel = Mockito.mock(KernelBrowserSessionPort.class);
-        Mockito.when(kernel.isConfigured()).thenReturn(true);
+        AgentBrowserSessionPort agentBrowser = Mockito.mock(AgentBrowserSessionPort.class);
+        Mockito.when(agentBrowser.isConfigured()).thenReturn(true);
         AgentContext ctx = buildAgentContext();
         ctx.setUserId("user-1");
         ctx.setRuntimeDependencies(ctx.getRuntimeDependencies().toBuilder()
-                .kernelBrowserSessionPort(kernel)
+                .agentBrowserSessionPort(agentBrowser)
                 .cliExecutionPort(resolvableCli("node"))
                 .openCliProperties(enabledOpenCli())
                 .build());
@@ -735,8 +735,8 @@ public class AgentToolCollectionFactoryTest {
 
         ToolCollection toolCollection = factory.buildForReact(ctx, request);
 
-        Assert.assertFalse(toolCollection.getToolMap().containsKey("kernel_browser"));
-        Mockito.verify(kernel, Mockito.never()).isConfigured();
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("agent_browser"));
+        Mockito.verify(agentBrowser, Mockito.never()).isConfigured();
     }
 
     @Test

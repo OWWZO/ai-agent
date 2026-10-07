@@ -65,7 +65,7 @@ import org.wwz.ai.domain.agent.runtime.tool.common.MemoryTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.SessionSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.cli.HostCliTool;
 import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserTool;
-import org.wwz.ai.domain.agent.runtime.tool.browser.KernelBrowserTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.AgentBrowserTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.WebFetchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.WebSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.mcp.ListMcpResourcesTool;
@@ -219,7 +219,7 @@ public class AgentToolCollectionFactory {
                 registerWorkspaceTools(toolCollection, agentContext);
             }
             registerBrowserTool(toolCollection, agentContext, request);
-            registerKernelBrowserTool(toolCollection, agentContext, request);
+            registerAgentBrowserTool(toolCollection, agentContext, request);
             registerHostCliTool(toolCollection, agentContext);
 
             List<String> agentToolList = parseToolNames(reactorConfig.getMultiAgentToolListMap()
@@ -654,9 +654,9 @@ public class AgentToolCollectionFactory {
         addTool(toolCollection, new BrowserTool(), agentContext, BrowserTool::setAgentContext);
     }
 
-    private void registerKernelBrowserTool(ToolCollection toolCollection,
-                                           AgentContext agentContext,
-                                           AgentRequest request) {
+    private void registerAgentBrowserTool(ToolCollection toolCollection,
+                                          AgentContext agentContext,
+                                          AgentRequest request) {
         if (request == null || "dataAgent".equals(request.getOutputStyle())
                 || agentContext == null || agentContext.getRuntimeDependencies() == null) {
             return;
@@ -664,12 +664,12 @@ public class AgentToolCollectionFactory {
         ReactorRuntimeDependencies deps = agentContext.getRuntimeDependencies();
         var properties = deps.getOpenCliProperties();
         var cli = deps.getOptionalCliExecutionPort();
-        var port = deps.getOptionalKernelBrowserSessionPort();
+        var port = deps.getOptionalAgentBrowserSessionPort();
         if (properties == null || !properties.isEnabled() || cli == null
                 || !cli.isResolvable(properties.getCommand()) || port == null || !port.isConfigured()) {
             return;
         }
-        addTool(toolCollection, new KernelBrowserTool(), agentContext, KernelBrowserTool::setAgentContext);
+        addTool(toolCollection, new AgentBrowserTool(), agentContext, AgentBrowserTool::setAgentContext);
     }
 
     private void registerHostCliTool(ToolCollection toolCollection, AgentContext agentContext) {

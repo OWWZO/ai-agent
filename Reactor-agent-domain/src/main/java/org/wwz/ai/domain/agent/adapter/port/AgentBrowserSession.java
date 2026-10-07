@@ -5,13 +5,13 @@ import lombok.Value;
 
 @Value
 @Builder
-public class KernelBrowserSession {
+public class AgentBrowserSession {
 
     String userId;
 
-    String kernelSessionId;
+    String agentSessionId;
 
-    String kernelBrowserName;
+    String agentBrowserName;
 
     String cdpWsUrl;
 

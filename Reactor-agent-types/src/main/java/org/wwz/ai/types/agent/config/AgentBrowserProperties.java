@@ -4,8 +4,8 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @Data
-@ConfigurationProperties(prefix = "reactor.kernel-browser")
-public class KernelBrowserProperties {
+@ConfigurationProperties(prefix = "reactor.agent-browser")
+public class AgentBrowserProperties {
 
     private boolean enabled = false;
 

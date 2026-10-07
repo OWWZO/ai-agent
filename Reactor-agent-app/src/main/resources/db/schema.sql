@@ -16,7 +16,7 @@
 -- Session task surfaces (not ledger facts):
 --   ai_agent_session_todo — Todo V2 list (TaskCreate/List)
 --   ai_agent_background_task — background Agent/shell tasks (TaskOutput/Stop)
--- External resource mapping (not a ledger table): ai_agent_kernel_browser_session
+-- Agent Browser external resource mapping (not a ledger table): ai_agent_kernel_browser_session
 --
 -- Do NOT add as a second main path:
 --   ai_agent_message*, ai_agent_turn, ai_agent_transcript_block,
@@ -825,7 +825,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_kernel_browser_session (
     id BIGINT NOT NULL AUTO_INCREMENT,
     owner_key VARCHAR(128) NOT NULL COMMENT '稳定 userId',
     kernel_session_id VARCHAR(64) NOT NULL COMMENT 'Kernel browser session_id',
-    kernel_browser_name VARCHAR(255) NOT NULL COMMENT '稳定 Kernel browser name',
+    kernel_browser_name VARCHAR(255) NOT NULL COMMENT '稳定 Agent Browser name',
     last_used_at DATETIME NOT NULL COMMENT '最近一次成功取得 CDP endpoint 的时间',
     create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

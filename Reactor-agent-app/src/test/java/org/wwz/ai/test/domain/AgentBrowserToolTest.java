@@ -5,8 +5,8 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
-import org.wwz.ai.domain.agent.adapter.port.KernelBrowserSession;
-import org.wwz.ai.domain.agent.adapter.port.KernelBrowserSessionPort;
+import org.wwz.ai.domain.agent.adapter.port.AgentBrowserSession;
+import org.wwz.ai.domain.agent.adapter.port.AgentBrowserSessionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliInvocation;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliResult;
@@ -14,7 +14,7 @@ import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
-import org.wwz.ai.domain.agent.runtime.tool.browser.KernelBrowserTool;
+import org.wwz.ai.domain.agent.runtime.tool.browser.AgentBrowserTool;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
 import org.wwz.ai.types.agent.config.OpenCliProperties;
@@ -26,28 +26,28 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class KernelBrowserToolTest {
+public class AgentBrowserToolTest {
 
     @Test
     public void shouldExecuteUsingKernelCdpWithoutRelayAndHideEndpointFromPayload() {
         String cdpWsUrl = "wss://proxy.kernel.example/browser/session-secret";
         CliExecutionPort cli = mockSuccessfulCli("connected to " + cdpWsUrl);
-        KernelBrowserSessionPort sessionPort = Mockito.mock(KernelBrowserSessionPort.class);
+        AgentBrowserSessionPort sessionPort = Mockito.mock(AgentBrowserSessionPort.class);
         Mockito.when(sessionPort.isConfigured()).thenReturn(true);
-        Mockito.when(sessionPort.resolveForUser("user-1")).thenReturn(KernelBrowserSession.builder()
+        Mockito.when(sessionPort.resolveForUser("user-1")).thenReturn(AgentBrowserSession.builder()
                 .userId("user-1")
-                .kernelSessionId("session-1")
-                .kernelBrowserName("rb-user-1")
+                .agentSessionId("session-1")
+                .agentBrowserName("rb-user-1")
                 .cdpWsUrl(cdpWsUrl)
                 .reconstructed(false)
                 .build());
 
-        KernelBrowserTool tool = new KernelBrowserTool();
+        AgentBrowserTool tool = new AgentBrowserTool();
         AgentContext context = context(cli, sessionPort);
         tool.setAgentContext(context);
         ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of("args", List.of("browser", "list")));
 
-        Assert.assertEquals("kernel_browser", tool.getName());
+        Assert.assertEquals("agent_browser", tool.getName());
         Assert.assertFalse(Boolean.TRUE.equals(payload.getFailed()));
         Assert.assertNull(context.getRuntimeDependencies().getOptionalBrowserRelayPort());
         ArgumentCaptor<CliInvocation> captor = ArgumentCaptor.forClass(CliInvocation.class);
@@ -65,33 +65,33 @@ public class KernelBrowserToolTest {
     @Test
     public void shouldIncludeNoticeWhenKernelReconstructsBrowser() {
         CliExecutionPort cli = mockSuccessfulCli("{\"ok\":true}");
-        KernelBrowserSessionPort sessionPort = Mockito.mock(KernelBrowserSessionPort.class);
+        AgentBrowserSessionPort sessionPort = Mockito.mock(AgentBrowserSessionPort.class);
         Mockito.when(sessionPort.isConfigured()).thenReturn(true);
-        Mockito.when(sessionPort.resolveForUser("user-1")).thenReturn(KernelBrowserSession.builder()
+        Mockito.when(sessionPort.resolveForUser("user-1")).thenReturn(AgentBrowserSession.builder()
                 .userId("user-1")
-                .kernelSessionId("session-2")
-                .kernelBrowserName("rb-user-1")
+                .agentSessionId("session-2")
+                .agentBrowserName("rb-user-1")
                 .cdpWsUrl("wss://proxy.kernel.example/browser/session-2")
                 .reconstructed(true)
                 .build());
 
-        KernelBrowserTool tool = new KernelBrowserTool();
+        AgentBrowserTool tool = new AgentBrowserTool();
         tool.setAgentContext(context(cli, sessionPort));
         ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of("args", List.of("browser", "list")));
 
         Assert.assertTrue(ToolObservationSerializer.serializePayload(payload)
-                .contains("云端浏览器已重建，之前的页面状态已丢失。"));
+                .contains("Agent 浏览器已重建，之前的页面状态已丢失。"));
     }
 
     @Test
     public void shouldRunKernelCallsForSameOwnerConcurrently() throws Exception {
         String cdpWsUrl = "wss://proxy.kernel.example/browser/session-1";
-        KernelBrowserSessionPort sessionPort = Mockito.mock(KernelBrowserSessionPort.class);
+        AgentBrowserSessionPort sessionPort = Mockito.mock(AgentBrowserSessionPort.class);
         Mockito.when(sessionPort.isConfigured()).thenReturn(true);
-        Mockito.when(sessionPort.resolveForUser("user-1")).thenReturn(KernelBrowserSession.builder()
+        Mockito.when(sessionPort.resolveForUser("user-1")).thenReturn(AgentBrowserSession.builder()
                 .userId("user-1")
-                .kernelSessionId("session-1")
-                .kernelBrowserName("rb-user-1")
+                .agentSessionId("session-1")
+                .agentBrowserName("rb-user-1")
                 .cdpWsUrl(cdpWsUrl)
                 .reconstructed(false)
                 .build());
@@ -121,7 +121,7 @@ public class KernelBrowserToolTest {
             }
         }).when(cli).exec(Mockito.any(CliInvocation.class));
 
-        KernelBrowserTool tool = new KernelBrowserTool();
+        AgentBrowserTool tool = new AgentBrowserTool();
         tool.setAgentContext(context(cli, sessionPort));
         Map<String, Object> input = Map.of("args", List.of("browser", "list"));
         CompletableFuture<Object> first = CompletableFuture.supplyAsync(() -> tool.execute(input));
@@ -163,7 +163,7 @@ public class KernelBrowserToolTest {
                 .build();
     }
 
-    private static AgentContext context(CliExecutionPort cli, KernelBrowserSessionPort sessionPort) {
+    private static AgentContext context(CliExecutionPort cli, AgentBrowserSessionPort sessionPort) {
         OpenCliProperties properties = new OpenCliProperties();
         properties.setEnabled(true);
         properties.setCommand("node");
@@ -173,7 +173,7 @@ public class KernelBrowserToolTest {
                 .toBuilder()
                 .cliExecutionPort(cli)
                 .openCliProperties(properties)
-                .kernelBrowserSessionPort(sessionPort)
+                .agentBrowserSessionPort(sessionPort)
                 .build();
         return AgentContext.builder()
                 .requestId("req-1")

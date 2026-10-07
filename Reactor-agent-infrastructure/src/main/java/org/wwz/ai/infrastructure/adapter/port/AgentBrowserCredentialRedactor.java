@@ -5,7 +5,7 @@ import java.util.regex.Pattern;
 /**
  * Removes credentials and browser endpoint values before an exception can cross the adapter boundary.
  */
-final class KernelBrowserCredentialRedactor {
+final class AgentBrowserCredentialRedactor {
 
     private static final Pattern NAMED_SECRET = Pattern.compile(
             "(?i)([\\\"']?(?:cdp_ws_url|jwt)[\\\"']?\\s*[:=]\\s*[\\\"']?)([^\\\"'\\s,}&]+)([\\\"']?)");
@@ -14,7 +14,7 @@ final class KernelBrowserCredentialRedactor {
     private static final Pattern QUERY_SECRET = Pattern.compile(
             "(?i)([?&](?:jwt|api[_-]?key)=)([^&#\\s\\\"']+)");
 
-    private KernelBrowserCredentialRedactor() {
+    private AgentBrowserCredentialRedactor() {
     }
 
     static String redact(String message, String apiKey) {

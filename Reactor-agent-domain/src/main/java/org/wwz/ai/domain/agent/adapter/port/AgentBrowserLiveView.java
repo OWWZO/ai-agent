@@ -5,11 +5,11 @@ import lombok.Value;
 
 @Value
 @Builder
-public class KernelBrowserLiveView {
+public class AgentBrowserLiveView {
 
     String browserLiveViewUrl;
 
-    String kernelSessionId;
+    String agentSessionId;
 
     boolean reconstructed;
 }

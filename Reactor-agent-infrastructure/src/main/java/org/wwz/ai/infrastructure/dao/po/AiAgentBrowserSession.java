@@ -8,21 +8,21 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
- * Kernel Browser session mapping table PO.
+ * Agent Browser session mapping table PO.
  */
 @Data
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class AiAgentKernelBrowserSession {
+public class AiAgentBrowserSession {
 
     private Long id;
 
     private String ownerKey;
 
-    private String kernelSessionId;
+    private String agentSessionId;
 
-    private String kernelBrowserName;
+    private String agentBrowserName;
 
     private LocalDateTime lastUsedAt;
 

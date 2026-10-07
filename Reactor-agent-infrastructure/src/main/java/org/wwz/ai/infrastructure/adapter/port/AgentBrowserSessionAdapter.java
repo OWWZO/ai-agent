@@ -12,13 +12,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-import org.wwz.ai.domain.agent.adapter.port.KernelBrowserLiveView;
-import org.wwz.ai.domain.agent.adapter.port.KernelBrowserSession;
-import org.wwz.ai.domain.agent.adapter.port.KernelBrowserSessionPort;
-import org.wwz.ai.domain.agent.adapter.port.KernelBrowserSessionStatus;
-import org.wwz.ai.infrastructure.dao.IAiAgentKernelBrowserSessionDao;
-import org.wwz.ai.infrastructure.dao.po.AiAgentKernelBrowserSession;
-import org.wwz.ai.types.agent.config.KernelBrowserProperties;
+import org.wwz.ai.domain.agent.adapter.port.AgentBrowserLiveView;
+import org.wwz.ai.domain.agent.adapter.port.AgentBrowserSession;
+import org.wwz.ai.domain.agent.adapter.port.AgentBrowserSessionPort;
+import org.wwz.ai.domain.agent.adapter.port.AgentBrowserSessionStatus;
+import org.wwz.ai.infrastructure.dao.IAiAgentBrowserSessionDao;
+import org.wwz.ai.infrastructure.dao.po.AiAgentBrowserSession;
+import org.wwz.ai.types.agent.config.AgentBrowserProperties;
 
 import java.io.IOException;
 import java.net.URLEncoder;
@@ -32,14 +32,14 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
- * Infrastructure adapter for the current user's Kernel Browser session.
+ * Infrastructure adapter for the current user's Agent Browser session.
  *
  * <p>The persisted row contains only the stable user/browser mapping in {@code owner_key}. The CDP endpoint is
  * intentionally read from Kernel on every successful resolve and is never written to MySQL.</p>
  */
 @Component
-@EnableConfigurationProperties(KernelBrowserProperties.class)
-public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
+@EnableConfigurationProperties(AgentBrowserProperties.class)
+public class AgentBrowserSessionAdapter implements AgentBrowserSessionPort {
 
     private static final MediaType JSON_MEDIA_TYPE = MediaType.get("application/json; charset=utf-8");
     private static final String DEFAULT_BASE_URL = "https://api.onkernel.com";
@@ -47,18 +47,18 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
     private static final int LOCK_TIMEOUT_SECONDS = 30;
     private static final int BROWSER_NAME_HASH_LENGTH = 40;
 
-    private final KernelBrowserProperties properties;
-    private final IAiAgentKernelBrowserSessionDao sessionDao;
-    private final KernelBrowserHttpClient httpClient;
+    private final AgentBrowserProperties properties;
+    private final IAiAgentBrowserSessionDao sessionDao;
+    private final AgentBrowserHttpClient httpClient;
 
     /**
      * Production constructor. The shared client supplies the application's connection pool and dispatcher.
      */
     @Autowired
-    public KernelBrowserSessionAdapter(KernelBrowserProperties properties,
-                                       IAiAgentKernelBrowserSessionDao sessionDao,
+    public AgentBrowserSessionAdapter(AgentBrowserProperties properties,
+                                      IAiAgentBrowserSessionDao sessionDao,
                                        OkHttpClient sharedClient) {
-        this(properties, sessionDao, new OkHttpKernelBrowserHttpClient(
+        this(properties, sessionDao, new OkHttpAgentBrowserHttpClient(
                 sharedClient,
                 resolveBaseUrl(properties),
                 properties.getApiKey()));
@@ -67,39 +67,39 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
     /**
      * Package-independent test seam. Tests can provide a fake HTTP layer without a real API key or network.
      */
-    public KernelBrowserSessionAdapter(KernelBrowserProperties properties,
-                                       IAiAgentKernelBrowserSessionDao sessionDao,
-                                       KernelBrowserHttpClient httpClient) {
-        this.properties = Objects.requireNonNull(properties, "KernelBrowserProperties must not be null");
-        this.sessionDao = Objects.requireNonNull(sessionDao, "IAiAgentKernelBrowserSessionDao must not be null");
-        this.httpClient = Objects.requireNonNull(httpClient, "KernelBrowserHttpClient must not be null");
+    public AgentBrowserSessionAdapter(AgentBrowserProperties properties,
+                                      IAiAgentBrowserSessionDao sessionDao,
+                                      AgentBrowserHttpClient httpClient) {
+        this.properties = Objects.requireNonNull(properties, "AgentBrowserProperties must not be null");
+        this.sessionDao = Objects.requireNonNull(sessionDao, "IAiAgentBrowserSessionDao must not be null");
+        this.httpClient = Objects.requireNonNull(httpClient, "AgentBrowserHttpClient must not be null");
     }
 
     /**
      * Small HTTP seam used by the adapter and replaced by a deterministic fake in tests.
      */
-    public interface KernelBrowserHttpClient {
+    public interface AgentBrowserHttpClient {
 
-        KernelBrowserHttpResponse createBrowser(String name,
+        AgentBrowserHttpResponse createBrowser(String name,
                                                 int timeoutSeconds,
                                                 boolean headless,
                                                 String profileName,
                                                 boolean profileSaveChanges);
 
-        KernelBrowserHttpResponse getBrowser(String idOrName);
+        AgentBrowserHttpResponse getBrowser(String idOrName);
 
-        KernelBrowserHttpResponse deleteBrowser(String idOrName);
+        AgentBrowserHttpResponse deleteBrowser(String idOrName);
     }
 
     /**
      * HTTP response value used by the fake seam. The body is kept private to the adapter's parsing path.
      */
-    public static final class KernelBrowserHttpResponse {
+    public static final class AgentBrowserHttpResponse {
 
         private final int statusCode;
         private final String body;
 
-        public KernelBrowserHttpResponse(int statusCode, String body) {
+        public AgentBrowserHttpResponse(int statusCode, String body) {
             this.statusCode = statusCode;
             this.body = body;
         }
@@ -120,17 +120,17 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public KernelBrowserSession resolveForUser(String userId) {
+    public AgentBrowserSession resolveForUser(String userId) {
         String normalizedUserId = requireUserId(userId);
         requireConfigured();
         try {
             BrowserResolution resolution = withUserLock(normalizedUserId,
                     () -> resolveLocked(normalizedUserId));
             requireCdpEndpoint(resolution.browser());
-            return KernelBrowserSession.builder()
+            return AgentBrowserSession.builder()
                     .userId(normalizedUserId)
-                    .kernelSessionId(resolution.browser().sessionId())
-                    .kernelBrowserName(resolution.browser().name())
+                    .agentSessionId(resolution.browser().sessionId())
+                    .agentBrowserName(resolution.browser().name())
                     .cdpWsUrl(resolution.browser().cdpWsUrl())
                     .reconstructed(resolution.reconstructed())
                     .build();
@@ -140,19 +140,19 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
     }
 
     @Override
-    public KernelBrowserSessionStatus statusForUser(String userId) {
+    public AgentBrowserSessionStatus statusForUser(String userId) {
         String normalizedUserId = requireUserId(userId);
         try {
-            AiAgentKernelBrowserSession row = sessionDao.queryByOwnerKey(normalizedUserId);
+            AiAgentBrowserSession row = sessionDao.queryByOwnerKey(normalizedUserId);
             if (row == null) {
-                return KernelBrowserSessionStatus.builder()
+                return AgentBrowserSessionStatus.builder()
                         .exists(false)
                         .reconstructed(false)
                         .build();
             }
-            return KernelBrowserSessionStatus.builder()
+            return AgentBrowserSessionStatus.builder()
                     .exists(true)
-                    .kernelSessionId(row.getKernelSessionId())
+                    .agentSessionId(row.getAgentSessionId())
                     .lastUsedAt(row.getLastUsedAt())
                     .reconstructed(false)
                     .build();
@@ -163,7 +163,7 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public KernelBrowserLiveView ensureLiveView(String userId) {
+    public AgentBrowserLiveView ensureLiveView(String userId) {
         String normalizedUserId = requireUserId(userId);
         requireConfigured();
         try {
@@ -173,9 +173,9 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
             if (StringUtils.isBlank(resolution.browser().liveViewUrl())) {
                 throw new IllegalStateException("Kernel response did not include a live view URL");
             }
-            return KernelBrowserLiveView.builder()
+            return AgentBrowserLiveView.builder()
                     .browserLiveViewUrl(resolution.browser().liveViewUrl())
-                    .kernelSessionId(resolution.browser().sessionId())
+                    .agentSessionId(resolution.browser().sessionId())
                     .reconstructed(resolution.reconstructed())
                     .build();
         } catch (RuntimeException e) {
@@ -189,12 +189,12 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
         String normalizedUserId = requireUserId(userId);
         try {
             withUserLock(normalizedUserId, () -> {
-                AiAgentKernelBrowserSession row = sessionDao.queryByOwnerKey(normalizedUserId);
+                AiAgentBrowserSession row = sessionDao.queryByOwnerKey(normalizedUserId);
                 if (row != null && isConfigured()) {
                     String idOrName = StringUtils.firstNonBlank(
-                            row.getKernelSessionId(), row.getKernelBrowserName());
+                            row.getAgentSessionId(), row.getAgentBrowserName());
                     if (StringUtils.isNotBlank(idOrName)) {
-                        KernelBrowserHttpResponse response = httpClient.deleteBrowser(idOrName);
+                        AgentBrowserHttpResponse response = httpClient.deleteBrowser(idOrName);
                         if (response == null) {
                             throw new IllegalStateException("Kernel delete returned no response");
                         }
@@ -215,21 +215,21 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
 
     private BrowserResolution resolveLocked(String userId) {
         String desiredName = stableBrowserName(userId);
-        AiAgentKernelBrowserSession row = sessionDao.queryByOwnerKey(userId);
+        AiAgentBrowserSession row = sessionDao.queryByOwnerKey(userId);
         if (row == null) {
             return createAndPersist(userId, desiredName, false);
         }
 
-        String sessionId = StringUtils.trimToNull(row.getKernelSessionId());
+        String sessionId = StringUtils.trimToNull(row.getAgentSessionId());
         if (sessionId != null) {
-            BrowserSnapshot browser = getBrowser(sessionId, row.getKernelBrowserName());
+            BrowserSnapshot browser = getBrowser(sessionId, row.getAgentBrowserName());
             if (browser != null) {
                 return touchOrPersistExisting(userId, row, browser, false);
             }
         }
 
         // The session id may be gone while the named browser is still recoverable.
-        String browserName = StringUtils.defaultIfBlank(row.getKernelBrowserName(), desiredName);
+        String browserName = StringUtils.defaultIfBlank(row.getAgentBrowserName(), desiredName);
         BrowserSnapshot browser = getBrowser(browserName, desiredName);
         if (browser != null) {
             return touchOrPersistExisting(userId, row, browser, false);
@@ -241,7 +241,7 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
 
     private BrowserResolution createAndPersist(String userId, String browserName, boolean reconstructed) {
         String profileName = StringUtils.trimToNull(properties.getProfileName());
-        KernelBrowserHttpResponse response = httpClient.createBrowser(
+        AgentBrowserHttpResponse response = httpClient.createBrowser(
                 browserName,
                 resolveBrowserTimeoutSeconds(),
                 false,
@@ -254,7 +254,7 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
             // A conflict means the stable name already owns a browser. Reconcile by name instead of creating another one.
             BrowserSnapshot existing = getBrowser(browserName, browserName);
             if (existing == null) {
-                throw new IllegalStateException("Kernel browser name conflict could not be reconciled");
+                throw new IllegalStateException("Agent browser name conflict could not be reconciled");
             }
             return persistAndResolve(userId, existing, reconstructed);
         }
@@ -274,7 +274,7 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
     }
 
     private BrowserResolution touchOrPersistExisting(String userId,
-                                                      AiAgentKernelBrowserSession existingRow,
+                                                       AiAgentBrowserSession existingRow,
                                                       BrowserSnapshot browser,
                                                       boolean reconstructed) {
         BrowserSnapshot normalized = normalizeBrowser(browser);
@@ -298,22 +298,22 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
         return browser.withName(browserName);
     }
 
-    private boolean sameMapping(AiAgentKernelBrowserSession row, BrowserSnapshot browser) {
-        return Objects.equals(row.getKernelSessionId(), browser.sessionId())
-                && Objects.equals(row.getKernelBrowserName(), browser.name());
+    private boolean sameMapping(AiAgentBrowserSession row, BrowserSnapshot browser) {
+        return Objects.equals(row.getAgentSessionId(), browser.sessionId())
+                && Objects.equals(row.getAgentBrowserName(), browser.name());
     }
 
     private void persistMapping(String userId, BrowserSnapshot browser) {
-        AiAgentKernelBrowserSession mappedByName = sessionDao.queryByKernelBrowserName(browser.name());
+        AiAgentBrowserSession mappedByName = sessionDao.queryByAgentBrowserName(browser.name());
         if (mappedByName != null && !userId.equals(mappedByName.getOwnerKey())) {
-            throw new IllegalStateException("Kernel browser name is mapped to another userId");
+            throw new IllegalStateException("Agent browser name is mapped to another userId");
         }
 
         LocalDateTime now = LocalDateTime.now();
-        AiAgentKernelBrowserSession row = new AiAgentKernelBrowserSession();
+        AiAgentBrowserSession row = new AiAgentBrowserSession();
         row.setOwnerKey(userId);
-        row.setKernelSessionId(browser.sessionId());
-        row.setKernelBrowserName(browser.name());
+        row.setAgentSessionId(browser.sessionId());
+        row.setAgentBrowserName(browser.name());
         row.setLastUsedAt(now);
         row.setCreateTime(now);
         row.setUpdateTime(now);
@@ -325,7 +325,7 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
             } catch (RuntimeException insertFailure) {
                 // The user lock normally makes this unnecessary; the re-read keeps persistence idempotent if a
                 // database caller inserted the unique owner_key row before this insert completed.
-                AiAgentKernelBrowserSession concurrentRow = sessionDao.queryByOwnerKey(userId);
+                AiAgentBrowserSession concurrentRow = sessionDao.queryByOwnerKey(userId);
                 if (concurrentRow == null) {
                     throw insertFailure;
                 }
@@ -335,7 +335,7 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
     }
 
     private BrowserSnapshot getBrowser(String idOrName, String fallbackName) {
-        KernelBrowserHttpResponse response = httpClient.getBrowser(idOrName);
+        AgentBrowserHttpResponse response = httpClient.getBrowser(idOrName);
         if (response == null) {
             throw new IllegalStateException("Kernel get returned no response");
         }
@@ -348,7 +348,7 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
         return parseBrowser(response, fallbackName);
     }
 
-    private BrowserSnapshot parseBrowser(KernelBrowserHttpResponse response, String fallbackName) {
+    private BrowserSnapshot parseBrowser(AgentBrowserHttpResponse response, String fallbackName) {
         try {
             JSONObject json = JSON.parseObject(response.getBody());
             if (json == null) {
@@ -365,7 +365,7 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
                     json.getString("cdp_ws_url"),
                     json.getString("browser_live_view_url"));
         } catch (RuntimeException e) {
-            throw sanitizedFailure("parse Kernel browser response", e);
+            throw sanitizedFailure("parse Agent browser response", e);
         }
     }
 
@@ -373,7 +373,7 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
         String lockName = userLockName(userId);
         Integer lockResult = sessionDao.getLock(lockName, LOCK_TIMEOUT_SECONDS);
         if (!Integer.valueOf(1).equals(lockResult)) {
-            throw new IllegalStateException("Could not acquire Kernel browser user lock");
+            throw new IllegalStateException("Could not acquire Agent browser user lock");
         }
         try {
             return action.get();
@@ -384,7 +384,7 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
 
     private void requireConfigured() {
         if (!isConfigured()) {
-            throw new IllegalStateException("Kernel Browser is not configured");
+            throw new IllegalStateException("Agent Browser is not configured");
         }
     }
 
@@ -415,13 +415,13 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
         }
         String name = prefix + "-" + sha256Hex(userId).substring(0, BROWSER_NAME_HASH_LENGTH);
         if (name.length() > 255 || !name.matches("[a-zA-Z0-9._-]{1,255}")) {
-            throw new IllegalStateException("Kernel browser name is invalid");
+            throw new IllegalStateException("Agent browser name is invalid");
         }
         return name;
     }
 
     private String userLockName(String userId) {
-        return "kernel-browser-owner-" + sha256Hex(userId).substring(0, BROWSER_NAME_HASH_LENGTH);
+        return "agent-browser-owner-" + sha256Hex(userId).substring(0, BROWSER_NAME_HASH_LENGTH);
     }
 
     private String sha256Hex(String value) {
@@ -443,7 +443,7 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
     }
 
     private IllegalStateException sanitizedFailure(String operation, RuntimeException cause) {
-        String detail = KernelBrowserCredentialRedactor.redact(cause.getMessage(), properties.getApiKey());
+        String detail = AgentBrowserCredentialRedactor.redact(cause.getMessage(), properties.getApiKey());
         if (StringUtils.isBlank(detail)) {
             detail = "unknown error";
         }
@@ -454,7 +454,7 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
         return statusCode >= 200 && statusCode < 300;
     }
 
-    private static String resolveBaseUrl(KernelBrowserProperties properties) {
+    private static String resolveBaseUrl(AgentBrowserProperties properties) {
         return StringUtils.defaultIfBlank(properties.getBaseUrl(), DEFAULT_BASE_URL);
     }
 
@@ -471,20 +471,20 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
         }
     }
 
-    private static final class OkHttpKernelBrowserHttpClient implements KernelBrowserHttpClient {
+    private static final class OkHttpAgentBrowserHttpClient implements AgentBrowserHttpClient {
 
         private final OkHttpClient sharedClient;
         private final String baseUrl;
         private final String apiKey;
 
-        private OkHttpKernelBrowserHttpClient(OkHttpClient sharedClient, String baseUrl, String apiKey) {
+        private OkHttpAgentBrowserHttpClient(OkHttpClient sharedClient, String baseUrl, String apiKey) {
             this.sharedClient = Objects.requireNonNull(sharedClient, "sharedClient must not be null");
             this.baseUrl = trimTrailingSlash(baseUrl);
             this.apiKey = apiKey == null ? "" : apiKey.trim();
         }
 
         @Override
-        public KernelBrowserHttpResponse createBrowser(String name,
+        public AgentBrowserHttpResponse createBrowser(String name,
                                                        int timeoutSeconds,
                                                        boolean headless,
                                                        String profileName,
@@ -503,16 +503,16 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
         }
 
         @Override
-        public KernelBrowserHttpResponse getBrowser(String idOrName) {
+        public AgentBrowserHttpResponse getBrowser(String idOrName) {
             return execute("GET", "/browsers/" + encodePathSegment(idOrName), null);
         }
 
         @Override
-        public KernelBrowserHttpResponse deleteBrowser(String idOrName) {
+        public AgentBrowserHttpResponse deleteBrowser(String idOrName) {
             return execute("DELETE", "/browsers/" + encodePathSegment(idOrName), null);
         }
 
-        private KernelBrowserHttpResponse execute(String method, String path, String body) {
+        private AgentBrowserHttpResponse execute(String method, String path, String body) {
             Request.Builder builder = new Request.Builder()
                     .url(baseUrl + path)
                     .header("Authorization", "Bearer " + apiKey)
@@ -525,9 +525,9 @@ public class KernelBrowserSessionAdapter implements KernelBrowserSessionPort {
             }
             try (Response response = sharedClient.newCall(builder.build()).execute()) {
                 String responseBody = response.body() == null ? null : response.body().string();
-                return new KernelBrowserHttpResponse(response.code(), responseBody);
+                return new AgentBrowserHttpResponse(response.code(), responseBody);
             } catch (IOException | RuntimeException e) {
-                String message = KernelBrowserCredentialRedactor.redact(e.getMessage(), apiKey);
+                String message = AgentBrowserCredentialRedactor.redact(e.getMessage(), apiKey);
                 throw new IllegalStateException(StringUtils.defaultIfBlank(message, "Kernel HTTP request failed"));
             }
         }

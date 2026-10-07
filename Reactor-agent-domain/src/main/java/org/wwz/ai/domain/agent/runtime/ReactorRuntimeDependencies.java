@@ -4,7 +4,7 @@ import lombok.Builder;
 import lombok.Value;
 import org.springframework.core.env.Environment;
 import org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort;
-import org.wwz.ai.domain.agent.adapter.port.KernelBrowserSessionPort;
+import org.wwz.ai.domain.agent.adapter.port.AgentBrowserSessionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
@@ -59,8 +59,8 @@ public class ReactorRuntimeDependencies {
     /** 可选：本机进程 CLI（opencli / host_cli） */
     CliExecutionPort cliExecutionPort;
 
-    /** 可选：每用户 Kernel 云端浏览器 session */
-    KernelBrowserSessionPort kernelBrowserSessionPort;
+    /** 可选：每用户 Agent 浏览器 session */
+    AgentBrowserSessionPort agentBrowserSessionPort;
 
     OpenCliProperties openCliProperties;
 
@@ -142,8 +142,8 @@ public class ReactorRuntimeDependencies {
         return cliExecutionPort;
     }
 
-    public KernelBrowserSessionPort getOptionalKernelBrowserSessionPort() {
-        return kernelBrowserSessionPort;
+    public AgentBrowserSessionPort getOptionalAgentBrowserSessionPort() {
+        return agentBrowserSessionPort;
     }
 
     public Executor requireLlmExecutor() {

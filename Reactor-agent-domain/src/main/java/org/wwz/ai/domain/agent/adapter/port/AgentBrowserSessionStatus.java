@@ -7,11 +7,11 @@ import java.time.LocalDateTime;
 
 @Value
 @Builder
-public class KernelBrowserSessionStatus {
+public class AgentBrowserSessionStatus {
 
     boolean exists;
 
-    String kernelSessionId;
+    String agentSessionId;
 
     LocalDateTime lastUsedAt;
 

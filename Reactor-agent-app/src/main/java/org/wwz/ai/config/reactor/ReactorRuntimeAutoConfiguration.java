@@ -7,7 +7,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.scheduling.TaskScheduler;
 import org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort;
-import org.wwz.ai.domain.agent.adapter.port.KernelBrowserSessionPort;
+import org.wwz.ai.domain.agent.adapter.port.AgentBrowserSessionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
@@ -75,7 +75,7 @@ public class ReactorRuntimeAutoConfiguration {
                                                                  FileArtifactPort fileArtifactPort,
                                                                    ObjectProvider<BrowserRelayPort> browserRelayPortProvider,
                                                                    ObjectProvider<CliExecutionPort> cliExecutionPortProvider,
-                                                                    ObjectProvider<KernelBrowserSessionPort> kernelBrowserSessionPortProvider,
+                                                                     ObjectProvider<AgentBrowserSessionPort> agentBrowserSessionPortProvider,
                                                                    ObjectProvider<OpenCliProperties> openCliPropertiesProvider,
                                                                    ObjectProvider<HostCliProperties> hostCliPropertiesProvider,
                                                                   @Qualifier(AgentExecutorNames.LLM_EXECUTOR) Executor llmExecutor,
@@ -104,7 +104,7 @@ public class ReactorRuntimeAutoConfiguration {
                 .fileArtifactPort(fileArtifactPort)
                 .browserRelayPort(browserRelayPortProvider.getIfAvailable())
                 .cliExecutionPort(cliExecutionPortProvider.getIfAvailable())
-                .kernelBrowserSessionPort(kernelBrowserSessionPortProvider.getIfAvailable())
+                 .agentBrowserSessionPort(agentBrowserSessionPortProvider.getIfAvailable())
                 .openCliProperties(openCliPropertiesProvider.getIfAvailable())
                 .hostCliProperties(hostCliPropertiesProvider.getIfAvailable())
                 .llmExecutor(llmExecutor)

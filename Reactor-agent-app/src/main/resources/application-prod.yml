@@ -26,7 +26,7 @@ reactor:
     pairing-ttl-seconds: 300
     rpc-timeout-seconds: 60
     internal-rpc-secret: "${ADAPTER_HOST_SECRET:}"
-  kernel-browser:
+  agent-browser:
     enabled: true
     api-key: ${KERNEL_API_KEY:}
     base-url: https://api.onkernel.com

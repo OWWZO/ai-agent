@@ -2,9 +2,9 @@ package org.wwz.ai.trigger.config;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
-import org.wwz.ai.types.agent.config.KernelBrowserProperties;
+import org.wwz.ai.types.agent.config.AgentBrowserProperties;
 
 @Configuration
-@EnableConfigurationProperties(KernelBrowserProperties.class)
-public class KernelBrowserPropertiesConfig {
+@EnableConfigurationProperties(AgentBrowserProperties.class)
+public class AgentBrowserPropertiesConfig {
 }
