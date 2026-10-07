@@ -18,6 +18,10 @@ public class LlmModelBinding {
     String apiId;
     /** 模型用途；使用 fallback/backup/备用模型标记备用模型。 */
     String modelUsage;
+    /** 对外展示的模型类型。 */
+    String modelType;
+    /** 是否支持深度思考（reasoning_effort）。 */
+    Integer supportsThinking;
     String baseUrl;
     String apiKey;
     /** 对话补全路径；空则调用方用默认 /v1/chat/completions 或 /chat/completions。 */

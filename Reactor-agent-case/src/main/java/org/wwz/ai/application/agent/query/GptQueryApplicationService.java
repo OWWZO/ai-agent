@@ -21,6 +21,7 @@ import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.runtime.handler.AgentResponseHandler;
+import org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
 import org.wwz.ai.types.agent.exception.AgentExecutorBusyException;
@@ -40,6 +41,9 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
 
     @Resource
     private GptQueryAgentRequestFactory gptQueryAgentRequestFactory;
+
+    @Resource
+    private LlmModelCatalog llmModelCatalog;
 
     @Resource
     private IAgentDispatchService agentDispatchService;
@@ -79,6 +83,7 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
     public AgentQuerySubmitResult submitAgentQuery(GptQueryReq params) {
         gptQueryAgentRequestFactory.normalize(params);
         AgentRequest agentRequest = gptQueryAgentRequestFactory.build(params);
+        validateRequestedModel(agentRequest);
         log.info("{} start handle Agent request: {}", params.getRequestId(), JSON.toJSONString(agentRequest));
 
         String userId = resolveUserId(agentRequest);
@@ -125,6 +130,20 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
                 .sessionId(agentRequest.getSessionId())
                 .requestId(agentRequest.getRequestId())
                 .build();
+    }
+
+    /**
+     * 显式模型必须来自登录用户可见目录；空值/default 继续交给运行时选择默认模型。
+     * <p>该校验必须发生在 begin 前，避免非法模型生成无法执行的 run。</p>
+     */
+    private void validateRequestedModel(AgentRequest agentRequest) {
+        String model = agentRequest == null ? null : StringUtils.trimToNull(agentRequest.getModel());
+        if (model == null || LlmModelCatalog.DEFAULT_MODEL.equalsIgnoreCase(model)) {
+            return;
+        }
+        if (llmModelCatalog == null || !llmModelCatalog.isUserSelectableModel(model)) {
+            throw new IllegalArgumentException("所选模型不可用，请从模型目录中选择已启用模型");
+        }
     }
 
     private void dispatchOnExecutor(GptQueryReq params,

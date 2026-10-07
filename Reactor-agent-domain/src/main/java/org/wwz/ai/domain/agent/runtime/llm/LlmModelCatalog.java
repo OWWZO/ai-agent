@@ -7,7 +7,10 @@ import org.wwz.ai.domain.agent.adapter.repository.ILlmModelConfigRepository;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -51,6 +54,54 @@ public class LlmModelCatalog {
      */
     public Optional<LLMSettings> resolve(String modelRef) {
         return resolve(modelRef, System.currentTimeMillis());
+    }
+
+    /**
+     * 返回登录用户可选择的模型目录。备用模型只用于运行时失败重试，不进入用户目录。
+     */
+    public List<LlmModelCatalogEntry> listUserSelectableModels() {
+        List<LlmModelBinding> bindings = loadUsable(System.currentTimeMillis());
+        if (bindings.isEmpty()) {
+            return List.of();
+        }
+        Map<String, LlmModelBinding> unique = new LinkedHashMap<>();
+        for (LlmModelBinding binding : bindings) {
+            if (binding == null || isFallback(binding.getModelUsage())
+                    || StringUtils.isBlank(binding.getModelId())) {
+                continue;
+            }
+            unique.putIfAbsent(binding.getModelId().trim(), binding);
+        }
+        return unique.values().stream()
+                .map(binding -> LlmModelCatalogEntry.builder()
+                        .modelId(binding.getModelId().trim())
+                        .modelName(binding.getModelName())
+                        .modelType(binding.getModelType())
+                        .supportsThinking(binding.getSupportsThinking())
+                        .contextWindow(binding.getContextWindow())
+                        .status(1)
+                        .build())
+                .toList();
+    }
+
+    /**
+     * 校验来自用户请求的显式模型引用。内部 binding row 引用和备用模型不属于公开选择范围。
+     */
+    public boolean isUserSelectableModel(String modelRef) {
+        if (StringUtils.isBlank(modelRef) || DEFAULT_MODEL.equalsIgnoreCase(modelRef.trim())
+                || modelRef.trim().startsWith(BINDING_REF_PREFIX)) {
+            return false;
+        }
+        String normalized = modelRef.trim();
+        for (LlmModelBinding binding : loadUsable(System.currentTimeMillis())) {
+            if (binding == null || isFallback(binding.getModelUsage())) {
+                continue;
+            }
+            if (normalized.equals(binding.getModelId()) || normalized.equals(binding.getModelName())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     Optional<LLMSettings> resolve(String modelRef, long nowMs) {
@@ -188,7 +239,7 @@ public class LlmModelCatalog {
         if (modelUsage == null) {
             return false;
         }
-        String normalized = modelUsage.trim().toLowerCase(java.util.Locale.ROOT);
+        String normalized = modelUsage.trim().toLowerCase(Locale.ROOT);
         return "fallback".equals(normalized)
                 || "backup".equals(normalized)
                 || "备用".equals(normalized)

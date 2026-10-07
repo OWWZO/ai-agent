@@ -29,11 +29,20 @@ public class AgentRepository implements IAgentRepository {
     @Override
     public List<AiClientToolMcpVO> queryEnabledAiClientToolMcpVOList() {
         List<AiClientToolMcp> enabledMcps = aiClientToolMcpDao.queryEnabledMcps();
-        if (enabledMcps == null || enabledMcps.isEmpty()) {
+        return toAiClientToolMcpVOList(enabledMcps);
+    }
+
+    @Override
+    public List<AiClientToolMcpVO> queryAllAiClientToolMcpVOList() {
+        return toAiClientToolMcpVOList(aiClientToolMcpDao.queryAll());
+    }
+
+    private List<AiClientToolMcpVO> toAiClientToolMcpVOList(List<AiClientToolMcp> mcps) {
+        if (mcps == null || mcps.isEmpty()) {
             return List.of();
         }
 
-        return enabledMcps.stream()
+        return mcps.stream()
                 .map(this::toAiClientToolMcpVO)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
@@ -53,6 +62,7 @@ public class AgentRepository implements IAgentRepository {
                 .transportType(toolMcp.getTransportType())
                 .transportConfig(toolMcp.getTransportConfig())
                 .requestTimeout(toolMcp.getRequestTimeout())
+                .status(toolMcp.getStatus())
                 .build();
 
         String transportConfig = toolMcp.getTransportConfig();

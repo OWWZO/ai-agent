@@ -95,6 +95,24 @@ public class AuthenticationFilterTest {
         Assert.assertEquals(403, response.getStatus());
     }
 
+    @Test
+    public void regularUserCanAccessCatalogEndpoint() throws Exception {
+        AuthApplicationService authService = Mockito.mock(AuthApplicationService.class);
+        Mockito.when(authService.verifyAccessToken("access-token"))
+                .thenReturn(new JwtTokenService.AuthenticatedAccount(
+                        "user-1", "session-1", "USER", Instant.now(), Instant.now().plusSeconds(900)));
+        AuthenticationFilter filter = new AuthenticationFilter(authService, new ObjectMapper());
+        MockHttpServletRequest request = request("/api/v1/catalog/models");
+        request.addHeader("Authorization", "Bearer access-token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, (ignoredRequest, ignoredResponse) ->
+                Assert.assertEquals("user-1", UserRequestContext.currentUserId()));
+
+        Assert.assertEquals(200, response.getStatus());
+        Assert.assertNull(UserRequestContext.currentUserId());
+    }
+
     private MockHttpServletRequest request(String path) {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setRequestURI(path);

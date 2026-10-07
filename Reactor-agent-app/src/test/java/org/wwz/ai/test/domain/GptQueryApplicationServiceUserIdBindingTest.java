@@ -122,6 +122,48 @@ public class GptQueryApplicationServiceUserIdBindingTest {
         Assert.assertEquals("user-002", captor.getValue().getUserId());
     }
 
+    @Test
+    public void shouldRejectUnavailableExplicitModelBeforeStartingRun() {
+        GptQueryApplicationService service = newService();
+        GptQueryAgentRequestFactory factory = Mockito.mock(GptQueryAgentRequestFactory.class);
+        IAgentDispatchService dispatchService = Mockito.mock(IAgentDispatchService.class);
+        ConversationSessionAuthorizationService ownershipService =
+                Mockito.mock(ConversationSessionAuthorizationService.class);
+        org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog modelCatalog =
+                Mockito.mock(org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog.class);
+        ActiveAgentRunRegistry registry = Mockito.mock(ActiveAgentRunRegistry.class);
+
+        ReflectionTestUtils.setField(service, "gptQueryAgentRequestFactory", factory);
+        ReflectionTestUtils.setField(service, "agentDispatchService", dispatchService);
+        ReflectionTestUtils.setField(service, "conversationSessionAuthorizationService", ownershipService);
+        ReflectionTestUtils.setField(service, "llmModelCatalog", modelCatalog);
+        ReflectionTestUtils.setField(service, "activeAgentRunRegistry", registry);
+
+        GptQueryReq params = new GptQueryReq();
+        params.setRequestId("req-invalid-model");
+        params.setSessionId("session-invalid-model");
+        params.setQuery("使用指定模型");
+        AgentRequest agentRequest = AgentRequest.builder()
+                .requestId(params.getRequestId())
+                .sessionId(params.getSessionId())
+                .model("disabled-model")
+                .query(params.getQuery())
+                .build();
+        Mockito.doNothing().when(factory).normalize(params);
+        Mockito.when(factory.build(params)).thenReturn(agentRequest);
+        Mockito.when(modelCatalog.isUserSelectableModel("disabled-model")).thenReturn(false);
+
+        try {
+            service.submitAgentQuery(params);
+            Assert.fail("不可用模型应在创建 run 前被拒绝");
+        } catch (IllegalArgumentException expected) {
+            Assert.assertTrue(expected.getMessage().contains("模型不可用"));
+        }
+
+        Mockito.verify(registry, Mockito.never()).begin(Mockito.any(), Mockito.any(), Mockito.any());
+        Mockito.verifyNoInteractions(ownershipService, dispatchService);
+    }
+
     private static GptQueryApplicationService newService() {
         GptQueryApplicationService service = new GptQueryApplicationService();
         ActiveAgentRunRegistry registry = Mockito.mock(ActiveAgentRunRegistry.class);

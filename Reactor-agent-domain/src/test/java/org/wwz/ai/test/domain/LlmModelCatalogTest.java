@@ -74,6 +74,27 @@ public class LlmModelCatalogTest {
     }
 
     @Test
+    public void userCatalogExcludesFallbackAndDeduplicatesModelIds() {
+        LlmModelBinding duplicate = LlmModelBinding.builder()
+                .modelId("m-grok")
+                .modelName("grok-4.5-duplicate")
+                .modelType("openai")
+                .supportsThinking(1)
+                .contextWindow(128_000)
+                .modelUsage("default")
+                .build();
+        ILlmModelConfigRepository repository = Mockito.mock(ILlmModelConfigRepository.class);
+        Mockito.when(repository.listUsable()).thenReturn(List.of(GROK, duplicate, GPT));
+        LlmModelCatalog catalog = new LlmModelCatalog(repository, null, 0L);
+
+        Assert.assertEquals(1, catalog.listUserSelectableModels().size());
+        Assert.assertEquals("m-grok", catalog.listUserSelectableModels().get(0).getModelId());
+        Assert.assertFalse(catalog.isUserSelectableModel("m-gpt"));
+        Assert.assertFalse(catalog.isUserSelectableModel(LlmModelCatalog.BINDING_REF_PREFIX + "2"));
+        Assert.assertTrue(catalog.isUserSelectableModel("m-grok"));
+    }
+
+    @Test
     public void fallbackModelComesFromDatabaseUsage() {
         ILlmModelConfigRepository repository = Mockito.mock(ILlmModelConfigRepository.class);
         Mockito.when(repository.listUsable()).thenReturn(List.of(GROK, GPT));

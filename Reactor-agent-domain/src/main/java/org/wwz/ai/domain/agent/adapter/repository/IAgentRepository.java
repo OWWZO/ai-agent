@@ -14,4 +14,7 @@ public interface IAgentRepository {
 
     List<AiClientToolMcpVO> queryEnabledAiClientToolMcpVOList();
 
+    /** 管理目录读取全部 MCP 状态；调用方不得把 transportConfig 投影给普通用户。 */
+    List<AiClientToolMcpVO> queryAllAiClientToolMcpVOList();
+
 }
