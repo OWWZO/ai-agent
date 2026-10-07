@@ -6,10 +6,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import type { LlmModelRecord } from "@/services/llmModelAdmin";
+import type { CatalogModelRecord } from "@/services/catalog";
 
 type Props = {
-  models: LlmModelRecord[];
+  models: CatalogModelRecord[];
   value: string;
   onChange: (modelId: string) => void;
   disabled?: boolean;
@@ -68,7 +68,7 @@ const ModelPicker: ReactorType.FC<Props> = ({
               m.modelId === value || m.modelName === value;
             return (
               <button
-                key={m.id}
+                key={m.modelId}
                 type="button"
                 className={cn(
                   "flex w-full items-center gap-2 rounded-[12px] px-2 py-2 text-left transition-colors",

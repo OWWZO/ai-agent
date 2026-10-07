@@ -1477,7 +1477,6 @@ export function useConversationStream(
         body: null,
         lastEventId: initialEventSeq > 0 ? String(initialEventSeq) : undefined,
         signal: abortController.signal,
-        openWhenHidden: false,
         retryOnError: false,
         handleEventId: (eventId) => updateActiveRunEvent(sessionId, eventId),
         parser: parseAgentAnswer,
@@ -2104,7 +2103,6 @@ export function useConversationStream(
           body: null,
           lastEventId: undefined,
           signal: abortController.signal,
-          openWhenHidden: false,
           retryOnError: false,
           handleEventId: (eventId) => updateActiveRunEvent(sessionId, eventId),
           parser: parseAgentAnswer,
@@ -2933,7 +2931,6 @@ export function useConversationStream(
           body: null,
           lastEventId: undefined,
           signal: abortController.signal,
-          openWhenHidden: false,
           retryOnError: false,
           handleOpen: () => {
             streamOpened = true;

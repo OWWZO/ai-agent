@@ -91,6 +91,33 @@ export function setConversationDraft(
   };
 }
 
+export type ConversationPendingFiles = Record<string, File[]>;
+
+export function getConversationPendingFiles(
+  pendingFiles: ConversationPendingFiles,
+  sessionId: string
+) {
+  return pendingFiles[sessionId];
+}
+
+export function setConversationPendingFiles(
+  pendingFiles: ConversationPendingFiles,
+  sessionId: string,
+  files: File[]
+) {
+  if (!sessionId) {
+    return pendingFiles;
+  }
+
+  const next = { ...pendingFiles };
+  if (files.length === 0) {
+    delete next[sessionId];
+  } else {
+    next[sessionId] = files;
+  }
+  return next;
+}
+
 function resolveConversationStatus(conversation: CHAT.ConversationHistory) {
   const latestChat = conversation.chatList[conversation.chatList.length - 1];
   if (latestChat?.metrics?.status) {
@@ -175,7 +202,7 @@ export function mergeRecentSessions(
     }
   });
 
-  return Array.from(merged.values()).slice(0, 20);
+  return Array.from(merged.values());
 }
 
 function conversationRunCount(conversation: CHAT.ConversationHistory) {

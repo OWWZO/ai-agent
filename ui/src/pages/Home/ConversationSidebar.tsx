@@ -1,4 +1,4 @@
-import { memo, useState, useCallback } from "react";
+import { memo, useState, useCallback, useRef } from "react";
 import { motion } from "motion/react";
 import classNames from "classnames";
 import { EASE_OUT, useMotionConfig } from "@/lib/motion";
@@ -16,6 +16,7 @@ import {
   X,
   FolderOpen,
   LogOut,
+  Wrench,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { ConversationSessionItem } from "@/services/agentConversation";
@@ -35,6 +36,7 @@ type SidebarView =
   | "sub-agents"
   | "models"
   | "capabilities"
+  | "tools"
   | "featured";
 
 type NavItem = {
@@ -73,6 +75,11 @@ const navItems: NavItem[] = [
     key: "capabilities",
     label: "能力库",
     icon: Blocks,
+  },
+  {
+    key: "tools",
+    label: "工具",
+    icon: Wrench,
   },
   {
     key: "featured",
@@ -134,6 +141,8 @@ type ConversationSidebarProps = {
   activeView: SidebarView;
   recentSessions: ConversationSessionItem[];
   recentSessionsLoading: boolean;
+  recentSessionsLoadingMore: boolean;
+  recentSessionsHasMore: boolean;
   selectedSessionId?: string;
   user: AuthUser | null;
   sidebarPanel?: SidebarPanel;
@@ -141,6 +150,7 @@ type ConversationSidebarProps = {
   selectedTaskFileKey?: string;
   onNewChat: () => void;
   onSelectSession: (session: ConversationSessionItem) => void;
+  onLoadMoreRecentSessions: () => void;
   onChangeView: (view: SidebarView) => void;
   onManageFeaturedConversation: (session: ConversationSessionItem) => void;
   onOpenTaskFiles?: () => void;
@@ -158,6 +168,8 @@ const ConversationSidebar = memo(function ConversationSidebar(
     activeView,
     recentSessions,
     recentSessionsLoading,
+    recentSessionsLoadingMore,
+    recentSessionsHasMore,
     selectedSessionId,
     user,
     sidebarPanel = "sessions",
@@ -165,6 +177,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
     selectedTaskFileKey,
     onNewChat,
     onSelectSession,
+    onLoadMoreRecentSessions,
     onChangeView,
     onManageFeaturedConversation,
     onOpenTaskFiles,
@@ -181,6 +194,8 @@ const ConversationSidebar = memo(function ConversationSidebar(
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(
     null
   );
+  const recentSessionsListRef = useRef<HTMLDivElement>(null);
+  const lastWheelLoadAtRef = useRef(0);
   const { reduce } = useMotionConfig();
 
   const filteredSessions = searchQuery.trim()
@@ -205,6 +220,46 @@ const ConversationSidebar = memo(function ConversationSidebar(
       );
     },
     []
+  );
+
+  const handleRecentSessionsScroll = useCallback(() => {
+    const element = recentSessionsListRef.current;
+    if (!element || !recentSessionsHasMore || recentSessionsLoadingMore) {
+      return;
+    }
+    if (searchQuery.trim() && filteredSessions.length === 0) {
+      return;
+    }
+    if (element.scrollHeight - element.scrollTop - element.clientHeight <= 80) {
+      onLoadMoreRecentSessions();
+    }
+  }, [
+    filteredSessions.length,
+    onLoadMoreRecentSessions,
+    recentSessionsHasMore,
+    recentSessionsLoadingMore,
+    searchQuery,
+  ]);
+
+  const handleRecentSessionsWheel = useCallback(
+    (event: React.WheelEvent<HTMLDivElement>) => {
+      const element = event.currentTarget;
+      if (
+        event.deltaY <= 0 ||
+        !recentSessionsHasMore ||
+        recentSessionsLoadingMore ||
+        element.scrollHeight - element.scrollTop - element.clientHeight > 80
+      ) {
+        return;
+      }
+      const now = Date.now();
+      if (now - lastWheelLoadAtRef.current < 500) {
+        return;
+      }
+      lastWheelLoadAtRef.current = now;
+      onLoadMoreRecentSessions();
+    },
+    [onLoadMoreRecentSessions, recentSessionsHasMore, recentSessionsLoadingMore]
   );
 
   const handleConsoleAction = useCallback(
@@ -375,7 +430,12 @@ const ConversationSidebar = memo(function ConversationSidebar(
               )}
             </div>
 
-            <div className="flex-1 overflow-y-auto scrollbar-hover">
+            <div
+              ref={recentSessionsListRef}
+              onScroll={handleRecentSessionsScroll}
+              onWheel={handleRecentSessionsWheel}
+              className="flex-1 overflow-y-auto scrollbar-hover"
+            >
               {filteredSessions.length === 0 ? (
                 <div className="px-2.5 py-4 text-center text-[12px] text-[var(--chat-text-muted)]">
                   {searchQuery.trim() ? "未找到匹配的会话" : "暂无会话"}
@@ -466,6 +526,14 @@ const ConversationSidebar = memo(function ConversationSidebar(
                   })}
                 </div>
               )}
+              {recentSessionsLoadingMore ? (
+                <div
+                  role="status"
+                  className="px-2.5 py-2 text-center text-[11px] text-[var(--chat-text-muted)]"
+                >
+                  加载中...
+                </div>
+              ) : null}
             </div>
           </div>
 

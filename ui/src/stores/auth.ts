@@ -8,6 +8,7 @@ export interface AuthUser {
   username?: string;
   nickname?: string;
   email?: string;
+  role?: string;
 }
 
 export type AuthStatus = "initializing" | "authenticated" | "anonymous";
@@ -38,6 +39,10 @@ export function subscribeAuth(listener: () => void) {
 
 export function getAuthState() {
   return state;
+}
+
+export function isAdminUser(user: AuthUser | null | undefined = state.user) {
+  return user?.role?.trim().toUpperCase() === "ADMIN";
 }
 
 export function getAccessToken() {

@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   deriveConversationMetaFromInput,
+  getConversationPendingFiles,
   getConversationDraft,
   mergeLocalRecentConversations,
   mergeRecentSessions,
   resolveLocalSessionSelection,
   setConversationDraft,
+  setConversationPendingFiles,
   shouldApplyConversationToView,
   shouldHydrateConversationHistory,
   toRecentSessionItem,
@@ -131,6 +133,29 @@ describe("homeState", () => {
     expect(getConversationDraft(draftsAfterSubmit, "session-new")).toBe("");
   });
 
+  it("工具任务附件绑定到各自的新会话，并可单独清理", () => {
+    const fileA = { name: "a.png" } as File;
+    const fileB = { name: "b.png" } as File;
+    const pendingFiles = setConversationPendingFiles(
+      setConversationPendingFiles({}, "session-a", [fileA]),
+      "session-b",
+      [fileB]
+    );
+
+    expect(getConversationPendingFiles(pendingFiles, "session-a")).toEqual([
+      fileA,
+    ]);
+    expect(getConversationPendingFiles(pendingFiles, "session-b")).toEqual([
+      fileB,
+    ]);
+
+    const afterSend = setConversationPendingFiles(pendingFiles, "session-a", []);
+    expect(getConversationPendingFiles(afterSend, "session-a")).toBeUndefined();
+    expect(getConversationPendingFiles(afterSend, "session-b")).toEqual([
+      fileB,
+    ]);
+  });
+
   it("本地当前会话应置顶并按 sessionId 覆盖服务端旧条目", () => {
     const merged = mergeRecentSessions(
       [
@@ -177,6 +202,22 @@ describe("homeState", () => {
       "session-other",
     ]);
     expect(merged[0].title).toBe("本地新标题");
+  });
+
+  it("分页加载的服务端会话超过二十条后仍全部保留", () => {
+    const sessions = Array.from({ length: 25 }, (_, index) => ({
+      sessionId: `session-${index + 1}`,
+      title: `会话 ${index + 1}`,
+      status: "SUCCESS",
+      latestQueryText: "",
+      runCount: 1,
+      finishedRunCount: 1,
+      failedRunCount: 0,
+      startedAt: "2026-05-08T09:00:00.000Z",
+      lastActiveAt: "2026-05-08T09:10:00.000Z",
+    })) as CHAT.ConversationSessionItem[];
+
+    expect(mergeRecentSessions(sessions, [])).toHaveLength(25);
   });
 
   it("连续新建空会话时本地最近只保留一个空白入口", () => {

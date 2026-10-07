@@ -1456,7 +1456,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
         {hasWorkspaceLayout ? (
           <div
-            className="reactor-workspace-panel flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg)]"
+            className="reactor-workspace-panel flex min-h-0 flex-1 flex-col overflow-hidden border border-[var(--color-line)] bg-[var(--color-bg)]"
             data-workspace-collapsed="false"
           >
             {pendingDesktopStreamUrl ? (

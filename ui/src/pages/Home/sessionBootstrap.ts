@@ -28,6 +28,57 @@ export function resolveInitialSessionId(params: {
     : null;
 }
 
+export async function resolveInitialSession(params: {
+  recentSessions: ConversationSessionItem[];
+  storedSessionId?: string | null;
+  allowRemoteLookup?: boolean;
+  loadSessionDetail: (
+    sessionId: string
+  ) => Promise<ConversationHistoryPage | null>;
+}): Promise<{
+  sessionId: string | null;
+  detail: ConversationHistoryPage | null;
+}> {
+  const storedSessionId = params.storedSessionId?.trim();
+  if (!storedSessionId) {
+    return {
+      sessionId: null,
+      detail: null,
+    };
+  }
+
+  const storedSession = params.recentSessions.find(
+    (session) => session.sessionId === storedSessionId
+  );
+  if (storedSession) {
+    return {
+      sessionId: resolveInitialSessionId(params),
+      detail: null,
+    };
+  }
+
+  // 普通 sessionStorage 指针可能只对应前端尚未发送消息的空草稿。
+  // 只有活动 run 才需要探测首批历史列表之外的服务端会话。
+  if (!params.allowRemoteLookup) {
+    return {
+      sessionId: null,
+      detail: null,
+    };
+  }
+
+  const detail = await params.loadSessionDetail(storedSessionId);
+  if (String(detail?.status || "").toUpperCase() === "RUNNING") {
+    return {
+      sessionId: storedSessionId,
+      detail,
+    };
+  }
+  return {
+    sessionId: null,
+    detail: null,
+  };
+}
+
 export async function hydrateSessionWithRunningReplay(
   page: ConversationHistoryPage,
   loadReplay: (requestId: string) => Promise<ConversationRunReplay>,

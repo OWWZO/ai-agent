@@ -20,6 +20,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { catalogApi } from "@/services/catalog";
+import { isAdminUser, useAuth } from "@/stores/auth";
 import {
   isFallbackModelUsage,
   llmModelAdminApi,
@@ -32,6 +34,7 @@ import { showMessage } from "@/utils";
 import { matchProviderId, PROVIDER_PRESETS, type ProviderPreset } from "./meta";
 
 type EditorState = {
+  isNew: boolean;
   id?: number;
   modelId: string;
   modelName: string;
@@ -53,6 +56,7 @@ type EditorState = {
 type TestResult = { ok: boolean; ms: number; message?: string };
 
 const EMPTY_EDITOR = (preset?: ProviderPreset): EditorState => ({
+  isNew: true,
   modelId: "",
   modelName: "",
   baseUrl: preset?.baseUrl ?? "",
@@ -75,12 +79,13 @@ function maskKey(key?: string) {
 }
 
 function modelKey(model: LlmModelRecord) {
-  return String(model.id);
+  return model.id == null ? model.modelId : String(model.id);
 }
 
 function toEditor(model: LlmModelRecord, api?: LlmApiRecord): EditorState {
   const modelUsage = model.modelUsage || "default";
   return {
+    isNew: false,
     id: model.id,
     modelId: model.modelId,
     modelName: model.modelName,
@@ -133,6 +138,8 @@ type ModelAdminProps = {
 };
 
 const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
+  const auth = useAuth();
+  const readOnly = !isAdminUser(auth.user);
   const [models, setModels] = useState<LlmModelRecord[]>([]);
   const [apis, setApis] = useState<LlmApiRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -159,12 +166,30 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
     async (keepId?: string, preferredModelId?: string) => {
       setLoading(true);
       try {
-        const [modelList, apiList] = await Promise.all([
-          llmModelAdminApi.listModels(),
-          llmModelAdminApi.listApis(),
-        ]);
-        const nextModels = Array.isArray(modelList) ? modelList : [];
-        const nextApis = Array.isArray(apiList) ? apiList : [];
+        let nextModels: LlmModelRecord[];
+        let nextApis: LlmApiRecord[] = [];
+        if (readOnly) {
+          const catalogList = await catalogApi.listModels();
+          nextModels = Array.isArray(catalogList)
+            ? catalogList.map((model) => ({
+              id: undefined,
+              modelId: model.modelId,
+              apiId: "",
+              modelName: model.modelName,
+              modelType: model.modelType,
+              supportsThinking: model.supportsThinking,
+              contextWindow: model.contextWindow,
+              status: model.status,
+            }))
+            : [];
+        } else {
+          const [modelList, apiList] = await Promise.all([
+            llmModelAdminApi.listModels(),
+            llmModelAdminApi.listApis(),
+          ]);
+          nextModels = Array.isArray(modelList) ? modelList : [];
+          nextApis = Array.isArray(apiList) ? apiList : [];
+        }
         setModels(nextModels);
         setApis(nextApis);
 
@@ -186,7 +211,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
         setSelectedId(prefer);
         if (prefer) {
           const hit = nextModels.find((m) => modelKey(m) === prefer);
-          const api = hit
+          const api = hit && !readOnly
             ? nextApis.find((a) => a.apiId === hit.apiId)
             : undefined;
           setEditor(hit ? toEditor(hit, api) : null);
@@ -202,13 +227,12 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
         setLoading(false);
       }
     },
-    [selectedId],
+    [readOnly, selectedId],
   );
 
   useEffect(() => {
     void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅首屏加载
-  }, []);
+  }, [refresh]);
 
   const select = (modelId: string) => {
     setSelectedId(modelId);
@@ -269,7 +293,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
   });
 
   const onSave = async () => {
-    if (!editor) return;
+    if (!editor || readOnly) return;
     if (!editor.modelId.trim() || !editor.modelName.trim()) {
       showMessage()?.error("模型 ID 与上游模型名必填");
       return;
@@ -304,11 +328,19 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
     }
     setSaving(true);
     try {
-      const result = await llmModelAdminApi.upsertBinding(toPayload(addForm), {isNew: true,});
+      const payload = toPayload(addForm);
+      if (readOnly) {
+        await catalogApi.createModel({
+          ...payload,
+          modelUsage: "default",
+        });
+      } else {
+        await llmModelAdminApi.upsertBinding(payload, { isNew: true });
+      }
       showMessage()?.success("已新增模型，可直接在对话中选用");
       setAddOpen(false);
       setAddForm(EMPTY_EDITOR());
-      await refresh(undefined, result.modelId);
+      await refresh(undefined, payload.modelId);
     } catch (error) {
       showMessage()?.error(error instanceof Error ? error.message : "新增失败");
     } finally {
@@ -317,6 +349,10 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
   };
 
   const onDelete = (model: LlmModelRecord) => {
+    if (readOnly || model.id == null) {
+      return;
+    }
+    const modelId = model.id;
     Modal.confirm({
       title: "删除模型",
       content: `确认删除「${model.modelId}」配置 #${model.id}？若无其它模型共用其 API，将一并删除凭据配置。`,
@@ -325,7 +361,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
       onOk: async () => {
         try {
           const apiId = model.apiId;
-          await llmModelAdminApi.deleteModel(model.id);
+          await llmModelAdminApi.deleteModel(modelId);
           if (apiId) {
             const stillUsed = models.some(
               (m) => m.apiId === apiId && m.id !== model.id,
@@ -346,7 +382,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
   };
 
   const onTest = async () => {
-    if (editor?.id == null) return;
+    if (readOnly || editor?.id == null) return;
     setTesting(true);
     setTestResult(null);
     try {
@@ -369,6 +405,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
   const currentPreset = PROVIDER_PRESETS.find(
     (p) => p.id === (editor?.providerId || "custom"),
   );
+  const editorLocked = Boolean(readOnly && editor && !editor.isNew);
 
   return (
     <div className="workspace-admin-shell">
@@ -457,7 +494,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                         </div>
                         <div className="workspace-admin-list-item-meta pl-3.5">
                           <span className="workspace-admin-list-item-code">
-                             #{m.id} · {m.modelName || "未设置模型标识"}
+                              #{m.id ?? "—"} · {m.modelName || "未设置模型标识"}
                           </span>
                         </div>
                       </button>
@@ -467,8 +504,9 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                         size="icon-sm"
                         className="workspace-admin-model-delete workspace-admin-danger"
                         onClick={() => onDelete(m)}
+                        disabled={readOnly || m.id == null}
                         aria-label={`删除模型 ${m.modelId} 配置 ${m.id}`}
-                        title="删除模型"
+                        title={readOnly ? "管理员可删除模型" : "删除模型"}
                       >
                         <Trash2 className="size-3.5" strokeWidth={2} />
                       </Button>
@@ -508,6 +546,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                       </span>
                       <Switch
                         checked={editor.status === 1}
+                        disabled={editorLocked}
                         onChange={(checked) =>
                           patchEditor({ status: checked ? 1 : 0 })
                         }
@@ -521,6 +560,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                         <select
                           className="workspace-admin-select"
                           value={editor.providerId}
+                          disabled={editorLocked}
                           onChange={(e) =>
                             applyProvider("editor", e.target.value)
                           }
@@ -555,7 +595,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                       >
                         <Input
                           value={editor.baseUrl}
-                          readOnly={editor.providerId !== "custom"}
+                          readOnly={editorLocked || editor.providerId !== "custom"}
                           className={classNames(
                             "font-mono text-[12.5px]",
                             editor.providerId !== "custom" &&
@@ -576,6 +616,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                       >
                         <Input
                           value={editor.modelName}
+                          disabled={editorLocked}
                           className="font-mono text-[12.5px]"
                           placeholder="gpt-4o / claude-3-5-sonnet"
                           onChange={(e) =>
@@ -600,6 +641,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                         <Input
                           type="password"
                           value={editor.apiKey}
+                          disabled={editorLocked}
                           className="font-mono text-[12.5px]"
                           placeholder="sk-…"
                           onChange={(e) =>
@@ -610,6 +652,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                       <Field label="Completions 路径">
                         <Input
                           value={editor.completionsPath}
+                          disabled={editorLocked}
                           className="font-mono text-[12.5px]"
                           onChange={(e) =>
                             patchEditor({ completionsPath: e.target.value })
@@ -619,6 +662,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                       <Field label="模型类型">
                         <Input
                           value={editor.modelType}
+                          disabled={editorLocked}
                           className="text-[13px]"
                           placeholder="openai / deepseek / claude"
                           onChange={(e) =>
@@ -629,6 +673,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                       <div className="flex items-center gap-2 pt-5">
                         <Switch
                           checked={editor.supportsThinking === 1}
+                          disabled={editorLocked}
                           onChange={(checked) =>
                             patchEditor({ supportsThinking: checked ? 1 : 0 })
                           }
@@ -640,6 +685,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                       <div className="flex items-center gap-2 pt-5">
                         <Checkbox
                           checked={editor.isFallback}
+                          disabled={editorLocked}
                           onChange={(event) =>
                             patchEditor({ isFallback: event.target.checked })
                           }
@@ -651,6 +697,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                         <Input
                           type="number"
                           value={editor.contextWindow ?? ""}
+                          disabled={editorLocked}
                           className="text-[13px]"
                           placeholder="如 128000"
                           onChange={(e) => {
@@ -670,7 +717,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                       type="button"
                       variant="outline"
                       className="workspace-admin-secondary"
-                      disabled={testing}
+                      disabled={testing || editorLocked}
                       onClick={() => void onTest()}
                     >
                       {testing ? (
@@ -694,7 +741,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                     <Button
                       type="button"
                       className="workspace-admin-primary ml-auto"
-                      disabled={saving}
+                      disabled={saving || editorLocked}
                       onClick={() => void onSave()}
                     >
                       {saving ? "保存中…" : "保存模型"}
@@ -793,6 +840,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
             <div className="pt-1">
               <Checkbox
                 checked={addForm.isFallback}
+                disabled={readOnly}
                 onChange={(event) =>
                   setAddForm((f) => ({
                     ...f,

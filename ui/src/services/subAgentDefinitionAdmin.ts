@@ -5,7 +5,7 @@ export interface SubAgentDefinitionRecord {
   agentKey: string;
   displayName?: string;
   whenToUse: string;
-  systemPrompt: string;
+  systemPrompt?: string;
   allowedTools?: string[];
   disallowedTools?: string[];
   toolPolicyMode?: "inherit" | "custom";

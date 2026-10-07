@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { catalogApi } from "@/services/catalog";
 import { mcpAdminApi, type McpRecord } from "@/services/mcpAdmin";
 import {
   skillAdminApi,
@@ -31,10 +32,13 @@ import {
   type SkillRow,
 } from "@/services/skillAdmin";
 import { showMessage } from "@/utils";
+import { isAdminUser, useAuth } from "@/stores/auth";
 
 type Props = { embedded?: boolean };
 
 const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
+  const auth = useAuth();
+  const readOnly = !isAdminUser(auth.user);
   const [tab, setTab] = useState("skills");
   const [skills, setSkills] = useState<SkillRow[]>([]);
   const [mcps, setMcps] = useState<McpRecord[]>([]);
@@ -65,10 +69,33 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
     requestTimeout: 5,
     status: 1,
   });
+  const mcpFormLocked = readOnly && mcpForm.id != null;
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
+      if (readOnly) {
+        const capabilities = await catalogApi.listCapabilities();
+        const nextSkills = Array.isArray(capabilities?.skills)
+          ? capabilities.skills.map((skill) => ({
+            name: skill.name,
+            description: skill.description,
+            source: skill.sourceSummary || undefined,
+          }))
+          : [];
+        const nextMcps = Array.isArray(capabilities?.mcps)
+          ? capabilities.mcps.map((mcp) => ({
+            mcpId: mcp.mcpId,
+            mcpName: mcp.mcpName,
+            transportType: mcp.transportType,
+            status: mcp.status,
+          }))
+          : [];
+        setSkills(nextSkills);
+        setMcps(nextMcps);
+        return;
+      }
+
       const [s, m] = await Promise.all([
         skillAdminApi.list().catch(() => [] as SkillRow[]),
         mcpAdminApi.list().catch(() => [] as McpRecord[]),
@@ -78,7 +105,7 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [readOnly]);
 
   useEffect(() => {
     void refresh();
@@ -93,7 +120,11 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
     setZipPreview(null);
     setParsing(true);
     try {
-      setZipPreview(await skillAdminApi.parsePackage(file));
+      setZipPreview(
+        await (readOnly
+          ? catalogApi.parseSkillPackage(file)
+          : skillAdminApi.parsePackage(file)),
+      );
     } catch (e) {
       showMessage()?.error(e instanceof Error ? e.message : "解析失败");
       setZipFile(null);
@@ -104,9 +135,17 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
 
   const onUploadZip = async () => {
     if (!zipFile || !zipPreview) return;
+    if (readOnly && zipPreview.nameTaken) {
+      showMessage()?.error("同名技能已存在，普通用户不能覆盖已有技能");
+      return;
+    }
     setSaving(true);
     try {
-      await skillAdminApi.upload(zipFile, !!zipPreview.nameTaken);
+      if (readOnly) {
+        await catalogApi.uploadSkill(zipFile);
+      } else {
+        await skillAdminApi.upload(zipFile, !!zipPreview.nameTaken);
+      }
       showMessage()?.success(
         zipPreview.nameTaken ? "已替换同名技能" : "技能包已安装",
       );
@@ -128,12 +167,20 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
     }
     setSaving(true);
     try {
-      await skillAdminApi.create({
-        name: pasteName || undefined,
-        description: pasteDesc || undefined,
-        content: pasteContent,
-        replace: false,
-      });
+      if (readOnly) {
+        await catalogApi.createSkill({
+          name: pasteName || undefined,
+          description: pasteDesc || undefined,
+          content: pasteContent,
+        });
+      } else {
+        await skillAdminApi.create({
+          name: pasteName || undefined,
+          description: pasteDesc || undefined,
+          content: pasteContent,
+          replace: false,
+        });
+      }
       showMessage()?.success("技能已创建");
       setPasteOpen(false);
       setPasteName("");
@@ -154,7 +201,11 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
     }
     setSaving(true);
     try {
-      await skillAdminApi.importUrl(importUrl.trim(), false);
+      if (readOnly) {
+        await catalogApi.importSkill(importUrl.trim());
+      } else {
+        await skillAdminApi.importUrl(importUrl.trim(), false);
+      }
       showMessage()?.success("已从 URL 导入");
       setUrlOpen(false);
       setImportUrl("");
@@ -167,6 +218,9 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
   };
 
   const onDeleteSkill = (name: string) => {
+    if (readOnly) {
+      return;
+    }
     Modal.confirm({
       title: "删除技能",
       content: `确认删除「${name}」？将移除 skill 目录下的文件夹。`,
@@ -187,7 +241,12 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
     setSaving(true);
     try {
       const exists = mcps.some((m) => m.mcpId === mcpForm.mcpId);
-      if (exists) {
+      if (readOnly && exists) {
+        return;
+      }
+      if (readOnly) {
+        await catalogApi.createMcp(mcpForm);
+      } else if (exists) {
         await mcpAdminApi.update(mcpForm);
       } else {
         await mcpAdminApi.create(mcpForm);
@@ -203,6 +262,9 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
   };
 
   const onDeleteMcp = (mcpId: string) => {
+    if (readOnly) {
+      return;
+    }
     Modal.confirm({
       title: "删除 MCP",
       content: `确认删除「${mcpId}」？`,
@@ -219,7 +281,11 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
     <div className="workspace-admin-shell">
       <WorkspaceAdminHeader
         title="能力库"
-        description="管理可被会话启用的技能包与 MCP 连接器，资源安装后即可加入能力选择。"
+        description={
+          readOnly
+            ? "查看当前可用的技能包与 MCP 连接器。"
+            : "管理可被会话启用的技能包与 MCP 连接器，资源安装后即可加入能力选择。"
+        }
         icon={Blocks}
         embedded={embedded}
         actions={
@@ -284,7 +350,9 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
                 <div>
                   <div className="workspace-admin-section-title">技能包</div>
                   <div className="workspace-admin-section-meta">
-                    支持 zip、SKILL.md 粘贴和远程 URL 三种安装方式。
+                    {readOnly
+                      ? "查看已注册技能的名称、说明和来源。"
+                      : "支持 zip、SKILL.md 粘贴和远程 URL 三种安装方式。"}
                   </div>
                 </div>
                 <div className="workspace-admin-toolbar">
@@ -316,6 +384,7 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
                   <Button
                     type="button"
                     variant="ghost"
+                    disabled={readOnly}
                     onClick={() =>
                       void skillAdminApi.reload().then(() => {
                         showMessage()?.success("已重载技能注册表");
@@ -344,6 +413,11 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
                         <div className="workspace-admin-resource-description">
                           {s.description || "无说明"}
                         </div>
+                        {s.source ? (
+                          <div className="workspace-admin-resource-detail">
+                            来源：{s.source}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                     <Button
@@ -352,8 +426,9 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
                       size="icon-sm"
                       className="workspace-admin-danger"
                       onClick={() => onDeleteSkill(s.name)}
+                      disabled={readOnly}
                       aria-label={`删除技能 ${s.name}`}
-                      title="删除技能"
+                      title={readOnly ? "管理员可删除技能" : "删除技能"}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -361,7 +436,9 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
                 ))}
                 {!loading && skills.length === 0 ? (
                   <div className="workspace-admin-dashed-empty">
-                    暂无技能。上传 zip（含 SKILL.md）或粘贴正文创建。
+                    {readOnly
+                      ? "暂无可查看的技能。"
+                      : "暂无技能。上传 zip（含 SKILL.md）或粘贴正文创建。"}
                   </div>
                 ) : null}
               </div>
@@ -374,7 +451,9 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
                     MCP 连接器
                   </div>
                   <div className="workspace-admin-section-meta">
-                    连接外部工具服务，保存后热加载到运行时注册表。
+                    {readOnly
+                      ? "查看已注册 MCP 连接器的基本信息。"
+                      : "连接外部工具服务，保存后热加载到运行时注册表。"}
                   </div>
                 </div>
                 <Button
@@ -418,9 +497,11 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
                           <span className="mx-1">·</span>
                           {m.transportType}
                         </div>
-                        <div className="workspace-admin-resource-detail">
-                          {m.transportConfig}
-                        </div>
+                        {!readOnly && m.transportConfig ? (
+                          <div className="workspace-admin-resource-detail">
+                            {m.transportConfig}
+                          </div>
+                        ) : null}
                         <div
                           className="workspace-admin-status mt-2"
                           data-disabled={(m.status ?? 1) !== 1}
@@ -442,8 +523,9 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
                           setMcpForm({ ...m });
                           setMcpOpen(true);
                         }}
+                        disabled={readOnly}
                         aria-label={`编辑 MCP ${m.mcpId}`}
-                        title="编辑 MCP"
+                        title={readOnly ? "管理员可编辑 MCP" : "编辑 MCP"}
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
@@ -453,8 +535,9 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
                         size="icon-sm"
                         className="workspace-admin-danger"
                         onClick={() => onDeleteMcp(m.mcpId)}
+                        disabled={readOnly}
                         aria-label={`删除 MCP ${m.mcpId}`}
-                        title="删除 MCP"
+                        title={readOnly ? "管理员可删除 MCP" : "删除 MCP"}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -463,7 +546,9 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
                 ))}
                 {!loading && mcps.length === 0 ? (
                   <div className="workspace-admin-dashed-empty">
-                    暂无 MCP。添加 streamable_http、sse 或 stdio 连接器。
+                    {readOnly
+                      ? "暂无可查看的 MCP。"
+                      : "暂无 MCP。添加 streamable_http、sse 或 stdio 连接器。"}
                   </div>
                 ) : null}
               </div>
@@ -661,7 +746,7 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
               <Input
                 className="mt-1 font-mono"
                 value={mcpForm.mcpId}
-                disabled={mcps.some((m) => m.mcpId === mcpForm.mcpId && !!m.id)}
+                disabled={mcpFormLocked || mcps.some((m) => m.mcpId === mcpForm.mcpId && !!m.id)}
                 onChange={(e) =>
                   setMcpForm((f) => ({
                     ...f,
@@ -675,6 +760,7 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
               <Input
                 className="mt-1"
                 value={mcpForm.mcpName}
+                disabled={mcpFormLocked}
                 onChange={(e) =>
                   setMcpForm((f) => ({
                     ...f,
@@ -688,6 +774,7 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
               <select
                 className="mt-1 flex h-9 w-full rounded-md border border-slate-200 px-3 text-[13px]"
                 value={mcpForm.transportType}
+                disabled={mcpFormLocked}
                 onChange={(e) =>
                   setMcpForm((f) => ({
                     ...f,
@@ -705,6 +792,7 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
               <Textarea
                 className="mt-1 min-h-[100px] min-w-0 w-full field-sizing-fixed break-all font-mono text-[12px]"
                 value={mcpForm.transportConfig || ""}
+                disabled={mcpFormLocked}
                 onChange={(e) =>
                   setMcpForm((f) => ({
                     ...f,
@@ -717,6 +805,7 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
               <span className="text-[13px]">启用</span>
               <Switch
                 checked={(mcpForm.status ?? 1) === 1}
+                disabled={mcpFormLocked}
                 onChange={(c) =>
                   setMcpForm((f) => ({
                     ...f,
@@ -737,7 +826,7 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
             <Button
               type="button"
               className="workspace-admin-primary"
-              disabled={saving}
+              disabled={saving || mcpFormLocked}
               onClick={() => void onSaveMcp()}
             >
               保存

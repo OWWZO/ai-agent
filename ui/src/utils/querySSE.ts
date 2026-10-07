@@ -30,7 +30,7 @@ interface SSEConfig<TMessage = unknown> {
   body: unknown;
   method?: 'GET' | 'POST';
   signal?: AbortSignal;
-  /** 隐藏标签页时是否继续保持连接；主 Agent GET 观察流会显式关闭。 */
+  /** 是否在隐藏标签页时保持连接；默认保持。 */
   openWhenHidden?: boolean;
   /** GET 续接时写入标准 Last-Event-ID。 */
   lastEventId?: string;

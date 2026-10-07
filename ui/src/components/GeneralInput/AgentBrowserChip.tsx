@@ -2,19 +2,19 @@ import { useCallback, useEffect, useState } from "react";
 import { Cloud, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { showMessage } from "@/utils";
-import { kernelBrowserApi, type KernelBrowserStatus } from "@/services/kernelBrowser";
+import { agentBrowserApi, type AgentBrowserStatus } from "@/services/agentBrowser";
 
 type Props = {
   disabled?: boolean;
 };
 
-export default function KernelBrowserChip({ disabled }: Props) {
-  const [status, setStatus] = useState<KernelBrowserStatus | null>(null);
+export default function AgentBrowserChip({ disabled }: Props) {
+  const [status, setStatus] = useState<AgentBrowserStatus | null>(null);
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      setStatus(await kernelBrowserApi.status());
+      setStatus(await agentBrowserApi.status());
     } catch {
       setStatus(null);
     }
@@ -28,23 +28,23 @@ export default function KernelBrowserChip({ disabled }: Props) {
     if (busy || disabled) return;
     const popup = window.open("about:blank", "_blank");
     if (!popup) {
-      showMessage()?.error("请允许弹出窗口后再打开云端浏览器");
+      showMessage()?.error("请允许弹出窗口后再打开 Agent 浏览器");
       return;
     }
     popup.opener = null;
     setBusy(true);
     try {
-      const liveView = await kernelBrowserApi.ensure();
+      const liveView = await agentBrowserApi.ensure();
       if (!liveView?.browserLiveViewUrl) {
         popup.close();
-        showMessage()?.error("云端浏览器地址不可用");
+        showMessage()?.error("Agent 浏览器地址不可用");
         return;
       }
       popup.location.replace(liveView.browserLiveViewUrl);
       await refresh();
     } catch (error) {
       popup.close();
-      showMessage()?.error(error instanceof Error ? error.message : "打开云端浏览器失败");
+      showMessage()?.error(error instanceof Error ? error.message : "打开 Agent 浏览器失败");
     } finally {
       setBusy(false);
     }
@@ -54,10 +54,10 @@ export default function KernelBrowserChip({ disabled }: Props) {
     if (busy || disabled) return;
     setBusy(true);
     try {
-      await kernelBrowserApi.reset();
+      await agentBrowserApi.reset();
       await refresh();
     } catch (error) {
-      showMessage()?.error(error instanceof Error ? error.message : "重置云端浏览器失败");
+      showMessage()?.error(error instanceof Error ? error.message : "重置 Agent 浏览器失败");
     } finally {
       setBusy(false);
     }
@@ -67,8 +67,8 @@ export default function KernelBrowserChip({ disabled }: Props) {
     ? new Date(status.lastUsedAt).toLocaleString("zh-CN")
     : null;
   const title = status?.exists
-    ? `云端浏览器已启动${lastUsedAt ? `，最近使用：${lastUsedAt}` : ""}`
-    : "打开当前用户的云端浏览器";
+    ? `Agent 浏览器已启动${lastUsedAt ? `，最近使用：${lastUsedAt}` : ""}`
+    : "打开当前用户的 Agent 浏览器";
 
   return (
     <div className="flex min-w-0 items-center gap-0.5">
@@ -83,7 +83,7 @@ export default function KernelBrowserChip({ disabled }: Props) {
         onClick={() => void openLiveView()}
       >
         <Cloud className="size-3.5 shrink-0 opacity-80" />
-        <span className="truncate">{status?.exists ? "云端浏览器" : "启动云端浏览器"}</span>
+        <span className="truncate">{status?.exists ? "Agent 浏览器" : "启动 Agent 浏览器"}</span>
       </button>
       {status?.exists ? (
         <>
@@ -92,10 +92,10 @@ export default function KernelBrowserChip({ disabled }: Props) {
           </span>
           <button
             type="button"
-            aria-label="重置云端浏览器"
+            aria-label="重置 Agent 浏览器"
             disabled={disabled || busy}
             className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-[#6b6b70] hover:bg-black/[0.04] hover:text-[#1d1d1f] disabled:opacity-45"
-            title="重置云端浏览器并清除页面状态"
+            title="重置 Agent 浏览器并清除页面状态"
             onClick={() => void reset()}
           >
             <RotateCcw className="size-3.5" />

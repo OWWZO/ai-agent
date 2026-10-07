@@ -12,9 +12,12 @@ describe("ConversationSidebar", () => {
           activeView="chat"
           recentSessions={[]}
           recentSessionsLoading={false}
+          recentSessionsLoadingMore={false}
+          recentSessionsHasMore={false}
           user={null}
           onNewChat={() => {}}
           onSelectSession={() => {}}
+          onLoadMoreRecentSessions={() => {}}
           onChangeView={() => {}}
           onManageFeaturedConversation={() => {}}
           onLogout={() => {}}
@@ -24,6 +27,7 @@ describe("ConversationSidebar", () => {
 
     expect(html).toContain("精品对话");
     expect(html).toContain("子 Agent");
+    expect(html).toContain("工具");
     expect(html).toContain("查看当前会话的文件");
   });
 
@@ -34,11 +38,14 @@ describe("ConversationSidebar", () => {
           activeView="chat"
           recentSessions={[]}
           recentSessionsLoading={false}
+          recentSessionsLoadingMore={false}
+          recentSessionsHasMore={false}
           user={null}
           sidebarPanel="task-files"
           taskList={[]}
           onNewChat={() => {}}
           onSelectSession={() => {}}
+          onLoadMoreRecentSessions={() => {}}
           onChangeView={() => {}}
           onManageFeaturedConversation={() => {}}
           onLogout={() => {}}

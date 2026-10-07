@@ -31,6 +31,12 @@ export interface ConversationSessionItem {
   lastActiveAt: string;
 }
 
+export interface ConversationSessionPage {
+  sessions: ConversationSessionItem[];
+  nextCursor?: string | null;
+  hasMore: boolean;
+}
+
 export interface ConversationReplayFrame {
   reqId: string;
   status: string;
@@ -116,11 +122,14 @@ export interface ConversationHistoryQuery {
   after?: string | null;
 }
 
+export type ConversationSessionQuery = ConversationHistoryQuery;
+
 export const conversationHistoryApi = {
-  listSessions: (limit = 20) =>
-    api.get<ConversationSessionItem[]>(
-      `/api/agent/conversation/sessions?limit=${limit}`
-    ) as unknown as Promise<ConversationSessionItem[]>,
+  listSessions: (params: ConversationSessionQuery = {}) =>
+    api.get<ConversationSessionPage>("/api/agent/conversation/sessions", {
+      limit: params.limit ?? 10,
+      ...(params.after ? { after: params.after } : {}),
+    }) as unknown as Promise<ConversationSessionPage>,
   getSessionDetail: (sessionId: string, params: ConversationHistoryQuery = {}) =>
     api.get<ConversationHistoryPage>(
       `/api/agent/conversation/sessions/${encodeURIComponent(sessionId)}`,

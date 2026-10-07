@@ -16,7 +16,7 @@ export interface LlmApiRecord {
 }
 
 export interface LlmModelRecord {
-  id: number;
+  id?: number;
   modelId: string;
   apiId: string;
   modelName: string;

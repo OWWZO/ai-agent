@@ -8,6 +8,7 @@ import { buildConversationTaskData, combineData } from "@/utils/chat";
 
 import {
   hydrateSessionWithRunningReplay,
+  resolveInitialSession,
   resolveInitialSessionId,
 } from "./sessionBootstrap";
 
@@ -184,6 +185,63 @@ describe("sessionBootstrap", () => {
         storedSessionId: "session-001",
       })
     ).toBeNull();
+  });
+
+  it("列表首批未包含的运行中会话通过详情恢复并复用详情结果", async () => {
+    const detail = createRunningPage();
+    const loadSessionDetail = vi.fn(async () => detail);
+
+    await expect(
+      resolveInitialSession({
+        recentSessions: sessions.slice(1),
+        storedSessionId: "session-running",
+        allowRemoteLookup: true,
+        loadSessionDetail,
+      })
+    ).resolves.toEqual({
+      sessionId: "session-running",
+      detail,
+    });
+    expect(loadSessionDetail).toHaveBeenCalledOnce();
+    expect(loadSessionDetail).toHaveBeenCalledWith("session-running");
+  });
+
+  it("刷新未持久化的空会话时不请求不存在的详情", async () => {
+    const loadSessionDetail = vi.fn(async () => createRunningPage());
+
+    await expect(
+      resolveInitialSession({
+        recentSessions: sessions,
+        storedSessionId: "session-empty-draft",
+        allowRemoteLookup: false,
+        loadSessionDetail,
+      })
+    ).resolves.toEqual({
+      sessionId: null,
+      detail: null,
+    });
+    expect(loadSessionDetail).not.toHaveBeenCalled();
+  });
+
+  it("列表首批外的已完成会话不自动恢复", async () => {
+    const detail = {
+      ...createRunningPage(),
+      status: "SUCCESS",
+    };
+    const loadSessionDetail = vi.fn(async () => detail);
+
+    await expect(
+      resolveInitialSession({
+        recentSessions: sessions.slice(1),
+        storedSessionId: "session-running",
+        allowRemoteLookup: true,
+        loadSessionDetail,
+      })
+    ).resolves.toEqual({
+      sessionId: null,
+      detail: null,
+    });
+    expect(loadSessionDetail).toHaveBeenCalledOnce();
   });
 
   it("summary hydrate 后 replay 当前 RUNNING run，保留其它历史 run", async () => {

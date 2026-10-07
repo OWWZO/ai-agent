@@ -392,6 +392,8 @@ export type PromptInputProps = Omit<
   HTMLAttributes<HTMLFormElement>,
   "onSubmit" | "onError"
 > & {
+  initialFiles?: File[];
+  onInitialFilesConsumed?: () => void;
   accept?: string; // e.g., "image/*" or leave undefined for any
   multiple?: boolean;
   // When true, accepts drops anywhere on document. Default false (opt-in).
@@ -412,6 +414,8 @@ export type PromptInputProps = Omit<
 
 export const PromptInput = ({
   className,
+  initialFiles,
+  onInitialFilesConsumed,
   accept,
   multiple = true,
   globalDrop,
@@ -434,6 +438,7 @@ export const PromptInput = ({
   // Refs
   const inputRef = useRef<HTMLInputElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
+  const initialFilesAppliedRef = useRef(false);
 
   // ----- Local attachments (only used when no provider)
   const localAttachments = usePromptInputAttachmentState({
@@ -456,6 +461,16 @@ export const PromptInput = ({
   const openFileDialog = usingProvider
     ? controller.attachments.openFileDialog
     : openFileDialogLocal;
+
+  useEffect(() => {
+    if (initialFilesAppliedRef.current || !initialFiles?.length) {
+      return;
+    }
+
+    initialFilesAppliedRef.current = true;
+    add(initialFiles);
+    onInitialFilesConsumed?.();
+  }, [add, initialFiles, onInitialFilesConsumed]);
 
   // Let provider know about our hidden file input so external menus can call openFileDialog()
   useEffect(() => {

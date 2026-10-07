@@ -33,22 +33,25 @@ import {
 import { cn } from "@/lib/utils";
 import { showMessage } from "@/utils";
 import {
+  resolveAdjacentPromptPlaceholder,
+  type PromptSelectionRequest,
+} from "@/utils/suggestedPrompts";
+import {
   GENERIC_TASK_PRODUCT,
   defaultProduct,
   productList,
 } from "@/utils/constants";
 import UploadAttachmentChip from "./UploadAttachmentChip";
 import {
-  isFallbackModelUsage,
-  llmModelAdminApi,
-  type LlmModelRecord,
-} from "@/services/llmModelAdmin";
+  catalogApi,
+  type CatalogModelRecord,
+} from "@/services/catalog";
 import ContextRing, { type ContextUsageView } from "./ContextRing";
 import MarkdownBar from "./MarkdownBar";
 import ModelPicker from "./ModelPicker";
 import ThinkingToggle, { type ThinkingEffort } from "./ThinkingToggle";
 import BrowserRelayChip from "./BrowserRelayChip";
-import KernelBrowserChip from "./KernelBrowserChip";
+import AgentBrowserChip from "./AgentBrowserChip";
 import { buildSubmitPayload } from "./inputMode";
 import { useAttachmentUploads } from "./useAttachmentUploads";
 
@@ -57,6 +60,8 @@ type Props = {
   placeholder: string;
   showBtn: boolean;
   disabled: boolean;
+  initialFiles?: File[];
+  onInitialFilesConsumed?: () => void;
   /** SSE 推送的上下文占用 */
   contextUsage?: ContextUsageView | null;
   /** Agent 任务进行中时，在发送按钮旁展示轻量运行指示 */
@@ -79,6 +84,8 @@ type Props = {
   /** 当前会话未发送的输入草稿 */
   draftValue?: string;
   onDraftChange?: (value: string) => void;
+  /** 推荐模板回填后的选区请求，用于直接覆盖占位词 */
+  promptSelectionRequest?: PromptSelectionRequest | null;
 };
 
 type InputModeKey = "think" | "research";
@@ -144,6 +151,8 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     placeholder,
     showBtn,
     disabled,
+    initialFiles,
+    onInitialFilesConsumed,
     contextUsage = null,
     busy = false,
     onStop,
@@ -157,6 +166,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     onDraftConsumed,
     draftValue = "",
     onDraftChange,
+    promptSelectionRequest = null,
   } = props;
 
   const [question, setQuestion] = useState(() =>
@@ -166,7 +176,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false);
   const [markdownBarOpen, setMarkdownBarOpen] = useState(false);
-  const [models, setModels] = useState<LlmModelRecord[]>([]);
+  const [models, setModels] = useState<CatalogModelRecord[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [thinking, setThinking] = useState(true);
   const [thinkingEffort, setThinkingEffort] = useState<ThinkingEffort>("high");
@@ -174,6 +184,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
   const tempData = useRef<{ compositing?: boolean }>({});
   const inputShellRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const appliedPromptRequestRef = useRef<number | null>(null);
   const {
     attachmentUploads,
     attachmentOrder,
@@ -186,17 +197,18 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
   const currentMode = getModeKey(product?.type, deepThink);
   const isDataAgent = product?.type === "dataAgent";
 
+  const modelStorageKey = `reactor:selected-model:${sessionId}`;
+
   useEffect(() => {
-    // 启用模型列表：供输入框热切换；失败不阻断对话（空列表=用后端默认）
-    void llmModelAdminApi
-      .listEnabledModels()
+    // 目录失败不阻断对话；空列表表示使用后端默认模型。
+    void catalogApi
+      .listModels()
       .then((list) => {
-        const enabledByModelId = new Map<string, LlmModelRecord>();
+        const enabledByModelId = new Map<string, CatalogModelRecord>();
         if (Array.isArray(list)) {
           for (const model of list) {
             if (
               (model.status ?? 1) !== 1 ||
-              isFallbackModelUsage(model.modelUsage) ||
               enabledByModelId.has(model.modelId)
             ) {
               continue;
@@ -206,17 +218,28 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
         }
         const enabled = Array.from(enabledByModelId.values());
         setModels(enabled);
-        setSelectedModel((prev) => {
-          if (prev && enabled.some((m) => m.modelId === prev || m.modelName === prev)) {
-            return prev;
+        setSelectedModel(() => {
+          const stored = window.sessionStorage.getItem(modelStorageKey) || "";
+          const candidate = stored;
+          if (candidate && enabled.some((m) => m.modelId === candidate || m.modelName === candidate)) {
+            return candidate;
           }
-          return enabled[0]?.modelId || "";
+          const fallback = enabled[0]?.modelId || "";
+          if (fallback) {
+            window.sessionStorage.setItem(modelStorageKey, fallback);
+          }
+          return fallback;
         });
       })
       .catch(() => {
         setModels([]);
       });
-  }, []);
+  }, [modelStorageKey]);
+
+  const handleModelChange = (modelId: string) => {
+    setSelectedModel(modelId);
+    window.sessionStorage.setItem(modelStorageKey, modelId);
+  };
 
   const visibleMode = currentMode;
   const currentModeOption =
@@ -268,6 +291,32 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     const nextDraft = draftValue.slice(0, MAX_QUERY_CHARS);
     setQuestion((previous) => (previous === nextDraft ? previous : nextDraft));
   }, [draftValue]);
+
+  useEffect(() => {
+    const request = promptSelectionRequest;
+    if (
+      !request ||
+      appliedPromptRequestRef.current === request.requestId ||
+      question !== request.text
+    ) {
+      return;
+    }
+
+    const textarea =
+      textareaRef.current ||
+      (inputShellRef.current?.querySelector("textarea") as HTMLTextAreaElement | null);
+    if (!textarea) {
+      return;
+    }
+
+    const firstPlaceholder = request.placeholderRanges[0];
+    textarea.focus();
+    textarea.setSelectionRange(
+      firstPlaceholder?.start ?? question.length,
+      firstPlaceholder?.end ?? question.length
+    );
+    appliedPromptRequestRef.current = request.requestId;
+  }, [promptSelectionRequest, question]);
 
   useEffect(() => {
     if (!draftMessage) return;
@@ -368,6 +417,24 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
   };
 
   const handleKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement> = (event) => {
+    if (event.key === "Tab" && promptSelectionRequest?.placeholders.length) {
+      const textarea = event.currentTarget;
+      const direction: 1 | -1 = event.shiftKey ? -1 : 1;
+      const nextPlaceholder = resolveAdjacentPromptPlaceholder(
+        question,
+        promptSelectionRequest,
+        textarea.selectionStart,
+        textarea.selectionEnd,
+        direction
+      );
+      if (nextPlaceholder) {
+        event.preventDefault();
+        textarea.focus();
+        textarea.setSelectionRange(nextPlaceholder.start, nextPlaceholder.end);
+        return;
+      }
+    }
+
     if (event.key !== "Enter") return;
     if (tempData.current.compositing || event.nativeEvent.isComposing) return;
 
@@ -407,6 +474,8 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
           accept={ATTACHMENT_ACCEPT}
           className="reactor-input-flat w-full"
           convertBlobUrlsOnSubmit={false}
+          initialFiles={initialFiles}
+          onInitialFilesConsumed={onInitialFilesConsumed}
           multiple={true}
           onAttachmentsAdded={handleAttachmentsAdded}
           onError={handleAttachmentError}
@@ -478,7 +547,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
               />
 
               <BrowserRelayChip disabled={disabled} />
-              <KernelBrowserChip disabled={disabled} />
+              <AgentBrowserChip disabled={disabled} />
 
               {showPlanToggle ? (
                 <button
@@ -603,7 +672,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                   <ModelPicker
                     models={models}
                     value={selectedModel}
-                    onChange={setSelectedModel}
+                    onChange={handleModelChange}
                     disabled={disabled}
                     open={modelMenuOpen}
                     onOpenChange={setModelMenuOpen}

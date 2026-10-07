@@ -297,7 +297,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
       }}
     >
       {/* 顶栏：「动态」+ 已打开文件 pill；点工具回动态，点文件进文件预览 */}
-      <div className="reactor-workspace-toolbar flex shrink-0 flex-col gap-1 border-b border-[var(--color-line)] px-3 pt-2.5 pb-1.5">
+      <div className="reactor-workspace-toolbar flex shrink-0 flex-col gap-1 border-b border-[var(--color-line)] bg-[var(--chat-nav)] px-3 pt-2.5 pb-1.5">
         <div className="flex items-center gap-2">
           {onBack ? (
             <button
@@ -321,7 +321,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                 className={classNames(
                   "inline-flex h-8 shrink-0 items-center rounded-[6px] px-2.5 text-[12.5px] font-medium transition-colors",
                   panelMode === "follow"
-                    ? "bg-[var(--color-hover)] text-[var(--color-text)]"
+                    ? "bg-[var(--color-surface-raised)] text-[var(--color-text)] shadow-[var(--shadow-xs)]"
                     : "bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)]"
                 )}
               >
@@ -343,7 +343,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                     className={classNames(
                       "inline-flex h-8 max-w-[200px] shrink-0 items-center gap-1.5 rounded-[6px] px-2.5 text-left transition-colors",
                       active
-                        ? "bg-[var(--color-hover)] text-[var(--color-text)]"
+                        ? "bg-[var(--color-surface-raised)] text-[var(--color-text)] shadow-[var(--shadow-xs)]"
                         : "bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)]"
                     )}
                     title={file.name}

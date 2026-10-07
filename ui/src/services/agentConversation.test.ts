@@ -27,6 +27,30 @@ describe("conversationHistoryApi", () => {
     );
   });
 
+  it("requests recent sessions in pages of ten and forwards the cursor", async () => {
+    await conversationHistoryApi.listSessions({
+      limit: 10,
+      after: "session-cursor-001",
+    });
+
+    expect(getMock).toHaveBeenCalledWith(
+      "/api/agent/conversation/sessions",
+      {
+        limit: 10,
+        after: "session-cursor-001",
+      }
+    );
+  });
+
+  it("defaults the recent session page size to ten", async () => {
+    await conversationHistoryApi.listSessions();
+
+    expect(getMock).toHaveBeenCalledWith(
+      "/api/agent/conversation/sessions",
+      { limit: 10 }
+    );
+  });
+
   it("requests one run replay by requestId", async () => {
     await conversationHistoryApi.getRunReplay("request-001");
 

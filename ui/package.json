@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build --mode production",
     "test": "vitest run",
     "lint": "eslint .",
+    "sync:opencli-catalog": "node scripts/generate-opencli-catalog.mjs",
     "fix": "eslint . --fix",
     "preview": "vite preview"
   },

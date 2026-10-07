@@ -6,6 +6,8 @@ import WorkspaceAdminHeader from "@/components/WorkspaceAdminHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { catalogApi } from "@/services/catalog";
+import { isAdminUser, useAuth } from "@/stores/auth";
 import {
   subAgentDefinitionAdminApi,
   type SubAgentDefinitionRecord,
@@ -53,6 +55,8 @@ type SubAgentAdminProps = {
 };
 
 const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
+  const auth = useAuth();
+  const readOnly = !isAdminUser(auth.user);
   const [items, setItems] = useState<SubAgentDefinitionRecord[]>([]);
   const [catalog, setCatalog] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -64,6 +68,35 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
     // 列表和工具目录并行加载；目录失败可降级为通配符，不阻断定义列表展示。
     setLoading(true);
     try {
+      if (readOnly) {
+        const catalogItems = await catalogApi.listSubAgents();
+        const list: SubAgentDefinitionRecord[] = Array.isArray(catalogItems)
+          ? catalogItems.map((item) => ({
+            agentKey: item.agentKey,
+            displayName: item.displayName,
+            whenToUse: item.whenToUse,
+            allowedTools: item.toolSummary,
+            toolPolicyMode: item.toolPolicyMode === "custom" ? "custom" : "inherit",
+            maxSteps: item.maxSteps,
+            status: item.status,
+          }))
+          : [];
+        setItems(list);
+        const nextCatalog = new Set<string>(["*"]);
+        list.forEach((item) => {
+          (item.allowedTools || []).forEach((tool) => {
+            if (tool && !tool.startsWith("!")) {
+              nextCatalog.add(tool);
+            }
+          });
+        });
+        setCatalog([...nextCatalog]);
+        setSelectedKey((prev) =>
+          prev && list.some((item) => item.agentKey === prev) ? prev : list[0]?.agentKey ?? null,
+        );
+        return;
+      }
+
       const [list, tools] = await Promise.all([
         subAgentDefinitionAdminApi.queryList(),
         subAgentDefinitionAdminApi.toolCatalog().catch(() => [] as string[]),
@@ -83,7 +116,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [readOnly]);
 
   useEffect(() => {
     void refresh();
@@ -114,6 +147,9 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
   };
 
   const onSave = async () => {
+    if (readOnly && !draft.isNew) {
+      return;
+    }
     // 先校验最小可运行契约，再统一 trim 文本并把空数组转为未配置。
     if (!draft.agentKey.trim()) {
       showMessage()?.error("agentKey 不能为空");
@@ -146,7 +182,11 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
       };
       if (draft.isNew) {
         // 新建和更新共用 payload，但分别调用后端生命周期操作。
-        await subAgentDefinitionAdminApi.create(payload);
+        if (readOnly) {
+          await catalogApi.createSubAgent(payload);
+        } else {
+          await subAgentDefinitionAdminApi.create(payload);
+        }
         showMessage()?.success("已创建并热加载");
       } else {
         await subAgentDefinitionAdminApi.update(payload);
@@ -163,7 +203,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
 
   const onDelete = () => {
     // 删除是软删除且会影响运行时 Registry，因此必须绑定当前已保存定义并二次确认。
-    if (!selectedKey || draft.isNew) {
+    if (readOnly || !selectedKey || draft.isNew) {
       return;
     }
     Modal.confirm({
@@ -189,6 +229,9 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
 
   const onReload = async () => {
     // Registry 重载完成后重新拉取列表，让管理页显示运行时实际生效的定义数量。
+    if (readOnly) {
+      return;
+    }
     try {
       const count = await subAgentDefinitionAdminApi.reload();
       showMessage()?.success(`Registry 已重载，配置条数 ${count}`);
@@ -219,6 +262,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
     },
     [catalog, draft.allowedTools],
   );
+  const draftLocked = readOnly && !draft.isNew;
 
   return (
     <div className="workspace-admin-shell">
@@ -311,6 +355,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
                   variant="outline"
                   className="workspace-admin-secondary w-full"
                   onClick={() => void onReload()}
+                  disabled={readOnly}
                 >
                   重载 Registry
                 </Button>
@@ -334,7 +379,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
                       variant="ghost"
                       className="workspace-admin-danger"
                       onClick={onDelete}
-                      disabled={saving}
+                      disabled={saving || readOnly}
                     >
                       <Trash2 className="h-4 w-4" />
                       删除
@@ -344,7 +389,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
                     type="button"
                     className="workspace-admin-primary"
                     onClick={() => void onSave()}
-                    disabled={saving}
+                    disabled={saving || draftLocked}
                   >
                     {saving ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -383,7 +428,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
                       </span>
                       <Input
                         value={draft.displayName || ""}
-                        disabled={saving}
+                        disabled={draftLocked || saving}
                         onChange={(e) =>
                           setDraft((d) => ({
                             ...d,
@@ -401,7 +446,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
                       </span>
                       <Select
                         className="workspace-admin-multi-select w-full"
-                        disabled={saving}
+                        disabled={draftLocked || saving}
                         value={draft.toolPolicyMode || "inherit"}
                         options={[
                           {
@@ -430,7 +475,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
                       <Select
                         mode="multiple"
                         className="workspace-admin-multi-select w-full"
-                        disabled={saving || draft.toolPolicyMode !== "custom"}
+                        disabled={draftLocked || saving || draft.toolPolicyMode !== "custom"}
                         options={deferredToolOptions}
                         value={draft.deferredTools || []}
                         onChange={(value) =>
@@ -460,7 +505,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
                       </span>
                       <Input
                         value={draft.whenToUse}
-                        disabled={saving}
+                        disabled={draftLocked || saving}
                         onChange={(e) =>
                           setDraft((d) => ({
                             ...d,
@@ -476,7 +521,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
                       </span>
                       <Textarea
                         value={draft.systemPrompt}
-                        disabled={saving}
+                        disabled={draftLocked || saving}
                         rows={10}
                         onChange={(e) =>
                           setDraft((d) => ({
@@ -503,7 +548,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
                       <Select
                         mode="multiple"
                         className="workspace-admin-multi-select w-full"
-                        disabled={saving}
+                        disabled={draftLocked || saving}
                         options={toolOptions}
                         value={draft.allowedTools || []}
                         onChange={(value) =>
@@ -522,7 +567,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
                       <Select
                         mode="multiple"
                         className="workspace-admin-multi-select w-full"
-                        disabled={saving}
+                        disabled={draftLocked || saving}
                         options={toolOptions.filter((o) => o.value !== "*")}
                         value={draft.disallowedTools || []}
                         onChange={(value) =>
@@ -549,7 +594,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
                       <Input
                         type="number"
                         value={draft.maxSteps ?? ""}
-                        disabled={saving}
+                        disabled={draftLocked || saving}
                         onChange={(e) => {
                           const raw = e.target.value;
                           setDraft((d) => ({
@@ -563,7 +608,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
                     <label className="flex items-center gap-3 self-end pb-2">
                       <Switch
                         checked={(draft.status ?? 1) === 1}
-                        disabled={saving}
+                        disabled={draftLocked || saving}
                         onChange={(checked) =>
                           setDraft((d) => ({
                             ...d,

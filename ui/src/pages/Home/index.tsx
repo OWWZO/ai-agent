@@ -21,6 +21,10 @@ import {
   type SuggestedQuestion,
 } from "@/utils/constants";
 import {
+  buildSuggestedPromptDraft,
+  type PromptSelectionRequest,
+} from "@/utils/suggestedPrompts";
+import {
   createSessionId,
   getUniqId,
   peekSessionId,
@@ -56,18 +60,20 @@ import { readActiveRun } from "@/utils/activeRunStorage";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   deriveConversationMetaFromInput,
+  getConversationPendingFiles,
   getConversationDraft,
   mergeLocalRecentConversations,
   mergeRecentSessions,
   resolveLocalSessionSelection,
   shouldApplyConversationToView,
   setConversationDraft,
+  setConversationPendingFiles,
   toRecentSessionItem,
 } from "./homeState";
 import FeaturedConversationAdminPanel from "./FeaturedConversationAdminPanel";
 import {
   hydrateSessionWithRunningReplay,
-  resolveInitialSessionId,
+  resolveInitialSession,
 } from "./sessionBootstrap";
 import { useRecentSessions } from "./useRecentSessions";
 import { loadCachedSessionFiles } from "./sessionWorkspaceFiles";
@@ -79,6 +85,7 @@ import {
   type WorkspaceFileItem,
 } from "@/components/ActionView/workspaceFiles";
 import { normalizeSessionArtifactFiles } from "@/utils/taskArtifacts";
+import type { ToolTaskDraft } from "@/pages/ToolCatalog/toolCatalog";
 import {
   buildFeaturedConversationFormState,
   canFeatureConversationSession,
@@ -97,6 +104,7 @@ type SidebarView =
   | "sub-agents"
   | "models"
   | "capabilities"
+  | "tools"
   | "featured";
 
 type InitialState = {
@@ -111,6 +119,7 @@ const LazyWorkspaceSop = lazy(() => import("@/pages/WorkspaceSop"));
 const LazySubAgentAdmin = lazy(() => import("@/pages/SubAgentAdmin"));
 const LazyModelAdmin = lazy(() => import("@/pages/ModelAdmin"));
 const LazyCapabilityLibrary = lazy(() => import("@/pages/CapabilityLibrary"));
+const LazyToolCatalog = lazy(() => import("@/pages/ToolCatalog"));
 const LazyFeaturedConversations = lazy(
   () => import("@/pages/FeaturedConversations")
 );
@@ -204,7 +213,10 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   const {
     recentSessions,
     recentSessionsLoading,
+    recentSessionsLoadingMore,
+    recentSessionsHasMore,
     refreshRecentSessions,
+    loadMoreRecentSessions,
   } = useRecentSessions();
   const [localRecentConversations, setLocalRecentConversations] = useState<
     CHAT.ConversationHistory[]
@@ -224,12 +236,18 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   const [conversationDrafts, setConversationDrafts] = useState<
     Record<string, string>
   >({});
+  const [toolTaskFilesBySession, setToolTaskFilesBySession] = useState<
+    Record<string, File[]>
+  >({});
   type ChatViewApi = {
     openFile: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
   };
   const chatViewApiRef = useRef<ChatViewApi | null>(null);
   const [featuredEntryId, setFeaturedEntryId] = useState("");
   const [inputInfo, setInputInfo] = useState<CHAT.TInputInfo>(EMPTY_INPUT);
+  const [suggestedPromptSelection, setSuggestedPromptSelection] =
+    useState<PromptSelectionRequest | null>(null);
+  const suggestedPromptRequestIdRef = useRef(0);
   const [product, setProduct] = useState(() => getProductByType(initialRef.current.productType));
   const [videoModalOpen, setVideoModalOpen] = useState<string>();
   const [featuredCards, setFeaturedCards] = useState<FeaturedConversationCard[]>(
@@ -411,9 +429,10 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
           activeView === "image-generation" ||
           activeView === "sop" ||
           activeView === "sub-agents" ||
-          activeView === "models" ||
-          activeView === "capabilities" ||
-          activeView === "featured"
+           activeView === "models" ||
+           activeView === "capabilities" ||
+           activeView === "tools" ||
+           activeView === "featured"
         ? "min-h-0 flex-1 overflow-hidden"
         : "min-h-0 flex-1 overflow-auto";
 
@@ -443,48 +462,66 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
           return;
         }
 
-        const initialSessionId = resolveInitialSessionId({
+        const activeRun = readActiveRun();
+        return resolveInitialSession({
           recentSessions: sessions,
           // 活动 run 与普通会话指针都保存在当前 tab；活动 run 优先，避免首屏
           // 临时会话 ID 覆盖刷新前仍在执行的会话。
-          storedSessionId: readActiveRun()?.sessionId || peekSessionId(),
-        });
+          storedSessionId: activeRun?.sessionId || peekSessionId(),
+          allowRemoteLookup: Boolean(activeRun),
+          loadSessionDetail: (sessionId) =>
+            conversationHistoryApi.getSessionDetail(sessionId, { limit: HISTORY_PAGE_SIZE }),
+        }).then(({ sessionId: initialSessionId, detail: restoredDetail }) => {
+          if (disposed) {
+            return;
+          }
 
-        if (!initialSessionId) {
-          setCurrentConversation(
-            createConversation({productType: initialRef.current.productType,})
-          );
-          return;
-        }
-
-        void loadSessionWorkspaceFiles(initialSessionId);
-
-        return conversationHistoryApi
-          .getSessionDetail(initialSessionId, { limit: HISTORY_PAGE_SIZE })
-          .then(async (detail) => {
-            if (disposed || !detail || isHistoryDetailEmpty(detail)) {
-              return;
-            }
-            const hydrated = await hydrateSessionWithRunningReplay(
-              detail,
-              (requestId) => loadRunReplay(initialSessionId, requestId),
-              reportRunningReplayError
-            );
-            const restored = await restoreHitlForSession(hydrated);
-            if (disposed) {
-              return;
-            }
-            setCurrentConversation(restored);
-          })
-          .catch((error) => {
-            console.error("加载默认会话详情失败", error);
-            if (disposed) {
-              return;
-            }
+          if (!initialSessionId) {
             setCurrentConversation(
               createConversation({productType: initialRef.current.productType,})
             );
-          });
+            return;
+          }
+
+          void loadSessionWorkspaceFiles(initialSessionId);
+
+          return (restoredDetail
+            ? Promise.resolve(restoredDetail)
+            : conversationHistoryApi.getSessionDetail(initialSessionId, { limit: HISTORY_PAGE_SIZE })
+          )
+            .then(async (detail) => {
+              if (disposed || !detail || isHistoryDetailEmpty(detail)) {
+                return;
+              }
+              const hydrated = await hydrateSessionWithRunningReplay(
+                detail,
+                (requestId) => loadRunReplay(initialSessionId, requestId),
+                reportRunningReplayError
+              );
+              const restored = await restoreHitlForSession(hydrated);
+              if (disposed) {
+                return;
+              }
+              setCurrentConversation(restored);
+            })
+            .catch((error) => {
+              console.error("加载默认会话详情失败", error);
+              if (disposed) {
+                return;
+              }
+              setCurrentConversation(
+                createConversation({productType: initialRef.current.productType,})
+              );
+            });
+        });
+      })
+      .catch((error) => {
+        console.error("恢复默认会话状态失败", error);
+        if (!disposed) {
+          setCurrentConversation(
+            createConversation({productType: initialRef.current.productType,})
+          );
+        }
       })
       .finally(() => {
         if (!disposed) {
@@ -510,6 +547,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
   const resetInput = useCallback(() => {
     setInputInfo({ ...EMPTY_INPUT });
+    setSuggestedPromptSelection(null);
   }, []);
 
   const upsertLocalRecentSession = useCallback(
@@ -574,6 +612,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       setCurrentConversation(nextConversation);
       setWorkspaceTaskList([]);
       setSelectedTaskFileKey("");
+      setToolTaskFilesBySession({});
       upsertLocalRecentSession(nextConversation);
       resetInput();
     },
@@ -726,6 +765,13 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       const nextMeta = deriveConversationMetaFromInput(info, { productType: product.type });
 
       updateCurrentConversationMeta(nextMeta);
+      setToolTaskFilesBySession((previous) =>
+        setConversationPendingFiles(
+          previous,
+          currentConversationRef.current.sessionId,
+          []
+        )
+      );
 
       setInputInfo({
         ...info,
@@ -757,12 +803,21 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
   const toSendMessage = useCallback(
     (query: SuggestedQuestion) => {
-      changeInputInfo({
-        message: query.label,
-        deepThink: Boolean(query.deepThink),
+      const draft = buildSuggestedPromptDraft(query);
+      updateCurrentInputDraft(draft.text);
+      setSuggestedPromptSelection({
+        ...draft,
+        requestId: ++suggestedPromptRequestIdRef.current,
+      });
+
+      // 推荐任务只改变当前会话的模式，不写入 inputInfo；inputInfo 只能由
+      // 输入框真正提交时产生，否则 Home 会立即切到 ChatView 并自动发送。
+      updateCurrentConversationMeta({
+        productType: product.type,
+        deepThink: product.type === "dataAgent" ? false : Boolean(query.deepThink),
       });
     },
-    [changeInputInfo, product.type]
+    [product.type, updateCurrentConversationMeta, updateCurrentInputDraft]
   );
 
   const syncFeaturedAdminRecord = useCallback(
@@ -964,6 +1019,30 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     createNewChat();
   }, [closeMobileSidebar, createNewChat]);
 
+  const handleStartToolTask = useCallback(
+    (draft: ToolTaskDraft) => {
+      const sessionId = createSessionId();
+      setSidebarPanel("sessions");
+      setSelectedTaskFileKey("");
+      setWorkspaceImmersive(false);
+      closeMobileSidebar();
+      createNewChat({ sessionId });
+      setConversationDrafts((previous) =>
+        setConversationDraft(previous, sessionId, draft.message)
+      );
+      setToolTaskFilesBySession((previous) =>
+        setConversationPendingFiles(previous, sessionId, draft.files)
+      );
+    },
+    [closeMobileSidebar, createNewChat]
+  );
+
+  const handleToolTaskFilesConsumed = useCallback((sessionId: string) => {
+    setToolTaskFilesBySession((previous) =>
+      setConversationPendingFiles(previous, sessionId, [])
+    );
+  }, []);
+
   const handleSidebarSelectSession = useCallback(
     (session: ConversationSessionItem) => {
       setSidebarPanel("sessions");
@@ -1032,6 +1111,8 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       activeView,
       recentSessions: displayedRecentSessions,
       recentSessionsLoading,
+      recentSessionsLoadingMore,
+      recentSessionsHasMore,
       selectedSessionId: currentConversation.sessionId,
       user: auth.user,
       sidebarPanel,
@@ -1039,6 +1120,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       selectedTaskFileKey,
       onNewChat: handleSidebarNewChat,
       onSelectSession: handleSidebarSelectSession,
+      onLoadMoreRecentSessions: loadMoreRecentSessions,
       onChangeView: handleSidebarChangeView,
       onManageFeaturedConversation: handleOpenFeaturedAdmin,
       onOpenTaskFiles: handleSidebarOpenTaskFiles,
@@ -1053,6 +1135,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       currentConversation.sessionId,
       displayedRecentSessions,
       handleOpenFeaturedAdmin,
+      loadMoreRecentSessions,
       handleSidebarChangeView,
       handleSidebarCloseTaskFiles,
       handleSidebarNewChat,
@@ -1062,6 +1145,8 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       handleSidebarSelectTaskFile,
       handleLogout,
       recentSessionsLoading,
+      recentSessionsLoadingMore,
+      recentSessionsHasMore,
       selectedTaskFileKey,
       sidebarPanel,
       workspaceTaskList,
@@ -1151,6 +1236,13 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
               <WorkspaceContent>
                 <LazyCapabilityLibrary embedded />
               </WorkspaceContent>
+            ) : activeView === "tools" ? (
+              <WorkspaceContent>
+                <LazyToolCatalog
+                  embedded
+                  onStartToolTask={handleStartToolTask}
+                />
+              </WorkspaceContent>
             ) : activeView === "featured" ? (
               <WorkspaceContent>
                 <LazyFeaturedConversations
@@ -1213,10 +1305,16 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
                     <WelcomeView
                       currentConversation={currentConversation}
                       inputDraft={currentInputDraft}
+                      initialFiles={getConversationPendingFiles(
+                        toolTaskFilesBySession,
+                        currentConversation.sessionId
+                      )}
                       product={product}
                       videoModalOpen={videoModalOpen}
                       onSelectionChange={handleInputSelectionChange}
                       onInputDraftChange={updateCurrentInputDraft}
+                      onInitialFilesConsumed={handleToolTaskFilesConsumed}
+                      suggestedPromptSelection={suggestedPromptSelection}
                       onSend={changeInputInfo}
                       onSendQuestion={toSendMessage}
                       onOpenVideo={setVideoModalOpen}
