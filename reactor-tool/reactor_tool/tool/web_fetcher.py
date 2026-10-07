@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """单网页抓取与正文提取能力。
 
-下载 HTML → trafilatura/BeautifulSoup 抽正文 → 内联截断 + 完整内容供落盘。
+下载 HTML → trafilatura/BeautifulSoup 抽正文 → 将完整内容返回给调用方。
 """
 
 import os
@@ -18,9 +18,7 @@ from reactor_tool.model.protocal import WebFetchRequest
 
 
 DEFAULT_TIMEOUT_SECONDS = 30
-DEFAULT_INLINE_CONTENT_CHARS = 12000  # 返回给模型的内联正文上限
 DEFAULT_USER_AGENT = "ReactorToolWebFetch/1.0"
-TRUNCATED_SUFFIX = "\n\n[内容已截断，完整正文请查看附件文件。]"
 
 
 @dataclass
@@ -30,6 +28,8 @@ class DownloadedPage:
     final_url: str
     raw_content: str
     content_type: str
+    status_code: int = 200
+    status_text: str = ""
 
 
 @dataclass
@@ -49,64 +49,54 @@ class WebFetchResult:
 
     title: str
     final_url: str
-    full_content: str  # 完整正文，用于上传 markdown 文件
-    inline_content: str  # 截断后给 LLM 的短正文
+    content: str  # 完整正文，由 Java 侧结合 prompt 提取
     content_format: str
     word_count: int
-    truncated: bool
     content_source: str
     metadata: dict[str, Any]
-    file_name: str
+    status_code: int
+    status_text: str
 
     def to_response_data(self) -> dict[str, Any]:
-        """组装统一 data 结构，避免 API 层重复拼装字段。"""
+        """组装只包含网页内容的响应，避免把抓取结果落为文件产物。"""
         return {
             "title": self.title,
             "finalUrl": self.final_url,
-            "content": self.inline_content,
+            "content": self.content,
             "contentFormat": self.content_format,
             "wordCount": self.word_count,
-            "truncated": self.truncated,
             "contentSource": self.content_source,
             "metadata": self.metadata,
+            "statusCode": self.status_code,
+            "statusText": self.status_text,
         }
 
 
 class WebFetcher:
     """抓取单个网页并提取正文。"""
 
-    def __init__(self, inline_content_limit: int | None = None):
-        configured_limit = os.getenv(
-            "WEB_FETCH_INLINE_CHAR_LIMIT", str(DEFAULT_INLINE_CONTENT_CHARS)
-        )
-        self.inline_content_limit = inline_content_limit or self._parse_positive_int(
-            configured_limit,
-            DEFAULT_INLINE_CONTENT_CHARS,
-        )
-        self.proxy = os.getenv("REACTOR_WEB_FETCH_PROXY", "").strip()
+    def __init__(self):
+        self.proxy = os.getenv("PROXY", "").strip()
 
     async def fetch(self, request: WebFetchRequest) -> WebFetchResult:
         """抓取网页、提取正文，并生成统一返回结果。"""
-        # full_content 用于文件产物，inline_content 用于 LLM；截断只作用于内联副本，不能破坏可下载全文。
+        # Python 只负责抓取和提取；正文完整返回，由 Java 侧结合 prompt 分析。
         page = await self._download_page(request.url, request.timeout_seconds)
         extracted = self._extract_content(page)
         if not extracted.content:
             raise ValueError("网页正文提取失败")
 
         normalized_title = extracted.title or self._build_title_from_url(page.final_url)
-        file_name = self._build_file_name(normalized_title, page.final_url)
-        inline_content, truncated = self._truncate_content(extracted.content)
         return WebFetchResult(
             title=normalized_title,
             final_url=page.final_url,
-            full_content=extracted.content,
-            inline_content=inline_content,
+            content=extracted.content,
             content_format=extracted.content_format,
             word_count=self._count_words(extracted.content),
-            truncated=truncated,
             content_source=extracted.content_source,
             metadata=extracted.metadata,
-            file_name=file_name,
+            status_code=page.status_code,
+            status_text=page.status_text,
         )
 
     async def _download_page(self, url: str, timeout_seconds: int) -> DownloadedPage:
@@ -134,6 +124,8 @@ class WebFetcher:
                     final_url=str(response.url),
                     raw_content=raw_content,
                     content_type=content_type,
+                    status_code=getattr(response, "status", 200),
+                    status_text=str(getattr(response, "reason", "") or ""),
                 )
 
     def _extract_content(self, page: DownloadedPage) -> ExtractedContent:
@@ -228,7 +220,7 @@ class WebFetcher:
         return content.strip() if content else ""
 
     def _normalize_content(self, content: str | None) -> str:
-        """统一清洗换行和空白，保证正文能稳定写入 Markdown 文件。"""
+        """统一清洗换行和空白，保证正文能稳定传给调用方。"""
         if not content:
             return ""
         normalized = content.replace("\r\n", "\n").replace("\r", "\n")
@@ -249,13 +241,6 @@ class WebFetcher:
         """识别可走正文提取器的 HTML 响应。"""
         return "html" in content_type or "xhtml" in content_type
 
-    def _truncate_content(self, content: str) -> tuple[str, bool]:
-        """控制内联返回体积，完整内容始终通过文件产物保留。"""
-        if len(content) <= self.inline_content_limit:
-            return content, False
-        truncated = content[: self.inline_content_limit].rstrip()
-        return truncated + TRUNCATED_SUFFIX, True
-
     def _count_words(self, content: str) -> int:
         """近似统计正文词数，兼容中英文混排。"""
         tokens = re.findall(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]", content or "")
@@ -267,26 +252,14 @@ class WebFetcher:
         path_segments = [segment for segment in parsed.path.split("/") if segment]
         if path_segments:
             candidate = unquote(path_segments[-1]).rsplit(".", 1)[0]
-            sanitized = self._sanitize_file_stem(candidate)
+            sanitized = self._sanitize_title_candidate(candidate)
             if sanitized:
                 return sanitized
-        sanitized_host = self._sanitize_file_stem(parsed.netloc.replace(":", "_"))
+        sanitized_host = self._sanitize_title_candidate(parsed.netloc.replace(":", "_"))
         return sanitized_host or "web_fetch_result"
 
-    def _build_file_name(self, title: str, url: str) -> str:
-        """按标题优先、URL slug 兜底生成稳定文件名。"""
-        file_stem = self._sanitize_file_stem(title) or self._build_title_from_url(url)
-        return f"{file_stem}.md"
-
-    def _sanitize_file_stem(self, value: str) -> str:
-        """清洗文件名非法字符，兼容 Windows 工作区。"""
+    def _sanitize_title_candidate(self, value: str) -> str:
+        """清洗 URL 回退标题中的非法字符。"""
         cleaned = re.sub(r"[<>:\"/\\\\|?*\x00-\x1f]", " ", value or "")
         cleaned = re.sub(r"\s+", "_", cleaned).strip("._ ")
         return cleaned[:80]
-
-    def _parse_positive_int(self, raw_value: str, default_value: int) -> int:
-        try:
-            parsed = int(str(raw_value).strip())
-            return parsed if parsed > 0 else default_value
-        except (TypeError, ValueError):
-            return default_value

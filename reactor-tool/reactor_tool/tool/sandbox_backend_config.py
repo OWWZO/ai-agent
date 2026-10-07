@@ -80,7 +80,7 @@ def get_e2b_proxy() -> str | None:
         if value.lower() in _E2B_PROXY_DISABLED:
             return None
         return value
-    fallback = (os.getenv("REACTOR_WEB_FETCH_PROXY") or "").strip()
+    fallback = (os.getenv("PROXY") or "").strip()
     return fallback or None
 
 

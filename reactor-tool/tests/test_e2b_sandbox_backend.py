@@ -302,9 +302,9 @@ class E2BSandboxBackendTest(unittest.TestCase):
                 return _FakeSandbox()
 
             previous_e2b_proxy = os.environ.get("E2B_PROXY")
-            previous_web_fetch_proxy = os.environ.get("REACTOR_WEB_FETCH_PROXY")
+            previous_web_fetch_proxy = os.environ.get("PROXY")
             os.environ["E2B_PROXY"] = "http://e2b-proxy.test:7890"
-            os.environ.pop("REACTOR_WEB_FETCH_PROXY", None)
+            os.environ.pop("PROXY", None)
             executor = E2BPythonSandboxExecutor(
                 policy,
                 timeout_seconds=15,
@@ -320,9 +320,9 @@ class E2BSandboxBackendTest(unittest.TestCase):
                 else:
                     os.environ["E2B_PROXY"] = previous_e2b_proxy
                 if previous_web_fetch_proxy is None:
-                    os.environ.pop("REACTOR_WEB_FETCH_PROXY", None)
+                    os.environ.pop("PROXY", None)
                 else:
-                    os.environ["REACTOR_WEB_FETCH_PROXY"] = previous_web_fetch_proxy
+                    os.environ["PROXY"] = previous_web_fetch_proxy
 
     def test_executor_facade_routes_to_e2b_and_downloads_outputs(self):
         with tempfile.TemporaryDirectory() as workspace:

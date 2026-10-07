@@ -173,8 +173,9 @@ autobots:
     plan-solve-main-tool-list: "Agent,TaskCreate,TaskGet,TaskUpdate,TaskList,TodoWrite,TaskStop,TaskOutput,SendMessage,EnterPlanMode,ExitPlanMode,AskUserQuestion,ToolSearch,ToolDescribe,ToolCall,workspace_read,workspace_list,workspace_glob,workspace_grep,workspace_write,workspace_edit,skill_view,skills_search,memory,session_search,emit_ui_patch,emit_ui_tree,list_ui_components,get_genui_guide,image_ocr,canvas_publish,pdf_reader,pdf_structure,word_reader,text_processor,markdown_processor,html_processor,excel_reader,csv_processor"
     code_interpreter_url: "http://127.0.0.1:1601"
     deep_search_url: "http://127.0.0.1:1601"
+    web_fetch_url: "http://reactor-tool:1601"
     multimodalagent_url: "http://127.0.0.1:1601"
-    web_fetch_proxy: "${REACTOR_WEB_FETCH_PROXY:http://127.0.0.1:7890}"
+    web_fetch_proxy: "${PROXY:http://127.0.0.1:7890}"
     image_generation:
       base_url: ""
       api_key: ""

@@ -44,7 +44,7 @@ class WebFetcherTest(unittest.IsolatedAsyncioTestCase):
         with patch.dict(
             "os.environ",
             {
-                "REACTOR_WEB_FETCH_PROXY": "http://127.0.0.1:7890",
+                "PROXY": "http://127.0.0.1:7890",
             },
         ):
             with patch(
@@ -81,8 +81,7 @@ class WebFetcherTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("https://example.com/article", result.final_url)
         self.assertEqual("markdown", result.content_format)
         self.assertEqual("trafilatura", result.content_source)
-        self.assertFalse(result.truncated)
-        self.assertEqual("测试标题.md", result.file_name)
+        self.assertEqual("# 标题\n\n正文内容", result.content)
         self.assertGreater(result.word_count, 0)
 
     async def test_should_fallback_to_beautifulsoup_when_trafilatura_returns_empty(
@@ -116,11 +115,11 @@ class WebFetcherTest(unittest.IsolatedAsyncioTestCase):
                 result = await fetcher.fetch(request)
 
         self.assertEqual("beautifulsoup", result.content_source)
-        self.assertIn("第一段正文。", result.full_content)
-        self.assertIn("第二段正文。", result.full_content)
+        self.assertIn("第一段正文。", result.content)
+        self.assertIn("第二段正文。", result.content)
 
-    async def test_should_truncate_inline_content_without_affecting_full_content(self):
-        fetcher = WebFetcher(inline_content_limit=10)
+    async def test_should_return_full_content_without_file_truncation(self):
+        fetcher = WebFetcher()
         request = WebFetchRequest(
             requestId="req-web-003", url="https://example.com/long"
         )
@@ -137,9 +136,7 @@ class WebFetcherTest(unittest.IsolatedAsyncioTestCase):
             ):
                 result = await fetcher.fetch(request)
 
-        self.assertTrue(result.truncated)
-        self.assertEqual("0123456789ABCDEFGHIJ", result.full_content)
-        self.assertIn("内容已截断", result.inline_content)
+        self.assertEqual("0123456789ABCDEFGHIJ", result.content)
 
     async def test_should_accept_markdown_text_response(self):
         fetcher = WebFetcher()
@@ -158,8 +155,7 @@ class WebFetcherTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual("plain_text", result.content_source)
         self.assertEqual("text", result.content_format)
-        self.assertEqual("README.md", result.file_name)
-        self.assertIn("Markdown 正文", result.full_content)
+        self.assertIn("Markdown 正文", result.content)
 
     def test_should_reject_binary_content_type(self):
         fetcher = WebFetcher()

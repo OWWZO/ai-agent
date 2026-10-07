@@ -319,21 +319,12 @@ async def post_deepsearch(
 
 @router.post("/web_fetch")
 async def post_web_fetch(body: WebFetchRequest):
-    """单网页抓取端点，始终把完整正文沉淀为文件产物。"""
+    """单网页抓取端点，只返回提取后的完整正文。"""
     try:
         result = await WebFetcher().fetch(body)
-        file_info = [
-            await upload_file(
-                content=result.full_content,
-                file_name=result.file_name,
-                request_id=body.request_id,
-                file_type="markdown",
-            )
-        ]
         return {
             "code": 200,
             "data": result.to_response_data(),
-            "fileInfo": file_info,
             "requestId": body.request_id,
         }
     except ValueError as exc:

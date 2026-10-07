@@ -26,7 +26,7 @@ class SearchEngineIntegrationTest(unittest.IsolatedAsyncioTestCase):
 
         with patch.dict(
             os.environ,
-            {"REACTOR_WEB_FETCH_PROXY": "http://127.0.0.1:7890"},
+            {"PROXY": "http://127.0.0.1:7890"},
             clear=False,
         ):
             docs = await DDGSearch().search(
@@ -72,7 +72,7 @@ class SearchEngineIntegrationTest(unittest.IsolatedAsyncioTestCase):
 
         with patch.dict(
             os.environ,
-            {"REACTOR_WEB_FETCH_PROXY": "http://127.0.0.1:7890"},
+            {"PROXY": "http://127.0.0.1:7890"},
             clear=False,
         ):
             with patch(

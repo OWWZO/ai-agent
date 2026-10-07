@@ -16,14 +16,14 @@ from reactor_tool.tool.sandbox_backend_config import (
 class GetE2BProxyTest(unittest.TestCase):
     def setUp(self):
         self._prev_e2b = os.environ.get("E2B_PROXY")
-        self._prev_web_fetch = os.environ.get("REACTOR_WEB_FETCH_PROXY")
+        self._prev_web_fetch = os.environ.get("PROXY")
         self._prev_debounce = os.environ.get("E2B_FULL_PAUSE_DEBOUNCE_SEC")
         self._prev_idle = os.environ.get("E2B_FS_ONLY_IDLE_SEC")
         self._prev_hold = os.environ.get("E2B_USER_OPERATING_HOLD_SEC")
 
     def tearDown(self):
         self._restore("E2B_PROXY", self._prev_e2b)
-        self._restore("REACTOR_WEB_FETCH_PROXY", self._prev_web_fetch)
+        self._restore("PROXY", self._prev_web_fetch)
         self._restore("E2B_FULL_PAUSE_DEBOUNCE_SEC", self._prev_debounce)
         self._restore("E2B_FS_ONLY_IDLE_SEC", self._prev_idle)
         self._restore("E2B_USER_OPERATING_HOLD_SEC", self._prev_hold)
@@ -37,22 +37,22 @@ class GetE2BProxyTest(unittest.TestCase):
 
     def test_prefers_e2b_proxy(self):
         os.environ["E2B_PROXY"] = " http://e2b-proxy:8080 "
-        os.environ["REACTOR_WEB_FETCH_PROXY"] = "http://fallback:8080"
+        os.environ["PROXY"] = "http://fallback:8080"
         self.assertEqual("http://e2b-proxy:8080", get_e2b_proxy())
 
     def test_falls_back_to_web_fetch_proxy(self):
         os.environ.pop("E2B_PROXY", None)
-        os.environ["REACTOR_WEB_FETCH_PROXY"] = "http://fallback:8080"
+        os.environ["PROXY"] = "http://fallback:8080"
         self.assertEqual("http://fallback:8080", get_e2b_proxy())
 
     def test_explicit_empty_e2b_proxy_disables_fallback(self):
         os.environ["E2B_PROXY"] = ""
-        os.environ["REACTOR_WEB_FETCH_PROXY"] = "http://fallback:8080"
+        os.environ["PROXY"] = "http://fallback:8080"
         self.assertIsNone(get_e2b_proxy())
 
     def test_explicit_off_e2b_proxy_disables_fallback(self):
         os.environ["E2B_PROXY"] = "off"
-        os.environ["REACTOR_WEB_FETCH_PROXY"] = "http://fallback:8080"
+        os.environ["PROXY"] = "http://fallback:8080"
         self.assertIsNone(get_e2b_proxy())
 
     def test_pause_and_idle_defaults(self):

@@ -37,6 +37,8 @@ public class HostCliTool implements BaseTool {
             "reply", "retweet", "unbookmark", "unfavorite", "unfollow", "unlike", "unretweet");
     private static final Set<String> REDDIT_WRITE_COMMANDS = Set.of(
             "comment", "login", "logout", "save", "subscribe", "upvote");
+    private static final List<String> PROXY_ENVIRONMENT_VARIABLES = List.of(
+            "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy");
 
     private final List<String> availableTools;
     private AgentContext agentContext;
@@ -114,10 +116,13 @@ public class HostCliTool implements BaseTool {
         String cwd = agentContext.getWorkspaceRoot();
         Set<String> before = snapshot(cwd);
         long timeoutMs = resolveTimeout(params.get("timeout_ms"), properties);
+        String proxy = StringUtils.trimToNull(deps.requireReactorConfig().getWebFetchProxy());
         CliResult result = cli.exec(CliInvocation.builder()
                 .tool(tool)
                 .args(args)
                 .cwd(cwd)
+                .env(proxyEnvironment(proxy))
+                .unsetEnv(proxy == null ? PROXY_ENVIRONMENT_VARIABLES : List.of())
                 .timeoutMs(timeoutMs)
                 .capture("both")
                 .maxOutputChars(properties.getMaxOutputChars())
@@ -138,6 +143,19 @@ public class HostCliTool implements BaseTool {
         return result.isOk()
                 ? ToolResultPayload.okData(TOOL_NAME, fields)
                 : ToolResultPayload.fromData(fields);
+    }
+
+    private static Map<String, String> proxyEnvironment(String proxy) {
+        if (proxy == null) {
+            return Map.of();
+        }
+        return Map.of(
+                "HTTP_PROXY", proxy,
+                "HTTPS_PROXY", proxy,
+                "ALL_PROXY", proxy,
+                "http_proxy", proxy,
+                "https_proxy", proxy,
+                "all_proxy", proxy);
     }
 
     private List<CliArtifact> registerNewFiles(String cwd, Set<String> before) {

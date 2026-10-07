@@ -39,7 +39,7 @@ def _search_url_ok(url) -> bool:
 
 def _configured_proxy() -> str | None:
     """读取 DeepSearch/WebFetch 共用的网页出站代理。"""
-    proxy = os.getenv("REACTOR_WEB_FETCH_PROXY", "").strip()
+    proxy = os.getenv("PROXY", "").strip()
     return proxy or None
 
 

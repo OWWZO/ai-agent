@@ -1,5 +1,7 @@
 package org.wwz.ai.domain.agent.runtime.tool.common;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -20,11 +22,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
 
 /**
- * WebFetch：抓取 URL → HTML 转文本 → 用 prompt 经小模型提炼。
- * 不再依赖 reactor-tool /web_fetch 与文件产物。
+ * WebFetch：调用 Python 抓取正文 → 用 prompt 经小模型提炼。
+ * 网页抓取和正文提取委托给 reactor-tool /v1/tool/web_fetch；本端只负责 prompt 提取。
  */
 @Slf4j
 @Data
@@ -34,15 +35,8 @@ public class WebFetchTool implements BaseTool {
 
     private static final int MAX_URL_LENGTH = 2000;
     private static final int MAX_MARKDOWN_LENGTH = 100_000;
-    private static final int MAX_SAME_HOST_REDIRECTS = 10;
-    private static final long FETCH_TIMEOUT_SECONDS = 60L;
+    private static final long WEB_FETCH_SERVICE_TIMEOUT_SECONDS = 120L;
     private static final int EXTRACT_TIMEOUT_SECONDS = 90;
-    private static final String USER_AGENT = "ReactorAgentWebFetch/1.0";
-    private static final Pattern SCRIPT_STYLE = Pattern.compile(
-            "(?is)<(script|style|noscript|svg|iframe)[^>]*>.*?</\\1>");
-    private static final Pattern TAG = Pattern.compile("(?is)<[^>]+>");
-    private static final Pattern MULTI_SPACE = Pattern.compile("[ \\t\\x0B\\f\\r]+");
-    private static final Pattern MULTI_NL = Pattern.compile("\\n{3,}");
 
     private AgentContext agentContext;
 
@@ -56,12 +50,10 @@ public class WebFetchTool implements BaseTool {
         return """
                 IMPORTANT: WebFetch WILL FAIL for authenticated or private URLs. Prefer specialized MCP tools for GitHub/Confluence/etc.
 
-                Fetches content from a URL and processes it with a prompt using a secondary model.
+                Fetches and extracts content from a URL through the reactor-tool Python service, then processes it with a prompt using a secondary model.
                 - Inputs: url (required), prompt (required — what to extract/analyze)
-                - HTTP is upgraded to HTTPS
-                - HTML is converted to plain text/markdown-like content
-                - Cross-host redirects are NOT followed automatically; the tool returns redirect info for a new call
-                - Results may be summarized if the page is very large
+                - Python handles redirects and HTML body extraction
+                - The extracted page content is analyzed only against the provided prompt
                 - Read-only; does not write files
                 """;
     }
@@ -104,23 +96,9 @@ public class WebFetchTool implements BaseTool {
                 return failure("WebFetch 失败：prompt 不能为空（需说明要从页面提取/分析什么）", rawUrl, prompt);
             }
 
-            String upgradedUrl = upgradeToHttps(rawUrl);
-            validateUrl(upgradedUrl);
+            validateUrl(rawUrl);
 
-            FetchResult fetch = fetchWithPermittedRedirects(upgradedUrl, 0);
-            if (fetch.redirect()) {
-                Map<String, Object> data = new LinkedHashMap<>();
-                data.put("tool", "web_fetch");
-                data.put("ok", Boolean.FALSE);
-                data.put("redirect", Boolean.TRUE);
-                data.put("url", fetch.originalUrl());
-                data.put("redirectUrl", fetch.redirectUrl());
-                data.put("status", fetch.statusCode());
-                data.put("hint", "Call web_fetch again with redirectUrl and the same prompt.");
-                data.put("prompt", prompt);
-                return ToolResultPayload.fromData(data);
-            }
-
+            FetchedPage fetch = fetchFromPython(rawUrl);
             String markdown = truncateContent(fetch.content());
             ExtractOutcome extracted = applyPromptToContent(prompt, markdown);
             long durationMs = System.currentTimeMillis() - start;
@@ -130,10 +108,18 @@ public class WebFetchTool implements BaseTool {
             data.put("ok", Boolean.TRUE);
             data.put("url", fetch.finalUrl());
             data.put("status", fetch.statusCode());
-            data.put("statusText", StringUtils.defaultString(fetch.statusText()));
-            data.put("bytes", fetch.bytes());
+            if (StringUtils.isNotBlank(fetch.statusText())) {
+                data.put("statusText", fetch.statusText());
+            }
+            data.put("bytes", fetch.content().getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
             data.put("durationMs", durationMs);
             data.put("prompt", prompt);
+            data.put("contentFormat", fetch.contentFormat());
+            data.put("contentSource", fetch.contentSource());
+            data.put("wordCount", fetch.wordCount());
+            if (fetch.metadata() != null && !fetch.metadata().isEmpty()) {
+                data.put("metadata", fetch.metadata());
+            }
             data.put("content", extracted.content());
             data.put("degraded", extracted.degraded());
             if (extracted.degraded()) {
@@ -155,62 +141,86 @@ public class WebFetchTool implements BaseTool {
         }
     }
 
-    private FetchResult fetchWithPermittedRedirects(String url, int depth) throws Exception {
-        if (depth > MAX_SAME_HOST_REDIRECTS) {
-            throw new IllegalStateException("Too many redirects (exceeded " + MAX_SAME_HOST_REDIRECTS + ")");
-        }
+    private FetchedPage fetchFromPython(String url) throws Exception {
+        ReactorConfig config = requireReactorConfig();
+        String endpoint = buildWebFetchEndpoint(config.getWebFetchUrl());
+        Map<String, Object> requestBody = new LinkedHashMap<>();
+        requestBody.put("requestId", StringUtils.defaultIfBlank(requestId(), "web-fetch"));
+        requestBody.put("url", url);
+        requestBody.put("timeoutSeconds", WEB_FETCH_SERVICE_TIMEOUT_SECONDS);
 
         RemoteHttpResponse response = requireRemoteHttpPort().executeDetailed(RemoteHttpRequest.builder()
-                .method("GET")
-                .url(url)
-                .headers(Map.of(
-                        "Accept", "text/markdown, text/html, text/plain, */*",
-                        "User-Agent", USER_AGENT
-                ))
+                .method("POST")
+                .url(endpoint)
+                .headers(Map.of("Accept", "application/json", "Content-Type", "application/json"))
+                .body(JSON.toJSONString(requestBody))
                 .connectTimeoutSeconds(30L)
-                .readTimeoutSeconds(FETCH_TIMEOUT_SECONDS)
-                .writeTimeoutSeconds(FETCH_TIMEOUT_SECONDS)
-                .callTimeoutSeconds(FETCH_TIMEOUT_SECONDS)
-                .proxy(StringUtils.trimToEmpty(requireReactorConfig().getWebFetchProxy()))
-                .followRedirects(false)
+                .readTimeoutSeconds(WEB_FETCH_SERVICE_TIMEOUT_SECONDS)
+                .writeTimeoutSeconds(30L)
+                .callTimeoutSeconds(WEB_FETCH_SERVICE_TIMEOUT_SECONDS)
                 .build());
 
-        int code = response.getStatusCode();
-        if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
-            String location = headerIgnoreCase(response.getHeaders(), "Location");
-            if (StringUtils.isBlank(location)) {
-                throw new IllegalStateException("Redirect missing Location header");
-            }
-            String redirectUrl = URI.create(url).resolve(location.trim()).toString();
-            redirectUrl = upgradeToHttps(redirectUrl);
-            if (isPermittedRedirect(url, redirectUrl)) {
-                return fetchWithPermittedRedirects(redirectUrl, depth + 1);
-            }
-            return FetchResult.redirect(url, redirectUrl, code);
-        }
-
-        if (code < 200 || code >= 300) {
+        int statusCode = response.getStatusCode();
+        String responseBody = StringUtils.defaultString(response.getBody());
+        if (statusCode < 200 || statusCode >= 300) {
             throw new FetchHttpException(
-                    code,
+                    statusCode,
                     url,
                     response.getStatusText(),
-                    StringUtils.abbreviate(StringUtils.defaultString(response.getBody()), 2000)
+                    StringUtils.abbreviate(responseBody, 2000)
             );
         }
 
-        String contentType = StringUtils.defaultString(headerIgnoreCase(response.getHeaders(), "Content-Type")).toLowerCase(Locale.ROOT);
-        String body = StringUtils.defaultString(response.getBody());
-        String content;
-        if (contentType.contains("text/html") || looksLikeHtml(body)) {
-            content = htmlToText(body);
-        } else {
-            content = body;
+        JSONObject root;
+        try {
+            root = JSON.parseObject(responseBody);
+        } catch (Exception e) {
+            throw new IllegalStateException("Invalid web_fetch response from reactor-tool", e);
         }
-        if (StringUtils.isBlank(content)) {
-            throw new IllegalStateException("Empty content from " + url);
+        if (root == null) {
+            throw new IllegalStateException("Empty web_fetch response from reactor-tool");
         }
-        String finalUrl = StringUtils.defaultIfBlank(response.getFinalUrl(), url);
-        return FetchResult.content(finalUrl, code, response.getStatusText(), content, content.getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
+        Integer resultCode = root.getInteger("code");
+        if (resultCode != null && resultCode != 200) {
+            throw new FetchHttpException(
+                    resultCode,
+                    url,
+                    root.getString("message"),
+                    StringUtils.abbreviate(responseBody, 2000)
+            );
+        }
+
+        JSONObject data = root.getJSONObject("data");
+        if (data == null) {
+            throw new IllegalStateException("web_fetch response does not contain data");
+        }
+        String content = StringUtils.trimToEmpty(data.getString("content"));
+        if (content.isBlank()) {
+            throw new IllegalStateException("web_fetch response content is empty");
+        }
+        Integer fetchedStatusCode = data.getInteger("statusCode");
+        Integer wordCount = data.getInteger("wordCount");
+        return new FetchedPage(
+                StringUtils.defaultIfBlank(data.getString("finalUrl"), url),
+                fetchedStatusCode == null ? 200 : fetchedStatusCode,
+                StringUtils.defaultString(data.getString("statusText")),
+                content,
+                StringUtils.defaultString(data.getString("contentFormat")),
+                StringUtils.defaultString(data.getString("contentSource")),
+                wordCount == null ? 0 : wordCount,
+                data.getJSONObject("metadata")
+        );
+    }
+
+    private static String buildWebFetchEndpoint(String configuredUrl) {
+        String base = StringUtils.removeEnd(StringUtils.trimToEmpty(configuredUrl), "/");
+        if (base.isBlank()) {
+            throw new IllegalStateException("autobots.autoagent.web_fetch_url is not configured");
+        }
+        if (base.endsWith("/v1/tool/web_fetch")) {
+            return base;
+        }
+        return base + "/v1/tool/web_fetch";
     }
 
     private ExtractOutcome applyPromptToContent(String prompt, String markdownContent) {
@@ -276,37 +286,6 @@ public class WebFetchTool implements BaseTool {
         }
     }
 
-    private static String htmlToText(String html) {
-        String cleaned = SCRIPT_STYLE.matcher(html).replaceAll(" ");
-        cleaned = cleaned.replaceAll("(?i)<br\\s*/?>", "\n");
-        cleaned = cleaned.replaceAll("(?i)</p>", "\n\n");
-        cleaned = cleaned.replaceAll("(?i)</div>", "\n");
-        cleaned = cleaned.replaceAll("(?i)</h[1-6]>", "\n\n");
-        cleaned = cleaned.replaceAll("(?i)</li>", "\n");
-        cleaned = cleaned.replaceAll("(?i)<li[^>]*>", "- ");
-        cleaned = TAG.matcher(cleaned).replaceAll(" ");
-        cleaned = decodeBasicEntities(cleaned);
-        cleaned = MULTI_SPACE.matcher(cleaned).replaceAll(" ");
-        cleaned = MULTI_NL.matcher(cleaned).replaceAll("\n\n");
-        return cleaned.trim();
-    }
-
-    private static String decodeBasicEntities(String text) {
-        return text
-                .replace("&nbsp;", " ")
-                .replace("&amp;", "&")
-                .replace("&lt;", "<")
-                .replace("&gt;", ">")
-                .replace("&quot;", "\"")
-                .replace("&#39;", "'")
-                .replace("&apos;", "'");
-    }
-
-    private static boolean looksLikeHtml(String body) {
-        String sample = body.length() > 500 ? body.substring(0, 500).toLowerCase(Locale.ROOT) : body.toLowerCase(Locale.ROOT);
-        return sample.contains("<html") || sample.contains("<body") || sample.contains("<div") || sample.contains("<p");
-    }
-
     private static String truncateContent(String content) {
         if (content == null || content.length() <= MAX_MARKDOWN_LENGTH) {
             return content;
@@ -339,55 +318,6 @@ public class WebFetchTool implements BaseTool {
         if (!"localhost".equalsIgnoreCase(host) && !host.contains(".")) {
             throw new IllegalArgumentException("URL hostname is not publicly resolvable style: " + host);
         }
-    }
-
-    private static String upgradeToHttps(String url) {
-        if (url != null && url.regionMatches(true, 0, "http://", 0, 7)) {
-            return "https://" + url.substring(7);
-        }
-        return url;
-    }
-
-    /**
-     * 仅允许同主机（含 www. 增删）的 redirect；跨域返回给模型再调。
-     */
-    static boolean isPermittedRedirect(String originalUrl, String redirectUrl) {
-        try {
-            URI original = URI.create(originalUrl);
-            URI redirect = URI.create(redirectUrl);
-            if (!StringUtils.equalsIgnoreCase(original.getScheme(), redirect.getScheme())) {
-                return false;
-            }
-            int originalPort = original.getPort();
-            int redirectPort = redirect.getPort();
-            if (originalPort != redirectPort) {
-                return false;
-            }
-            if (StringUtils.isNotBlank(redirect.getUserInfo())) {
-                return false;
-            }
-            String o = stripWww(StringUtils.defaultString(original.getHost()).toLowerCase(Locale.ROOT));
-            String r = stripWww(StringUtils.defaultString(redirect.getHost()).toLowerCase(Locale.ROOT));
-            return o.equals(r);
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private static String stripWww(String hostname) {
-        return hostname.startsWith("www.") ? hostname.substring(4) : hostname;
-    }
-
-    private static String headerIgnoreCase(Map<String, String> headers, String name) {
-        if (headers == null || name == null) {
-            return null;
-        }
-        for (Map.Entry<String, String> entry : headers.entrySet()) {
-            if (entry.getKey() != null && entry.getKey().equalsIgnoreCase(name)) {
-                return entry.getValue();
-            }
-        }
-        return null;
     }
 
     private ToolResultPayload failure(String message, String url, String prompt) {
@@ -455,22 +385,15 @@ public class WebFetchTool implements BaseTool {
         }
     }
 
-    private record FetchResult(
-            boolean redirect,
-            String originalUrl,
-            String redirectUrl,
+    private record FetchedPage(
             String finalUrl,
             int statusCode,
             String statusText,
             String content,
-            int bytes
+            String contentFormat,
+            String contentSource,
+            int wordCount,
+            JSONObject metadata
     ) {
-        static FetchResult redirect(String original, String redirect, int code) {
-            return new FetchResult(true, original, redirect, null, code, null, null, 0);
-        }
-
-        static FetchResult content(String finalUrl, int code, String statusText, String content, int bytes) {
-            return new FetchResult(false, null, null, finalUrl, code, statusText, content, bytes);
-        }
     }
 }

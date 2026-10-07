@@ -1,7 +1,9 @@
 package org.wwz.ai.test.domain;
 
+import com.alibaba.fastjson.JSON;
 import org.junit.Assert;
 import org.junit.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpRequest;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpResponse;
@@ -21,7 +23,7 @@ import java.util.Map;
 public class WebFetchStructuredResultTest {
 
     @Test
-    public void shouldPassConfiguredProxyToRemoteHttpPort() {
+    public void shouldDelegatePageFetchToPythonService() {
         AtomicReference<RemoteHttpRequest> captured = new AtomicReference<>();
         RemoteHttpPort httpPort = new RemoteHttpPort() {
             @Override
@@ -33,17 +35,32 @@ public class WebFetchStructuredResultTest {
             public RemoteHttpResponse executeDetailed(RemoteHttpRequest request) {
                 captured.set(request);
                 return RemoteHttpResponse.builder()
-                        .statusCode(404)
-                        .statusText("Not Found")
-                        .headers(Map.of("Content-Type", "text/html"))
-                        .body("missing")
+                        .statusCode(200)
+                        .statusText("OK")
+                        .headers(Map.of("Content-Type", "application/json"))
+                        .body("""
+                                {
+                                  "code": 200,
+                                  "data": {
+                                    "title": "Example",
+                                    "finalUrl": "https://example.com/article",
+                                    "content": "article body",
+                                    "contentFormat": "markdown",
+                                    "contentSource": "trafilatura",
+                                    "wordCount": 2,
+                                    "statusCode": 200,
+                                    "statusText": "OK",
+                                    "metadata": {}
+                                  }
+                                }
+                                """)
                         .finalUrl(request.getUrl())
                         .build();
             }
         };
 
         ReactorConfig config = new ReactorConfig();
-        config.setWebFetchProxy("http://127.0.0.1:7890");
+        ReflectionTestUtils.setField(config, "webFetchUrl", "http://reactor-tool:1601");
         WebFetchTool tool = new WebFetchTool();
         tool.setAgentContext(AgentContext.builder()
                 .requestId("req-web-fetch-proxy")
@@ -51,13 +68,19 @@ public class WebFetchStructuredResultTest {
                 .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
                 .build());
 
-        tool.execute(Map.of(
-                "url", "https://www.reddit.com/r/Go_Stock/comments/1vqznwq/post",
+        ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of(
+                "url", "https://example.com/article",
                 "prompt", "extract the title"
         ));
 
+        Assert.assertFalse(Boolean.TRUE.equals(payload.getFailed()));
         Assert.assertNotNull(captured.get());
-        Assert.assertEquals("http://127.0.0.1:7890", captured.get().getProxy());
+        Assert.assertEquals("POST", captured.get().getMethod());
+        Assert.assertEquals("http://reactor-tool:1601/v1/tool/web_fetch", captured.get().getUrl());
+        Assert.assertNull(captured.get().getProxy());
+        Assert.assertEquals("https://example.com/article",
+                JSON.parseObject(captured.get().getBody()).getString("url"));
+        Assert.assertTrue(JSON.toJSONString(payload.getLlmData()).contains("article body"));
     }
 
     @Test
@@ -80,11 +103,13 @@ public class WebFetchStructuredResultTest {
             }
         };
 
+        ReactorConfig config = new ReactorConfig();
+        ReflectionTestUtils.setField(config, "webFetchUrl", "http://reactor-tool:1601");
         WebFetchTool tool = new WebFetchTool();
         tool.setAgentContext(AgentContext.builder()
                 .requestId("req-web-fetch-404")
                 .sessionId("session-web-fetch-404")
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(new ReactorConfig(), httpPort))
+                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
                 .build());
 
         ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of(
