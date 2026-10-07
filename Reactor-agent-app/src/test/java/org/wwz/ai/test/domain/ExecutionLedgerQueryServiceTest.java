@@ -3,6 +3,7 @@ package org.wwz.ai.test.domain;
 import org.junit.Assert;
 import org.junit.Test;
 import org.wwz.ai.domain.agent.ledger.model.ArtifactRecordCommand;
+import org.wwz.ai.domain.agent.ledger.model.ConversationSessionCursor;
 import org.wwz.ai.domain.agent.ledger.model.ArtifactView;
 import org.wwz.ai.domain.agent.ledger.model.ConversationHistoryDetail;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunFinishRecord;
@@ -267,6 +268,69 @@ public class ExecutionLedgerQueryServiceTest {
         Assert.assertEquals("session-user-001", ctx.queryService.queryRecentSessions("user-001", 20).get(0).getSessionId());
         Assert.assertEquals("session-user-002", ctx.queryService.queryRecentSessions("user-002", 20).get(0).getSessionId());
         Assert.assertTrue(ctx.queryService.queryRecentSessions("user-003", 20).isEmpty());
+    }
+
+    @Test
+    public void shouldPageRecentSessionsAcrossEqualAndNullActivityValues() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        LocalDateTime sharedActivity = LocalDateTime.of(2026, 6, 1, 10, 0, 0);
+        for (int index = 1; index <= 13; index += 1) {
+            String sessionId = String.format("session-page-%03d", index);
+            seedRun(
+                    ctx,
+                    String.format("req-page-%03d", index),
+                    sessionId,
+                    "user-page",
+                    "file_tool",
+                    index,
+                    "page-" + index + ".md"
+            );
+            var session = ctx.store.sessions.values().stream()
+                    .filter(item -> sessionId.equals(item.getSessionId()))
+                    .findFirst()
+                    .orElseThrow();
+            session.setLastActiveAt(index <= 7 ? sharedActivity : null);
+            if (index == 6) {
+                session.setDeleted(1);
+            }
+        }
+        seedRun(
+                ctx,
+                "req-page-outsider",
+                "session-page-outsider",
+                "user-other",
+                "file_tool",
+                14,
+                "outsider.md"
+        );
+
+        List<String> sessionIds = new java.util.ArrayList<>();
+        ConversationSessionCursor cursor = null;
+        boolean hasMore;
+        do {
+            var page = ctx.queryService.queryRecentSessions("user-page", cursor, 3);
+            sessionIds.addAll(page.getSessions().stream()
+                    .map(session -> session.getSessionId())
+                    .toList());
+            hasMore = page.isHasMore();
+            cursor = hasMore ? ConversationSessionCursor.decode(page.getNextCursor()) : null;
+            if (hasMore) {
+                Assert.assertNotNull(page.getNextCursor());
+            } else {
+                Assert.assertNull(page.getNextCursor());
+            }
+        } while (hasMore);
+
+        List<String> expected = new java.util.ArrayList<>();
+        for (int index = 7; index >= 1; index -= 1) {
+            if (index != 6) {
+                expected.add(String.format("session-page-%03d", index));
+            }
+        }
+        for (int index = 13; index >= 8; index -= 1) {
+            expected.add(String.format("session-page-%03d", index));
+        }
+        Assert.assertEquals(expected, sessionIds);
     }
 
     @Test

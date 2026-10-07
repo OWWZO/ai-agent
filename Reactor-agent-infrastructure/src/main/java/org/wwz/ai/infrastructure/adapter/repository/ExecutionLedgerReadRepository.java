@@ -8,6 +8,7 @@ import org.wwz.ai.domain.agent.ledger.entity.DialogueSession;
 import org.wwz.ai.domain.agent.ledger.entity.DialogueRun;
 import org.wwz.ai.domain.agent.ledger.entity.LlmInvocation;
 import org.wwz.ai.domain.agent.ledger.entity.ToolInvocation;
+import org.wwz.ai.domain.agent.ledger.model.ConversationSessionCursor;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionView;
 import org.wwz.ai.domain.agent.ledger.model.RunCursor;
@@ -134,6 +135,18 @@ public class ExecutionLedgerReadRepository implements IExecutionLedgerReadReposi
     public List<DialogueSessionView> queryRecentSessions(String userId, int limit) {
         // 用户过滤在 DAO 层执行，避免先查全量 session 再在内存中泄露或混入其他用户数据。
         return dialogueSessionLedgerDao.queryRecentSessionsByUserId(userId, limit);
+    }
+
+    @Override
+    public List<DialogueSessionView> queryRecentSessions(String userId,
+                                                         ConversationSessionCursor after,
+                                                         int limit) {
+        return dialogueSessionLedgerDao.queryRecentSessionsByUserIdAfter(
+                userId,
+                after == null ? null : after.getLastActiveAt(),
+                after == null ? null : after.getId(),
+                limit
+        );
     }
 
     @Override

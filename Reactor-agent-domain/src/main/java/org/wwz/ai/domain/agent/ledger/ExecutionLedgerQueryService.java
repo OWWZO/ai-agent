@@ -1,5 +1,7 @@
 package org.wwz.ai.domain.agent.ledger;
 
+import org.wwz.ai.domain.agent.ledger.model.ConversationSessionCursor;
+import org.wwz.ai.domain.agent.ledger.model.ConversationSessionPage;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionView;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionRunDetail;
@@ -16,6 +18,8 @@ public interface ExecutionLedgerQueryService {
 
     int DEFAULT_SESSION_RUN_PAGE_SIZE = 100;
     int MAX_SESSION_RUN_PAGE_SIZE = 100;
+    int DEFAULT_RECENT_SESSION_PAGE_SIZE = 10;
+    int MAX_RECENT_SESSION_PAGE_SIZE = 100;
 
     ExecutionRunDetail queryRunDetail(String requestId);
 
@@ -55,4 +59,6 @@ public interface ExecutionLedgerQueryService {
     DialogueSessionView querySession(String userId, String sessionId);
 
     List<DialogueSessionView> queryRecentSessions(String userId, int limit);
+
+    ConversationSessionPage queryRecentSessions(String userId, ConversationSessionCursor after, int limit);
 }

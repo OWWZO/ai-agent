@@ -22,6 +22,7 @@ import org.wwz.ai.trigger.http.agent.vo.ArtifactReferenceRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationHistoryPageRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationRunReplayRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationSessionRespVO;
+import org.wwz.ai.trigger.http.agent.vo.ConversationSessionPageRespVO;
 import org.wwz.ai.application.agent.authorization.ConversationSessionAuthorizationService;
 import org.wwz.ai.types.agent.user.UserRequestContext;
 import org.wwz.ai.types.enums.ResponseCode;
@@ -328,16 +329,25 @@ public class ConversationHistoryControllerTest {
         ReflectionTestUtils.setField(controller, "conversationSessionAuthorizationService",
                 Mockito.mock(ConversationSessionAuthorizationService.class));
 
-        Response<List<ConversationSessionRespVO>> response = controller.list(20);
+        Response<ConversationSessionPageRespVO> response = controller.list(1, null);
 
         Assert.assertEquals(ResponseCode.SUCCESS.getCode(), response.getCode());
         Assert.assertNotNull(response.getData());
-        Assert.assertEquals(2, response.getData().size());
-        Assert.assertEquals("session-list-002", response.getData().get(0).getSessionId());
-        Assert.assertEquals("FAILED", response.getData().get(0).getStatus());
-        Assert.assertEquals("第二个会话", response.getData().get(0).getLatestQueryText());
-        Assert.assertEquals("session-list-001", response.getData().get(1).getSessionId());
-        Assert.assertEquals("SUCCESS", response.getData().get(1).getStatus());
+        Assert.assertEquals(1, response.getData().getSessions().size());
+        Assert.assertTrue(response.getData().isHasMore());
+        Assert.assertNotNull(response.getData().getNextCursor());
+        Assert.assertEquals("session-list-002", response.getData().getSessions().get(0).getSessionId());
+        Assert.assertEquals("FAILED", response.getData().getSessions().get(0).getStatus());
+        Assert.assertEquals("第二个会话", response.getData().getSessions().get(0).getLatestQueryText());
+
+        Response<ConversationSessionPageRespVO> secondPage = controller.list(
+                1,
+                response.getData().getNextCursor()
+        );
+        Assert.assertEquals(ResponseCode.SUCCESS.getCode(), secondPage.getCode());
+        Assert.assertFalse(secondPage.getData().isHasMore());
+        Assert.assertEquals("session-list-001", secondPage.getData().getSessions().get(0).getSessionId());
+        Assert.assertEquals("SUCCESS", secondPage.getData().getSessions().get(0).getStatus());
     }
 
     @Test
@@ -403,7 +413,7 @@ public class ConversationHistoryControllerTest {
     }
 
     @Test
-    public void shouldLimitRecentSessionsToTwentyAndKeepSummaryOutOfListPayload() {
+    public void shouldDefaultRecentSessionPageToTenAndKeepSummaryOutOfListPayload() {
         ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
         for (int index = 1; index <= 25; index += 1) {
             seedRun(
@@ -425,14 +435,16 @@ public class ConversationHistoryControllerTest {
         ReflectionTestUtils.setField(controller, "conversationSessionAuthorizationService",
                 Mockito.mock(ConversationSessionAuthorizationService.class));
 
-        Response<List<ConversationSessionRespVO>> response = controller.list(null);
+        Response<ConversationSessionPageRespVO> response = controller.list(null, null);
 
         Assert.assertEquals(ResponseCode.SUCCESS.getCode(), response.getCode());
         Assert.assertNotNull(response.getData());
-        Assert.assertEquals(20, response.getData().size());
-        Assert.assertEquals("session-limit-025", response.getData().get(0).getSessionId());
-        Assert.assertEquals("最近会话 025", response.getData().get(0).getLatestQueryText());
-        Assert.assertEquals("session-limit-006", response.getData().get(19).getSessionId());
+        Assert.assertEquals(10, response.getData().getSessions().size());
+        Assert.assertTrue(response.getData().isHasMore());
+        Assert.assertNotNull(response.getData().getNextCursor());
+        Assert.assertEquals("session-limit-025", response.getData().getSessions().get(0).getSessionId());
+        Assert.assertEquals("最近会话 025", response.getData().getSessions().get(0).getLatestQueryText());
+        Assert.assertEquals("session-limit-016", response.getData().getSessions().get(9).getSessionId());
     }
 
     @Test

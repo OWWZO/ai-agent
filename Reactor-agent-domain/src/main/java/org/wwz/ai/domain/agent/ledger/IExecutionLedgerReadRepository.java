@@ -5,6 +5,7 @@ import org.wwz.ai.domain.agent.ledger.entity.DialogueSession;
 import org.wwz.ai.domain.agent.ledger.entity.DialogueRun;
 import org.wwz.ai.domain.agent.ledger.entity.LlmInvocation;
 import org.wwz.ai.domain.agent.ledger.entity.ToolInvocation;
+import org.wwz.ai.domain.agent.ledger.model.ConversationSessionCursor;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionView;
 import org.wwz.ai.domain.agent.ledger.model.RunCursor;
@@ -62,6 +63,8 @@ public interface IExecutionLedgerReadRepository {
     DialogueSessionView querySession(String userId, String sessionId);
 
     List<DialogueSessionView> queryRecentSessions(String userId, int limit);
+
+    List<DialogueSessionView> queryRecentSessions(String userId, ConversationSessionCursor after, int limit);
 
     List<ArtifactRecord> queryArtifactsByRunIds(List<Long> runIds);
 

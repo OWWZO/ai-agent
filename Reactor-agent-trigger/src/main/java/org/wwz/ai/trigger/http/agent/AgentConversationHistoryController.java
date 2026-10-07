@@ -10,6 +10,8 @@ import org.wwz.ai.application.agent.authorization.ConversationSessionAuthorizati
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.ledger.model.ArtifactView;
 import org.wwz.ai.domain.agent.ledger.model.ConversationHistoryPage;
+import org.wwz.ai.domain.agent.ledger.model.ConversationSessionCursor;
+import org.wwz.ai.domain.agent.ledger.model.ConversationSessionPage;
 import org.wwz.ai.domain.agent.ledger.model.ConversationRunReplay;
 import org.wwz.ai.domain.agent.ledger.model.ConversationRunSummary;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
@@ -22,6 +24,7 @@ import org.wwz.ai.trigger.http.agent.vo.ArtifactReferenceRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationHistoryPageRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationRunReplayRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationRunSummaryRespVO;
+import org.wwz.ai.trigger.http.agent.vo.ConversationSessionPageRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationSessionRespVO;
 import org.wwz.ai.types.agent.user.UserRequestContext;
 import org.wwz.ai.types.enums.ResponseCode;
@@ -47,19 +50,37 @@ public class AgentConversationHistoryController {
     private ConversationSessionAuthorizationService conversationSessionAuthorizationService;
 
     @GetMapping("/sessions")
-    public Response<List<ConversationSessionRespVO>> list(
-            @RequestParam(name = "limit", defaultValue = "20") Integer limit) {
-        String userId = UserRequestContext.requireUserId();
-        List<ConversationSessionRespVO> sessions = executionLedgerQueryService.queryRecentSessions(userId, limit == null ? 20 : limit)
-                .stream()
-                .map(this::toSessionRespVO)
-                .collect(Collectors.toList());
+    public Response<ConversationSessionPageRespVO> list(
+            @RequestParam(name = "limit", required = false) Integer limit,
+            @RequestParam(name = "after", required = false) String after) {
+        try {
+            ConversationSessionCursor cursor = StringUtils.isBlank(after)
+                    ? null
+                    : ConversationSessionCursor.decode(after);
+            ConversationSessionPage page = executionLedgerQueryService.queryRecentSessions(
+                    UserRequestContext.requireUserId(),
+                    cursor,
+                    limit == null ? ExecutionLedgerQueryService.DEFAULT_RECENT_SESSION_PAGE_SIZE : limit
+            );
+            List<ConversationSessionRespVO> sessions = page.getSessions().stream()
+                    .map(this::toSessionRespVO)
+                    .collect(Collectors.toList());
 
-        return Response.<List<ConversationSessionRespVO>>builder()
-                .code(ResponseCode.SUCCESS.getCode())
-                .info(ResponseCode.SUCCESS.getInfo())
-                .data(sessions)
-                .build();
+            return Response.<ConversationSessionPageRespVO>builder()
+                    .code(ResponseCode.SUCCESS.getCode())
+                    .info(ResponseCode.SUCCESS.getInfo())
+                    .data(ConversationSessionPageRespVO.builder()
+                            .sessions(sessions)
+                            .nextCursor(page.getNextCursor())
+                            .hasMore(page.isHasMore())
+                            .build())
+                    .build();
+        } catch (Exception e) {
+            return Response.<ConversationSessionPageRespVO>builder()
+                    .code(ResponseCode.UN_ERROR.getCode())
+                    .info(e.getMessage())
+                    .build();
+        }
     }
 
     @GetMapping("/sessions/{sessionId}")

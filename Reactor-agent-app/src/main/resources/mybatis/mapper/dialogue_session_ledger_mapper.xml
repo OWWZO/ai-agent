@@ -145,6 +145,30 @@
         LIMIT #{limit}
     </select>
 
+    <select id="queryRecentSessionsByUserIdAfter" resultMap="DialogueSessionViewMap">
+        SELECT <include refid="dialogueSessionViewColumns"/>
+        FROM ai_agent_dialogue_session
+        WHERE user_id = #{userId}
+          AND deleted = 0
+        <if test="afterId != null">
+            <choose>
+                <when test="afterLastActiveAt != null">
+                    AND (
+                        last_active_at &lt; #{afterLastActiveAt}
+                        OR last_active_at IS NULL
+                        OR (last_active_at = #{afterLastActiveAt} AND id &lt; #{afterId})
+                    )
+                </when>
+                <otherwise>
+                    AND last_active_at IS NULL
+                    AND id &lt; #{afterId}
+                </otherwise>
+            </choose>
+        </if>
+        ORDER BY last_active_at DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
     <update id="bumpEventSeq">
         UPDATE ai_agent_dialogue_session
         SET event_seq = GREATEST(IFNULL(event_seq, 0), #{eventSeq}),

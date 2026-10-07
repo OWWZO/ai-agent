@@ -10,6 +10,8 @@ import org.wwz.ai.domain.agent.ledger.entity.DialogueRun;
 import org.wwz.ai.domain.agent.ledger.entity.LlmInvocation;
 import org.wwz.ai.domain.agent.ledger.entity.ToolInvocation;
 import org.wwz.ai.domain.agent.ledger.model.ArtifactView;
+import org.wwz.ai.domain.agent.ledger.model.ConversationSessionCursor;
+import org.wwz.ai.domain.agent.ledger.model.ConversationSessionPage;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionView;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionRunDetail;
@@ -226,6 +228,38 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
         );
     }
 
+    @Override
+    public ConversationSessionPage queryRecentSessions(String userId,
+                                                       ConversationSessionCursor after,
+                                                       int limit) {
+        if (StringUtils.isBlank(userId)) {
+            return ConversationSessionPage.builder()
+                    .sessions(List.of())
+                    .hasMore(false)
+                    .build();
+        }
+
+        int pageSize = normalizeRecentSessionPageSize(limit);
+        List<DialogueSessionView> fetched = executionLedgerReadRepository.queryRecentSessions(
+                userId,
+                after,
+                pageSize + 1
+        );
+        boolean hasMore = fetched.size() > pageSize;
+        List<DialogueSessionView> sessions = new ArrayList<>(
+                fetched.subList(0, Math.min(pageSize, fetched.size()))
+        );
+        String nextCursor = hasMore && !sessions.isEmpty()
+                ? ConversationSessionCursor.from(sessions.get(sessions.size() - 1)).encode()
+                : null;
+
+        return ConversationSessionPage.builder()
+                .sessions(restoreSessionTitles(sessions))
+                .nextCursor(nextCursor)
+                .hasMore(hasMore)
+                .build();
+    }
+
     /**
      * 兼容旧的 continuation run：旧逻辑可能用空 query 把 session 标题覆盖成“新对话”。
      * 查询时从同一 execution ledger 的首个非空 run query 恢复展示标题，不写回第二套事实。
@@ -326,6 +360,13 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
             return ExecutionLedgerQueryService.DEFAULT_SESSION_RUN_PAGE_SIZE;
         }
         return Math.min(limit, ExecutionLedgerQueryService.MAX_SESSION_RUN_PAGE_SIZE);
+    }
+
+    private int normalizeRecentSessionPageSize(int limit) {
+        if (limit <= 0) {
+            return ExecutionLedgerQueryService.DEFAULT_RECENT_SESSION_PAGE_SIZE;
+        }
+        return Math.min(limit, ExecutionLedgerQueryService.MAX_RECENT_SESSION_PAGE_SIZE);
     }
 
     private int normalizeOffset(int offset) {

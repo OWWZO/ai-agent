@@ -6,6 +6,7 @@ import org.wwz.ai.domain.agent.ledger.entity.DialogueSession;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionUpsertRecord;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionView;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -31,6 +32,11 @@ public interface IDialogueSessionLedgerDao {
 
     List<DialogueSessionView> queryRecentSessionsByUserId(@Param("userId") String userId,
                                                            @Param("limit") int limit);
+
+    List<DialogueSessionView> queryRecentSessionsByUserIdAfter(@Param("userId") String userId,
+                                                                @Param("afterLastActiveAt") LocalDateTime afterLastActiveAt,
+                                                                @Param("afterId") Long afterId,
+                                                                @Param("limit") int limit);
 
     int bumpEventSeq(@Param("sessionId") String sessionId, @Param("eventSeq") long eventSeq);
 }

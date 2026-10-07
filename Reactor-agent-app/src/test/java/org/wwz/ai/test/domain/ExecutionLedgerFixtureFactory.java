@@ -12,6 +12,7 @@ import org.wwz.ai.domain.agent.ledger.entity.DialogueRun;
 import org.wwz.ai.domain.agent.ledger.entity.LlmInvocation;
 import org.wwz.ai.domain.agent.ledger.entity.ToolInvocation;
 import org.wwz.ai.domain.agent.ledger.model.ArtifactView;
+import org.wwz.ai.domain.agent.ledger.model.ConversationSessionCursor;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionUpsertRecord;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionView;
@@ -608,6 +609,38 @@ public final class ExecutionLedgerFixtureFactory {
                     .limit(limit)
                     .map(ExecutionLedgerFixtureFactory::toSessionView)
                     .toList();
+        }
+
+        @Override
+        public List<DialogueSessionView> queryRecentSessionsByUserIdAfter(String userId,
+                                                                          LocalDateTime afterLastActiveAt,
+                                                                          Long afterId,
+                                                                          int limit) {
+            return store.sessions.values().stream()
+                    .filter(item -> item.getDeleted() == 0 && equalsNullable(userId, item.getUserId()))
+                    .filter(item -> isAfterSessionCursor(item, afterLastActiveAt, afterId))
+                    .sorted(Comparator.comparing(DialogueSession::getLastActiveAt,
+                                    Comparator.nullsLast(Comparator.reverseOrder()))
+                            .thenComparing(DialogueSession::getId, Comparator.reverseOrder()))
+                    .limit(limit)
+                    .map(ExecutionLedgerFixtureFactory::toSessionView)
+                    .toList();
+        }
+
+        private boolean isAfterSessionCursor(DialogueSession session,
+                                             LocalDateTime afterLastActiveAt,
+                                             Long afterId) {
+            if (afterId == null) {
+                return true;
+            }
+            if (afterLastActiveAt == null) {
+                return session.getLastActiveAt() == null && session.getId() < afterId;
+            }
+            if (session.getLastActiveAt() == null) {
+                return true;
+            }
+            int activityOrder = session.getLastActiveAt().compareTo(afterLastActiveAt);
+            return activityOrder < 0 || (activityOrder == 0 && session.getId() < afterId);
         }
 
         @Override
