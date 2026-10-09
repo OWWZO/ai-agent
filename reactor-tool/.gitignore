@@ -212,7 +212,7 @@ __marimo__/
 .joycode/
 ./vscode/
 file_db_dir/
-autobots.db
+autobots.db*
 skilloutput/
 
 /.reactor-code-execution/
