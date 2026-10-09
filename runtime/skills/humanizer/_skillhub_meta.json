@@ -1,0 +1,25 @@
+{
+  "name": "去AI味",
+  "installedAt": 1791550230753,
+  "source": "marketplace",
+  "version": "2.1.1",
+  "skillId": "skill_2053082097175687168",
+  "pay_mode": 0,
+  "examples_zh": [
+    "把这段AI生成的文章改得更自然",
+    "去掉这段文字里明显的AI写作痕迹",
+    "用口语化的方式重写这段内容",
+    "这段文案感觉太机器人了，帮我优化一下"
+  ],
+  "examples_en": [
+    "Rewrite this AI-generated text to sound more human",
+    "Remove the robotic tone from this paragraph",
+    "Make this content sound more conversational",
+    "Polish this copy to remove AI writing patterns"
+  ],
+  "description_zh": "去除文本中的 AI 写作痕迹",
+  "description_en": "Remove AI writing patterns from text",
+  "iconSource": "https://openplatform-cdn.codebuddy.ai/public/operation-platform/skill-icons/skill_2053082097175687168/670b495c020b0727.png",
+  "iconLocalPath": "C:\\Users\\WWZ\\.workbuddy-ai\\skills\\humanizer\\_icon.png",
+  "iconDownloadedFrom": "https://openplatform-cdn.codebuddy.ai/public/operation-platform/skill-icons/skill_2053082097175687168/670b495c020b0727.png"
+}
