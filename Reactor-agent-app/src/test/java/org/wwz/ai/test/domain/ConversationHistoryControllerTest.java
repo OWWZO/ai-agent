@@ -13,7 +13,7 @@ import org.wwz.ai.domain.agent.ledger.model.DialogueRunStartRecord;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationBatchStartRecord;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord;
-import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
+import org.wwz.ai.trigger.http.agent.vo.AgentStreamResponseVO;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.FileToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRef;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolStructuredOutput;
@@ -218,7 +218,7 @@ public class ConversationHistoryControllerTest {
 
         Assert.assertEquals(ResponseCode.SUCCESS.getCode(), response.getCode());
         Assert.assertNotNull(response.getData());
-        List<GptProcessResult> secondRunFrames = response.getData().getReplayFrames();
+        List<AgentStreamResponseVO> secondRunFrames = response.getData().getReplayFrames();
         Assert.assertFalse(secondRunFrames.isEmpty());
         Map<String, Object> finalResultMap = nestedResultMap(secondRunFrames.get(secondRunFrames.size() - 1));
         Assert.assertEquals("result", finalResultMap.get("messageType"));
@@ -469,7 +469,7 @@ public class ConversationHistoryControllerTest {
 
         Response<ConversationRunReplayRespVO> replayResponse = controller.replay("req-history-stop-001");
         Assert.assertEquals(ResponseCode.SUCCESS.getCode(), replayResponse.getCode());
-        List<GptProcessResult> replayFrames = replayResponse.getData().getReplayFrames();
+        List<AgentStreamResponseVO> replayFrames = replayResponse.getData().getReplayFrames();
         Assert.assertFalse(replayFrames.isEmpty());
         Map<String, Object> firstEventData = eventData(replayFrames.get(0));
         Assert.assertTrue(firstEventData.containsKey("artifactRefs"));
@@ -495,13 +495,13 @@ public class ConversationHistoryControllerTest {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> nestedResultMap(GptProcessResult frame) {
+    private Map<String, Object> nestedResultMap(AgentStreamResponseVO frame) {
         Map<String, Object> eventData = (Map<String, Object>) frame.getResultMap().get("eventData");
         return (Map<String, Object>) eventData.get("resultMap");
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> eventData(GptProcessResult frame) {
+    private Map<String, Object> eventData(AgentStreamResponseVO frame) {
         return (Map<String, Object>) frame.getResultMap().get("eventData");
     }
 

@@ -2,12 +2,14 @@ package org.wwz.ai.test.stream;
 
 import org.junit.Assert;
 import org.junit.Test;
-import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
+import org.wwz.ai.application.agent.stream.AgentStreamProjection;
 import org.wwz.ai.application.agent.stream.AgentSessionPrinter;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
-import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
-import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
+import org.wwz.ai.application.agent.stream.AgentSessionStreamFrame;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamEvent;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamResult;
+import org.wwz.ai.domain.agent.runtime.stream.ToolResultStreamPayload;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentPrinter;
 import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
@@ -33,7 +35,7 @@ public class AgentSessionPrinterSubAgentFinishTest {
     @Test
     public void nestedSubAgentResultMustNotFinishMainStream() throws Exception {
         CapturingStream stream = new CapturingStream();
-        AgentRequest request = new AgentRequest();
+        AgentExecutionCommand request = new AgentExecutionCommand();
         request.setRequestId("req-subagent-finish");
         AgentSessionPrinter printer = new AgentSessionPrinter(stream, request, 1);
 
@@ -43,7 +45,7 @@ public class AgentSessionPrinterSubAgentFinishTest {
         printer.sendWithResultMap("result", "子 Agent 报告", extra);
 
         Assert.assertEquals(1, stream.payloads.size());
-        AgentResponse response = (AgentResponse) stream.payloads.get(0);
+        AgentStreamEvent response = (AgentStreamEvent) stream.payloads.get(0);
         Assert.assertEquals("result", response.getMessageType());
         Assert.assertFalse(Boolean.TRUE.equals(response.getFinish()));
         Assert.assertFalse(stream.completed.get());
@@ -52,7 +54,7 @@ public class AgentSessionPrinterSubAgentFinishTest {
     @Test
     public void planApprovalYieldFinishesEnvelopeWithoutClosingStream() throws Exception {
         CapturingStream stream = new CapturingStream();
-        AgentRequest request = new AgentRequest();
+        AgentExecutionCommand request = new AgentExecutionCommand();
         request.setRequestId("req-plan-approval-finish");
         AgentSessionPrinter printer = new AgentSessionPrinter(stream, request, 1);
 
@@ -62,7 +64,7 @@ public class AgentSessionPrinterSubAgentFinishTest {
         printer.send("pa_1", "plan_approval", payload, false);
 
         Assert.assertEquals(1, stream.payloads.size());
-        AgentResponse response = (AgentResponse) stream.payloads.get(0);
+        AgentStreamEvent response = (AgentStreamEvent) stream.payloads.get(0);
         Assert.assertEquals("plan_approval", response.getMessageType());
         Assert.assertTrue(Boolean.TRUE.equals(response.getFinish()));
         Assert.assertFalse(stream.completed.get());
@@ -71,7 +73,7 @@ public class AgentSessionPrinterSubAgentFinishTest {
     @Test
     public void askUserQuestionYieldFinishesEnvelopeWithoutClosingStream() throws Exception {
         CapturingStream stream = new CapturingStream();
-        AgentRequest request = new AgentRequest();
+        AgentExecutionCommand request = new AgentExecutionCommand();
         request.setRequestId("req-ask-user-finish");
         AgentSessionPrinter printer = new AgentSessionPrinter(stream, request, 1);
 
@@ -81,7 +83,7 @@ public class AgentSessionPrinterSubAgentFinishTest {
         printer.send("uq_1", "ask_user_question", payload, false);
 
         Assert.assertEquals(1, stream.payloads.size());
-        AgentResponse response = (AgentResponse) stream.payloads.get(0);
+        AgentStreamEvent response = (AgentStreamEvent) stream.payloads.get(0);
         Assert.assertEquals("ask_user_question", response.getMessageType());
         Assert.assertTrue(Boolean.TRUE.equals(response.getFinish()));
         Assert.assertFalse(stream.completed.get());
@@ -90,7 +92,7 @@ public class AgentSessionPrinterSubAgentFinishTest {
     @Test
     public void desktopControlYieldFinishesEnvelopeWithoutClosingStream() throws Exception {
         CapturingStream stream = new CapturingStream();
-        AgentRequest request = new AgentRequest();
+        AgentExecutionCommand request = new AgentExecutionCommand();
         request.setRequestId("req-desktop-finish");
         AgentSessionPrinter printer = new AgentSessionPrinter(stream, request, 1);
 
@@ -101,7 +103,7 @@ public class AgentSessionPrinterSubAgentFinishTest {
         printer.send("dc_1", "desktop_control", payload, false);
 
         Assert.assertEquals(1, stream.payloads.size());
-        AgentResponse response = (AgentResponse) stream.payloads.get(0);
+        AgentStreamEvent response = (AgentStreamEvent) stream.payloads.get(0);
         Assert.assertEquals("desktop_control", response.getMessageType());
         Assert.assertTrue(Boolean.TRUE.equals(response.getFinish()));
         Assert.assertFalse(stream.completed.get());
@@ -110,14 +112,14 @@ public class AgentSessionPrinterSubAgentFinishTest {
     @Test
     public void rootResultStillFinishesMainStream() throws Exception {
         CapturingStream stream = new CapturingStream();
-        AgentRequest request = new AgentRequest();
+        AgentExecutionCommand request = new AgentExecutionCommand();
         request.setRequestId("req-root-finish");
         AgentSessionPrinter printer = new AgentSessionPrinter(stream, request, 1);
 
         printer.send("result", "主 Agent 终答");
 
         Assert.assertEquals(1, stream.payloads.size());
-        AgentResponse response = (AgentResponse) stream.payloads.get(0);
+        AgentStreamEvent response = (AgentStreamEvent) stream.payloads.get(0);
         Assert.assertEquals("result", response.getMessageType());
         Assert.assertTrue(Boolean.TRUE.equals(response.getFinish()));
     }
@@ -125,14 +127,14 @@ public class AgentSessionPrinterSubAgentFinishTest {
     @Test
     public void toolResultCarriesRuntimeTimingWithoutReplacingMessageTime() throws Exception {
         CapturingStream stream = new CapturingStream();
-        AgentRequest request = new AgentRequest();
+        AgentExecutionCommand request = new AgentExecutionCommand();
         request.setRequestId("req-tool-timing");
         AgentSessionPrinter printer = new AgentSessionPrinter(stream, request, 1);
         LocalDateTime startedAt = LocalDateTime.of(2026, 9, 26, 12, 1, 0);
         LocalDateTime finishedAt = startedAt.plusNanos(250_000_000L);
 
         printer.send("tool-call-timing", "tool_result",
-                AgentResponse.ToolResult.builder()
+                ToolResultStreamPayload.builder()
                         .toolName("read_tool")
                         .toolCallId("tool-call-timing")
                         .toolResult("ok")
@@ -146,7 +148,7 @@ public class AgentSessionPrinterSubAgentFinishTest {
                 null,
                 true);
 
-        AgentResponse response = (AgentResponse) stream.payloads.get(0);
+        AgentStreamEvent response = (AgentStreamEvent) stream.payloads.get(0);
         Assert.assertNotNull(response.getMessageTime());
         Assert.assertEquals(ReplayTiming.SOURCE_RUNTIME, response.getTiming().getSource());
         Assert.assertEquals("tool-call-timing", response.getToolResult().getToolCallId());
@@ -163,19 +165,19 @@ public class AgentSessionPrinterSubAgentFinishTest {
     @Test
     public void projectionStreamStaysOpenAfterNestedResult() throws Exception {
         CapturingStream downstream = new CapturingStream();
-        AgentRequest request = new AgentRequest();
+        AgentExecutionCommand request = new AgentExecutionCommand();
         request.setRequestId("req-projection-nested");
         request.setAgentType(5);
 
-        AgentResponseProjectionStream projection = new AgentResponseProjectionStream(
+        AgentStreamProjection projection = new AgentStreamProjection(
                 downstream,
                 request,
                 Map.of(AgentType.REACT, (req, agentResponse, agentRespList, eventResult) -> {
-                    GptProcessResult result = new GptProcessResult();
-                    result.setFinished(Boolean.TRUE.equals(agentResponse.getFinish()));
+                    AgentStreamResult result = new AgentStreamResult();
+                    result.setComplete(Boolean.TRUE.equals(agentResponse.getFinish()));
                     result.setStatus(Boolean.TRUE.equals(agentResponse.getFinish()) ? "success" : "running");
-                    result.setReqId(req.getRequestId());
-                    result.setResultMap(new HashMap<>());
+                    result.setRequestId(req.getRequestId());
+                    result.setEventData(new HashMap<>());
                     return result;
                 })
         );
@@ -183,7 +185,7 @@ public class AgentSessionPrinterSubAgentFinishTest {
         Map<String, Object> nestedMap = new HashMap<>();
         nestedMap.put(SubAgentPrinter.KEY_PARENT_TOOL_USE_ID, "parent-tool-1");
         nestedMap.put("agentType", 5);
-        AgentResponse nested = AgentResponse.builder()
+        AgentStreamEvent nested = AgentStreamEvent.builder()
                 .requestId(request.getRequestId())
                 .messageId("m1")
                 .messageType("result")
@@ -198,7 +200,7 @@ public class AgentSessionPrinterSubAgentFinishTest {
 
         Map<String, Object> rootMap = new HashMap<>();
         rootMap.put("agentType", 5);
-        AgentResponse root = AgentResponse.builder()
+        AgentStreamEvent root = AgentStreamEvent.builder()
                 .requestId(request.getRequestId())
                 .messageId("m2")
                 .messageType("result")
@@ -213,7 +215,7 @@ public class AgentSessionPrinterSubAgentFinishTest {
         Assert.assertFalse(downstream.completed.get());
         Assert.assertEquals(2, downstream.payloads.size());
 
-        AgentResponse settle = AgentResponse.builder()
+        AgentStreamEvent settle = AgentStreamEvent.builder()
                 .requestId(request.getRequestId())
                 .messageId("m3")
                 .messageType("stream_settle")
@@ -227,21 +229,21 @@ public class AgentSessionPrinterSubAgentFinishTest {
     @Test
     public void concurrentSendSerializesEventResultOrders() throws Exception {
         CapturingStream downstream = new CapturingStream();
-        AgentRequest request = new AgentRequest();
+        AgentExecutionCommand request = new AgentExecutionCommand();
         request.setRequestId("req-concurrent-proj");
         request.setAgentType(5);
 
-        AgentResponseProjectionStream projection = new AgentResponseProjectionStream(
+        AgentStreamProjection projection = new AgentStreamProjection(
                 downstream,
                 request,
                 Map.of(AgentType.REACT, (req, agentResponse, agentRespList, eventResult) -> {
                     int order = eventResult.getAndIncrOrder("tool_call");
-                    GptProcessResult result = new GptProcessResult();
-                    result.setFinished(false);
+                    AgentStreamResult result = new AgentStreamResult();
+                    result.setComplete(false);
                     result.setStatus("running");
                     Map<String, Object> map = new HashMap<>();
                     map.put("order", order);
-                    result.setResultMap(map);
+                    result.setEventData(map);
                     return result;
                 })
         );
@@ -255,7 +257,7 @@ public class AgentSessionPrinterSubAgentFinishTest {
             pool.submit(() -> {
                 try {
                     start.await();
-                    AgentResponse resp = AgentResponse.builder()
+                    AgentStreamEvent resp = AgentStreamEvent.builder()
                             .requestId(request.getRequestId())
                             .messageId("m-" + idx)
                             .messageType("tool_call")
@@ -277,7 +279,7 @@ public class AgentSessionPrinterSubAgentFinishTest {
         Assert.assertEquals(n, downstream.payloads.size());
         Set<Integer> orders = new HashSet<>();
         for (Object payload : downstream.payloads) {
-            GptProcessResult result = (GptProcessResult) payload;
+            AgentSessionStreamFrame result = (AgentSessionStreamFrame) payload;
             orders.add((Integer) result.getResultMap().get("order"));
         }
         Assert.assertEquals(n, orders.size());

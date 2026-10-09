@@ -431,6 +431,12 @@ public final class ExecutionLedgerFixtureFactory {
             if (existing == null) {
                 return 0;
             }
+            // 与生产 SQL 保持一致：终态（1=成功 2=失败 3=超时 4=停止）不可被覆盖，
+            // 返回 0 表示该 run 已经结束过，调用方据此跳过会话计数累加。
+            int currentStatus = existing.getStatus() == null ? 0 : existing.getStatus();
+            if (currentStatus == 1 || currentStatus == 2 || currentStatus == 3 || currentStatus == 4) {
+                return 0;
+            }
             existing.setStatus(run.getStatus());
             existing.setFinalSummaryText(run.getFinalSummaryText());
             existing.setLlmCallCount(run.getLlmCallCount());
@@ -544,6 +550,73 @@ public final class ExecutionLedgerFixtureFactory {
             session.setLastActiveAt(record.getLastActiveAt());
             session.setUpdateTime(LocalDateTime.now());
             return 1;
+        }
+
+        @Override
+        public int upsertSessionOnRunStart(DialogueSessionUpsertRecord record) {
+            if (record == null || isBlank(record.getSessionId())) {
+                return 0;
+            }
+            DialogueSession session = store.sessions.values().stream()
+                    .filter(item -> item.getDeleted() == 0 && record.getSessionId().equals(item.getSessionId()))
+                    .findFirst()
+                    .orElse(null);
+            if (session == null) {
+                session = DialogueSession.builder()
+                        .id(store.nextSessionId++)
+                        .sessionId(record.getSessionId())
+                        .runCount(1)
+                        .finishedRunCount(0)
+                        .failedRunCount(0)
+                        .createTime(LocalDateTime.now())
+                        .deleted(0)
+                        .build();
+                session.setStartedAt(record.getStartedAt());
+                store.sessions.put(session.getId(), session);
+            } else {
+                // 与生产 SQL 一致：已存在则 run_count 原子 +1，不覆盖 started_at。
+                session.setRunCount(defaultCount(session.getRunCount()) + 1);
+            }
+            if (isBlank(session.getUserId())) {
+                session.setUserId(record.getUserId());
+            }
+            session.setTitle(record.getTitle());
+            session.setStatus(record.getStatus());
+            session.setLatestRequestId(record.getLatestRequestId());
+            session.setLatestQueryText(record.getLatestQueryText());
+            session.setLatestSummaryText(record.getLatestSummaryText());
+            session.setLastActiveAt(record.getLastActiveAt());
+            session.setUpdateTime(LocalDateTime.now());
+            return 1;
+        }
+
+        @Override
+        public int updateSessionRunFinish(String sessionId,
+                                          int status,
+                                          String latestSummaryText,
+                                          int finishedDelta,
+                                          int failedDelta,
+                                          LocalDateTime lastActiveAt) {
+            DialogueSession session = store.sessions.values().stream()
+                    .filter(item -> item.getDeleted() == 0
+                            && sessionId != null
+                            && sessionId.equals(item.getSessionId()))
+                    .findFirst()
+                    .orElse(null);
+            if (session == null) {
+                return 0;
+            }
+            session.setStatus(status);
+            session.setLatestSummaryText(latestSummaryText);
+            session.setFinishedRunCount(defaultCount(session.getFinishedRunCount()) + finishedDelta);
+            session.setFailedRunCount(defaultCount(session.getFailedRunCount()) + failedDelta);
+            session.setLastActiveAt(lastActiveAt);
+            session.setUpdateTime(LocalDateTime.now());
+            return 1;
+        }
+
+        private static int defaultCount(Integer value) {
+            return value == null ? 0 : value;
         }
 
         @Override

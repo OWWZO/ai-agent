@@ -69,8 +69,8 @@ public class RuntimeTimingToolPipelineTest {
         Assert.assertEquals(finishedTiming.getStartedAt(), resultTiming.getStartedAt());
         Assert.assertEquals(finishedTiming.getFinishedAt(), resultTiming.getFinishedAt());
         Assert.assertEquals(finishedTiming.getDurationMs(), resultTiming.getDurationMs());
-        Assert.assertEquals("tool-call-timing", printer.events.get(2).message instanceof org.wwz.ai.domain.agent.reactor.model.response.AgentResponse.ToolResult
-                ? ((org.wwz.ai.domain.agent.reactor.model.response.AgentResponse.ToolResult) printer.events.get(2).message).getToolCallId()
+        Assert.assertEquals("tool-call-timing", printer.events.get(2).message instanceof org.wwz.ai.domain.agent.runtime.stream.ToolResultStreamPayload
+                ? ((org.wwz.ai.domain.agent.runtime.stream.ToolResultStreamPayload) printer.events.get(2).message).getToolCallId()
                 : null);
     }
 

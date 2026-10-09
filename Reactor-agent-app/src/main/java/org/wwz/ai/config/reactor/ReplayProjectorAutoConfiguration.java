@@ -20,6 +20,8 @@ import org.wwz.ai.domain.agent.ledger.replay.projector.impl.CodeInterpreterToolI
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DataAnalysisToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DefaultToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DeepSearchToolInvocationProjector;
+import org.wwz.ai.domain.agent.ledger.replay.projector.impl.FileToolInvocationProjector;
+import org.wwz.ai.domain.agent.ledger.replay.projector.impl.PlanningToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.ImageGenerationToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.MultiModalToolInvocationProjector;
 
@@ -46,6 +48,22 @@ public class ReplayProjectorAutoConfiguration {
     @Bean
     public DeepSearchToolInvocationProjector deepSearchToolInvocationProjector() {
         return new DeepSearchToolInvocationProjector();
+    }
+
+    /**
+     * 旧账本 file_tool 行的回放投影器（实时链路已改用 workspace_* 工具）。
+     */
+    @Bean
+    public FileToolInvocationProjector fileToolInvocationProjector() {
+        return new FileToolInvocationProjector();
+    }
+
+    /**
+     * 旧账本 planning 行的回放投影器（实时链路已改用 tasklist 任务模型）。
+     */
+    @Bean
+    public PlanningToolInvocationProjector planningToolInvocationProjector() {
+        return new PlanningToolInvocationProjector();
     }
 
     @Bean

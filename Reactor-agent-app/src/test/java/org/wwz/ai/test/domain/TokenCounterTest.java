@@ -3,7 +3,7 @@ package org.wwz.ai.test.domain;
 import org.junit.Assert;
 import org.junit.Test;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
-import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.model.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.llm.LlmAskToolProtocol;
 import org.wwz.ai.domain.agent.runtime.llm.LlmPromptShapeFactory;

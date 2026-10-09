@@ -2,11 +2,12 @@ package org.wwz.ai.test.domain;
 
 import org.junit.Assert;
 import org.junit.Test;
-import org.wwz.ai.domain.agent.runtime.handler.BaseAgentResponseHandler;
-import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
-import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
-import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
+import org.wwz.ai.domain.agent.runtime.handler.BaseAgentStreamEventHandler;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamAccumulator;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamEvent;
+import org.wwz.ai.domain.agent.runtime.stream.PlanStreamPayload;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamResult;
 import org.wwz.ai.domain.agent.ledger.replay.ReplayProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.ToolInvocationProjectorRegistry;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DefaultToolInvocationProjector;
@@ -19,20 +20,20 @@ import java.util.Map;
 /**
  * 锁定实时 response handler 输出的 eventData 契约，避免再次与历史回放分叉。
  */
-public class AgentResponseHandlerReplayContractTest {
+public class AgentStreamEventHandlerReplayContractTest {
 
-    private final TestableBaseAgentResponseHandler handler = new TestableBaseAgentResponseHandler(
+    private final TestableBaseAgentStreamEventHandler handler = new TestableBaseAgentStreamEventHandler(
             new ReplayProjector(new ToolInvocationProjectorRegistry(List.of(), new DefaultToolInvocationProjector()))
     );
 
     @Test
     public void shouldEmitPlanThoughtAsTopLevelPlanThoughtEvent() {
-        EventResult eventResult = new EventResult();
+        AgentStreamAccumulator eventResult = new AgentStreamAccumulator();
         eventResult.getResultMap().put("plannerRoundId", "planner-round-001");
-        GptProcessResult result = handler.build(
-                AgentRequest.builder().requestId("req-handler-001").build(),
+        AgentStreamResult result = handler.build(
+                AgentExecutionCommand.builder().requestId("req-handler-001").build(),
                 eventResult,
-                AgentResponse.builder()
+                AgentStreamEvent.builder()
                         .requestId("req-handler-001")
                         .messageId("msg-plan-thought-1")
                         .messageType("plan_thought")
@@ -52,10 +53,10 @@ public class AgentResponseHandlerReplayContractTest {
 
     @Test
     public void shouldEmitToolThoughtAsTaskEventWithNestedLogicalMessageType() {
-        GptProcessResult result = handler.build(
-                AgentRequest.builder().requestId("req-handler-002").build(),
-                new EventResult(),
-                AgentResponse.builder()
+        AgentStreamResult result = handler.build(
+                AgentExecutionCommand.builder().requestId("req-handler-002").build(),
+                new AgentStreamAccumulator(),
+                AgentStreamEvent.builder()
                         .requestId("req-handler-002")
                         .messageId("msg-tool-thought-1")
                         .messageType("tool_thought")
@@ -74,10 +75,10 @@ public class AgentResponseHandlerReplayContractTest {
 
     @Test
     public void shouldKeepRealtimeAgentTypeInsteadOfHistoryMarker() {
-        GptProcessResult result = handler.build(
-                AgentRequest.builder().requestId("req-handler-003").build(),
-                new EventResult(),
-                AgentResponse.builder()
+        AgentStreamResult result = handler.build(
+                AgentExecutionCommand.builder().requestId("req-handler-003").build(),
+                new AgentStreamAccumulator(),
+                AgentStreamEvent.builder()
                         .requestId("req-handler-003")
                         .messageId("msg-result-1")
                         .messageType("result")
@@ -89,7 +90,7 @@ public class AgentResponseHandlerReplayContractTest {
                         .build()
         );
 
-        Assert.assertEquals("5", String.valueOf(result.getResultMap().get("agentType")));
+        Assert.assertEquals("5", String.valueOf(result.getEventData().get("agentType")));
         Assert.assertEquals("task", eventData(result).get("messageType"));
         Assert.assertEquals("result", frameResultMap(result).get("messageType"));
     }
@@ -104,10 +105,10 @@ public class AgentResponseHandlerReplayContractTest {
                 "resourceKey", "summary-call::summary.md",
                 "displayName", "summary.md"
         ));
-        GptProcessResult result = handler.build(
-                AgentRequest.builder().requestId("req-handler-003-file").build(),
-                new EventResult(),
-                AgentResponse.builder()
+        AgentStreamResult result = handler.build(
+                AgentExecutionCommand.builder().requestId("req-handler-003-file").build(),
+                new AgentStreamAccumulator(),
+                AgentStreamEvent.builder()
                         .requestId("req-handler-003-file")
                         .messageId("msg-result-file-1")
                         .messageType("result")
@@ -132,13 +133,13 @@ public class AgentResponseHandlerReplayContractTest {
 
     @Test
     public void shouldReuseSamePlannerRoundIdForPlanThoughtAndTaskWrappedPlan() {
-        EventResult eventResult = new EventResult();
+        AgentStreamAccumulator eventResult = new AgentStreamAccumulator();
         eventResult.getResultMap().put("plannerRoundId", "planner-round-002");
 
-        GptProcessResult thoughtFrame = handler.build(
-                AgentRequest.builder().requestId("req-handler-004").build(),
+        AgentStreamResult thoughtFrame = handler.build(
+                AgentExecutionCommand.builder().requestId("req-handler-004").build(),
                 eventResult,
-                AgentResponse.builder()
+                AgentStreamEvent.builder()
                         .requestId("req-handler-004")
                         .messageId("msg-plan-thought-2")
                         .messageType("plan_thought")
@@ -149,15 +150,15 @@ public class AgentResponseHandlerReplayContractTest {
                         .resultMap(Map.of("agentType", 3, "plannerRoundId", "planner-round-002"))
                         .build()
         );
-        GptProcessResult planFrame = handler.build(
-                AgentRequest.builder().requestId("req-handler-004").build(),
+        AgentStreamResult planFrame = handler.build(
+                AgentExecutionCommand.builder().requestId("req-handler-004").build(),
                 eventResult,
-                AgentResponse.builder()
+                AgentStreamEvent.builder()
                         .requestId("req-handler-004")
                         .messageId("msg-plan-2")
                         .messageType("plan")
                         .messageTime("1714630003001")
-                        .plan(AgentResponse.Plan.builder()
+                        .plan(PlanStreamPayload.builder()
                                 .title("第二轮计划")
                                 .stages(List.of("阶段一"))
                                 .steps(List.of("步骤一"))
@@ -176,10 +177,10 @@ public class AgentResponseHandlerReplayContractTest {
 
     @Test
     public void shouldEmitToolCallProgressAsTaskEvent() {
-        GptProcessResult result = handler.build(
-                AgentRequest.builder().requestId("req-handler-005").build(),
-                new EventResult(),
-                AgentResponse.builder()
+        AgentStreamResult result = handler.build(
+                AgentExecutionCommand.builder().requestId("req-handler-005").build(),
+                new AgentStreamAccumulator(),
+                AgentStreamEvent.builder()
                         .requestId("req-handler-005")
                         .messageId("tool-call-file-001")
                         .messageType("tool_call")
@@ -206,10 +207,10 @@ public class AgentResponseHandlerReplayContractTest {
     public void shouldProjectRuntimeTimingAtEventDataLevel() {
         LocalDateTime startedAt = LocalDateTime.of(2026, 9, 26, 12, 0, 0);
         LocalDateTime finishedAt = startedAt.plusNanos(125_000_000L);
-        GptProcessResult result = handler.build(
-                AgentRequest.builder().requestId("req-handler-timing-001").build(),
-                new EventResult(),
-                AgentResponse.builder()
+        AgentStreamResult result = handler.build(
+                AgentExecutionCommand.builder().requestId("req-handler-timing-001").build(),
+                new AgentStreamAccumulator(),
+                AgentStreamEvent.builder()
                         .requestId("req-handler-timing-001")
                         .messageId("tool-call-timing-001")
                         .messageType("tool_call")
@@ -234,26 +235,26 @@ public class AgentResponseHandlerReplayContractTest {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> eventData(GptProcessResult frame) {
-        return (Map<String, Object>) frame.getResultMap().get("eventData");
+    private Map<String, Object> eventData(AgentStreamResult frame) {
+        return (Map<String, Object>) frame.getEventData().get("eventData");
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> frameResultMap(GptProcessResult frame) {
+    private Map<String, Object> frameResultMap(AgentStreamResult frame) {
         return (Map<String, Object>) eventData(frame).get("resultMap");
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> nestedResultMap(GptProcessResult frame) {
+    private Map<String, Object> nestedResultMap(AgentStreamResult frame) {
         return (Map<String, Object>) frameResultMap(frame).get("resultMap");
     }
 
-    private static final class TestableBaseAgentResponseHandler extends BaseAgentResponseHandler {
-        private TestableBaseAgentResponseHandler(ReplayProjector replayProjector) {
+    private static final class TestableBaseAgentStreamEventHandler extends BaseAgentStreamEventHandler {
+        private TestableBaseAgentStreamEventHandler(ReplayProjector replayProjector) {
             super(replayProjector);
         }
 
-        private GptProcessResult build(AgentRequest request, EventResult eventResult, AgentResponse response) {
+        private AgentStreamResult build(AgentExecutionCommand request, AgentStreamAccumulator eventResult, AgentStreamEvent response) {
             return buildCanonicalIncrResult(request, eventResult, response);
         }
     }

@@ -22,10 +22,10 @@ import org.springframework.core.io.Resource;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.util.MimeType;
 import org.springframework.util.MimeTypeUtils;
-import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConstants;
-import org.wwz.ai.domain.agent.reactor.data.dto.VectorRecallReq;
-import org.wwz.ai.domain.agent.reactor.data.dto.VectorSaveReq;
-import org.wwz.ai.domain.agent.reactor.service.VectorService;
+import org.wwz.ai.domain.agent.rag.model.config.DataQuerySettings;
+import org.wwz.ai.domain.agent.rag.model.vector.VectorRecallRequest;
+import org.wwz.ai.domain.agent.rag.model.vector.VectorWriteRequest;
+import org.wwz.ai.domain.agent.rag.service.VectorService;
 import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
@@ -124,10 +124,11 @@ public class OpenAiTest {
 
         documentSplitterList.forEach(doc -> doc.getMetadata().put("knowledge", "grafana-mcp-tools-guide"));
 
-        VectorSaveReq req = new VectorSaveReq();
-        req.setCollectionName(DataAgentConstants.SCHEMA_COLLECTION_NAME);
-        req.setDataList(documentSplitterList.stream().map(this::toVectorData).collect(Collectors.toList()));
-        vectorService.saveVector(req);
+        VectorWriteRequest request = new VectorWriteRequest(DataQuerySettings.SCHEMA_COLLECTION_NAME,
+                documentSplitterList.stream()
+                        .map(document -> new VectorWriteRequest.Item(document.getText(), null, document.getMetadata()))
+                        .collect(Collectors.toList()));
+        vectorService.saveVector(request);
 
         log.info("上传完成");
     }
@@ -144,11 +145,8 @@ public class OpenAiTest {
                     {documents}
                 """;
 
-        VectorRecallReq request = new VectorRecallReq();
-        request.setCollectionName(DataAgentConstants.SCHEMA_COLLECTION_NAME);
-        request.setQuery(message);
-        request.setLimit(5);
-        request.setKeywordFilterMap(Map.of("knowledge", "知识库名称-v4"));
+        VectorRecallRequest request = new VectorRecallRequest(message, DataQuerySettings.SCHEMA_COLLECTION_NAME,
+                5, null, Map.of("knowledge", "知识库名称-v4"), List.of(), null);
 
         List<Document> documents = vectorService.vectorRecall(request).stream()
                 .map(this::toDocument)
@@ -169,13 +167,6 @@ public class OpenAiTest {
                         .build()));
 
         log.info("测试结果:{}", JSON.toJSONString(chatResponse));
-    }
-
-    private VectorSaveReq.VectorData toVectorData(Document document) {
-        VectorSaveReq.VectorData vectorData = new VectorSaveReq.VectorData();
-        vectorData.setEmbeddingText(document.getText());
-        vectorData.setPayloads(document.getMetadata());
-        return vectorData;
     }
 
     private Document toDocument(Map<String, Object> payload) {

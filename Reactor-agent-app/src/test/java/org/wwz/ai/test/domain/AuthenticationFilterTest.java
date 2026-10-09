@@ -7,7 +7,7 @@ import org.junit.Test;
 import org.mockito.Mockito;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.wwz.ai.application.auth.AuthApplicationService;
+import org.wwz.ai.application.auth.IAuthApplicationService;
 import org.wwz.ai.application.auth.JwtTokenService;
 import org.wwz.ai.trigger.http.auth.AuthenticationFilter;
 import org.wwz.ai.types.agent.user.UserRequestContext;
@@ -18,21 +18,27 @@ public class AuthenticationFilterTest {
 
     @Test
     public void protectedRequestWithoutAccessTokenReturnsUnauthorized() throws Exception {
-        AuthApplicationService authService = Mockito.mock(AuthApplicationService.class);
+        IAuthApplicationService authService = Mockito.mock(IAuthApplicationService.class);
         AuthenticationFilter filter = new AuthenticationFilter(authService, new ObjectMapper());
         MockHttpServletRequest request = request("/api/agent/conversation/sessions");
+        request.setParameter("access_token", "query-token");
+        request.addHeader("Cookie", "reactor_refresh_token=cookie-token");
         MockHttpServletResponse response = new MockHttpServletResponse();
         FilterChain chain = (ignoredRequest, ignoredResponse) -> Assert.fail("unauthorized request reached controller");
 
         filter.doFilter(request, response, chain);
 
         Assert.assertEquals(401, response.getStatus());
+        Assert.assertEquals("Bearer", response.getHeader("WWW-Authenticate"));
+        String body = response.getContentAsString();
+        Assert.assertTrue(body.contains("\"code\":\"0003\""));
+        Assert.assertTrue(body.contains("\"info\":\"Authentication is required\""));
         Mockito.verify(authService).verifyAccessToken(null);
     }
 
     @Test
     public void authEndpointRemainsAnonymous() throws Exception {
-        AuthApplicationService authService = Mockito.mock(AuthApplicationService.class);
+        IAuthApplicationService authService = Mockito.mock(IAuthApplicationService.class);
         AuthenticationFilter filter = new AuthenticationFilter(authService, new ObjectMapper());
         MockHttpServletRequest request = request("/api/auth/login");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -47,7 +53,7 @@ public class AuthenticationFilterTest {
 
     @Test
     public void browserRelayHandshakeRemainsAnonymousToJwtFilter() throws Exception {
-        AuthApplicationService authService = Mockito.mock(AuthApplicationService.class);
+        IAuthApplicationService authService = Mockito.mock(IAuthApplicationService.class);
         AuthenticationFilter filter = new AuthenticationFilter(authService, new ObjectMapper());
         MockHttpServletRequest request = request("/api/agent/browser/relay");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -62,7 +68,7 @@ public class AuthenticationFilterTest {
 
     @Test
     public void validAccessTokenBindsAndClearsUserContext() throws Exception {
-        AuthApplicationService authService = Mockito.mock(AuthApplicationService.class);
+        IAuthApplicationService authService = Mockito.mock(IAuthApplicationService.class);
         Mockito.when(authService.verifyAccessToken("access-token"))
                 .thenReturn(new JwtTokenService.AuthenticatedAccount(
                         "user-1", "session-1", "USER", Instant.now(), Instant.now().plusSeconds(900)));
@@ -80,7 +86,7 @@ public class AuthenticationFilterTest {
 
     @Test
     public void regularUserCannotAccessAdminEndpoint() throws Exception {
-        AuthApplicationService authService = Mockito.mock(AuthApplicationService.class);
+        IAuthApplicationService authService = Mockito.mock(IAuthApplicationService.class);
         Mockito.when(authService.verifyAccessToken("access-token"))
                 .thenReturn(new JwtTokenService.AuthenticatedAccount(
                         "user-1", "session-1", "USER", Instant.now(), Instant.now().plusSeconds(900)));
@@ -97,7 +103,7 @@ public class AuthenticationFilterTest {
 
     @Test
     public void regularUserCanAccessCatalogEndpoint() throws Exception {
-        AuthApplicationService authService = Mockito.mock(AuthApplicationService.class);
+        IAuthApplicationService authService = Mockito.mock(IAuthApplicationService.class);
         Mockito.when(authService.verifyAccessToken("access-token"))
                 .thenReturn(new JwtTokenService.AuthenticatedAccount(
                         "user-1", "session-1", "USER", Instant.now(), Instant.now().plusSeconds(900)));

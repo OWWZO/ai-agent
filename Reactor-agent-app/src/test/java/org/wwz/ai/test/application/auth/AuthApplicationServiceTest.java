@@ -3,21 +3,34 @@ package org.wwz.ai.test.application.auth;
 import com.auth0.jwt.JWT;
 import org.junit.Assert;
 import org.junit.Test;
-import org.wwz.ai.api.dto.AuthLoginRequestDTO;
 import org.wwz.ai.application.auth.AuthApplicationService;
 import org.wwz.ai.application.auth.JwtTokenService;
 import org.wwz.ai.application.auth.PasswordPolicy;
+import org.wwz.ai.application.auth.command.AuthChangePasswordCommand;
+import org.wwz.ai.application.auth.command.AuthLoginCommand;
+import org.wwz.ai.application.auth.command.AuthLogoutAllCommand;
+import org.wwz.ai.application.auth.command.AuthLogoutCommand;
+import org.wwz.ai.application.auth.command.AuthMeCommand;
+import org.wwz.ai.application.auth.command.AuthRefreshCommand;
+import org.wwz.ai.application.auth.command.AuthRegisterCommand;
+import org.wwz.ai.application.auth.result.IssuedAuthToken;
 import org.wwz.ai.domain.auth.entity.UserAccount;
 import org.wwz.ai.domain.auth.entity.UserAuthSession;
 import org.wwz.ai.domain.auth.repository.IUserAccountRepository;
 import org.wwz.ai.domain.auth.repository.IUserAuthSessionRepository;
 import org.wwz.ai.types.enums.ResponseCode;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.HexFormat;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -43,29 +56,36 @@ public class AuthApplicationServiceTest {
         InMemorySessions sessions = new InMemorySessions();
         AuthApplicationService service = newService(accounts, sessions, passwordPolicy, clock);
 
-        AuthApplicationService.IssuedAuthToken login = service.loginWithRefreshToken(
-                AuthLoginRequestDTO.builder().loginName(" Alice ").password("secret").build());
+        IssuedAuthToken login = service.login(
+                new AuthLoginCommand(" Alice ", null, "secret"));
 
-        Assert.assertEquals(ResponseCode.SUCCESS.getCode(), login.response().getCode());
+        Assert.assertEquals(ResponseCode.SUCCESS, login.result().code());
         Assert.assertNotNull(login.refreshToken());
-        Assert.assertEquals("user-uuid-1", login.response().getData().getUser().getUserId());
-        Assert.assertEquals("user-uuid-1", JWT.decode(login.response().getData().getAccessToken()).getSubject());
-        String sessionId = JWT.decode(login.response().getData().getAccessToken()).getClaim("sid").asString();
+        Assert.assertEquals("user-uuid-1", login.result().data().user().userId());
+        Assert.assertEquals("user-uuid-1", JWT.decode(login.result().data().accessToken()).getSubject());
+        String sessionId = JWT.decode(login.result().data().accessToken()).getClaim("sid").asString();
         Assert.assertNotNull(sessionId);
         UUID.fromString(sessionId);
-        Assert.assertEquals("USER", JWT.decode(login.response().getData().getAccessToken()).getClaim("role").asString());
+        Assert.assertEquals("USER", JWT.decode(login.result().data().accessToken()).getClaim("role").asString());
         Assert.assertEquals(FIXED_INSTANT.plusSeconds(900),
-                JWT.decode(login.response().getData().getAccessToken()).getExpiresAt().toInstant());
-        Assert.assertNotEquals(login.refreshToken(), sessions.session.getRefreshTokenHash());
-        Assert.assertEquals(64, sessions.session.getRefreshTokenHash().length());
+                JWT.decode(login.result().data().accessToken()).getExpiresAt().toInstant());
+        UserAuthSession session = sessions.findBySessionId(sessionId);
+        Assert.assertNotEquals(login.refreshToken(), session.getRefreshTokenHash());
+        Assert.assertEquals(64, session.getRefreshTokenHash().length());
         Assert.assertEquals(FIXED_TIME.plusDays(AuthApplicationService.REFRESH_ABSOLUTE_DAYS),
-                sessions.session.getCreatedAt().plusDays(365));
+                session.getCreatedAt().plusDays(365));
 
-        AuthApplicationService.IssuedAuthToken refresh = service.refreshWithRefreshToken(login.refreshToken());
-        Assert.assertEquals(ResponseCode.SUCCESS.getCode(), refresh.response().getCode());
+        sessions.rejectNextRotation = true;
+        IssuedAuthToken racedRefresh = service.refresh(new AuthRefreshCommand(login.refreshToken()));
+        Assert.assertEquals(ResponseCode.LOGIN_FAILED, racedRefresh.result().code());
+        Assert.assertEquals("Refresh token was already used", racedRefresh.result().info());
+
+        IssuedAuthToken refresh = service.refresh(new AuthRefreshCommand(login.refreshToken()));
+        Assert.assertEquals(ResponseCode.SUCCESS, refresh.result().code());
         Assert.assertNotEquals(login.refreshToken(), refresh.refreshToken());
-        Assert.assertEquals(ResponseCode.LOGIN_FAILED.getCode(),
-                service.refreshWithRefreshToken(login.refreshToken()).response().getCode());
+        IssuedAuthToken reusedToken = service.refresh(new AuthRefreshCommand(login.refreshToken()));
+        Assert.assertEquals(ResponseCode.LOGIN_FAILED, reusedToken.result().code());
+        Assert.assertEquals("Invalid or expired refresh token", reusedToken.result().info());
     }
 
     @Test
@@ -86,8 +106,9 @@ public class AuthApplicationServiceTest {
                 passwordPolicy,
                 Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC));
 
-        Assert.assertEquals(ResponseCode.LOGIN_FAILED.getCode(),
-                service.login(AuthLoginRequestDTO.builder().account("disabled").password("secret").build()).getCode());
+        IssuedAuthToken disabledLogin = service.login(new AuthLoginCommand(null, "disabled", "secret"));
+        Assert.assertEquals(ResponseCode.LOGIN_FAILED, disabledLogin.result().code());
+        Assert.assertEquals("Invalid credentials", disabledLogin.result().info());
 
         UserAccount deleted = UserAccount.builder()
                 .id(2L)
@@ -103,8 +124,102 @@ public class AuthApplicationServiceTest {
                 new InMemorySessions(),
                 passwordPolicy,
                 Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC));
-        Assert.assertEquals(ResponseCode.LOGIN_FAILED.getCode(),
-                service.login(AuthLoginRequestDTO.builder().loginName("deleted").password("secret").build()).getCode());
+        Assert.assertEquals(ResponseCode.LOGIN_FAILED,
+                service.login(new AuthLoginCommand("deleted", null, "secret")).result().code());
+    }
+
+    @Test
+    public void registrationMapsDuplicateAndPasswordPolicyFailures() {
+        PasswordPolicy passwordPolicy = new PasswordPolicy();
+        AuthApplicationService service = newService(
+                new InMemoryAccounts(),
+                new InMemorySessions(),
+                passwordPolicy,
+                Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC));
+
+        IssuedAuthToken registered = service.register(new AuthRegisterCommand(" Alice ", "secret", " Alice "));
+        Assert.assertEquals(ResponseCode.SUCCESS, registered.result().code());
+        Assert.assertEquals("alice", registered.result().data().user().loginName());
+        Assert.assertNotNull(registered.refreshToken());
+
+        IssuedAuthToken duplicate = service.register(new AuthRegisterCommand("alice", "secret", "Alice"));
+        Assert.assertEquals(ResponseCode.ILLEGAL_PARAMETER, duplicate.result().code());
+        Assert.assertEquals("Login name already exists", duplicate.result().info());
+        Assert.assertNull(duplicate.refreshToken());
+
+        IssuedAuthToken raceDuplicate = newService(
+                new InMemoryAccounts(true),
+                new InMemorySessions(),
+                passwordPolicy,
+                Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC))
+                .register(new AuthRegisterCommand("bob", "secret", "Bob"));
+        Assert.assertEquals(ResponseCode.ILLEGAL_PARAMETER, raceDuplicate.result().code());
+        Assert.assertEquals("Login name already exists", raceDuplicate.result().info());
+
+        IssuedAuthToken invalidPassword = service.register(
+                new AuthRegisterCommand("bob", "x".repeat(73), "Bob"));
+        Assert.assertEquals(ResponseCode.ILLEGAL_PARAMETER, invalidPassword.result().code());
+        Assert.assertEquals("Password exceeds BCrypt's 72-byte limit", invalidPassword.result().info());
+    }
+
+    @Test
+    public void mePasswordChangeAndLogoutAllKeepOnlyTheCurrentSession() {
+        PasswordPolicy passwordPolicy = new PasswordPolicy();
+        UserAccount account = UserAccount.builder()
+                .userId("user-2")
+                .loginName("alice")
+                .passwordHash(passwordPolicy.encode("old-secret"))
+                .nickname("Alice")
+                .role("USER")
+                .status(UserAccount.STATUS_ACTIVE)
+                .deleted(0)
+                .build();
+        UserAuthSession current = session("current-session", "user-2");
+        UserAuthSession other = session("other-session", "user-2");
+        InMemorySessions sessions = new InMemorySessions(current, other);
+        AuthApplicationService service = newService(
+                new InMemoryAccounts(account),
+                sessions,
+                passwordPolicy,
+                Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC));
+
+        Assert.assertEquals(ResponseCode.SUCCESS, service.me(new AuthMeCommand("user-2")).code());
+        Assert.assertEquals("alice", service.me(new AuthMeCommand("user-2")).data().loginName());
+
+        Assert.assertEquals(ResponseCode.SUCCESS, service.changePassword(new AuthChangePasswordCommand(
+                "user-2", "current-session", "old-secret", "new-secret")).code());
+        Assert.assertTrue(passwordPolicy.matches("new-secret", account.getPasswordHash()));
+        Assert.assertNull(current.getRevokedAt());
+        Assert.assertEquals(FIXED_TIME, other.getRevokedAt());
+
+        Assert.assertEquals(ResponseCode.SUCCESS, service.logoutAll(new AuthLogoutAllCommand("user-2")).code());
+        Assert.assertEquals(FIXED_TIME, current.getRevokedAt());
+        Assert.assertEquals(ResponseCode.LOGIN_FAILED, service.me(new AuthMeCommand("missing-user")).code());
+    }
+
+    @Test
+    public void logoutRevokesTheSessionMatchingTheRefreshToken() throws NoSuchAlgorithmException {
+        String refreshToken = "refresh-token-to-revoke";
+        String refreshTokenHash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(refreshToken.getBytes(StandardCharsets.UTF_8)));
+        UserAuthSession session = UserAuthSession.builder()
+                .sessionId("session-to-revoke")
+                .userId("user-3")
+                .refreshTokenHash(refreshTokenHash)
+                .createdAt(FIXED_TIME)
+                .expiresAt(FIXED_TIME.plusDays(30))
+                .build();
+        AuthApplicationService service = newService(
+                new InMemoryAccounts(),
+                new InMemorySessions(session),
+                new PasswordPolicy(),
+                Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC));
+
+        Assert.assertEquals(ResponseCode.SUCCESS,
+                service.logout(new AuthLogoutCommand(refreshToken)).code());
+        Assert.assertEquals(FIXED_TIME, session.getRevokedAt());
+        Assert.assertEquals(ResponseCode.LOGIN_FAILED,
+                service.refresh(new AuthRefreshCommand(refreshToken)).result().code());
     }
 
     @Test
@@ -154,8 +269,14 @@ public class AuthApplicationServiceTest {
     private static final class InMemoryAccounts implements IUserAccountRepository {
 
         private UserAccount account;
+        private final boolean duplicateOnSave;
 
         private InMemoryAccounts(UserAccount... accounts) {
+            this(false, accounts);
+        }
+
+        private InMemoryAccounts(boolean duplicateOnSave, UserAccount... accounts) {
+            this.duplicateOnSave = duplicateOnSave;
             if (accounts.length > 0) {
                 this.account = accounts[0];
             }
@@ -178,6 +299,9 @@ public class AuthApplicationServiceTest {
 
         @Override
         public UserAccount save(UserAccount value) {
+            if (duplicateOnSave) {
+                throw new org.wwz.ai.domain.auth.exception.LoginNameAlreadyExistsException();
+            }
             if (value.getId() == null) {
                 value.setId(11L);
             }
@@ -211,28 +335,35 @@ public class AuthApplicationServiceTest {
 
     private static final class InMemorySessions implements IUserAuthSessionRepository {
 
-        private UserAuthSession session;
+        private final List<UserAuthSession> sessions = new ArrayList<>();
+        private boolean rejectNextRotation;
 
         private InMemorySessions() {
         }
 
-        private InMemorySessions(UserAuthSession session) {
-            this.session = session;
+        private InMemorySessions(UserAuthSession... sessions) {
+            this.sessions.addAll(List.of(sessions));
         }
 
         @Override
         public UserAuthSession findBySessionId(String sessionId) {
-            return session != null && Objects.equals(session.getSessionId(), sessionId) ? session : null;
+            return sessions.stream()
+                    .filter(value -> Objects.equals(value.getSessionId(), sessionId))
+                    .findFirst()
+                    .orElse(null);
         }
 
         @Override
         public UserAuthSession findByRefreshTokenHash(String refreshTokenHash) {
-            return session != null && Objects.equals(session.getRefreshTokenHash(), refreshTokenHash) ? session : null;
+            return sessions.stream()
+                    .filter(value -> Objects.equals(value.getRefreshTokenHash(), refreshTokenHash))
+                    .findFirst()
+                    .orElse(null);
         }
 
         @Override
         public UserAuthSession save(UserAuthSession value) {
-            session = value;
+            sessions.add(value);
             return value;
         }
 
@@ -242,7 +373,12 @@ public class AuthApplicationServiceTest {
                               String nextRefreshTokenHash,
                               LocalDateTime lastSeenAt,
                               LocalDateTime expiresAt) {
-            if (findBySessionId(sessionId) == null
+            if (rejectNextRotation) {
+                rejectNextRotation = false;
+                return false;
+            }
+            UserAuthSession session = findBySessionId(sessionId);
+            if (session == null
                     || !Objects.equals(session.getRefreshTokenHash(), currentRefreshTokenHash)
                     || !session.isUsableAt(lastSeenAt)) {
                 return false;
@@ -255,7 +391,8 @@ public class AuthApplicationServiceTest {
 
         @Override
         public boolean revokeByRefreshTokenHash(String refreshTokenHash, LocalDateTime revokedAt) {
-            if (findByRefreshTokenHash(refreshTokenHash) == null || session.getRevokedAt() != null) {
+            UserAuthSession session = findByRefreshTokenHash(refreshTokenHash);
+            if (session == null || session.getRevokedAt() != null) {
                 return false;
             }
             session.setRevokedAt(revokedAt);
@@ -264,23 +401,37 @@ public class AuthApplicationServiceTest {
 
         @Override
         public int revokeByUserId(String userId, LocalDateTime revokedAt) {
-            if (session != null && Objects.equals(session.getUserId(), userId) && session.getRevokedAt() == null) {
-                session.setRevokedAt(revokedAt);
-                return 1;
-            }
-            return 0;
+            return sessions.stream()
+                    .filter(session -> Objects.equals(session.getUserId(), userId) && session.getRevokedAt() == null)
+                    .map(session -> {
+                        session.setRevokedAt(revokedAt);
+                        return session;
+                    })
+                    .mapToInt(ignored -> 1)
+                    .sum();
         }
 
         @Override
         public int revokeByUserIdExcept(String userId, String retainedSessionId, LocalDateTime revokedAt) {
-            if (session != null
-                    && Objects.equals(session.getUserId(), userId)
-                    && !Objects.equals(session.getSessionId(), retainedSessionId)
-                    && session.getRevokedAt() == null) {
-                session.setRevokedAt(revokedAt);
-                return 1;
-            }
-            return 0;
+            return sessions.stream()
+                    .filter(session -> Objects.equals(session.getUserId(), userId)
+                            && !Objects.equals(session.getSessionId(), retainedSessionId)
+                            && session.getRevokedAt() == null)
+                    .map(session -> {
+                        session.setRevokedAt(revokedAt);
+                        return session;
+                    })
+                    .mapToInt(ignored -> 1)
+                    .sum();
         }
+    }
+
+    private static UserAuthSession session(String sessionId, String userId) {
+        return UserAuthSession.builder()
+                .sessionId(sessionId)
+                .userId(userId)
+                .createdAt(FIXED_TIME)
+                .expiresAt(FIXED_TIME.plusDays(30))
+                .build();
     }
 }

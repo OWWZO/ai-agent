@@ -18,6 +18,10 @@
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
         <dependency>
@@ -35,20 +39,21 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>org.apache.tomcat.embed</groupId>
-            <artifactId>tomcat-embed-core</artifactId>
-        </dependency>
-        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-configuration-processor</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.mybatis.spring.boot</groupId>
-            <artifactId>mybatis-spring-boot-starter</artifactId>
-        </dependency>
-        <dependency>
             <groupId>com.baomidou</groupId>
             <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.elasticsearch.client</groupId>
+            <artifactId>elasticsearch-rest-high-level-client</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.calcite</groupId>
+            <artifactId>calcite-core</artifactId>
+            <scope>test</scope>
         </dependency>
         <!-- # 多数据源路由配置
              # mysql 5.x driver-class-name: com.mysql.jdbc.Driver    mysql-connector-java 5.1.34
@@ -83,23 +88,10 @@
             <artifactId>junit</artifactId>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>io.jsonwebtoken</groupId>
-            <artifactId>jjwt</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.auth0</groupId>
-            <artifactId>java-jwt</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>commons-codec</groupId>
-            <artifactId>commons-codec</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.squareup.retrofit2</groupId>
-            <artifactId>converter-gson</artifactId>
-            <version>2.9.0</version>
-        </dependency>
+        <!-- java-jwt 由 Reactor-agent-case（JwtTokenService）以 compile 作用域传递引入。
+             切勿在此处重新声明为 test 作用域：Maven「最近定义优先」会用这里的声明
+             覆盖掉 case 传递来的 compile 依赖，导致运行时 classpath 缺少 java-jwt，
+             启动时反射 JwtTokenService 会抛 NoClassDefFoundError: com/auth0/jwt/exceptions/JWTVerificationException。 -->
 
         <!-- spring ai v1.0.0 start -->
 
@@ -116,6 +108,7 @@
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-tika-document-reader</artifactId>
+            <scope>test</scope>
         </dependency>
 
         <!-- spring ai v1.0.0 stop -->

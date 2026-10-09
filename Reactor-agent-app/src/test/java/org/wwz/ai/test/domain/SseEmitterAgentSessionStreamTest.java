@@ -4,6 +4,7 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.trigger.http.reactor.support.SseEmitterAgentSessionStream;
+import org.wwz.ai.application.agent.stream.AgentSessionStreamFrame;
 
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -38,8 +39,7 @@ public class SseEmitterAgentSessionStreamTest {
 
         @Test
     public void shouldWriteEventSeqAsSseId() throws Exception {
-        org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult payload =
-                new org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult();
+        AgentSessionStreamFrame payload = new AgentSessionStreamFrame();
         payload.setEventSeq(17L);
         payload.setPackageType("result");
         SseEmitter.SseEventBuilder builder = SseEmitterAgentSessionStream.toSseEvent(payload);

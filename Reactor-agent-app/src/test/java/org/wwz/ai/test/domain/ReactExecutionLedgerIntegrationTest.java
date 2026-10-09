@@ -7,15 +7,15 @@ import org.wwz.ai.domain.agent.runtime.agent.BaseAgent;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
-import org.wwz.ai.domain.agent.runtime.handler.ReactAgentResponseHandler;
+import org.wwz.ai.domain.agent.runtime.handler.ReactAgentStreamEventHandler;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunFinishRecord;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionRunDetail;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationFinishRecord;
-import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
-import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
-import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamAccumulator;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamEvent;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamResult;
 
 import java.util.List;
 import java.util.Map;
@@ -101,7 +101,7 @@ public class ReactExecutionLedgerIntegrationTest {
                 .finalSummaryText("react plan summary")
                 .build());
 
-        ReactAgentResponseHandler handler = new ReactAgentResponseHandler(
+        ReactAgentStreamEventHandler handler = new ReactAgentStreamEventHandler(
                 new org.wwz.ai.domain.agent.ledger.replay.ReplayProjector(
                         new org.wwz.ai.domain.agent.ledger.replay.projector.ToolInvocationProjectorRegistry(
                                 List.of(),
@@ -110,9 +110,9 @@ public class ReactExecutionLedgerIntegrationTest {
                 )
         );
 
-        GptProcessResult realtime = handler.handle(
-                AgentRequest.builder().requestId(context.getRequestId()).build(),
-                AgentResponse.builder()
+        AgentStreamResult realtime = handler.handle(
+                AgentExecutionCommand.builder().requestId(context.getRequestId()).build(),
+                AgentStreamEvent.builder()
                         .requestId(context.getRequestId())
                         .messageId("msg-react-plan-1")
                         .messageType("plan_thought")
@@ -123,17 +123,17 @@ public class ReactExecutionLedgerIntegrationTest {
                         .resultMap(Map.of("agentType", 5, "plannerRoundId", "9001"))
                         .build(),
                 List.of(),
-                new EventResult()
+                new AgentStreamAccumulator()
         );
 
         ExecutionRunDetail detail = ledger.queryService.queryRunDetail(context.getRequestId());
-        List<GptProcessResult> historyFrames = ledger.replayService.queryConversationHistory(context.getSessionId())
+        List<AgentStreamResult> historyFrames = ledger.replayService.queryConversationHistory(context.getSessionId())
                 .getRuns()
                 .get(0)
                 .getReplayFrames();
 
         Assert.assertNotNull(detail);
-        Assert.assertEquals("5", String.valueOf(realtime.getResultMap().get("agentType")));
+        Assert.assertEquals("5", String.valueOf(realtime.getEventData().get("agentType")));
         Assert.assertEquals("plan_thought", eventMessageType(realtime));
         Assert.assertEquals("plan_thought", nestedMessageType(realtime));
         Assert.assertEquals("9001", nestedPlannerRoundId(realtime));
@@ -144,18 +144,18 @@ public class ReactExecutionLedgerIntegrationTest {
     }
 
     @SuppressWarnings("unchecked")
-    private String eventMessageType(GptProcessResult frame) {
-        return String.valueOf(((Map<String, Object>) frame.getResultMap().get("eventData")).get("messageType"));
+    private String eventMessageType(AgentStreamResult frame) {
+        return String.valueOf(((Map<String, Object>) frame.getEventData().get("eventData")).get("messageType"));
     }
 
     @SuppressWarnings("unchecked")
-    private String nestedMessageType(GptProcessResult frame) {
-        return String.valueOf(((Map<String, Object>) ((Map<String, Object>) frame.getResultMap().get("eventData")).get("resultMap")).get("messageType"));
+    private String nestedMessageType(AgentStreamResult frame) {
+        return String.valueOf(((Map<String, Object>) ((Map<String, Object>) frame.getEventData().get("eventData")).get("resultMap")).get("messageType"));
     }
 
     @SuppressWarnings("unchecked")
-    private String nestedPlannerRoundId(GptProcessResult frame) {
-        Object plannerRoundId = ((Map<String, Object>) ((Map<String, Object>) frame.getResultMap().get("eventData")).get("resultMap")).get("plannerRoundId");
+    private String nestedPlannerRoundId(AgentStreamResult frame) {
+        Object plannerRoundId = ((Map<String, Object>) ((Map<String, Object>) frame.getEventData().get("eventData")).get("resultMap")).get("plannerRoundId");
         return plannerRoundId == null ? null : String.valueOf(plannerRoundId);
     }
 

@@ -12,7 +12,7 @@ import org.wwz.ai.domain.agent.runtime.tool.common.mcp.ToolDescribeTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.mcp.ToolSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolCatalog;
 import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolEntry;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.DeferredToolCall;
+import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolCall;
 
 import java.util.LinkedHashMap;
 import java.util.List;

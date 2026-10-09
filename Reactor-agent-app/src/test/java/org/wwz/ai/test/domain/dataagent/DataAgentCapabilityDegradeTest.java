@@ -3,19 +3,15 @@ package org.wwz.ai.test.domain.dataagent;
 import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.Mockito;
-import org.springframework.test.util.ReflectionTestUtils;
+import org.wwz.ai.application.agent.dataquery.initialization.DataAgentInitializationApplicationService;
 import org.wwz.ai.application.agent.dataquery.DataAgentApplicationService;
 import org.wwz.ai.application.agent.dataquery.IDataAgentApplicationService;
-import org.wwz.ai.config.reactor.DataAgentInitRunner;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConfig;
-import org.wwz.ai.domain.agent.reactor.config.data.EsConfig;
-import org.wwz.ai.domain.agent.reactor.config.data.QdrantConfig;
-import org.wwz.ai.domain.agent.reactor.service.ChatModelInfoService;
-import org.wwz.ai.domain.agent.reactor.service.ColumnValueSyncService;
-import org.wwz.ai.domain.agent.reactor.service.EmbeddingService;
-import org.wwz.ai.domain.agent.reactor.service.QdrantService;
+import org.wwz.ai.domain.agent.rag.port.DataAgentInitializerPort;
+import org.wwz.ai.domain.agent.rag.model.config.ColumnValueRecallSettings;
+import org.wwz.ai.domain.agent.rag.model.config.DataQuerySettings;
+import org.wwz.ai.domain.agent.rag.service.ChatModelInfoService;
 import org.wwz.ai.infrastructure.adapter.port.OkHttpRemoteHttpAdapter;
 import org.wwz.ai.infrastructure.adapter.port.OkHttpRemoteStreamAdapter;
 import org.wwz.ai.infrastructure.adapter.port.ReactorToolFileArtifactAdapter;
@@ -24,6 +20,7 @@ import org.wwz.ai.trigger.http.dataagent.DataAgentController;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -50,8 +47,8 @@ public class DataAgentCapabilityDegradeTest {
         Assert.assertTrue(fieldTypes.contains("org.wwz.ai.domain.agent.rag.DataAgentQueryService"));
         Assert.assertFalse(fieldTypes.contains("org.wwz.ai.domain.agent.reactor.service.DataAgentService"));
         Assert.assertFalse(fieldTypes.contains("org.wwz.ai.domain.agent.reactor.service.Nl2SqlService"));
-        Assert.assertFalse(fieldTypes.contains("org.wwz.ai.domain.agent.reactor.service.ChatModelInfoService"));
-        Assert.assertFalse(fieldTypes.contains("org.wwz.ai.domain.agent.rag.SchemaRecallService"));
+        Assert.assertFalse(fieldTypes.contains("org.wwz.ai.domain.agent.rag.service.ChatModelInfoService"));
+        Assert.assertFalse(fieldTypes.contains("org.wwz.ai.domain.agent.rag.service.SchemaRecallService"));
     }
 
     @Test
@@ -64,28 +61,31 @@ public class DataAgentCapabilityDegradeTest {
     }
 
     @Test
-    public void shouldDisableEsWhenRegularStartupInitFails() throws Exception {
-        DataAgentInitRunner runner = new DataAgentInitRunner();
-        DataAgentConfig dataAgentConfig = new DataAgentConfig();
-        QdrantConfig qdrantConfig = new QdrantConfig();
-        qdrantConfig.setEnable(false);
-        EsConfig esConfig = new EsConfig();
+    public void shouldDisableEsWhenRegularApplicationInitializationFails() throws Exception {
+        DataQuerySettings dataQuerySettings = new DataQuerySettings();
+        ColumnValueRecallSettings esConfig = new ColumnValueRecallSettings();
         esConfig.setEnable(true);
-        dataAgentConfig.setQdrantConfig(qdrantConfig);
-        dataAgentConfig.setEsConfig(esConfig);
-        dataAgentConfig.setForceRefresh(false);
+        dataQuerySettings.setEsConfig(esConfig);
+        dataQuerySettings.setForceRefresh(false);
 
-        ColumnValueSyncService columnValueSyncService = Mockito.mock(ColumnValueSyncService.class);
-        Mockito.doThrow(new IllegalStateException("es init failed")).when(columnValueSyncService).initColumnValueIndex();
+        DataAgentInitializerPort initializerPort = Mockito.mock(DataAgentInitializerPort.class);
+        Mockito.doThrow(new IllegalStateException("es init failed"))
+                .when(initializerPort).initializeColumnValueIndex(false);
+        DataAgentInitializationApplicationService service = new DataAgentInitializationApplicationService(
+                dataQuerySettings, initializerPort, Mockito.mock(ChatModelInfoService.class), Optional.empty());
 
-        ReflectionTestUtils.setField(runner, "dataAgentConfig", dataAgentConfig);
-        ReflectionTestUtils.setField(runner, "qdrantService", Mockito.mock(QdrantService.class));
-        ReflectionTestUtils.setField(runner, "chatModelInfoService", Mockito.mock(ChatModelInfoService.class));
-        ReflectionTestUtils.setField(runner, "columnValueSyncService", columnValueSyncService);
-        ReflectionTestUtils.setField(runner, "embeddingService", Mockito.mock(EmbeddingService.class));
+        service.initialize(1024);
 
-        runner.run();
+        Assert.assertFalse(dataQuerySettings.getEsConfig().getEnable());
+    }
 
-        Assert.assertFalse(dataAgentConfig.getEsConfig().getEnable());
+    @Test
+    public void shouldKeepInitializationApplicationServiceIndependentOfInfrastructureClasses() {
+        List<String> fieldTypes = Arrays.stream(DataAgentInitializationApplicationService.class.getDeclaredFields())
+                .map(field -> field.getType().getName())
+                .toList();
+
+        Assert.assertTrue(fieldTypes.contains(DataAgentInitializerPort.class.getName()));
+        Assert.assertTrue(fieldTypes.stream().noneMatch(type -> type.startsWith("org.wwz.ai.infrastructure.")));
     }
 }

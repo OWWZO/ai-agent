@@ -9,14 +9,14 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
-import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.model.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRegistry;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRunner;
 import org.wwz.ai.domain.agent.runtime.tool.factory.AgentToolCollectionFactory;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.port.McpToolExecutor;
 import org.wwz.ai.domain.agent.runtime.tool.skill.DefaultSkillRegistry;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillMarkdownParser;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillPathGuard;
@@ -32,7 +32,7 @@ import org.wwz.ai.types.agent.config.HostCliProperties;
 import org.wwz.ai.types.agent.config.OpenCliProperties;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
 
 import java.nio.charset.StandardCharsets;
@@ -73,7 +73,7 @@ public class AgentToolCollectionFactoryTest {
                 disabledWorkspaceOptions()
         );
 
-        ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentRequest("html"));
+        ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentExecutionCommand("html"));
 
         // code_interpreter 和 multimodalagent_tool 已从主 Agent 工具装配移除；code_execution 保留。
         Assert.assertFalse(toolCollection.getToolMap().containsKey("file_tool"));
@@ -140,7 +140,7 @@ public class AgentToolCollectionFactoryTest {
         );
 
         AgentContext ctx = buildAgentContext();
-        ToolCollection toolCollection = factory.buildForReact(ctx, buildAgentRequest("html"));
+        ToolCollection toolCollection = factory.buildForReact(ctx, buildAgentExecutionCommand("html"));
 
         Assert.assertTrue(toolCollection.getToolMap().containsKey("ToolSearch"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("ToolDescribe"));
@@ -168,7 +168,7 @@ public class AgentToolCollectionFactoryTest {
                 disabledWorkspaceService(),
                 disabledWorkspaceOptions()
         );
-        ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentRequest("html"));
+        ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentExecutionCommand("html"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("ToolSearch"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("ToolDescribe"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("ToolCall"));
@@ -189,7 +189,7 @@ public class AgentToolCollectionFactoryTest {
                 disabledWorkspaceService(),
                 disabledWorkspaceOptions());
 
-        ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentRequest("html"));
+        ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentExecutionCommand("html"));
 
         Assert.assertTrue(toolCollection.getToolMap().containsKey("deep_search"));
         Assert.assertTrue(toolCollection.getDeferredToolCatalog() == null
@@ -210,7 +210,7 @@ public class AgentToolCollectionFactoryTest {
                 SkillRuntimeOptions.builder().enabled(false).build(),
                 disabledWorkspaceService(),
                 disabledWorkspaceOptions());
-        AgentRequest request = AgentRequest.builder()
+        AgentExecutionCommand request = AgentExecutionCommand.builder()
                 .requestId("req-data")
                 .sessionId("session-data")
                 .query("测试数据分析工具装配")
@@ -262,7 +262,7 @@ public class AgentToolCollectionFactoryTest {
         );
         AgentContext ctx = buildAgentContext();
         ctx.setDisabledMcpIds(java.util.Set.of("mcp-blocked"));
-        ToolCollection toolCollection = factory.buildForReact(ctx, buildAgentRequest("html"));
+        ToolCollection toolCollection = factory.buildForReact(ctx, buildAgentExecutionCommand("html"));
          Assert.assertNotNull(toolCollection.getDeferredToolCatalog());
          Assert.assertFalse(toolCollection.getDeferredToolCatalog().contains("mcp__blocked__secret"));
          Assert.assertTrue(toolCollection.getDeferredToolCatalog().contains("mcp__demo__remote_tool"));
@@ -295,7 +295,7 @@ public class AgentToolCollectionFactoryTest {
 
         AgentContext ctx = buildAgentContext();
         ctx.setWorkspaceRoot(System.getProperty("java.io.tmpdir") + "/reactor-agent-workspace-test/session-001");
-        ToolCollection toolCollection = factory.buildForReact(ctx, buildAgentRequest("html"));
+        ToolCollection toolCollection = factory.buildForReact(ctx, buildAgentExecutionCommand("html"));
 
          Assert.assertTrue(toolCollection.getToolMap().containsKey("skill_view"));
          Assert.assertTrue(toolCollection.getToolMap().containsKey("skills_search"));
@@ -323,7 +323,7 @@ public class AgentToolCollectionFactoryTest {
                 disabledWorkspaceOptions()
         );
 
-        ToolCollection toolCollection = factory.buildForPlanSolve(buildAgentContext(), buildAgentRequest("docs"));
+        ToolCollection toolCollection = factory.buildForPlanSolve(buildAgentContext(), buildAgentExecutionCommand("docs"));
 
          Assert.assertFalse(toolCollection.getToolMap().containsKey("skill_view"));
          Assert.assertFalse(toolCollection.getToolMap().containsKey("skills_search"));
@@ -354,7 +354,7 @@ public class AgentToolCollectionFactoryTest {
                 disabledWorkspaceOptions()
         );
 
-        ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentRequest("html"));
+        ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentExecutionCommand("html"));
 
         Assert.assertFalse(toolCollection.getToolMap().containsKey("multimodalagent_tool"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("code_interpreter"));
@@ -379,7 +379,7 @@ public class AgentToolCollectionFactoryTest {
                 disabledWorkspaceOptions()
         );
 
-        ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentRequest("html"));
+        ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentExecutionCommand("html"));
 
         Assert.assertFalse(toolCollection.getToolMap().containsKey("twitter"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("reddit"));
@@ -402,8 +402,8 @@ public class AgentToolCollectionFactoryTest {
                 disabledWorkspaceOptions()
         );
 
-        assertDocumentGenerationTools(factory.buildForReact(buildAgentContext(), buildAgentRequest("html")));
-        assertDocumentGenerationTools(factory.buildForPlanSolve(buildAgentContext(), buildAgentRequest("html")));
+        assertDocumentGenerationTools(factory.buildForReact(buildAgentContext(), buildAgentExecutionCommand("html")));
+        assertDocumentGenerationTools(factory.buildForPlanSolve(buildAgentContext(), buildAgentExecutionCommand("html")));
     }
 
     @Test
@@ -422,7 +422,7 @@ public class AgentToolCollectionFactoryTest {
                 disabledWorkspaceOptions()
         );
 
-        ToolCollection full = factory.buildForPlanSolve(buildAgentContext(), buildAgentRequest("html"));
+        ToolCollection full = factory.buildForPlanSolve(buildAgentContext(), buildAgentExecutionCommand("html"));
         ToolCollection main = factory.filterForPlanSolveMain(full);
 
         Assert.assertTrue(full.getToolMap().containsKey("deep_search"));
@@ -466,7 +466,7 @@ public class AgentToolCollectionFactoryTest {
         );
 
         AgentContext parentContext = buildAgentContext();
-        AgentRequest request = buildAgentRequest("html");
+        AgentExecutionCommand request = buildAgentExecutionCommand("html");
         ToolCollection parentToolCollection = factory.buildForPlanSolve(parentContext, request);
         parentContext.setToolCollection(parentToolCollection);
         parentContext.setTask("父任务");
@@ -558,7 +558,7 @@ public class AgentToolCollectionFactoryTest {
         );
 
         AgentContext ctx = buildAgentContext();
-        ToolCollection toolCollection = factory.buildForReact(ctx, buildAgentRequest("html"));
+        ToolCollection toolCollection = factory.buildForReact(ctx, buildAgentExecutionCommand("html"));
 
         Assert.assertFalse(toolCollection.getToolMap().containsKey("file_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("workspace_read"));
@@ -593,7 +593,7 @@ public class AgentToolCollectionFactoryTest {
                 .cliExecutionPort(resolvableCli("node"))
                 .openCliProperties(enabledOpenCli())
                 .build());
-        AgentRequest request = AgentRequest.builder()
+        AgentExecutionCommand request = AgentExecutionCommand.builder()
                 .requestId("req-001")
                 .sessionId("session-001")
                 .userId("user-1")
@@ -628,7 +628,7 @@ public class AgentToolCollectionFactoryTest {
                 .cliExecutionPort(resolvableCli("node"))
                 .openCliProperties(enabledOpenCli())
                 .build());
-        AgentRequest request = AgentRequest.builder()
+        AgentExecutionCommand request = AgentExecutionCommand.builder()
                 .requestId("req-001")
                 .sessionId("session-001")
                 .userId("user-1")
@@ -660,7 +660,7 @@ public class AgentToolCollectionFactoryTest {
                 .cliExecutionPort(resolvableCli("node"))
                 .openCliProperties(enabledOpenCli())
                 .build());
-        AgentRequest request = AgentRequest.builder()
+        AgentExecutionCommand request = AgentExecutionCommand.builder()
                 .requestId("req-001")
                 .sessionId("session-001")
                 .userId("user-1")
@@ -697,7 +697,7 @@ public class AgentToolCollectionFactoryTest {
                 .openCliProperties(enabledOpenCli())
                 .build());
 
-        AgentRequest request = buildAgentRequest("html");
+        AgentExecutionCommand request = buildAgentExecutionCommand("html");
         request.setUserId("user-1");
         ToolCollection toolCollection = factory.buildForReact(ctx, request);
 
@@ -725,7 +725,7 @@ public class AgentToolCollectionFactoryTest {
                 .cliExecutionPort(resolvableCli("node"))
                 .openCliProperties(enabledOpenCli())
                 .build());
-        AgentRequest request = AgentRequest.builder()
+        AgentExecutionCommand request = AgentExecutionCommand.builder()
                 .requestId("req-data")
                 .sessionId("session-data")
                 .userId("user-1")
@@ -761,7 +761,7 @@ public class AgentToolCollectionFactoryTest {
                 .hostCliProperties(hostCli)
                 .build());
 
-        ToolCollection toolCollection = factory.buildForReact(ctx, buildAgentRequest("html"));
+        ToolCollection toolCollection = factory.buildForReact(ctx, buildAgentExecutionCommand("html"));
 
         Assert.assertTrue(toolCollection.getToolMap().containsKey("host_cli"));
         Assert.assertTrue(toolCollection.getTool("host_cli").getDescription().contains("git"));
@@ -915,8 +915,8 @@ public class AgentToolCollectionFactoryTest {
         return properties;
     }
 
-    private AgentRequest buildAgentRequest(String... ignored) {
-        return AgentRequest.builder()
+    private AgentExecutionCommand buildAgentExecutionCommand(String... ignored) {
+        return AgentExecutionCommand.builder()
                 .requestId("req-001")
                 .sessionId("session-001")
                 .query("测试 skill 工具装配")

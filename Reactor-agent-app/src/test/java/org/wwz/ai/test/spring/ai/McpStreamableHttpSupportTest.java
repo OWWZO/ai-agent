@@ -10,10 +10,10 @@ import org.springframework.http.server.reactive.HttpHandler;
 import org.springframework.http.server.reactive.ReactorHttpHandlerAdapter;
 import org.springframework.web.reactive.function.server.RouterFunctions;
 import org.wwz.ai.domain.agent.model.valobj.AiClientToolMcpVO;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpClientRuntime;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpClientRuntimeFactory;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpRegistry;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpServerDescriptor;
+import org.wwz.ai.infrastructure.mcp.client.McpClientFactory;
+import org.wwz.ai.infrastructure.mcp.client.McpClientRuntime;
+import org.wwz.ai.infrastructure.mcp.model.McpServerDescriptor;
+import org.wwz.ai.infrastructure.mcp.registry.McpRegistry;
 import org.wwz.ai.infrastructure.adapter.repository.AgentRepository;
 import org.wwz.ai.infrastructure.dao.po.AiClientToolMcp;
 import reactor.netty.DisposableServer;
@@ -92,7 +92,7 @@ public class McpStreamableHttpSupportTest {
     @Test
     public void test_createStreamableHttpRuntimeAndListTools() throws Exception {
         TestStreamableServer testServer = startStreamableServer();
-        McpClientRuntimeFactory runtimeFactory = new McpClientRuntimeFactory();
+        McpClientFactory runtimeFactory = new McpClientFactory();
 
         McpServerDescriptor descriptor = McpServerDescriptor.builder()
                 .mcpId("streamable-runtime-test")

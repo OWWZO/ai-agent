@@ -2,6 +2,8 @@ package org.wwz.ai.test.domain;
 
 import org.junit.Assert;
 import org.junit.Test;
+import org.wwz.ai.domain.agent.rag.model.chatmodel.ChatModelInfo;
+import org.wwz.ai.domain.agent.rag.model.chatmodel.ChatModelSchema;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -14,9 +16,11 @@ import java.util.List;
  */
 public class ReactorPersistenceBoundaryTest {
 
-    private static final Path PROJECT_ROOT = resolveProjectRoot();
-    private static final Path DOMAIN_ROOT = PROJECT_ROOT.resolve("ai-agent-station-study-domain/src/main/java");
-    private static final Path MAPPER_ROOT = PROJECT_ROOT.resolve("ai-agent-station-study-app/src/main/resources/mybatis/mapper");
+    private static final Path DOMAIN_ROOT = BoundaryTestPaths.moduleMainJava("Reactor-agent-domain");
+    private static final Path MAPPER_ROOT = BoundaryTestPaths.requireDirectory(
+            BoundaryTestPaths.moduleRoot("Reactor-agent-app")
+                    .resolve("src/main/resources/mybatis/mapper")
+    );
 
     @Test
     public void shouldRemoveReactorMapperOwnershipFromDomain() throws Exception {
@@ -32,11 +36,37 @@ public class ReactorPersistenceBoundaryTest {
     }
 
     @Test
+    public void shouldKeepChatModelMetadataInRagContext() {
+        Assert.assertEquals("org.wwz.ai.domain.agent.rag.model.chatmodel", ChatModelInfo.class.getPackageName());
+        Assert.assertEquals("org.wwz.ai.domain.agent.rag.model.chatmodel", ChatModelSchema.class.getPackageName());
+        Assert.assertFalse(Files.exists(DOMAIN_ROOT.resolve("org/wwz/ai/domain/agent/ledger/entity/ChatModelInfo.java")));
+        Assert.assertFalse(Files.exists(DOMAIN_ROOT.resolve("org/wwz/ai/domain/agent/ledger/entity/ChatModelSchema.java")));
+    }
+
+    @Test
     public void shouldBindMapperXmlToInfrastructureDaoNamespace() throws Exception {
         assertNoContent(MAPPER_ROOT, "org.wwz.ai.domain.agent.reactor.mapper.");
         assertContains(MAPPER_ROOT.resolve("dialogue_run_ledger_mapper.xml"), "org.wwz.ai.infrastructure.dao.reactor.IDialogueRunLedgerDao");
         assertContains(MAPPER_ROOT.resolve("artifact_ledger_mapper.xml"), "org.wwz.ai.infrastructure.dao.reactor.IArtifactLedgerDao");
         assertContains(MAPPER_ROOT.resolve("tool_output_image_generation_mapper.xml"), "org.wwz.ai.infrastructure.dao.reactor.IToolOutputImageGenerationDao");
+    }
+
+    @Test
+    public void shouldKeepMcpTechnicalRuntimeOutOfDomain() throws Exception {
+        Path domainMcpRuntime = DOMAIN_ROOT.resolve("org/wwz/ai/domain/agent/runtime/tool/mcp/runtime");
+        Assert.assertFalse("domain 不应保留 MCP client runtime 源码", containsJavaSource(domainMcpRuntime));
+        assertNoContent(DOMAIN_ROOT, "io.modelcontextprotocol.");
+        assertNoContent(DOMAIN_ROOT, "org.springframework.web.reactive.");
+    }
+
+    private boolean containsJavaSource(Path root) throws IOException {
+        if (!Files.isDirectory(root)) {
+            return false;
+        }
+        try (var paths = Files.walk(root)) {
+            return paths.anyMatch(path -> Files.isRegularFile(path)
+                    && path.toString().endsWith(".java"));
+        }
     }
 
     private void assertNoContent(Path root, String expectedAbsent) throws Exception {
@@ -59,19 +89,4 @@ public class ReactorPersistenceBoundaryTest {
         Assert.assertTrue(file + " 应包含: " + expectedContent, content.contains(expectedContent));
     }
 
-    /**
-     * app 模块下执行测试时，工作目录会落在模块根而不是仓库根，需要向上回溯定位真实项目根目录。
-     */
-    private static Path resolveProjectRoot() {
-        Path current = Path.of("").toAbsolutePath();
-        while (current != null) {
-            if (Files.exists(current.resolve("ai-agent-station-study-domain"))
-                    && Files.exists(current.resolve("ai-agent-station-study-infrastructure"))
-                    && Files.exists(current.resolve("ai-agent-station-study-app"))) {
-                return current;
-            }
-            current = current.getParent();
-        }
-        throw new IllegalStateException("无法定位项目根目录");
-    }
 }

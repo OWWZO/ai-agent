@@ -7,22 +7,20 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteStreamPort;
-import org.wwz.ai.domain.agent.runtime.llm.DomainMessageConverter;
-import org.wwz.ai.domain.agent.runtime.llm.LlmChatModelResolver;
-import org.wwz.ai.domain.agent.runtime.llm.LlmChatResponseMapper;
-import org.wwz.ai.domain.agent.runtime.llm.LlmToolCallbackProvider;
-import org.wwz.ai.domain.agent.runtime.llm.OpenAiChatOptionsFactory;
+import org.wwz.ai.domain.agent.runtime.llm.LlmCompletionPort;
+import org.wwz.ai.domain.agent.runtime.llm.LlmResponse;
+import org.wwz.ai.domain.agent.runtime.llm.LlmStreamEvent;
 import org.wwz.ai.domain.agent.runtime.llm.StreamResponseHandler;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpRegistry;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.port.McpToolExecutor;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.runtime.ReactorLlmDependencies;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
-import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
+import org.wwz.ai.domain.agent.image.service.IImageGenerationExecutionKernel;
 import org.wwz.ai.infrastructure.adapter.port.OkHttpRemoteHttpAdapter;
 import org.wwz.ai.infrastructure.adapter.port.OkHttpRemoteStreamAdapter;
 import org.wwz.ai.infrastructure.adapter.port.ReactorToolFileArtifactAdapter;
 
+import java.util.List;
 import java.util.concurrent.Executor;
 
 /**
@@ -58,24 +56,10 @@ public final class ReactorRuntimeTestSupport {
                                                                   IImageGenerationExecutionKernel imageKernel,
                                                                   Environment environment,
                                                                   RemoteHttpPort overrideRemoteHttpPort) {
-        DomainMessageConverter messageConverter = new DomainMessageConverter();
-        ReflectionTestUtils.setField(messageConverter, "reactorConfig", reactorConfig);
-
-        LlmToolCallbackProvider toolCallbackProvider = new LlmToolCallbackProvider();
-        ReflectionTestUtils.setField(toolCallbackProvider, "mcpRegistry", org.mockito.Mockito.mock(McpRegistry.class));
-
-        OpenAiChatOptionsFactory chatOptionsFactory = new OpenAiChatOptionsFactory();
-        ReflectionTestUtils.setField(chatOptionsFactory, "toolCallbackProvider", toolCallbackProvider);
-
         StreamResponseHandler streamResponseHandler = new StreamResponseHandler();
-        LlmChatResponseMapper responseMapper = new LlmChatResponseMapper();
         ReflectionTestUtils.setField(streamResponseHandler, "reactorConfig", reactorConfig);
-        ReflectionTestUtils.setField(streamResponseHandler, "chatResponseMapper", responseMapper);
         ReactorLlmDependencies llmDependencies = ReactorLlmDependencies.builder()
-                .chatModelResolver(new LlmChatModelResolver())
-                .chatOptionsFactory(chatOptionsFactory)
-                .messageConverter(messageConverter)
-                .responseMapper(responseMapper)
+                .completionPort(new TestLlmCompletionPort())
                 .streamResponseHandler(streamResponseHandler)
                 .build();
         RemoteHttpPort remoteHttpPort = overrideRemoteHttpPort != null
@@ -100,5 +84,30 @@ public final class ReactorRuntimeTestSupport {
                 .toolExecutor(sameThreadExecutor)
                 .heartbeatScheduler(new ConcurrentTaskScheduler())
                 .build();
+    }
+
+    private static final class TestLlmCompletionPort implements LlmCompletionPort {
+
+        @Override
+        public LlmResponse complete(org.wwz.ai.domain.agent.runtime.llm.LlmRequest request) {
+            return LlmResponse.builder().content("test response").build();
+        }
+
+        @Override
+        public StreamCall stream(org.wwz.ai.domain.agent.runtime.llm.LlmRequest request) {
+            return new StreamCall() {
+                @Override
+                public void subscribe(java.util.function.Consumer<LlmStreamEvent> onEvent,
+                                      java.util.function.Consumer<Throwable> onError,
+                                      Runnable onComplete) {
+                    onEvent.accept(LlmStreamEvent.builder().content("test response").build());
+                    onComplete.run();
+                }
+
+                @Override
+                public void cancel() {
+                }
+            };
+        }
     }
 }

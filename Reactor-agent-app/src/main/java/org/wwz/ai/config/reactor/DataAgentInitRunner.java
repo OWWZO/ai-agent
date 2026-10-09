@@ -1,165 +1,33 @@
 package org.wwz.ai.config.reactor;
 
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.stereotype.Component;
-import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRegistry;
-import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConfig;
-import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConstants;
-import org.wwz.ai.domain.agent.reactor.config.data.DbConfig;
-import org.wwz.ai.domain.agent.reactor.config.data.EsConfig;
-import org.wwz.ai.domain.agent.reactor.config.data.QdrantConfig;
-import org.wwz.ai.domain.agent.reactor.service.ChatModelInfoService;
-import org.wwz.ai.domain.agent.reactor.service.ColumnValueSyncService;
-import org.wwz.ai.domain.agent.reactor.service.EmbeddingService;
-import org.wwz.ai.domain.agent.reactor.service.QdrantService;
-import org.wwz.ai.infrastructure.dataquery.jdbc.connection.JdbcConnectionFactory;
-import org.wwz.ai.infrastructure.dataquery.jdbc.connection.ConnectionWrapper;
-import org.wwz.ai.infrastructure.dataquery.util.JdbcUtils;
-
-import java.sql.Connection;
+import org.wwz.ai.application.agent.dataquery.initialization.DataAgentInitializationApplicationService;
+import org.wwz.ai.config.reactor.startup.H2SchemaBootstrap;
 
 /**
- * 数据问数启动初始化器。
- *
- * <p>启动阶段按“本地数据库基础设施 -> Qdrant/ES 可选能力 -> 模型元数据 -> Skill
- * 注册表”的顺序准备运行环境。普通启动允许可选外部能力降级并关闭对应开关；开启
- * {@code forceRefresh} 时，关键刷新失败会继续抛出，防止使用不完整索引或模型元数据。</p>
+ * Adapts Spring startup ordering to the H2 bootstrap and DataAgent initialization use case.
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class DataAgentInitRunner implements CommandLineRunner {
 
-    @Autowired
-    private DataAgentConfig dataAgentConfig;
-    @Autowired
-    private QdrantService qdrantService;
-    @Autowired
-    private ChatModelInfoService chatModelInfoService;
-    @Autowired
-    private ColumnValueSyncService columnValueSyncService;
-    @Autowired
-    private EmbeddingService embeddingService;
-    @Autowired(required = false)
-    private SkillRegistry skillRegistry;
-
+    private final H2SchemaBootstrap h2SchemaBootstrap;
+    private final DataAgentInitializationApplicationService initializationApplicationService;
 
     @Override
     public void run(String... args) throws Exception {
-        // CommandLineRunner 在 Spring 上下文完成后执行，所有阶段都共享最终解析后的配置。
-        log.info("dataAgent config:{}", dataAgentConfig);
-        boolean forceRefresh = Boolean.TRUE.equals(dataAgentConfig.getForceRefresh());
-        
-        // H2数据库初始化：如果配置为H2且存在初始化脚本，则执行初始化
-        DbConfig dbConfig = dataAgentConfig.getDbConfig();
-        if (dbConfig != null && "h2".equalsIgnoreCase(dbConfig.getType())) {
-            try (ConnectionWrapper wrapper = JdbcConnectionFactory.getConnection(JdbcUtils.parseJdbcConnectionConfig(dbConfig));
-                 Connection connection = wrapper.getConnection()) {
-                ScriptUtils.executeSqlScript(connection, new ClassPathResource("db/schema.sql"));
-                // 尝试执行data.sql，如果文件不存在或出错不影响启动
-                try {
-                    ScriptUtils.executeSqlScript(connection, new ClassPathResource("db/data.sql"));
-                } catch (Exception e) {
-                   log.warn("Execute data.sql failed or file not found, skipping data init: {}", e.getMessage());
-                }
-                log.info("H2 database initialized with schema.sql");
-            } catch (Exception e) {
-                log.error("Failed to initialize H2 database", e);
-                // 不抛出异常，避免影响主流程，但可能会导致后续查询失败
-            }
-        }
-
-        prepareQdrantCapability(forceRefresh);
-        prepareEsCapability(forceRefresh);
-
-        try {
-            if (forceRefresh) {
-                chatModelInfoService.refreshModelInfo(dataAgentConfig);
-            } else {
-                chatModelInfoService.initModelInfo(dataAgentConfig);
-            }
-        } catch (Exception e) {
-            if (forceRefresh) {
-                log.error("强制刷新失败，终止启动流程", e);
-                throw e;
-            }
-            log.error("Failed to init model info", e);
-        }
-
-        if (skillRegistry != null) {
-            try {
-                skillRegistry.refresh();
-                log.info("skill registry init success, loaded skills={}", skillRegistry.listSkills().size());
-            } catch (Exception e) {
-                log.error("Failed to init skill registry", e);
-            }
-        }
-    }
-
-    private void prepareQdrantCapability(boolean forceRefresh) throws Exception {
-        // Qdrant 依赖共享 embedding 代理；先做健康检查，再创建或重建 schema collection。
-        QdrantConfig qdrantConfig = dataAgentConfig.getQdrantConfig();
-        if (!Boolean.TRUE.equals(qdrantConfig.getEnable())) {
-            return;
-        }
-        try {
-            if (!embeddingService.healthCheck()) {
-                throw new IllegalStateException("共享文本向量代理不可用");
-            }
-            int dimension = resolveEmbeddingDimension();
-            if (forceRefresh) {
-                qdrantService.recreateCosineCollection(DataAgentConstants.SCHEMA_COLLECTION_NAME, dimension);
-            } else {
-                qdrantService.createCosineCollection(DataAgentConstants.SCHEMA_COLLECTION_NAME, dimension);
-            }
-            log.info("qdrant collection init success");
-        } catch (Exception e) {
-            handleCapabilityFailure("qdrant", forceRefresh, e);
-            qdrantConfig.setEnable(false);
-            if (forceRefresh) {
-                throw e;
-            }
-        }
-    }
-
-    private void prepareEsCapability(boolean forceRefresh) throws Exception {
-        // ES 只承接列值索引能力，初始化失败时关闭该能力但不影响其他问数路径（普通模式）。
-        EsConfig esConfig = dataAgentConfig.getEsConfig();
-        if (!Boolean.TRUE.equals(esConfig.getEnable())) {
-            return;
-        }
-        try {
-            if (forceRefresh) {
-                columnValueSyncService.recreateColumnValueIndex();
-            } else {
-                columnValueSyncService.initColumnValueIndex();
-            }
-            log.info("column value es index init success");
-        } catch (Exception e) {
-            handleCapabilityFailure("es", forceRefresh, e);
-            esConfig.setEnable(false);
-            if (forceRefresh) {
-                throw e;
-            }
-        }
-    }
-
-    private void handleCapabilityFailure(String capability, boolean forceRefresh, Exception e) {
-        // 强制刷新由上层重新抛出；普通启动记录降级并让调用方通过配置开关避开故障能力。
-        if (forceRefresh) {
-            log.error("{} capability force-refresh failed", capability, e);
-            return;
-        }
-        log.warn("{} capability degraded and disabled: {}", capability, e.getMessage(), e);
+        log.info("Starting DataAgent startup initialization");
+        h2SchemaBootstrap.initializeIfConfigured();
+        initializationApplicationService.initialize(resolveEmbeddingDimension());
     }
 
     private int resolveEmbeddingDimension() {
-        // 环境变量只覆盖向量维度，缺失或非法时回退默认值以保持启动可用性。
         String dimension = System.getenv("TEXT_EMBEDDING_DIMENSION");
         if (StringUtils.isBlank(dimension)) {
             return 1024;

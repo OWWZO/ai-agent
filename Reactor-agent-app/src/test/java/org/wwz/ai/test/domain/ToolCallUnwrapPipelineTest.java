@@ -10,7 +10,7 @@ import org.wwz.ai.domain.agent.ledger.model.ToolInvocationBatchStartRecord;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.BaseAgent;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
-import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.model.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
@@ -18,7 +18,7 @@ import org.wwz.ai.domain.agent.runtime.tool.common.mcp.McpToolNames;
 import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolCatalog;
 import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolEntry;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactRegistry;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.port.McpToolExecutor;
 
 import java.util.List;
 import java.util.Map;

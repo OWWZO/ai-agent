@@ -5,7 +5,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mockito;
 import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
-import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionFile;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspacePathGuard;
@@ -62,7 +62,7 @@ public class WorkspaceSessionFileMaterializerTest {
                 .thenReturn(textBytes);
 
         List<String> written = materializer.materialize(agentContext, List.of(
-                FileInformation.builder()
+                AgentExecutionFile.builder()
                         .fileName("notes.md")
                         .ossUrl("https://file.example.com/notes.md")
                         .build()
@@ -83,7 +83,7 @@ public class WorkspaceSessionFileMaterializerTest {
                 .thenReturn(xlsxMagic);
 
         List<String> written = materializer.materialize(agentContext, List.of(
-                FileInformation.builder()
+                AgentExecutionFile.builder()
                         .fileName("data.xlsx")
                         .ossUrl("https://file.example.com/data.xlsx")
                         .build()
@@ -99,7 +99,7 @@ public class WorkspaceSessionFileMaterializerTest {
     @Test
     public void shouldSkipWhenNoUrlAndRejectPathTraversalName() throws Exception {
         List<String> written = materializer.materialize(agentContext, List.of(
-                FileInformation.builder().fileName("../secret.txt").build()
+                AgentExecutionFile.builder().fileName("../secret.txt").build()
         ));
         Assert.assertTrue(written.isEmpty());
         Assert.assertFalse(Files.exists(workspaceRoot.resolve("secret.txt")));

@@ -7,9 +7,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.application.agent.run.AgentRunFollowApplicationService;
 import org.wwz.ai.application.agent.run.FollowAttachResult;
-import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
+import org.wwz.ai.application.agent.stream.AgentStreamProjection;
 import org.wwz.ai.application.agent.stream.SessionProjectionRegistry;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.trigger.http.reactor.support.AgentSessionStreamHub;
 import org.wwz.ai.trigger.http.reactor.support.SseEmitterAgentSessionStream;
 import org.wwz.ai.types.agent.config.AgentExecutorProperties;
@@ -51,18 +51,18 @@ public class AgentSessionStreamHubTest {
         for (int i = 0; i < AgentSessionStreamHub.MAX_STREAMS_PER_OWNER; i++) {
             hub.open(sessionId, hub.reserve(ownerKey), 0L);
 
-            AgentRequest request = new AgentRequest();
+            AgentExecutionCommand request = new AgentExecutionCommand();
             request.setRequestId("request-" + i);
             request.setSessionId(sessionId);
-            AgentResponseProjectionStream projection =
-                    new AgentResponseProjectionStream(null, request, Map.of(), hub)
+            AgentStreamProjection projection =
+                    new AgentStreamProjection(null, request, Map.of(), hub)
                             .bindRegistry(projectionRegistry);
             if (i == 0) {
-                AgentRequest overlappingRequest = new AgentRequest();
+                AgentExecutionCommand overlappingRequest = new AgentExecutionCommand();
                 overlappingRequest.setRequestId("request-overlapping");
                 overlappingRequest.setSessionId(sessionId);
-                AgentResponseProjectionStream overlappingProjection =
-                        new AgentResponseProjectionStream(null, overlappingRequest, Map.of(), hub)
+                AgentStreamProjection overlappingProjection =
+                        new AgentStreamProjection(null, overlappingRequest, Map.of(), hub)
                                 .bindRegistry(projectionRegistry);
                 projection.complete();
                 Assert.assertEquals("仍有活投影时不能提前关闭观察流", 1, hub.connectionCount());

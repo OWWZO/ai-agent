@@ -3,9 +3,9 @@ package org.wwz.ai.config.reactor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
-import org.wwz.ai.domain.agent.runtime.handler.AgentResponseHandler;
-import org.wwz.ai.domain.agent.runtime.handler.PlanSolveAgentResponseHandler;
-import org.wwz.ai.domain.agent.runtime.handler.ReactAgentResponseHandler;
+import org.wwz.ai.domain.agent.runtime.handler.AgentStreamEventHandler;
+import org.wwz.ai.domain.agent.runtime.handler.PlanSolveAgentStreamEventHandler;
+import org.wwz.ai.domain.agent.runtime.handler.ReactAgentStreamEventHandler;
 
 import java.util.EnumMap;
 import java.util.List;
@@ -19,12 +19,12 @@ import java.util.Map;
 public class AgentHandlerAutoConfiguration {
 
     @Bean
-    public Map<AgentType, AgentResponseHandler> handlerMap(List<AgentResponseHandler> handlerList) {
-        Map<AgentType, AgentResponseHandler> map = new EnumMap<>(AgentType.class);
-        for (AgentResponseHandler handler : handlerList) {
-            if (handler instanceof PlanSolveAgentResponseHandler) {
+    public Map<AgentType, AgentStreamEventHandler> handlerMap(List<AgentStreamEventHandler> handlerList) {
+        Map<AgentType, AgentStreamEventHandler> map = new EnumMap<>(AgentType.class);
+        for (AgentStreamEventHandler handler : handlerList) {
+            if (handler instanceof PlanSolveAgentStreamEventHandler) {
                 map.put(AgentType.PLAN_SOLVE, handler);
-            } else if (handler instanceof ReactAgentResponseHandler) {
+            } else if (handler instanceof ReactAgentStreamEventHandler) {
                 map.put(AgentType.REACT, handler);
             }
         }

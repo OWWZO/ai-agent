@@ -2,12 +2,10 @@ package org.wwz.ai.test.spring.ai;
 
 import org.junit.Assert;
 import org.junit.Test;
-import org.springframework.test.util.ReflectionTestUtils;
-import org.wwz.ai.domain.agent.runtime.dto.tool.ToolChoice;
 import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
-import org.wwz.ai.domain.agent.runtime.llm.LlmToolCallbackProvider;
-import org.wwz.ai.domain.agent.runtime.llm.OpenAiChatOptionsFactory;
-import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
+import org.wwz.ai.domain.agent.runtime.llm.LlmRequest;
+import org.wwz.ai.infrastructure.llm.springai.SpringAiOptionsMapper;
+import org.wwz.ai.infrastructure.llm.springai.SpringAiToolCallbackProvider;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,8 +18,7 @@ public class OpenAiChatOptionsFactoryTest {
 
     @Test
     public void test_buildTextOptionsMapsStandardFieldsAndExtraBody() {
-        OpenAiChatOptionsFactory factory = new OpenAiChatOptionsFactory();
-        ReflectionTestUtils.setField(factory, "toolCallbackProvider", new LlmToolCallbackProvider());
+        SpringAiOptionsMapper mapper = new SpringAiOptionsMapper(new SpringAiToolCallbackProvider());
 
         Map<String, Object> extParams = new LinkedHashMap<>();
         extParams.put("temperature", 0.9D);
@@ -37,7 +34,8 @@ public class OpenAiChatOptionsFactoryTest {
                 .extParams(extParams)
                 .build();
 
-        var options = factory.buildTextOptions(settings, 0.3D);
+        var options = mapper.map(LlmRequest.builder().model("gpt-4o").settings(settings)
+                .temperature(0.3D).build());
 
         Assert.assertEquals("gpt-4o", options.getModel());
         Assert.assertEquals(Integer.valueOf(2048), options.getMaxTokens());
@@ -50,8 +48,7 @@ public class OpenAiChatOptionsFactoryTest {
 
     @Test
     public void test_buildTextOptionsUsesConfiguredReasoningEffort() {
-        OpenAiChatOptionsFactory factory = new OpenAiChatOptionsFactory();
-        ReflectionTestUtils.setField(factory, "toolCallbackProvider", new LlmToolCallbackProvider());
+        SpringAiOptionsMapper mapper = new SpringAiOptionsMapper(new SpringAiToolCallbackProvider());
 
         LLMSettings settings = LLMSettings.builder()
                 .model("gpt-5")
@@ -60,15 +57,14 @@ public class OpenAiChatOptionsFactoryTest {
                 .reasoningEffort("high")
                 .build();
 
-        var options = factory.buildTextOptions(settings, null);
+        var options = mapper.map(LlmRequest.builder().model("gpt-5").settings(settings).build());
 
         Assert.assertEquals("high", options.getReasoningEffort());
     }
 
     @Test
     public void test_buildToolOptionsDoesNotForceToolChoiceWhenNoTools() {
-        OpenAiChatOptionsFactory factory = new OpenAiChatOptionsFactory();
-        ReflectionTestUtils.setField(factory, "toolCallbackProvider", new LlmToolCallbackProvider());
+        SpringAiOptionsMapper mapper = new SpringAiOptionsMapper(new SpringAiToolCallbackProvider());
 
         LLMSettings settings = LLMSettings.builder()
                 .model("gpt-4o")
@@ -76,7 +72,8 @@ public class OpenAiChatOptionsFactoryTest {
                 .temperature(0.1D)
                 .build();
 
-        var options = factory.buildToolOptions(settings, null, new ToolCollection(), ToolChoice.AUTO);
+        var options = mapper.map(LlmRequest.builder().model("gpt-4o").settings(settings)
+                .tools(List.of()).toolChoice("auto").build());
 
         Assert.assertNull(options.getToolChoice());
         Assert.assertEquals(Boolean.FALSE, options.getInternalToolExecutionEnabled());

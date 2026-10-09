@@ -54,12 +54,4 @@
         WHERE owner_key = #{ownerKey}
     </delete>
 
-    <select id="getLock" resultType="java.lang.Integer">
-        SELECT GET_LOCK(#{name}, #{timeoutSeconds})
-    </select>
-
-    <select id="releaseLock" resultType="java.lang.Integer">
-        SELECT RELEASE_LOCK(#{name})
-    </select>
-
 </mapper>

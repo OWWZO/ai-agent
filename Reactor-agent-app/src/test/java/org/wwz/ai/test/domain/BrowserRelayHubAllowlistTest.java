@@ -5,7 +5,9 @@ import org.junit.Test;
 import org.mockito.Mockito;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
-import org.wwz.ai.domain.agent.adapter.port.BrowserRpcResult;
+import org.wwz.ai.application.agent.browser.BrowserRelayApplicationService;
+import org.wwz.ai.domain.agent.browser.model.BrowserCommandResult;
+import org.wwz.ai.infrastructure.browserrelay.adapter.BrowserRelaySocketAdapter;
 import org.wwz.ai.trigger.http.browser.BrowserRelayHub;
 import org.wwz.ai.types.agent.config.BrowserRelayProperties;
 
@@ -21,9 +23,14 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public class BrowserRelayHubAllowlistTest {
 
+    private static BrowserRelayHub newHub() {
+        BrowserRelaySocketAdapter adapter = new BrowserRelaySocketAdapter(new BrowserRelayProperties());
+        return new BrowserRelayHub(new BrowserRelayApplicationService(new BrowserRelayProperties(), adapter));
+    }
+
     @Test
     public void shouldRejectUnknownHubActions() {
-        BrowserRelayHub hub = new BrowserRelayHub(new BrowserRelayProperties());
+        BrowserRelayHub hub = newHub();
         WebSocketSession session = Mockito.mock(WebSocketSession.class);
         Map<String, Object> attrs = new HashMap<>();
         attrs.put("userId", "user-1");
@@ -32,31 +39,31 @@ public class BrowserRelayHubAllowlistTest {
         Mockito.when(session.getAttributes()).thenReturn(attrs);
         hub.register("user-1", session);
 
-        BrowserRpcResult eval = hub.call("user-1", "eval", Map.of(), Duration.ofSeconds(5));
+        BrowserCommandResult eval = hub.call("user-1", "eval", Map.of(), Duration.ofSeconds(5));
         Assert.assertFalse(eval.isOk());
         Assert.assertEquals("unsupported_action", eval.getErrorCode());
 
-        BrowserRpcResult site = hub.call("user-1", "site", Map.of(), Duration.ofSeconds(5));
+        BrowserCommandResult site = hub.call("user-1", "site", Map.of(), Duration.ofSeconds(5));
         Assert.assertFalse(site.isOk());
         Assert.assertEquals("unsupported_action", site.getErrorCode());
 
-        BrowserRpcResult cookies = hub.call("user-1", "cookies", Map.of(), Duration.ofMillis(20));
+        BrowserCommandResult cookies = hub.call("user-1", "cookies", Map.of(), Duration.ofMillis(20));
         Assert.assertNotEquals("unsupported_action", cookies.getErrorCode());
 
-        BrowserRpcResult bind = hub.call("user-1", "bind", Map.of(), Duration.ofMillis(20));
+        BrowserCommandResult bind = hub.call("user-1", "bind", Map.of(), Duration.ofMillis(20));
         Assert.assertNotEquals("unsupported_action", bind.getErrorCode());
     }
 
     @Test
     public void shouldAcceptLeaseReleaseWithoutExtension() {
-        BrowserRelayHub hub = new BrowserRelayHub(new BrowserRelayProperties());
-        BrowserRpcResult released = hub.call("user-1", "lease-release", Map.of(), Duration.ofSeconds(1));
+        BrowserRelayHub hub = newHub();
+        BrowserCommandResult released = hub.call("user-1", "lease-release", Map.of(), Duration.ofSeconds(1));
         Assert.assertTrue(released.isOk());
     }
 
     @Test
     public void shouldCompleteRpcWhenExtensionReturnsScalarData() throws Exception {
-        BrowserRelayHub hub = new BrowserRelayHub(new BrowserRelayProperties());
+        BrowserRelayHub hub = newHub();
         WebSocketSession session = Mockito.mock(WebSocketSession.class);
         Map<String, Object> attrs = new HashMap<>();
         attrs.put("userId", "user-1");
@@ -72,7 +79,7 @@ public class BrowserRelayHubAllowlistTest {
         }).when(session).sendMessage(Mockito.any(TextMessage.class));
         hub.register("user-1", session);
 
-        CompletableFuture<BrowserRpcResult> call = CompletableFuture.supplyAsync(
+        CompletableFuture<BrowserCommandResult> call = CompletableFuture.supplyAsync(
                 () -> hub.call("user-1", "exec", Map.of(), Duration.ofSeconds(5)));
         Assert.assertTrue(sent.await(1, TimeUnit.SECONDS));
         String id = com.alibaba.fastjson.JSON.parseObject(outgoing.get().getPayload()).getString("id");
@@ -82,14 +89,14 @@ public class BrowserRelayHubAllowlistTest {
                 "data", "plain browser result"
         )));
 
-        BrowserRpcResult result = call.get(1, TimeUnit.SECONDS);
+        BrowserCommandResult result = call.get(1, TimeUnit.SECONDS);
         Assert.assertTrue(result.isOk());
         Assert.assertEquals("plain browser result", result.getData());
     }
 
     @Test
     public void shouldAllowConcurrentRpcAndCorrelateReverseResponses() throws Exception {
-        BrowserRelayHub hub = new BrowserRelayHub(new BrowserRelayProperties());
+        BrowserRelayHub hub = newHub();
         WebSocketSession session = Mockito.mock(WebSocketSession.class);
         Map<String, Object> attrs = new HashMap<>();
         attrs.put("userId", "user-1");
@@ -105,9 +112,9 @@ public class BrowserRelayHubAllowlistTest {
         }).when(session).sendMessage(Mockito.any(TextMessage.class));
         hub.register("user-1", session);
 
-        CompletableFuture<BrowserRpcResult> first = CompletableFuture.supplyAsync(
+        CompletableFuture<BrowserCommandResult> first = CompletableFuture.supplyAsync(
                 () -> hub.call("user-1", "exec", Map.of("id", "rpc-first"), Duration.ofSeconds(5)));
-        CompletableFuture<BrowserRpcResult> second = CompletableFuture.supplyAsync(
+        CompletableFuture<BrowserCommandResult> second = CompletableFuture.supplyAsync(
                 () -> hub.call("user-1", "tabs", Map.of("id", "rpc-second"), Duration.ofSeconds(5)));
 
         Assert.assertTrue(sent.await(1, TimeUnit.SECONDS));
@@ -133,8 +140,8 @@ public class BrowserRelayHubAllowlistTest {
                 "data", "first result"
         )));
 
-        BrowserRpcResult firstResult = first.get(1, TimeUnit.SECONDS);
-        BrowserRpcResult secondResult = second.get(1, TimeUnit.SECONDS);
+        BrowserCommandResult firstResult = first.get(1, TimeUnit.SECONDS);
+        BrowserCommandResult secondResult = second.get(1, TimeUnit.SECONDS);
         Assert.assertTrue(firstResult.isOk());
         Assert.assertTrue(secondResult.isOk());
         Assert.assertNotEquals("browser_busy", firstResult.getErrorCode());
@@ -145,7 +152,7 @@ public class BrowserRelayHubAllowlistTest {
 
     @Test
     public void shouldRejectDuplicateRpcIdWithoutReplacingPendingRequest() throws Exception {
-        BrowserRelayHub hub = new BrowserRelayHub(new BrowserRelayProperties());
+        BrowserRelayHub hub = newHub();
         WebSocketSession session = Mockito.mock(WebSocketSession.class);
         Map<String, Object> attrs = new HashMap<>();
         attrs.put("userId", "user-1");
@@ -161,11 +168,11 @@ public class BrowserRelayHubAllowlistTest {
         }).when(session).sendMessage(Mockito.any(TextMessage.class));
         hub.register("user-1", session);
 
-        CompletableFuture<BrowserRpcResult> original = CompletableFuture.supplyAsync(
+        CompletableFuture<BrowserCommandResult> original = CompletableFuture.supplyAsync(
                 () -> hub.call("user-1", "exec", Map.of("id", "rpc-1"), Duration.ofSeconds(5)));
         Assert.assertTrue(sent.await(1, TimeUnit.SECONDS));
 
-        BrowserRpcResult duplicate = hub.call(
+        BrowserCommandResult duplicate = hub.call(
                 "user-1", "tabs", Map.of("id", "rpc-1"), Duration.ofSeconds(1));
         Assert.assertFalse(duplicate.isOk());
         Assert.assertEquals("duplicate_rpc_id", duplicate.getErrorCode());
@@ -177,7 +184,7 @@ public class BrowserRelayHubAllowlistTest {
                 "data", "original result"
         )));
 
-        BrowserRpcResult result = original.get(1, TimeUnit.SECONDS);
+        BrowserCommandResult result = original.get(1, TimeUnit.SECONDS);
         Assert.assertTrue(result.isOk());
         Assert.assertEquals("original result", result.getData());
     }

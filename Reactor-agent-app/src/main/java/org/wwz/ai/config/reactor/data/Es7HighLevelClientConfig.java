@@ -7,29 +7,28 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConfig;
-import org.wwz.ai.domain.agent.reactor.config.data.EsConfig;
-import org.wwz.ai.domain.agent.reactor.util.ESUtil;
+import org.wwz.ai.infrastructure.dataquery.elasticsearch.ESUtil;
+import org.wwz.ai.infrastructure.dataquery.elasticsearch.ElasticsearchProperties;
 
 /**
  * 数据问数 Elasticsearch 客户端装配。
  *
- * <p>配置 Bean 仅在存在 {@link DataAgentConfig} 时参与装配，并根据 ES 开关和 host
+ * <p>配置 Bean 仅在存在 {@link ElasticsearchProperties} 时参与装配，并根据 ES 开关和 host
  * 做能力级判断。未启用或配置不完整时返回空 Bean，调用方应依据配置开关决定是否
  * 使用 ES，而不是把缺少客户端当作索引为空。</p>
  */
 @Slf4j
 @Configuration
-@ConditionalOnBean(DataAgentConfig.class)
+@ConditionalOnBean(ElasticsearchProperties.class)
 public class Es7HighLevelClientConfig {
 
     @Autowired
-    DataAgentConfig dataAgentConfig;
+    ElasticsearchProperties elasticsearchProperties;
 
     @Bean(name = "dataAgentEsClient")
     public RestHighLevelClient dataAgentEsClient() {
         // 客户端是可选能力，先判断开关和地址，再创建带认证信息的远端连接。
-        EsConfig esConfig = dataAgentConfig.getEsConfig();
+        ElasticsearchProperties esConfig = elasticsearchProperties;
         if (!Boolean.TRUE.equals(esConfig.getEnable())) {
             log.info("ES 能力未启用，跳过 dataAgentEsClient 装配");
             return null;

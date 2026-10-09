@@ -2,125 +2,43 @@ package org.wwz.ai.test.domain.dataagent;
 
 import org.junit.Assert;
 import org.junit.Test;
+import org.mockito.InOrder;
 import org.mockito.Mockito;
-import org.springframework.test.util.ReflectionTestUtils;
+import org.wwz.ai.application.agent.dataquery.initialization.DataAgentInitializationApplicationService;
 import org.wwz.ai.config.reactor.DataAgentInitRunner;
-import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConfig;
-import org.wwz.ai.domain.agent.reactor.config.data.EsConfig;
-import org.wwz.ai.domain.agent.reactor.config.data.QdrantConfig;
-import org.wwz.ai.domain.agent.reactor.service.ChatModelInfoService;
-import org.wwz.ai.domain.agent.reactor.service.ColumnValueSyncService;
-import org.wwz.ai.domain.agent.reactor.service.EmbeddingService;
-import org.wwz.ai.domain.agent.reactor.service.QdrantService;
+import org.wwz.ai.config.reactor.startup.H2SchemaBootstrap;
 
 /**
- * DataAgent 刷新链路测试骨架。
+ * DataAgent startup ordering adapter tests.
  */
 public class DataAgentInitRunnerRefreshTest {
 
     @Test
-    public void shouldUseRefreshFlowWhenForceRefreshEnabled() throws Exception {
-        DataAgentInitRunner runner = new DataAgentInitRunner();
-        DataAgentConfig dataAgentConfig = buildDataAgentConfig(true, true, true);
-        QdrantService qdrantService = Mockito.mock(QdrantService.class);
-        ChatModelInfoService chatModelInfoService = Mockito.mock(ChatModelInfoService.class);
-        ColumnValueSyncService columnValueSyncService = Mockito.mock(ColumnValueSyncService.class);
-        EmbeddingService embeddingService = Mockito.mock(EmbeddingService.class);
-        Mockito.when(embeddingService.healthCheck()).thenReturn(true);
-
-        ReflectionTestUtils.setField(runner, "dataAgentConfig", dataAgentConfig);
-        ReflectionTestUtils.setField(runner, "qdrantService", qdrantService);
-        ReflectionTestUtils.setField(runner, "chatModelInfoService", chatModelInfoService);
-        ReflectionTestUtils.setField(runner, "columnValueSyncService", columnValueSyncService);
-        ReflectionTestUtils.setField(runner, "embeddingService", embeddingService);
+    public void shouldBootstrapH2BeforeCallingInitializationUseCase() throws Exception {
+        H2SchemaBootstrap h2SchemaBootstrap = Mockito.mock(H2SchemaBootstrap.class);
+        DataAgentInitializationApplicationService initializationService =
+                Mockito.mock(DataAgentInitializationApplicationService.class);
+        DataAgentInitRunner runner = new DataAgentInitRunner(h2SchemaBootstrap, initializationService);
 
         runner.run();
 
-        Mockito.verify(qdrantService).recreateCosineCollection("reactor_model_schema", 1024);
-        Mockito.verify(columnValueSyncService).recreateColumnValueIndex();
-        Mockito.verify(chatModelInfoService).refreshModelInfo(dataAgentConfig);
-        Mockito.verify(chatModelInfoService, Mockito.never()).initModelInfo(dataAgentConfig);
+        InOrder order = Mockito.inOrder(h2SchemaBootstrap, initializationService);
+        order.verify(h2SchemaBootstrap).initializeIfConfigured();
+        order.verify(initializationService).initialize(Mockito.anyInt());
     }
 
     @Test
-    public void shouldDegradeQdrantOnRegularStartupWhenEmbeddingUnavailable() throws Exception {
-        DataAgentInitRunner runner = new DataAgentInitRunner();
-        DataAgentConfig dataAgentConfig = buildDataAgentConfig(false, true, false);
-        QdrantService qdrantService = Mockito.mock(QdrantService.class);
-        ChatModelInfoService chatModelInfoService = Mockito.mock(ChatModelInfoService.class);
-        ColumnValueSyncService columnValueSyncService = Mockito.mock(ColumnValueSyncService.class);
-        EmbeddingService embeddingService = Mockito.mock(EmbeddingService.class);
-        Mockito.when(embeddingService.healthCheck()).thenReturn(false);
+    public void shouldPropagateForceRefreshFailureFromInitializationUseCase() throws Exception {
+        H2SchemaBootstrap h2SchemaBootstrap = Mockito.mock(H2SchemaBootstrap.class);
+        DataAgentInitializationApplicationService initializationService =
+                Mockito.mock(DataAgentInitializationApplicationService.class);
+        IllegalStateException expected = new IllegalStateException("refresh failed");
+        Mockito.doThrow(expected).when(initializationService).initialize(Mockito.anyInt());
+        DataAgentInitRunner runner = new DataAgentInitRunner(h2SchemaBootstrap, initializationService);
 
-        ReflectionTestUtils.setField(runner, "dataAgentConfig", dataAgentConfig);
-        ReflectionTestUtils.setField(runner, "qdrantService", qdrantService);
-        ReflectionTestUtils.setField(runner, "chatModelInfoService", chatModelInfoService);
-        ReflectionTestUtils.setField(runner, "columnValueSyncService", columnValueSyncService);
-        ReflectionTestUtils.setField(runner, "embeddingService", embeddingService);
+        IllegalStateException actual = Assert.assertThrows(IllegalStateException.class, runner::run);
 
-        runner.run();
-
-        Assert.assertFalse(dataAgentConfig.getQdrantConfig().getEnable());
-        Mockito.verify(chatModelInfoService).initModelInfo(dataAgentConfig);
-        Mockito.verifyNoInteractions(qdrantService);
-        Mockito.verifyNoInteractions(columnValueSyncService);
-    }
-
-    @Test
-    public void shouldFailFastWhenForceRefreshQdrantCapabilityCheckFails() throws Exception {
-        DataAgentInitRunner runner = new DataAgentInitRunner();
-        DataAgentConfig dataAgentConfig = buildDataAgentConfig(true, true, false);
-        QdrantService qdrantService = Mockito.mock(QdrantService.class);
-        ChatModelInfoService chatModelInfoService = Mockito.mock(ChatModelInfoService.class);
-        ColumnValueSyncService columnValueSyncService = Mockito.mock(ColumnValueSyncService.class);
-        EmbeddingService embeddingService = Mockito.mock(EmbeddingService.class);
-        Mockito.when(embeddingService.healthCheck()).thenReturn(false);
-
-        ReflectionTestUtils.setField(runner, "dataAgentConfig", dataAgentConfig);
-        ReflectionTestUtils.setField(runner, "qdrantService", qdrantService);
-        ReflectionTestUtils.setField(runner, "chatModelInfoService", chatModelInfoService);
-        ReflectionTestUtils.setField(runner, "columnValueSyncService", columnValueSyncService);
-        ReflectionTestUtils.setField(runner, "embeddingService", embeddingService);
-
-        IllegalStateException exception = Assert.assertThrows(IllegalStateException.class, runner::run);
-
-        Assert.assertEquals("共享文本向量代理不可用", exception.getMessage());
-        Mockito.verifyNoInteractions(chatModelInfoService);
-        Mockito.verifyNoInteractions(qdrantService);
-        Mockito.verifyNoInteractions(columnValueSyncService);
-    }
-
-    @Test
-    public void shouldSkipOptionalCapabilitiesWhenNestedConfigsAreAbsent() throws Exception {
-        DataAgentInitRunner runner = new DataAgentInitRunner();
-        DataAgentConfig dataAgentConfig = new DataAgentConfig();
-        ChatModelInfoService chatModelInfoService = Mockito.mock(ChatModelInfoService.class);
-        QdrantService qdrantService = Mockito.mock(QdrantService.class);
-        ColumnValueSyncService columnValueSyncService = Mockito.mock(ColumnValueSyncService.class);
-        EmbeddingService embeddingService = Mockito.mock(EmbeddingService.class);
-
-        ReflectionTestUtils.setField(runner, "dataAgentConfig", dataAgentConfig);
-        ReflectionTestUtils.setField(runner, "qdrantService", qdrantService);
-        ReflectionTestUtils.setField(runner, "chatModelInfoService", chatModelInfoService);
-        ReflectionTestUtils.setField(runner, "columnValueSyncService", columnValueSyncService);
-        ReflectionTestUtils.setField(runner, "embeddingService", embeddingService);
-
-        runner.run();
-
-        Mockito.verify(chatModelInfoService).initModelInfo(dataAgentConfig);
-        Mockito.verifyNoInteractions(qdrantService);
-        Mockito.verifyNoInteractions(columnValueSyncService);
-    }
-
-    private DataAgentConfig buildDataAgentConfig(boolean forceRefresh, boolean qdrantEnabled, boolean esEnabled) {
-        DataAgentConfig dataAgentConfig = new DataAgentConfig();
-        QdrantConfig qdrantConfig = new QdrantConfig();
-        qdrantConfig.setEnable(qdrantEnabled);
-        EsConfig esConfig = new EsConfig();
-        esConfig.setEnable(esEnabled);
-        dataAgentConfig.setForceRefresh(forceRefresh);
-        dataAgentConfig.setQdrantConfig(qdrantConfig);
-        dataAgentConfig.setEsConfig(esConfig);
-        return dataAgentConfig;
+        Assert.assertSame(expected, actual);
+        Mockito.verify(h2SchemaBootstrap).initializeIfConfigured();
     }
 }

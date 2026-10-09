@@ -3,17 +3,19 @@ package org.wwz.ai.test.domain;
 import org.junit.Assert;
 import org.junit.Test;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
+import org.wwz.ai.application.agent.stream.AgentStreamProjection;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
+import org.wwz.ai.application.agent.stream.AgentSessionStreamFrame;
+import org.wwz.ai.application.agent.query.mapper.AgentExecutionCommandMapper;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
-import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
-import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
-import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
-import org.wwz.ai.domain.agent.runtime.GptQueryAgentRequestFactory;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionFile;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
+import org.wwz.ai.application.agent.query.GptQueryCommand;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamEvent;
+import org.wwz.ai.domain.agent.runtime.stream.PlanStreamPayload;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamResult;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
-import org.wwz.ai.domain.agent.runtime.handler.AgentResponseHandler;
+import org.wwz.ai.domain.agent.runtime.handler.AgentStreamEventHandler;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -30,9 +32,9 @@ public class MultiAgentServiceImplTest {
 
     @Test
     public void shouldCarrySessionFilesIntoAgentRequestForReactMode() {
-        GptQueryAgentRequestFactory factory = new GptQueryAgentRequestFactory(buildReactorConfig());
+        AgentExecutionCommandMapper mapper = mapper();
 
-        List<FileInformation> sessionFiles = List.of(FileInformation.builder()
+        List<AgentExecutionFile> sessionFiles = List.of(AgentExecutionFile.builder()
                 .fileName("source-image.png")
                 .domainUrl("https://file.example.com/preview/source-image.png")
                 .ossUrl("https://file.example.com/download/source-image.png")
@@ -40,7 +42,7 @@ public class MultiAgentServiceImplTest {
                 .resourceKey("session-1:source-image.png:hash")
                 .originFileName("原图.png")
                 .build());
-        GptQueryReq request = GptQueryReq.builder()
+        GptQueryCommand request = GptQueryCommand.builder()
                 .traceId("trace-session-1:req-1")
                 .sessionId("session-1")
                 .requestId("req-1")
@@ -50,7 +52,7 @@ public class MultiAgentServiceImplTest {
                 .sessionFiles(sessionFiles)
                 .build();
 
-        AgentRequest agentRequest = factory.build(request);
+        AgentExecutionCommand agentRequest = mapper.toExecutionCommand(request, null);
 
         Assert.assertNotNull(agentRequest);
          Assert.assertEquals("req-1", agentRequest.getRequestId());
@@ -61,13 +63,13 @@ public class MultiAgentServiceImplTest {
 
     @Test
     public void shouldSelectPlanSolveForDeepThinkRequest() {
-        GptQueryAgentRequestFactory factory = new GptQueryAgentRequestFactory(buildReactorConfig());
-        AgentRequest agentRequest = factory.build(GptQueryReq.builder()
+        AgentExecutionCommandMapper mapper = mapper();
+        AgentExecutionCommand agentRequest = mapper.toExecutionCommand(GptQueryCommand.builder()
                 .requestId("req-plan-solve-1")
                 .sessionId("session-plan-solve-1")
                 .query("请先制定执行计划")
                 .deepThink(1)
-                .build());
+                .build(), null);
 
         Assert.assertEquals(AgentType.PLAN_SOLVE.getValue(), agentRequest.getAgentType());
     }
@@ -78,23 +80,23 @@ public class MultiAgentServiceImplTest {
         AtomicInteger completeCount = new AtomicInteger();
         stream.onCompleteCallback = completeCount::incrementAndGet;
 
-        AgentResponseHandler handler = (request, response, agentRespList, eventResult) -> GptProcessResult.builder()
-                .finished(true)
+        AgentStreamEventHandler handler = (request, response, agentRespList, eventResult) -> AgentStreamResult.builder()
+                .complete(true)
                 .status("success")
-                .resultMap(Map.of())
+                .eventData(Map.of())
                 .build();
 
-        AgentRequest request = new AgentRequest();
+        AgentExecutionCommand request = new AgentExecutionCommand();
         request.setRequestId("req-finished-1");
         request.setAgentType(AgentType.REACT.getValue());
 
-        AgentResponseProjectionStream projecting = new AgentResponseProjectionStream(
+        AgentStreamProjection projecting = new AgentStreamProjection(
                 stream,
                 request,
                 Map.of(AgentType.REACT, handler)
         );
 
-        projecting.send(AgentResponse.builder()
+        projecting.send(AgentStreamEvent.builder()
                 .requestId("req-finished-1")
                  .messageType("stream_settle")
                 .finish(true)
@@ -103,8 +105,8 @@ public class MultiAgentServiceImplTest {
 
         Assert.assertTrue("终态后应关闭下游输出流", stream.completed);
         Assert.assertEquals(1, stream.payloads.size());
-        Assert.assertTrue(stream.payloads.get(0) instanceof GptProcessResult);
-        Assert.assertTrue(((GptProcessResult) stream.payloads.get(0)).isFinished());
+        Assert.assertTrue(stream.payloads.get(0) instanceof AgentSessionStreamFrame);
+        Assert.assertTrue(((AgentSessionStreamFrame) stream.payloads.get(0)).isFinished());
 
         // complete 应幂等，避免与 dispatch finally 双重关闭出问题
         projecting.complete();
@@ -116,11 +118,11 @@ public class MultiAgentServiceImplTest {
         AbortableAgentSessionStream stream = new AbortableAgentSessionStream();
         AtomicBoolean abortedObserved = new AtomicBoolean(false);
 
-        AgentRequest request = new AgentRequest();
+        AgentExecutionCommand request = new AgentExecutionCommand();
         request.setRequestId("req-abort-1");
         request.setAgentType(AgentType.REACT.getValue());
 
-        AgentResponseProjectionStream projecting = new AgentResponseProjectionStream(
+        AgentStreamProjection projecting = new AgentStreamProjection(
                 stream,
                 request,
                 Map.of()
@@ -138,18 +140,18 @@ public class MultiAgentServiceImplTest {
         RecordingAgentSessionStream second = new RecordingAgentSessionStream();
         AtomicBoolean firstAbortSeen = new AtomicBoolean(false);
 
-        AgentRequest request = new AgentRequest();
+        AgentExecutionCommand request = new AgentExecutionCommand();
         request.setRequestId("req-rebind-1");
         request.setAgentType(AgentType.REACT.getValue());
 
-        AgentResponseHandler handler = (req, response, agentRespList, eventResult) -> GptProcessResult.builder()
-                .finished(false)
+        AgentStreamEventHandler handler = (req, response, agentRespList, eventResult) -> AgentStreamResult.builder()
+                .complete(false)
                 .status("success")
-                .packageType("result")
-                .resultMap(Map.of())
+                .frameType("result")
+                .eventData(Map.of())
                 .build();
 
-        AgentResponseProjectionStream projecting = new AgentResponseProjectionStream(
+        AgentStreamProjection projecting = new AgentStreamProjection(
                 first,
                 request,
                 Map.of(AgentType.REACT, handler)
@@ -163,7 +165,7 @@ public class MultiAgentServiceImplTest {
         projecting.rebindDownstream(second);
         Assert.assertFalse("续绑后投影流应恢复可写", projecting.isAborted());
 
-        projecting.send(AgentResponse.builder()
+        projecting.send(AgentStreamEvent.builder()
                 .requestId("req-rebind-1")
                 .messageType("tool_thought")
                 .finish(false)
@@ -171,7 +173,7 @@ public class MultiAgentServiceImplTest {
                 .build());
 
         Assert.assertEquals(1, second.payloads.size());
-        Assert.assertTrue(second.payloads.get(0) instanceof GptProcessResult);
+        Assert.assertTrue(second.payloads.get(0) instanceof AgentSessionStreamFrame);
     }
 
     @Test
@@ -179,33 +181,33 @@ public class MultiAgentServiceImplTest {
         AbortableAgentSessionStream first = new AbortableAgentSessionStream();
         RecordingAgentSessionStream second = new RecordingAgentSessionStream();
 
-        AgentRequest request = new AgentRequest();
+        AgentExecutionCommand request = new AgentExecutionCommand();
         request.setRequestId("req-buffer-1");
         request.setAgentType(AgentType.REACT.getValue());
 
         AtomicInteger seq = new AtomicInteger();
-        AgentResponseHandler handler = (req, response, agentRespList, eventResult) -> GptProcessResult.builder()
-                .finished(false)
+        AgentStreamEventHandler handler = (req, response, agentRespList, eventResult) -> AgentStreamResult.builder()
+                .complete(false)
                 .status("success")
-                .packageType("result")
-                .reqId("frame-" + seq.incrementAndGet())
-                .resultMap(Map.of())
+                .frameType("result")
+                .requestId("frame-" + seq.incrementAndGet())
+                .eventData(Map.of())
                 .build();
 
-        AgentResponseProjectionStream projecting = new AgentResponseProjectionStream(
+        AgentStreamProjection projecting = new AgentStreamProjection(
                 first,
                 request,
                 Map.of(AgentType.REACT, handler)
         );
         first.abort();
 
-        projecting.send(AgentResponse.builder()
+        projecting.send(AgentStreamEvent.builder()
                 .requestId("req-buffer-1")
                 .messageType("tool_thought")
                 .finish(false)
                 .resultMap(Map.of("agentType", 5))
                 .build());
-        projecting.send(AgentResponse.builder()
+        projecting.send(AgentStreamEvent.builder()
                 .requestId("req-buffer-1")
                 .messageType("tool_thought")
                 .finish(false)
@@ -224,25 +226,25 @@ public class MultiAgentServiceImplTest {
         RecordingAgentSessionStream first = new RecordingAgentSessionStream();
         RecordingAgentSessionStream second = new RecordingAgentSessionStream();
 
-        AgentRequest request = new AgentRequest();
+        AgentExecutionCommand request = new AgentExecutionCommand();
         request.setRequestId("req-fanout-1");
         request.setAgentType(AgentType.REACT.getValue());
 
-        AgentResponseHandler handler = (req, response, agentRespList, eventResult) -> GptProcessResult.builder()
-                .finished(false)
+        AgentStreamEventHandler handler = (req, response, agentRespList, eventResult) -> AgentStreamResult.builder()
+                .complete(false)
                 .status("success")
-                .packageType("result")
-                .resultMap(Map.of())
+                .frameType("result")
+                .eventData(Map.of())
                 .build();
 
-        AgentResponseProjectionStream projecting = new AgentResponseProjectionStream(
+        AgentStreamProjection projecting = new AgentStreamProjection(
                 first,
                 request,
                 Map.of(AgentType.REACT, handler)
         );
         projecting.rebindDownstream(second);
 
-        projecting.send(AgentResponse.builder()
+        projecting.send(AgentStreamEvent.builder()
                 .requestId("req-fanout-1")
                 .messageType("tool_thought")
                 .finish(false)
@@ -260,18 +262,18 @@ public class MultiAgentServiceImplTest {
         RecordingAgentSessionStream second = new RecordingAgentSessionStream();
         AtomicBoolean projectionAbortSeen = new AtomicBoolean(false);
 
-        AgentRequest request = new AgentRequest();
+        AgentExecutionCommand request = new AgentExecutionCommand();
         request.setRequestId("req-keep-alive-1");
         request.setAgentType(AgentType.REACT.getValue());
 
-        AgentResponseHandler handler = (req, response, agentRespList, eventResult) -> GptProcessResult.builder()
-                .finished(false)
+        AgentStreamEventHandler handler = (req, response, agentRespList, eventResult) -> AgentStreamResult.builder()
+                .complete(false)
                 .status("success")
-                .packageType("result")
-                .resultMap(Map.of())
+                .frameType("result")
+                .eventData(Map.of())
                 .build();
 
-        AgentResponseProjectionStream projecting = new AgentResponseProjectionStream(
+        AgentStreamProjection projecting = new AgentStreamProjection(
                 first,
                 request,
                 Map.of(AgentType.REACT, handler)
@@ -283,7 +285,7 @@ public class MultiAgentServiceImplTest {
         Assert.assertFalse("仍有旁观连接时投影不能因 POST 断开而 aborted", projecting.isAborted());
         Assert.assertFalse(projectionAbortSeen.get());
 
-        projecting.send(AgentResponse.builder()
+        projecting.send(AgentStreamEvent.builder()
                 .requestId("req-keep-alive-1")
                 .messageType("tool_thought")
                 .finish(false)
@@ -298,26 +300,26 @@ public class MultiAgentServiceImplTest {
         List<Object> published = new ArrayList<>();
         RecordingAgentSessionStream local = new RecordingAgentSessionStream();
 
-        AgentRequest request = new AgentRequest();
+        AgentExecutionCommand request = new AgentExecutionCommand();
         request.setRequestId("req-bus-1");
         request.setSessionId("sess-bus-1");
         request.setAgentType(AgentType.REACT.getValue());
 
-        AgentResponseHandler handler = (req, response, agentRespList, eventResult) -> GptProcessResult.builder()
-                .finished(false)
+        AgentStreamEventHandler handler = (req, response, agentRespList, eventResult) -> AgentStreamResult.builder()
+                .complete(false)
                 .status("success")
-                .packageType("result")
-                .resultMap(Map.of())
+                .frameType("result")
+                .eventData(Map.of())
                 .build();
 
-        AgentResponseProjectionStream projecting = new AgentResponseProjectionStream(
+        AgentStreamProjection projecting = new AgentStreamProjection(
                 local,
                 request,
                 Map.of(AgentType.REACT, handler),
                 (sessionId, frame) -> published.add(frame)
         );
 
-        projecting.send(AgentResponse.builder()
+        projecting.send(AgentStreamEvent.builder()
                 .requestId("req-bus-1")
                 .messageType("tool_thought")
                 .finish(false)
@@ -336,6 +338,12 @@ public class MultiAgentServiceImplTest {
         ReflectionTestUtils.setField(reactorConfig, "sseClientReadTimeout", 300);
         ReflectionTestUtils.setField(reactorConfig, "sseClientConnectTimeout", 60);
         return reactorConfig;
+    }
+
+    private AgentExecutionCommandMapper mapper() {
+        AgentExecutionCommandMapper mapper = new AgentExecutionCommandMapper();
+        ReflectionTestUtils.setField(mapper, "reactorConfig", buildReactorConfig());
+        return mapper;
     }
 
     private static class RecordingAgentSessionStream implements AgentSessionStream {

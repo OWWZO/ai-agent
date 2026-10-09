@@ -13,12 +13,15 @@ import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.cancel.RunCancellation;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
+import org.wwz.ai.domain.agent.runtime.llm.LlmCompletionPort;
 import org.wwz.ai.domain.agent.runtime.llm.LlmCancelledException;
-import org.wwz.ai.domain.agent.runtime.llm.LlmChatResponseMapper;
+import org.wwz.ai.domain.agent.runtime.llm.LlmStreamEvent;
+import org.wwz.ai.infrastructure.llm.springai.SpringAiResponseMapper;
 import org.wwz.ai.domain.agent.runtime.llm.StreamResponseHandler;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.FluxSink;
 
@@ -45,7 +48,6 @@ public class StreamResponseHandlerTest {
         ReactorConfig reactorConfig = new ReactorConfig();
         reactorConfig.setMessageInterval("{\"llm\":\"1,2\"}");
         ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
-        ReflectionTestUtils.setField(handler, "chatResponseMapper", new LlmChatResponseMapper());
 
         RecordingPrinter printer = new RecordingPrinter();
         AgentContext context = AgentContext.builder()
@@ -57,11 +59,11 @@ public class StreamResponseHandlerTest {
 
         String fullContent = handler.handleStringStream(
                 context,
-                Flux.just(
+                streamCall(Flux.just(
                         textChunk("先分析"),
                         textChunk("```"),
                         textChunk("json {\"function_name\":\"deep_search\"}```")
-                ),
+                )),
                 "```json",
                 true
         ).get(5, java.util.concurrent.TimeUnit.SECONDS);
@@ -77,7 +79,6 @@ public class StreamResponseHandlerTest {
         ReactorConfig reactorConfig = new ReactorConfig();
         reactorConfig.setMessageInterval("{\"llm\":\"1,1\"}");
         ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
-        ReflectionTestUtils.setField(handler, "chatResponseMapper", new LlmChatResponseMapper());
 
         RecordingPrinter printer = new RecordingPrinter();
         AgentContext context = AgentContext.builder()
@@ -89,12 +90,12 @@ public class StreamResponseHandlerTest {
 
         LLM.ToolCallResponse response = handler.handleToolCallStream(
                 context,
-                Flux.just(
+                streamCall(Flux.just(
                         reasoningChunk("先想清楚", "要查资料",
                                 new AssistantMessage.ToolCall("call-r", "function", "deep_search", "{\"q\":"), null, null),
                         reasoningChunk("", "再搜",
                                 new AssistantMessage.ToolCall("call-r", "function", "deep_search", "\"x\"}"), "tool_calls", 20)
-                ),
+                )),
                 System.currentTimeMillis() - 10
         ).get(5, java.util.concurrent.TimeUnit.SECONDS);
 
@@ -113,7 +114,6 @@ public class StreamResponseHandlerTest {
         ReactorConfig reactorConfig = new ReactorConfig();
         reactorConfig.setMessageInterval("{\"llm\":\"1,1\"}");
         ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
-        ReflectionTestUtils.setField(handler, "chatResponseMapper", new LlmChatResponseMapper());
 
         RecordingPrinter printer = new RecordingPrinter();
         AgentContext context = AgentContext.builder()
@@ -129,8 +129,8 @@ public class StreamResponseHandlerTest {
 
         LLM.ToolCallResponse response = handler.handleToolCallStream(
                 context,
-                Flux.just(toolChunk("过程文", new AssistantMessage.ToolCall(
-                        "call-runtime-timing", "function", "read_file", "{}"), "tool_calls", 10)),
+                streamCall(Flux.just(toolChunk("过程文", new AssistantMessage.ToolCall(
+                        "call-runtime-timing", "function", "read_file", "{}"), "tool_calls", 10))),
                 System.currentTimeMillis() - 10,
                 true,
                 0,
@@ -149,7 +149,6 @@ public class StreamResponseHandlerTest {
         ReactorConfig reactorConfig = new ReactorConfig();
         reactorConfig.setMessageInterval("{\"llm\":\"1,1\"}");
         ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
-        ReflectionTestUtils.setField(handler, "chatResponseMapper", new LlmChatResponseMapper());
 
         RecordingPrinter printer = new RecordingPrinter();
         AgentContext context = AgentContext.builder()
@@ -162,10 +161,10 @@ public class StreamResponseHandlerTest {
         // 先只有 content，后才出现 tool_call —— 过程文必须先被推送
         LLM.ToolCallResponse response = handler.handleToolCallStream(
                 context,
-                Flux.just(
+                streamCall(Flux.just(
                         textChunk("我先说明下一步"),
                         toolChunk("", new AssistantMessage.ToolCall("call-x", "function", "read_file", "{\"path\":\"a\"}"), "tool_calls", 12)
-                ),
+                )),
                 System.currentTimeMillis() - 10
         ).get(5, java.util.concurrent.TimeUnit.SECONDS);
 
@@ -185,7 +184,6 @@ public class StreamResponseHandlerTest {
         ReactorConfig reactorConfig = new ReactorConfig();
         reactorConfig.setMessageInterval("{\"llm\":\"1,2\"}");
         ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
-        ReflectionTestUtils.setField(handler, "chatResponseMapper", new LlmChatResponseMapper());
 
         RecordingPrinter printer = new RecordingPrinter();
         AgentContext context = AgentContext.builder()
@@ -197,10 +195,10 @@ public class StreamResponseHandlerTest {
 
         LLM.ToolCallResponse response = handler.handleToolCallStream(
                 context,
-                Flux.just(
+                streamCall(Flux.just(
                         toolChunk("先思考", new AssistantMessage.ToolCall("call-1", "function", "deep_search", "{\"query\":"), null, null),
                         toolChunk("", new AssistantMessage.ToolCall("call-1", "function", "deep_search", "\"spring ai\"}"), "tool_calls", 28)
-                ),
+                )),
                 System.currentTimeMillis() - 10
         ).get(5, java.util.concurrent.TimeUnit.SECONDS);
 
@@ -218,7 +216,6 @@ public class StreamResponseHandlerTest {
         ReactorConfig reactorConfig = new ReactorConfig();
         reactorConfig.setMessageInterval("{\"llm\":\"1,2\"}");
         ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
-        ReflectionTestUtils.setField(handler, "chatResponseMapper", new LlmChatResponseMapper());
 
         RecordingPrinter printer = new RecordingPrinter();
         AgentContext context = AgentContext.builder()
@@ -230,7 +227,7 @@ public class StreamResponseHandlerTest {
 
         LLM.ToolCallResponse response = handler.handleToolCallStream(
                 context,
-                Flux.just(toolChunk("先规划", new AssistantMessage.ToolCall("call-2", "function", "planning", "{\"command\":\"create\"}"), "tool_calls", 18)),
+                streamCall(Flux.just(toolChunk("先规划", new AssistantMessage.ToolCall("call-2", "function", "planning", "{\"command\":\"create\"}"), "tool_calls", 18))),
                 System.currentTimeMillis() - 10,
                 false
         ).get(5, java.util.concurrent.TimeUnit.SECONDS);
@@ -245,7 +242,6 @@ public class StreamResponseHandlerTest {
         ReactorConfig reactorConfig = new ReactorConfig();
         reactorConfig.setMessageInterval("{\"llm\":\"1,1\"}");
         ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
-        ReflectionTestUtils.setField(handler, "chatResponseMapper", new LlmChatResponseMapper());
 
         RecordingPrinter printer = new RecordingPrinter();
         AgentContext context = AgentContext.builder()
@@ -263,7 +259,7 @@ public class StreamResponseHandlerTest {
         }, FluxSink.OverflowStrategy.BUFFER);
         CompletableFuture<LLM.ToolCallResponse> future = handler.handleToolCallStream(
                 context,
-                flux,
+                streamCall(flux),
                 System.currentTimeMillis(),
                 true,
                 1
@@ -298,7 +294,6 @@ public class StreamResponseHandlerTest {
         ReactorConfig reactorConfig = new ReactorConfig();
         reactorConfig.setMessageInterval("{\"llm\":\"1,1\"}");
         ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
-        ReflectionTestUtils.setField(handler, "chatResponseMapper", new LlmChatResponseMapper());
 
         RecordingPrinter printer = new RecordingPrinter();
         AgentContext context = AgentContext.builder()
@@ -316,7 +311,7 @@ public class StreamResponseHandlerTest {
         }, FluxSink.OverflowStrategy.BUFFER);
         CompletableFuture<StreamResponseHandler.StringStreamResult> future = handler.handleStringStreamWithUsage(
                 context,
-                flux,
+                streamCall(flux),
                 null,
                 false,
                 true,
@@ -359,7 +354,7 @@ public class StreamResponseHandlerTest {
         try {
             handler.handleStringStreamWithUsage(
                     context,
-                    Flux.<ChatResponse>never().doOnSubscribe(subscription -> subscribed.incrementAndGet()),
+                    streamCall(Flux.<ChatResponse>never().doOnSubscribe(subscription -> subscribed.incrementAndGet())),
                     null,
                     false,
                     false,
@@ -391,7 +386,7 @@ public class StreamResponseHandlerTest {
         );
 
         CompletableFuture<StreamResponseHandler.StringStreamResult> future = handler.handleStringStreamWithUsage(
-                context, flux, null, false, false, 0);
+                context, streamCall(flux), null, false, false, 0);
         cancellation.cancel(RunCancellation.REASON_USER_STOP);
 
         try {
@@ -411,8 +406,29 @@ public class StreamResponseHandlerTest {
         ReactorConfig reactorConfig = new ReactorConfig();
         reactorConfig.setMessageInterval("{\"llm\":\"1,1\"}");
         ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
-        ReflectionTestUtils.setField(handler, "chatResponseMapper", new LlmChatResponseMapper());
         return handler;
+    }
+
+    private LlmCompletionPort.StreamCall streamCall(Flux<ChatResponse> source) {
+        SpringAiResponseMapper mapper = new SpringAiResponseMapper();
+        AtomicReference<Disposable> subscription = new AtomicReference<>();
+        return new LlmCompletionPort.StreamCall() {
+            @Override
+            public void subscribe(java.util.function.Consumer<LlmStreamEvent> onEvent,
+                                  java.util.function.Consumer<Throwable> onError,
+                                  Runnable onComplete) {
+                subscription.set(source.subscribe(response -> onEvent.accept(mapper.toStreamEvent(response)),
+                        onError, onComplete));
+            }
+
+            @Override
+            public void cancel() {
+                Disposable active = subscription.getAndSet(null);
+                if (active != null && !active.isDisposed()) {
+                    active.dispose();
+                }
+            }
+        };
     }
 
     private static void awaitCancelled(AtomicBoolean cancelled) throws InterruptedException {

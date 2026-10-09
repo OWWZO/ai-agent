@@ -5,22 +5,25 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
-import org.wwz.ai.domain.agent.adapter.port.BrowserRpcResult;
-import org.wwz.ai.trigger.http.browser.BrowserRelayHub;
+import org.wwz.ai.application.agent.browser.BrowserRelayApplicationService;
+import org.wwz.ai.domain.agent.browser.model.BrowserCommand;
+import org.wwz.ai.domain.agent.browser.model.BrowserCommandResult;
 import org.wwz.ai.trigger.http.browser.InternalBrowserRpcController;
 import org.wwz.ai.types.agent.config.BrowserRelayProperties;
 
-import java.time.Duration;
 import java.util.Map;
 
 public class InternalBrowserRpcControllerTest {
 
     @Test
     public void shouldAcceptLegacyVisitorIdFromRelayClient() {
-        BrowserRelayHub hub = Mockito.mock(BrowserRelayHub.class);
-        Mockito.when(hub.call(Mockito.eq("user-1"), Mockito.eq("navigate"), Mockito.anyMap(), Mockito.any(Duration.class)))
-                .thenReturn(BrowserRpcResult.builder().ok(true).build());
-        InternalBrowserRpcController controller = new InternalBrowserRpcController(hub, new BrowserRelayProperties());
+        BrowserRelayApplicationService applicationService = Mockito.mock(BrowserRelayApplicationService.class);
+        Mockito.when(applicationService.execute(Mockito.any(BrowserCommand.class)))
+                .thenReturn(BrowserCommandResult.success("rpc-1", null));
+        InternalBrowserRpcController controller = new InternalBrowserRpcController(
+                applicationService,
+                new BrowserRelayProperties()
+        );
         HttpServletRequest request = Mockito.mock(HttpServletRequest.class);
         Mockito.when(request.getRemoteAddr()).thenReturn("127.0.0.1");
 
@@ -29,8 +32,10 @@ public class InternalBrowserRpcControllerTest {
                 request);
 
         Assert.assertEquals(Boolean.TRUE, response.get("ok"));
-        ArgumentCaptor<Map> params = ArgumentCaptor.forClass(Map.class);
-        Mockito.verify(hub).call(Mockito.eq("user-1"), Mockito.eq("navigate"), params.capture(), Mockito.any(Duration.class));
-        Assert.assertFalse(params.getValue().containsKey("visitorId"));
+        ArgumentCaptor<BrowserCommand> command = ArgumentCaptor.forClass(BrowserCommand.class);
+        Mockito.verify(applicationService).execute(command.capture());
+        Assert.assertEquals("user-1", command.getValue().userId());
+        Assert.assertEquals("navigate", command.getValue().action().value());
+        Assert.assertFalse(command.getValue().parameters().containsKey("visitorId"));
     }
 }

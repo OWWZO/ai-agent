@@ -8,8 +8,8 @@ import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.DefaultUsage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
-import org.wwz.ai.domain.agent.runtime.llm.LLM;
-import org.wwz.ai.domain.agent.runtime.llm.LlmChatResponseMapper;
+import org.wwz.ai.domain.agent.runtime.llm.LlmResponse;
+import org.wwz.ai.infrastructure.llm.springai.SpringAiResponseMapper;
 
 import java.util.List;
 
@@ -20,19 +20,19 @@ public class LlmChatResponseMapperTest {
 
     @Test
     public void test_toTextReadsAssistantContent() {
-        LlmChatResponseMapper mapper = new LlmChatResponseMapper();
+        SpringAiResponseMapper mapper = new SpringAiResponseMapper();
         ChatResponse response = buildChatResponse(
                 AssistantMessage.builder().content("最终答案").properties(java.util.Map.of()).build(),
                 "stop",
                 18
         );
 
-        Assert.assertEquals("最终答案", mapper.toText(response));
+        Assert.assertEquals("最终答案", mapper.toResponse(response).getContent());
     }
 
     @Test
     public void test_toToolCallResponseNormalizesArgumentsAndUsage() {
-        LlmChatResponseMapper mapper = new LlmChatResponseMapper();
+        SpringAiResponseMapper mapper = new SpringAiResponseMapper();
         AssistantMessage assistantMessage = AssistantMessage.builder()
                 .content("我需要调用工具")
                 .properties(java.util.Map.of())
@@ -44,24 +44,21 @@ public class LlmChatResponseMapperTest {
                 )))
                 .build();
 
-        LLM.ToolCallResponse response = mapper.toToolCallResponse(
-                buildChatResponse(assistantMessage, "tool_calls", 36),
-                System.currentTimeMillis() - 5
-        );
+        LlmResponse response = mapper.toResponse(buildChatResponse(assistantMessage, "tool_calls", 36));
 
         Assert.assertEquals("我需要调用工具", response.getContent());
         Assert.assertEquals("tool_calls", response.getFinishReason());
-        Assert.assertEquals(Integer.valueOf(36), response.getTotalTokens());
-        Assert.assertEquals(Integer.valueOf(10), response.getPromptTokens());
-        Assert.assertEquals(Integer.valueOf(26), response.getCompletionTokens());
+        Assert.assertEquals(Integer.valueOf(36), response.getUsage().getTotalTokens());
+        Assert.assertEquals(Integer.valueOf(10), response.getUsage().getPromptTokens());
+        Assert.assertEquals(Integer.valueOf(26), response.getUsage().getCompletionTokens());
         Assert.assertEquals(1, response.getToolCalls().size());
-        Assert.assertEquals("deep_search", response.getToolCalls().get(0).getFunction().getName());
-        Assert.assertEquals("{\"query\":\"spring ai\"}", response.getToolCalls().get(0).getFunction().getArguments());
+        Assert.assertEquals("deep_search", response.getToolCalls().get(0).getName());
+        Assert.assertEquals("{\"query\":\"spring ai\"}", response.getToolCalls().get(0).getArguments());
     }
 
     @Test
     public void test_toToolCallResponseReadsNativeCachedAndDetails() {
-        LlmChatResponseMapper mapper = new LlmChatResponseMapper();
+        SpringAiResponseMapper mapper = new SpringAiResponseMapper();
         AssistantMessage assistantMessage = AssistantMessage.builder()
                 .content("ok")
                 .properties(java.util.Map.of())
@@ -89,20 +86,26 @@ public class LlmChatResponseMapperTest {
                 responseMetadata
         );
 
-        LLM.ToolCallResponse response = mapper.toToolCallResponse(chatResponse, System.currentTimeMillis() - 1);
-        Assert.assertEquals(Integer.valueOf(80), response.getPromptTokens());
-        Assert.assertEquals(Integer.valueOf(20), response.getCompletionTokens());
-        Assert.assertEquals(Integer.valueOf(100), response.getTotalTokens());
-        Assert.assertEquals(Integer.valueOf(7), response.getCachedPromptTokens());
-        Assert.assertEquals(Integer.valueOf(80), response.getPromptTextTokens());
-        Assert.assertEquals(Integer.valueOf(5), response.getReasoningTokens());
+        LlmResponse response = mapper.toResponse(chatResponse);
+        Assert.assertEquals(Integer.valueOf(80), response.getUsage().getPromptTokens());
+        Assert.assertEquals(Integer.valueOf(20), response.getUsage().getCompletionTokens());
+        Assert.assertEquals(Integer.valueOf(100), response.getUsage().getTotalTokens());
+        Assert.assertEquals(Integer.valueOf(7), response.getUsage().getCachedPromptTokens());
+        Assert.assertEquals(Integer.valueOf(80), response.getUsage().getPromptTextTokens());
+        Assert.assertEquals(Integer.valueOf(5), response.getUsage().getReasoningTokens());
     }
 
     @Test
     public void test_normalizeToolArgumentsFallsBackToEmptyObject() {
-        LlmChatResponseMapper mapper = new LlmChatResponseMapper();
-        Assert.assertEquals("{}", mapper.normalizeToolArguments("not-json"));
-        Assert.assertEquals("{}", mapper.normalizeToolArguments(""));
+        SpringAiResponseMapper mapper = new SpringAiResponseMapper();
+        Assert.assertEquals("{}", mapper.toResponse(buildChatResponse(
+                AssistantMessage.builder().content("test").properties(java.util.Map.of())
+                        .toolCalls(List.of(new AssistantMessage.ToolCall("invalid", "function", "test", "not-json")))
+                        .build(), "tool_calls", 10)).getToolCalls().get(0).getArguments());
+        Assert.assertEquals("{}", mapper.toResponse(buildChatResponse(
+                AssistantMessage.builder().content("test").properties(java.util.Map.of())
+                        .toolCalls(List.of(new AssistantMessage.ToolCall("empty", "function", "test", "")))
+                        .build(), "tool_calls", 10)).getToolCalls().get(0).getArguments());
     }
 
     private ChatResponse buildChatResponse(AssistantMessage assistantMessage, String finishReason, int totalTokens) {

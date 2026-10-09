@@ -2,9 +2,11 @@ package org.wwz.ai.test.domain.dataagent;
 
 import org.junit.Assert;
 import org.junit.Test;
-import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConfig;
-import org.wwz.ai.domain.agent.reactor.config.data.EsConfig;
-import org.wwz.ai.domain.agent.reactor.config.data.QdrantConfig;
+import org.wwz.ai.domain.agent.rag.model.config.ColumnValueRecallSettings;
+import org.wwz.ai.domain.agent.rag.model.config.DataQuerySettings;
+import org.wwz.ai.domain.agent.rag.model.config.VectorRecallSettings;
+import org.wwz.ai.infrastructure.dataquery.elasticsearch.ElasticsearchProperties;
+import org.wwz.ai.infrastructure.dataquery.vector.QdrantProperties;
 
 /**
  * 共享云端向量配置绑定测试。
@@ -13,44 +15,48 @@ public class CloudVectorConfigBindingTest {
 
     @Test
     public void shouldKeepSharedCloudFields() {
-        DataAgentConfig dataAgentConfig = new DataAgentConfig();
-        QdrantConfig qdrantConfig = new QdrantConfig();
-        EsConfig esConfig = new EsConfig();
+        DataQuerySettings dataAgentConfig = new DataQuerySettings();
+        VectorRecallSettings qdrantConfig = new VectorRecallSettings();
+        ColumnValueRecallSettings esConfig = new ColumnValueRecallSettings();
+        QdrantProperties qdrantProperties = new QdrantProperties();
+        ElasticsearchProperties elasticsearchProperties = new ElasticsearchProperties();
 
         dataAgentConfig.setAgentUrl("http://127.0.0.1:1601");
         dataAgentConfig.setForceRefresh(true);
         qdrantConfig.setEnable(true);
-        qdrantConfig.setUrl("https://qdrant.example.com");
-        qdrantConfig.setPort(6334);
-        qdrantConfig.setPreferGrpc(true);
-        qdrantConfig.setApiKey("qdrant-key");
+        qdrantProperties.setUrl("https://qdrant.example.com");
+        qdrantProperties.setPort(6334);
+        qdrantProperties.setPreferGrpc(true);
+        qdrantProperties.setApiKey("qdrant-key");
         esConfig.setEnable(true);
-        esConfig.setScheme("https");
-        esConfig.setHost("es.example.com:9200");
-        esConfig.setApiKey("es-api-key");
+        elasticsearchProperties.setScheme("https");
+        elasticsearchProperties.setHost("es.example.com:9200");
+        elasticsearchProperties.setApiKey("es-api-key");
         dataAgentConfig.setQdrantConfig(qdrantConfig);
         dataAgentConfig.setEsConfig(esConfig);
 
         Assert.assertEquals("http://127.0.0.1:1601", dataAgentConfig.getAgentUrl());
         Assert.assertTrue(dataAgentConfig.getForceRefresh());
-        Assert.assertEquals("https://qdrant.example.com", dataAgentConfig.getQdrantConfig().getUrl());
-        Assert.assertEquals(Integer.valueOf(6334), dataAgentConfig.getQdrantConfig().getPort());
-        Assert.assertTrue(dataAgentConfig.getQdrantConfig().getPreferGrpc());
-        Assert.assertEquals("https", dataAgentConfig.getEsConfig().getScheme());
-        Assert.assertEquals("es-api-key", dataAgentConfig.getEsConfig().getApiKey());
+        Assert.assertEquals("https://qdrant.example.com", qdrantProperties.getUrl());
+        Assert.assertEquals(Integer.valueOf(6334), qdrantProperties.getPort());
+        Assert.assertTrue(qdrantProperties.getPreferGrpc());
+        Assert.assertEquals("https", elasticsearchProperties.getScheme());
+        Assert.assertEquals("es-api-key", elasticsearchProperties.getApiKey());
     }
 
     @Test
     public void shouldKeepExplicitConfigOnly() {
-        QdrantConfig qdrantConfig = new QdrantConfig();
-        EsConfig esConfig = new EsConfig();
-        DataAgentConfig dataAgentConfig = new DataAgentConfig();
+        VectorRecallSettings qdrantConfig = new VectorRecallSettings();
+        ColumnValueRecallSettings esConfig = new ColumnValueRecallSettings();
+        DataQuerySettings dataAgentConfig = new DataQuerySettings();
 
         Assert.assertNull(qdrantConfig.getEnable());
-        Assert.assertNull(qdrantConfig.getPort());
-        Assert.assertNull(qdrantConfig.getPreferGrpc());
+        QdrantProperties qdrantProperties = new QdrantProperties();
+        ElasticsearchProperties elasticsearchProperties = new ElasticsearchProperties();
+        Assert.assertNull(qdrantProperties.getPort());
+        Assert.assertNull(qdrantProperties.getPreferGrpc());
         Assert.assertNull(esConfig.getEnable());
-        Assert.assertNull(esConfig.getScheme());
+        Assert.assertNull(elasticsearchProperties.getScheme());
         Assert.assertFalse(dataAgentConfig.getForceRefresh());
         Assert.assertNotNull(dataAgentConfig.getQdrantConfig());
         Assert.assertNotNull(dataAgentConfig.getEsConfig());

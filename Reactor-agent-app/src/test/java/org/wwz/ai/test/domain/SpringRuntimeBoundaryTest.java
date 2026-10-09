@@ -16,12 +16,8 @@ import java.util.stream.Stream;
  */
 public class SpringRuntimeBoundaryTest {
 
-    private static final Path PROJECT_ROOT = resolveProjectRoot();
-    private static final Path DOMAIN_JAVA_DIR = PROJECT_ROOT
-            .resolve("ai-agent-station-study-domain")
-            .resolve("src")
-            .resolve("main")
-            .resolve("java");
+    private static final Path PROJECT_ROOT = BoundaryTestPaths.projectRoot();
+    private static final Path DOMAIN_JAVA_DIR = BoundaryTestPaths.moduleMainJava("Reactor-agent-domain");
 
     @Test
     public void shouldRemoveSpringContextHolderFromDomainRuntime() throws IOException {
@@ -88,23 +84,77 @@ public class SpringRuntimeBoundaryTest {
     @Test
     public void shouldKeepLegacyExecuteAndArmoryPackagesInsideCaseAndDomainOnly() throws IOException {
         assertNoImportsFrom(
-                PROJECT_ROOT.resolve("ai-agent-station-study-trigger").resolve("src").resolve("main").resolve("java"),
+                BoundaryTestPaths.moduleMainJava("Reactor-agent-trigger"),
                 "org.wwz.ai.domain.agent.service.execute.",
                 "org.wwz.ai.domain.agent.service.armory.",
                 "org.wwz.ai.domain.agent.service.runtime."
         );
         assertNoImportsFrom(
-                PROJECT_ROOT.resolve("ai-agent-station-study-app").resolve("src").resolve("main").resolve("java"),
+                BoundaryTestPaths.moduleMainJava("Reactor-agent-app"),
                 "org.wwz.ai.domain.agent.service.execute.",
                 "org.wwz.ai.domain.agent.service.armory.",
                 "org.wwz.ai.domain.agent.service.runtime."
         );
         assertNoImportsFrom(
-                PROJECT_ROOT.resolve("ai-agent-station-study-infrastructure").resolve("src").resolve("main").resolve("java"),
+                BoundaryTestPaths.moduleMainJava("Reactor-agent-infrastructure"),
                 "org.wwz.ai.domain.agent.service.execute.",
                 "org.wwz.ai.domain.agent.service.armory.",
                 "org.wwz.ai.domain.agent.service.runtime."
         );
+    }
+
+    @Test
+    public void shouldKeepTriggerFreeOfInfrastructureImports() throws IOException {
+        assertNoImportsFrom(
+                BoundaryTestPaths.moduleMainJava("Reactor-agent-trigger"),
+                "org.wwz.ai.infrastructure."
+        );
+    }
+
+    @Test
+    public void shouldKeepCaseFreeOfInfrastructureImports() throws IOException {
+        assertNoImportsFrom(
+                BoundaryTestPaths.moduleMainJava("Reactor-agent-case"),
+                "org.wwz.ai.infrastructure."
+        );
+    }
+
+    @Test
+    public void shouldKeepDomainFreeOfPersistenceAndTechnologyImports() throws IOException {
+        List<String> daoOrMapperImports = findFilesWithDaoOrMapperImports();
+        Assert.assertTrue("domain 不应 import DAO 或 Mapper: " + daoOrMapperImports,
+                daoOrMapperImports.isEmpty());
+        assertNoImportsFrom(
+                DOMAIN_JAVA_DIR,
+                "org.apache.ibatis.",
+                "com.baomidou.",
+                "org.elasticsearch.",
+                "io.qdrant.",
+                "okhttp3.",
+                "org.springframework.ai."
+        );
+    }
+
+    @Test
+    public void shouldKeepMcpSdkCallbacksAndWebFluxOutsideDomain() throws IOException {
+        assertNoImportsFrom(
+                DOMAIN_JAVA_DIR,
+                "io.modelcontextprotocol.",
+                "org.springframework.ai.",
+                "org.springframework.web.reactive."
+        );
+
+        Path domainMcpRuntime = DOMAIN_JAVA_DIR
+                .resolve("org/wwz/ai/domain/agent/runtime/tool/mcp/runtime");
+        Assert.assertFalse("MCP 技术运行时必须迁出 domain", containsJavaSource(domainMcpRuntime));
+
+        Path infrastructureMcpRoot = BoundaryTestPaths.moduleMainJava("Reactor-agent-infrastructure")
+                .resolve("org/wwz/ai/infrastructure/mcp");
+        Assert.assertTrue("Infrastructure 必须承载 MCP 实现", Files.isDirectory(infrastructureMcpRoot));
+        Assert.assertTrue("Infrastructure 必须承载 MCP registry",
+                Files.exists(infrastructureMcpRoot.resolve("registry/McpRegistry.java")));
+        Assert.assertTrue("Infrastructure 必须承载 MCP transport",
+                Files.exists(infrastructureMcpRoot.resolve("transport/McpTransportFactory.java")));
     }
 
     private List<String> findFilesContaining(String needle) throws IOException {
@@ -119,9 +169,6 @@ public class SpringRuntimeBoundaryTest {
     }
 
     private void assertNoImportsFrom(Path root, String... importPrefixes) throws IOException {
-        if (!Files.exists(root)) {
-            return;
-        }
         try (Stream<Path> pathStream = Files.walk(root)) {
             List<String> offenders = pathStream
                     .filter(path -> path.toString().endsWith(".java"))
@@ -129,7 +176,7 @@ public class SpringRuntimeBoundaryTest {
                     .map(path -> PROJECT_ROOT.relativize(path).toString().replace('\\', '/'))
                     .sorted()
                     .collect(Collectors.toList());
-            Assert.assertTrue("旧 execute/armory/runtime 目录不应扩张到非 case/domain 主链路: " + offenders,
+            Assert.assertTrue("源码导入边界违规: " + offenders,
                     offenders.isEmpty());
         }
     }
@@ -137,11 +184,11 @@ public class SpringRuntimeBoundaryTest {
     private boolean containsAnyImportPrefix(Path path, String... importPrefixes) {
         try {
             return Files.readAllLines(path, StandardCharsets.UTF_8).stream()
-                    .map(String::trim)
-                    .filter(line -> line.startsWith("import "))
-                    .anyMatch(line -> {
+                    .map(this::importedName)
+                    .filter(importedName -> !importedName.isEmpty())
+                    .anyMatch(importedName -> {
                         for (String importPrefix : importPrefixes) {
-                            if (line.startsWith("import " + importPrefix)) {
+                            if (importedName.startsWith(importPrefix)) {
                                 return true;
                             }
                         }
@@ -150,6 +197,56 @@ public class SpringRuntimeBoundaryTest {
         } catch (IOException e) {
             throw new IllegalStateException("读取文件失败: " + path, e);
         }
+    }
+
+    private List<String> findFilesWithDaoOrMapperImports() throws IOException {
+        try (Stream<Path> pathStream = Files.walk(DOMAIN_JAVA_DIR)) {
+            return pathStream
+                    .filter(path -> path.toString().endsWith(".java"))
+                    .filter(this::containsDaoOrMapperImport)
+                    .map(path -> PROJECT_ROOT.relativize(path).toString().replace('\\', '/'))
+                    .sorted()
+                    .collect(Collectors.toList());
+        }
+    }
+
+    private boolean containsDaoOrMapperImport(Path path) {
+        try {
+            return Files.readAllLines(path, StandardCharsets.UTF_8).stream()
+                    .map(this::importedName)
+                    .filter(importedName -> !importedName.isEmpty())
+                    .anyMatch(importedName -> {
+                        String[] segments = importedName.split("\\.");
+                        String simpleName = segments[segments.length - 1];
+                        boolean persistencePackage = false;
+                        for (String segment : segments) {
+                            if (segment.equalsIgnoreCase("dao") || segment.equalsIgnoreCase("mapper")) {
+                                persistencePackage = true;
+                                break;
+                            }
+                        }
+                        return persistencePackage
+                                || simpleName.endsWith("Dao")
+                                || (simpleName.endsWith("Mapper")
+                                && importedName.startsWith("org.apache.ibatis."));
+                    });
+        } catch (IOException e) {
+            throw new IllegalStateException("读取文件失败: " + path, e);
+        }
+    }
+
+    private String importedName(String line) {
+        String trimmed = line.trim();
+        if (!trimmed.startsWith("import ")) {
+            return "";
+        }
+        String importedName = trimmed.substring("import ".length()).trim();
+        if (importedName.startsWith("static ")) {
+            importedName = importedName.substring("static ".length());
+        }
+        return importedName.endsWith(";")
+                ? importedName.substring(0, importedName.length() - 1)
+                : importedName;
     }
 
     private boolean fileContains(Path path, String needle) {
@@ -161,18 +258,14 @@ public class SpringRuntimeBoundaryTest {
         }
     }
 
-    /**
-     * app 模块下执行测试时，工作目录会落在模块根而不是仓库根，需要向上回溯定位真实项目根目录。
-     */
-    private static Path resolveProjectRoot() {
-        Path current = Path.of("").toAbsolutePath();
-        while (current != null) {
-            if (Files.exists(current.resolve("ai-agent-station-study-domain"))
-                    && Files.exists(current.resolve("ai-agent-station-study-app"))) {
-                return current;
-            }
-            current = current.getParent();
+    private boolean containsJavaSource(Path root) throws IOException {
+        if (!Files.isDirectory(root)) {
+            return false;
         }
-        throw new IllegalStateException("无法定位项目根目录");
+        try (Stream<Path> paths = Files.walk(root)) {
+            return paths.anyMatch(path -> Files.isRegularFile(path)
+                    && path.toString().endsWith(".java"));
+        }
     }
+
 }

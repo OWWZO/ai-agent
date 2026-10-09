@@ -3,12 +3,11 @@ package org.wwz.ai.test.domain.dataagent;
 import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.Mockito;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
-import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConfig;
-import org.wwz.ai.domain.agent.reactor.config.data.EsConfig;
-import org.wwz.ai.domain.agent.reactor.config.data.QdrantConfig;
-import org.wwz.ai.domain.agent.reactor.data.dto.NL2SQLReq;
+import org.wwz.ai.domain.agent.rag.model.config.ColumnValueRecallSettings;
+import org.wwz.ai.domain.agent.rag.model.config.DataQuerySettings;
+import org.wwz.ai.domain.agent.rag.model.config.VectorRecallSettings;
+import org.wwz.ai.domain.agent.rag.model.query.Nl2SqlQuery;
 import org.wwz.ai.domain.agent.rag.TableRagService;
 
 import java.util.List;
@@ -20,24 +19,22 @@ public class TableRagServiceFallbackTest {
 
     @Test
     public void shouldReturnEmptyListWhenTableRagRespondsWithEmptyData() throws Exception {
-        TableRagService tableRagService = new TableRagService();
-        DataAgentConfig dataAgentConfig = new DataAgentConfig();
-        QdrantConfig qdrantConfig = new QdrantConfig();
+        VectorRecallSettings qdrantConfig = new VectorRecallSettings();
         qdrantConfig.setEnable(true);
-        EsConfig esConfig = new EsConfig();
+        ColumnValueRecallSettings esConfig = new ColumnValueRecallSettings();
         esConfig.setEnable(false);
-        dataAgentConfig.setAgentUrl("http://127.0.0.1:1601");
-        dataAgentConfig.setQdrantConfig(qdrantConfig);
-        dataAgentConfig.setEsConfig(esConfig);
+        DataQuerySettings settings = new DataQuerySettings();
+        settings.setAgentUrl("http://127.0.0.1:1601");
+        settings.setQdrantConfig(qdrantConfig);
+        settings.setEsConfig(esConfig);
 
         RemoteHttpPort remoteHttpPort = Mockito.mock(RemoteHttpPort.class);
         Mockito.when(remoteHttpPort.execute(Mockito.any()))
                 .thenReturn("{\"code\":200,\"data\":[],\"requestId\":\"req-1\"}");
 
-        ReflectionTestUtils.setField(tableRagService, "dataAgentConfig", dataAgentConfig);
-        ReflectionTestUtils.setField(tableRagService, "remoteHttpPort", remoteHttpPort);
+        TableRagService tableRagService = new TableRagService(settings, remoteHttpPort);
 
-        NL2SQLReq req = new NL2SQLReq();
+        Nl2SqlQuery req = new Nl2SqlQuery();
         req.setTraceId("trace-1");
         req.setRequestId("req-1");
 

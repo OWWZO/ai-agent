@@ -4,8 +4,8 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.wwz.ai.domain.agent.ledger.impl.AgentExecutionRecorderImpl;
 import org.wwz.ai.domain.agent.ledger.impl.ExecutionLedgerQueryServiceImpl;
-import org.wwz.ai.domain.agent.reactor.service.ChatModelInfoService;
-import org.wwz.ai.domain.agent.reactor.service.ChatModelSchemaService;
+import org.wwz.ai.domain.agent.rag.service.ChatModelInfoService;
+import org.wwz.ai.domain.agent.rag.service.ChatModelSchemaService;
 
 import java.lang.reflect.Field;
 import java.util.Arrays;

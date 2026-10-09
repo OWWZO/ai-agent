@@ -19,7 +19,7 @@ import org.wwz.ai.domain.agent.ledger.replay.HistoryReplayPrinter;
 import org.wwz.ai.domain.agent.ledger.replay.ReplayProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.ToolInvocationProjectorRegistry;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DefaultToolInvocationProjector;
-import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
+import org.wwz.ai.trigger.http.agent.vo.AgentStreamResponseVO;
 import org.wwz.ai.trigger.http.agent.AgentConversationHistoryController;
 import org.wwz.ai.trigger.http.agent.vo.ConversationRunReplayRespVO;
 import org.wwz.ai.types.agent.user.UserRequestContext;
@@ -106,7 +106,7 @@ public class ConversationHistoryRunningReplayControllerTest {
         Assert.assertNotNull(response.getData());
         Assert.assertEquals("RUNNING", response.getData().getStatus());
         Assert.assertNull(response.getData().getFinishedAt());
-        List<GptProcessResult> replayFrames = response.getData().getReplayFrames();
+        List<AgentStreamResponseVO> replayFrames = response.getData().getReplayFrames();
         Assert.assertFalse(replayFrames.isEmpty());
         Assert.assertTrue(replayFrames.stream().anyMatch(
                 frame -> "tool_result".equals(nestedResultMap(frame).get("messageType"))));
@@ -114,7 +114,7 @@ public class ConversationHistoryRunningReplayControllerTest {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> nestedResultMap(GptProcessResult frame) {
+    private Map<String, Object> nestedResultMap(AgentStreamResponseVO frame) {
         Map<String, Object> eventData = (Map<String, Object>) frame.getResultMap().get("eventData");
         return (Map<String, Object>) eventData.get("resultMap");
     }

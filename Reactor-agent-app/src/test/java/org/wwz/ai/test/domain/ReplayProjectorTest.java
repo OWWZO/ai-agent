@@ -8,7 +8,7 @@ import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationView;
 import org.wwz.ai.domain.agent.ledger.model.ArtifactView;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
-import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamResult;
 import org.wwz.ai.domain.agent.ledger.model.replay.ProjectedReplayEvent;
 import org.wwz.ai.domain.agent.ledger.model.replay.ReplayFactBundle;
 import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
@@ -19,6 +19,8 @@ import org.wwz.ai.domain.agent.ledger.replay.ReplayProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.ToolInvocationProjectorRegistry;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DefaultToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DeepSearchToolInvocationProjector;
+import org.wwz.ai.domain.agent.ledger.replay.projector.impl.FileToolInvocationProjector;
+import org.wwz.ai.domain.agent.ledger.replay.projector.impl.PlanningToolInvocationProjector;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -33,6 +35,8 @@ public class ReplayProjectorTest {
     private final ReplayProjector replayProjector = new ReplayProjector(
             new ToolInvocationProjectorRegistry(
                     List.of(
+                            new FileToolInvocationProjector(),
+                            new PlanningToolInvocationProjector(),
                             new DeepSearchToolInvocationProjector(),
                             new DefaultToolInvocationProjector()
                     ),
@@ -94,7 +98,7 @@ public class ReplayProjectorTest {
                 .durationMs(275L)
                 .build();
 
-        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+        List<AgentStreamResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
                 .toolInvocations(List.of(invocation))
                 .build());
 
@@ -144,7 +148,7 @@ public class ReplayProjectorTest {
                 .durationMs(910L)
                 .build();
 
-        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+        List<AgentStreamResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
                 .llmInvocations(List.of(invocation))
                 .build());
 
@@ -170,7 +174,7 @@ public class ReplayProjectorTest {
         ToolInvocationView secondTool = concurrentTool(62L, 1, "tool-call-concurrent-b", base.plusNanos(20_000_000L), 220L);
         ToolInvocationView thirdTool = concurrentTool(63L, 2, "tool-call-concurrent-c", base.plusNanos(40_000_000L), 330L);
 
-        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+        List<AgentStreamResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
                 .llmInvocations(List.of(executor))
                 .toolInvocations(List.of(thirdTool, firstTool, secondTool))
                 .build());
@@ -210,7 +214,7 @@ public class ReplayProjectorTest {
                 .finishedAt(now.minusSeconds(20))
                 .build();
 
-        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+        List<AgentStreamResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
                 .run(run)
                 .llmInvocations(List.of(planningInvocation, executorInvocation))
                 .build());
@@ -244,7 +248,7 @@ public class ReplayProjectorTest {
                 .finishedAt(now)
                 .build();
 
-        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+        List<AgentStreamResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
                 .llmInvocations(List.of(internalDigitalEmployeeInvocation, executorInvocation))
                 .build());
 
@@ -391,7 +395,7 @@ public class ReplayProjectorTest {
                 .finishedAt(now)
                 .build();
 
-        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+        List<AgentStreamResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
                 .llmInvocations(List.of(executorInvocation))
                 .build());
 
@@ -443,7 +447,7 @@ public class ReplayProjectorTest {
                 .finishedAt(now.minusSeconds(15))
                 .build();
 
-        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+        List<AgentStreamResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
                 .llmInvocations(List.of(firstExecutor, secondExecutor))
                 .toolInvocations(List.of(firstTool, secondTool))
                 .build());
@@ -491,7 +495,7 @@ public class ReplayProjectorTest {
                 .finishedAt(now.minusSeconds(9))
                 .build();
 
-        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+        List<AgentStreamResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
                 .llmInvocations(List.of(executor))
                 .toolInvocations(List.of(firstTool, secondTool))
                 .build());
@@ -526,7 +530,7 @@ public class ReplayProjectorTest {
                 .finishedAt(now.minusSeconds(5))
                 .build();
 
-        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+        List<AgentStreamResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
                 .llmInvocations(List.of(executor))
                 .toolInvocations(List.of(tool))
                 .build());
@@ -584,7 +588,7 @@ public class ReplayProjectorTest {
                 .finishedAt(now.minusSeconds(35))
                 .build();
 
-        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+        List<AgentStreamResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
                 .llmInvocations(List.of(parentLlm, subAgentLlm))
                 .toolInvocations(List.of(parentAgentTool, nestedTool))
                 .build());
@@ -624,7 +628,7 @@ public class ReplayProjectorTest {
                 .finishedAt(now.plusSeconds(1))
                 .build();
 
-        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+        List<AgentStreamResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
                 .llmInvocations(List.of(planningInvocation))
                 .toolInvocations(List.of(planningToolInvocation))
                 .build());
@@ -673,7 +677,7 @@ public class ReplayProjectorTest {
                 .previewUrl("https://file.example.com/preview/checklist.md")
                 .build();
 
-        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+        List<AgentStreamResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
                 .run(run)
                 .llmInvocations(List.of(summaryInvocation))
                 .artifacts(List.of(reportArtifact, checklistArtifact))
@@ -719,7 +723,7 @@ public class ReplayProjectorTest {
                 .finishedAt(now.minusMinutes(1))
                 .build();
 
-        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+        List<AgentStreamResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
                 .run(run)
                 .llmInvocations(List.of(subagentLlm))
                 .toolInvocations(List.of(nestedTool))
@@ -759,7 +763,7 @@ public class ReplayProjectorTest {
                 .previewUrl("https://file.example.com/preview/result.md")
                 .build();
 
-        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+        List<AgentStreamResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
                 .run(run)
                 .artifacts(List.of(resultArtifact))
                 .build());
@@ -794,13 +798,13 @@ public class ReplayProjectorTest {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> toolResult(GptProcessResult frame) {
+    private Map<String, Object> toolResult(AgentStreamResult frame) {
         Object value = frameResultMap(frame).get("toolResult");
         return value instanceof Map<?, ?> ? (Map<String, Object>) value : Map.of();
     }
 
-    private ReplayTiming frameTiming(GptProcessResult frame) {
-        Object value = ((Map<String, Object>) frame.getResultMap().get("eventData")).get("timing");
+    private ReplayTiming frameTiming(AgentStreamResult frame) {
+        Object value = ((Map<String, Object>) frame.getEventData().get("eventData")).get("timing");
         Assert.assertTrue(value instanceof ReplayTiming);
         return (ReplayTiming) value;
     }
@@ -823,30 +827,30 @@ public class ReplayProjectorTest {
     }
 
     @SuppressWarnings("unchecked")
-    private String eventMessageType(GptProcessResult frame) {
-        return String.valueOf(((Map<String, Object>) frame.getResultMap().get("eventData")).get("messageType"));
+    private String eventMessageType(AgentStreamResult frame) {
+        return String.valueOf(((Map<String, Object>) frame.getEventData().get("eventData")).get("messageType"));
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> frameResultMap(GptProcessResult frame) {
-        return (Map<String, Object>) ((Map<String, Object>) frame.getResultMap().get("eventData")).get("resultMap");
+    private Map<String, Object> frameResultMap(AgentStreamResult frame) {
+        return (Map<String, Object>) ((Map<String, Object>) frame.getEventData().get("eventData")).get("resultMap");
     }
 
     @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> frameFileList(GptProcessResult frame) {
+    private List<Map<String, Object>> frameFileList(AgentStreamResult frame) {
         Object fileList = frameResultMap(frame).get("fileList");
         return fileList instanceof List<?> ? (List<Map<String, Object>>) fileList : List.of();
     }
 
     @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> frameArtifactRefs(GptProcessResult frame) {
-        Object artifactRefs = ((Map<String, Object>) frame.getResultMap().get("eventData")).get("artifactRefs");
+    private List<Map<String, Object>> frameArtifactRefs(AgentStreamResult frame) {
+        Object artifactRefs = ((Map<String, Object>) frame.getEventData().get("eventData")).get("artifactRefs");
         return artifactRefs instanceof List<?> ? (List<Map<String, Object>>) artifactRefs : List.of();
     }
 
     @SuppressWarnings("unchecked")
-    private String eventTaskId(GptProcessResult frame) {
-        return String.valueOf(((Map<String, Object>) frame.getResultMap().get("eventData")).get("taskId"));
+    private String eventTaskId(AgentStreamResult frame) {
+        return String.valueOf(((Map<String, Object>) frame.getEventData().get("eventData")).get("taskId"));
     }
 
 }

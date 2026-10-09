@@ -8,7 +8,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
+import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.application.agent.execute.planexecute.PlanSolveAgentExecuteStrategy;
 import org.wwz.ai.domain.agent.service.execute.planexecute.step.factory.DefaultPlanSolveAgentExecuteStrategyFactory;
 import org.wwz.ai.application.agent.execute.react.ReactAgentExecuteStrategy;
@@ -34,13 +35,13 @@ public class SessionContextMemoryIntegrationTest {
                 ctx.artifactDao
         );
 
-        StrategyHandler<AgentRequest, DefaultReactAgentExecuteStrategyFactory.DynamicContext, String> handler =
+        StrategyHandler<AgentExecutionCommand, DefaultReactAgentExecuteStrategyFactory.DynamicContext, String> handler =
                 Mockito.mock(StrategyHandler.class);
-        Mockito.when(handler.apply(Mockito.any(AgentRequest.class), Mockito.any()))
+        Mockito.when(handler.apply(Mockito.any(AgentExecutionCommand.class), Mockito.any()))
                 .thenAnswer(invocation -> {
-                    AgentRequest request = invocation.getArgument(0);
-                    Assert.assertTrue(request.getHistoryDialogue().contains("历史 thought from react"));
-                    Assert.assertTrue(request.getHistoryDialogue().contains("### Run req-react-history-001"));
+                    AgentExecutionCommand request = invocation.getArgument(0);
+                    Assert.assertTrue(workingMemoryContains(request, "历史 thought from react"));
+                    Assert.assertEquals("", request.getHistoryDialogue());
                     return "ok";
                 });
 
@@ -49,10 +50,10 @@ public class SessionContextMemoryIntegrationTest {
 
         ReactAgentExecuteStrategy strategy = new ReactAgentExecuteStrategy();
         ReflectionTestUtils.setField(strategy, "defaultReactAgentExecuteStrategyFactory", factory);
-        ReflectionTestUtils.setField(strategy, "reactorConfig", new ReactorConfig());
+        ReflectionTestUtils.setField(strategy, "activeAgentRunRegistry", new ActiveAgentRunRegistry());
         ReflectionTestUtils.setField(strategy, "sessionContextMemoryService", memoryService);
 
-        AgentRequest request = AgentRequest.builder()
+        AgentExecutionCommand request = AgentExecutionCommand.builder()
                 .requestId("req-react-current-001")
                 .sessionId("session-react-history-001")
                 .query("当前 react 请求")
@@ -60,7 +61,8 @@ public class SessionContextMemoryIntegrationTest {
         AgentSessionStream stream = Mockito.mock(AgentSessionStream.class);
         strategy.execute(request, stream);
 
-        Assert.assertTrue(request.getHistoryDialogue().contains("历史 thought from react"));
+        Assert.assertTrue(workingMemoryContains(request, "历史 thought from react"));
+        Assert.assertEquals("", request.getHistoryDialogue());
         Mockito.verify(stream, Mockito.never()).send(Mockito.any());
     }
 
@@ -76,13 +78,13 @@ public class SessionContextMemoryIntegrationTest {
                 ctx.artifactDao
         );
 
-        StrategyHandler<AgentRequest, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext, String> handler =
+        StrategyHandler<AgentExecutionCommand, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext, String> handler =
                 Mockito.mock(StrategyHandler.class);
-        Mockito.when(handler.apply(Mockito.any(AgentRequest.class), Mockito.any()))
+        Mockito.when(handler.apply(Mockito.any(AgentExecutionCommand.class), Mockito.any()))
                 .thenAnswer(invocation -> {
-                    AgentRequest request = invocation.getArgument(0);
-                    Assert.assertTrue(request.getHistoryDialogue().contains("历史 thought from plan"));
-                    Assert.assertTrue(request.getHistoryDialogue().contains("### Run req-plan-history-001"));
+                    AgentExecutionCommand request = invocation.getArgument(0);
+                    Assert.assertTrue(workingMemoryContains(request, "历史 thought from plan"));
+                    Assert.assertEquals("", request.getHistoryDialogue());
                     return "ok";
                 });
 
@@ -91,9 +93,10 @@ public class SessionContextMemoryIntegrationTest {
 
         PlanSolveAgentExecuteStrategy strategy = new PlanSolveAgentExecuteStrategy();
         ReflectionTestUtils.setField(strategy, "defaultPlanSolveAgentExecuteStrategyFactory", factory);
+        ReflectionTestUtils.setField(strategy, "activeAgentRunRegistry", new ActiveAgentRunRegistry());
         ReflectionTestUtils.setField(strategy, "sessionContextMemoryService", memoryService);
 
-        AgentRequest request = AgentRequest.builder()
+        AgentExecutionCommand request = AgentExecutionCommand.builder()
                 .requestId("req-plan-current-001")
                 .sessionId("session-plan-history-001")
                 .query("当前 plan 请求")
@@ -101,15 +104,16 @@ public class SessionContextMemoryIntegrationTest {
         AgentSessionStream stream = Mockito.mock(AgentSessionStream.class);
         strategy.execute(request, stream);
 
-        Assert.assertTrue(request.getHistoryDialogue().contains("历史 thought from plan"));
+        Assert.assertTrue(workingMemoryContains(request, "历史 thought from plan"));
+        Assert.assertEquals("", request.getHistoryDialogue());
         Mockito.verify(stream, Mockito.never()).send(Mockito.any());
     }
 
     @Test
     public void shouldConstructCasePrinterInsteadOfRequiringSseEmitter() throws Exception {
-        StrategyHandler<AgentRequest, DefaultReactAgentExecuteStrategyFactory.DynamicContext, String> handler =
+        StrategyHandler<AgentExecutionCommand, DefaultReactAgentExecuteStrategyFactory.DynamicContext, String> handler =
                 Mockito.mock(StrategyHandler.class);
-        Mockito.when(handler.apply(Mockito.any(AgentRequest.class), Mockito.any()))
+        Mockito.when(handler.apply(Mockito.any(AgentExecutionCommand.class), Mockito.any()))
                 .thenAnswer(invocation -> {
                     DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext = invocation.getArgument(1);
                     Object printer = ReflectionTestUtils.getField(dynamicContext, "printer");
@@ -124,10 +128,10 @@ public class SessionContextMemoryIntegrationTest {
 
         ReactAgentExecuteStrategy strategy = new ReactAgentExecuteStrategy();
         ReflectionTestUtils.setField(strategy, "defaultReactAgentExecuteStrategyFactory", factory);
-        ReflectionTestUtils.setField(strategy, "reactorConfig", new ReactorConfig());
+        ReflectionTestUtils.setField(strategy, "activeAgentRunRegistry", new ActiveAgentRunRegistry());
         ReflectionTestUtils.setField(strategy, "sessionContextMemoryService", Mockito.mock(org.wwz.ai.domain.agent.memory.SessionContextMemoryService.class));
 
-        AgentRequest request = AgentRequest.builder()
+        AgentExecutionCommand request = AgentExecutionCommand.builder()
                 .requestId("req-react-current-002")
                 .sessionId("session-react-history-002")
                 .query("当前 react 请求")
@@ -135,6 +139,19 @@ public class SessionContextMemoryIntegrationTest {
                 .build();
 
         strategy.execute(request, Mockito.mock(AgentSessionStream.class));
+    }
+
+    /**
+     * 默认契约：历史经 working-memory hydrate 注入为模型可见 Message 链，不再走 legacy historyDialogue。
+     */
+    private boolean workingMemoryContains(AgentExecutionCommand request, String expected) {
+        if (request == null || request.getWorkingMemoryMessages() == null) {
+            return false;
+        }
+        return request.getWorkingMemoryMessages().stream()
+                .anyMatch(message -> message != null
+                        && message.getContent() != null
+                        && message.getContent().contains(expected));
     }
 
     private void seedSimpleHistory(ExecutionLedgerFixtureFactory.LedgerTestContext ctx,

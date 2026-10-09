@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.wwz.ai.config.reactor.ReplayProjectorAutoConfiguration;
 import org.wwz.ai.config.reactor.DataAgentInitRunner;
+import org.wwz.ai.config.reactor.startup.H2SchemaBootstrap;
 import org.wwz.ai.config.reactor.data.Es7HighLevelClientConfig;
 import org.wwz.ai.domain.agent.ledger.IExecutionLedgerReadRepository;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
@@ -25,6 +26,7 @@ import org.wwz.ai.infrastructure.dao.reactor.IDialogueSessionLedgerDao;
 import org.wwz.ai.infrastructure.dao.reactor.ILlmInvocationLedgerDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolInvocationLedgerDao;
 import org.wwz.ai.application.agent.authorization.ConversationSessionAuthorizationService;
+import org.wwz.ai.application.agent.dataquery.initialization.DataAgentInitializationApplicationService;
 import org.wwz.ai.trigger.http.agent.AgentConversationHistoryController;
 
 import java.lang.reflect.Field;
@@ -61,15 +63,19 @@ public class ReplayProjectorBeanTopologyTest {
     }
 
     @Test
-    public void shouldLimitAppOwnedDeferredLegacyContractsToDocumentedConfigAndMetadataServices() {
+    public void shouldKeepDataAgentRunnerOnStartupAndApplicationSeams() {
         assertDeclaredFieldTypes(DataAgentInitRunner.class,
-                "org.wwz.ai.domain.agent.reactor.config.data.DataAgentConfig",
-                "org.wwz.ai.domain.agent.reactor.service.QdrantService",
-                "org.wwz.ai.domain.agent.reactor.service.ChatModelInfoService",
-                "org.wwz.ai.domain.agent.reactor.service.ColumnValueSyncService",
-                "org.wwz.ai.domain.agent.reactor.service.EmbeddingService");
+                H2SchemaBootstrap.class.getName(),
+                DataAgentInitializationApplicationService.class.getName());
+        for (Field field : DataAgentInitRunner.class.getDeclaredFields()) {
+            String packageName = field.getType().getPackageName();
+            Assert.assertFalse("Runner 不应注入 Domain 技术 facade: " + field.getType().getName(),
+                    packageName.equals("org.wwz.ai.domain.agent.reactor.service"));
+            Assert.assertFalse("Runner 不应直接注入 Infrastructure: " + field.getType().getName(),
+                    packageName.startsWith("org.wwz.ai.infrastructure"));
+        }
         assertDeclaredFieldTypes(Es7HighLevelClientConfig.class,
-                "org.wwz.ai.domain.agent.reactor.config.data.DataAgentConfig");
+                "org.wwz.ai.infrastructure.dataquery.elasticsearch.ElasticsearchProperties");
     }
 
     private void assertDeclaredFieldTypes(Class<?> type, String... expectedTypes) {
@@ -134,6 +140,16 @@ public class ReplayProjectorBeanTopologyTest {
         @Bean
         public ConversationSessionAuthorizationService conversationSessionAuthorizationService() {
             return Mockito.mock(ConversationSessionAuthorizationService.class);
+        }
+
+        @Bean
+        public org.wwz.ai.application.agent.stream.AgentStreamFrameMapper agentStreamFrameMapper() {
+            return Mockito.mock(org.wwz.ai.application.agent.stream.AgentStreamFrameMapper.class);
+        }
+
+        @Bean
+        public org.wwz.ai.trigger.http.agent.mapper.AgentStreamResponseMapper agentStreamResponseMapper() {
+            return Mockito.mock(org.wwz.ai.trigger.http.agent.mapper.AgentStreamResponseMapper.class);
         }
     }
 }

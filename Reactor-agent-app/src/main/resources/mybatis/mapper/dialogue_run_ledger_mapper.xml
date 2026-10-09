@@ -109,6 +109,9 @@
             update_time = NOW()
         WHERE id = #{id}
           AND deleted = 0
+          <!-- 终态（1=成功 2=失败 3=超时 4=停止）不可被覆盖：
+               陈旧/迟到的结束回调无法改写已结束的 run，同时保证会话计数只在首次进入终态时累加一次 -->
+          AND status NOT IN (1, 2, 3, 4)
     </update>
 
     <select id="queryByRequestId" resultMap="DialogueRunMap">

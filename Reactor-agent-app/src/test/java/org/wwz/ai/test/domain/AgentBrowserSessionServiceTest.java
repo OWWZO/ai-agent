@@ -27,7 +27,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Pattern;
 
 public class AgentBrowserSessionServiceTest {
@@ -346,14 +345,6 @@ public class AgentBrowserSessionServiceTest {
         }
 
         private Fixture(AgentBrowserProperties properties) {
-            Mockito.when(dao.getLock(Mockito.anyString(), Mockito.anyInt())).thenAnswer(invocation -> {
-                http.lock(invocation.getArgument(0));
-                return 1;
-            });
-            Mockito.when(dao.releaseLock(Mockito.anyString())).thenAnswer(invocation -> {
-                http.unlock(invocation.getArgument(0));
-                return 1;
-            });
             Mockito.when(dao.queryByOwnerKey(Mockito.anyString()))
                     .thenAnswer(invocation -> rows.get(invocation.getArgument(0)));
             Mockito.when(dao.queryByAgentBrowserName(Mockito.anyString())).thenAnswer(invocation -> rows.values()
@@ -415,7 +406,6 @@ public class AgentBrowserSessionServiceTest {
         private final List<CreateCall> createCalls = java.util.Collections.synchronizedList(new ArrayList<>());
         private final List<String> getCalls = java.util.Collections.synchronizedList(new ArrayList<>());
         private final List<String> deleteCalls = java.util.Collections.synchronizedList(new ArrayList<>());
-        private final ConcurrentMap<String, ReentrantLock> locks = new ConcurrentHashMap<>();
         private volatile AgentBrowserSessionAdapter.AgentBrowserHttpResponse deleteResponse = response(204, "");
         private volatile RuntimeException getFailure;
 
@@ -458,17 +448,6 @@ public class AgentBrowserSessionServiceTest {
 
         private void whenGet(String idOrName, AgentBrowserSessionAdapter.AgentBrowserHttpResponse response) {
             getResponses.put(idOrName, response);
-        }
-
-        private void lock(String name) {
-            locks.computeIfAbsent(name, ignored -> new ReentrantLock()).lock();
-        }
-
-        private void unlock(String name) {
-            ReentrantLock lock = locks.get(name);
-            if (lock != null) {
-                lock.unlock();
-            }
         }
 
         private static AgentBrowserSessionAdapter.AgentBrowserHttpResponse response(int statusCode, String body) {

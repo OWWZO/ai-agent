@@ -3,7 +3,7 @@ package org.wwz.ai.test.spring.ai;
 import org.junit.Assert;
 import org.junit.Test;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
-import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.model.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.llm.LlmToolCallbackProvider;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
@@ -11,7 +11,7 @@ import org.wwz.ai.domain.agent.runtime.tool.common.mcp.McpToolNames;
 import org.wwz.ai.domain.agent.runtime.tool.common.mcp.ToolSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolCatalog;
 import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolEntry;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolNamePolicy;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.model.McpToolNamePolicy;
 
 import java.util.LinkedHashMap;
 import java.util.List;

@@ -323,4 +323,65 @@ public class AgentExecutionLedgerRepositoryTest {
                 .readDirect("req-direct-ledger-001", "tool-call-direct-ledger-001")
                 .isEmpty());
     }
+
+    @Test
+    public void shouldCountRunAndFinishExactlyOnceAndKeepTerminalStatus() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        String sessionId = "session-count-once-001";
+        String requestId = "req-count-once-001";
+        LocalDateTime now = LocalDateTime.now();
+        Long runId = ctx.recorder.createRun(DialogueRunStartRecord.builder()
+                .runUid(requestId)
+                .requestId(requestId)
+                .sessionId(sessionId)
+                .entryAgent(ExecutionLedgerConstants.ENTRY_AGENT_REACT)
+                .queryText("验证会话计数只累加一次")
+                .startedAt(now)
+                .build());
+
+        // 首次 run：run_count 由数据库原子 +1
+        var started = ctx.sessionDao.queryBySessionId(sessionId);
+        Assert.assertEquals(Integer.valueOf(1), started.getRunCount());
+        Assert.assertEquals(Integer.valueOf(0), started.getFinishedRunCount());
+        Assert.assertEquals(Integer.valueOf(0), started.getFailedRunCount());
+
+        // 中间态 WAITING_INPUT：既不算完成也不算失败
+        ctx.recorder.finishRun(DialogueRunFinishRecord.builder()
+                .runId(runId)
+                .requestId(requestId)
+                .status(ExecutionLedgerConstants.STATUS_WAITING_INPUT)
+                .finishedAt(now.plusSeconds(1))
+                .build());
+        var waiting = ctx.sessionDao.queryBySessionId(sessionId);
+        Assert.assertEquals(Integer.valueOf(0), waiting.getFinishedRunCount());
+        Assert.assertEquals(Integer.valueOf(0), waiting.getFailedRunCount());
+
+        // 首次进入终态：完成数 +1
+        ctx.recorder.finishRun(DialogueRunFinishRecord.builder()
+                .runId(runId)
+                .requestId(requestId)
+                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
+                .finalSummaryText("完成")
+                .finishedAt(now.plusSeconds(2))
+                .build());
+        var finished = ctx.sessionDao.queryBySessionId(sessionId);
+        Assert.assertEquals(Integer.valueOf(1), finished.getRunCount());
+        Assert.assertEquals(Integer.valueOf(1), finished.getFinishedRunCount());
+        Assert.assertEquals(Integer.valueOf(0), finished.getFailedRunCount());
+
+        // 陈旧/重复回调：不得重复累加计数，也不得覆盖已成终态的 run 与会话状态
+        ctx.recorder.finishRun(DialogueRunFinishRecord.builder()
+                .runId(runId)
+                .requestId(requestId)
+                .status(ExecutionLedgerConstants.STATUS_FAILED)
+                .errorMsg("迟到的失败回调")
+                .finishedAt(now.plusSeconds(3))
+                .build());
+        var stale = ctx.sessionDao.queryBySessionId(sessionId);
+        Assert.assertEquals(Integer.valueOf(1), stale.getFinishedRunCount());
+        Assert.assertEquals(Integer.valueOf(0), stale.getFailedRunCount());
+        Assert.assertEquals(Integer.valueOf(ExecutionLedgerConstants.STATUS_SUCCESS), stale.getStatus());
+        Assert.assertEquals(Integer.valueOf(ExecutionLedgerConstants.STATUS_SUCCESS),
+                ctx.runDao.queryByRequestId(requestId).getStatus());
+    }
 }

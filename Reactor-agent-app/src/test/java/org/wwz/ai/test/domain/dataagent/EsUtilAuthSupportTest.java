@@ -2,7 +2,7 @@ package org.wwz.ai.test.domain.dataagent;
 
 import org.junit.Assert;
 import org.junit.Test;
-import org.wwz.ai.domain.agent.reactor.util.ESUtil;
+import org.wwz.ai.infrastructure.dataquery.elasticsearch.ESUtil;
 
 /**
  * ES 认证头生成测试。

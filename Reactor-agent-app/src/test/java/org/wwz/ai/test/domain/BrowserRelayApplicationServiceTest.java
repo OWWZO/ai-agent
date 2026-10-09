@@ -2,11 +2,9 @@ package org.wwz.ai.test.domain;
 
 import org.junit.Assert;
 import org.junit.Test;
-import org.mockito.Mockito;
-import org.springframework.beans.factory.ObjectProvider;
 import org.wwz.ai.application.agent.browser.BrowserPairingView;
 import org.wwz.ai.application.agent.browser.BrowserRelayApplicationService;
-import org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort;
+import org.wwz.ai.domain.agent.adapter.port.BrowserRelaySocketPort;
 import org.wwz.ai.types.agent.config.BrowserRelayProperties;
 
 public class BrowserRelayApplicationServiceTest {
@@ -14,10 +12,10 @@ public class BrowserRelayApplicationServiceTest {
     @Test
     public void shouldIssueAndClaimPairingCode() {
         BrowserRelayProperties properties = new BrowserRelayProperties();
-        @SuppressWarnings("unchecked")
-        ObjectProvider<BrowserRelayPort> provider = Mockito.mock(ObjectProvider.class);
-        Mockito.when(provider.getIfAvailable()).thenReturn(null);
-        BrowserRelayApplicationService service = new BrowserRelayApplicationService(properties, provider);
+        BrowserRelayApplicationService service = new BrowserRelayApplicationService(
+                properties,
+                (BrowserRelaySocketPort) null
+        );
 
         BrowserPairingView issued = service.createPairing("user-1", "ws://localhost:8100/api/agent/browser/relay");
         Assert.assertEquals(6, issued.getCode().length());

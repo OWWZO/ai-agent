@@ -3,10 +3,10 @@ package org.wwz.ai.test.domain;
 import org.junit.Assert;
 import org.junit.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.wwz.ai.application.agent.query.GptQueryCommand;
+import org.wwz.ai.application.agent.query.mapper.AgentExecutionCommandMapper;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
-import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
-import org.wwz.ai.domain.agent.runtime.GptQueryAgentRequestFactory;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.types.agent.user.UserRequestContext;
 
 /**
@@ -16,8 +16,8 @@ public class AgentQueryServiceUserIdPropagationTest {
 
     @Test
     public void shouldPropagateUserIdentityIntoInternalAgentRequest() {
-        GptQueryAgentRequestFactory factory = new GptQueryAgentRequestFactory(buildReactorConfig());
-        GptQueryReq request = GptQueryReq.builder()
+        AgentExecutionCommandMapper mapper = mapper();
+        GptQueryCommand request = GptQueryCommand.builder()
                 .traceId("trace-user-001")
                 .sessionId("session-user-001")
                 .requestId("req-user-001")
@@ -25,11 +25,10 @@ public class AgentQueryServiceUserIdPropagationTest {
                 .deepThink(0)
                 .build();
 
-        factory.normalize(request);
-        Assert.assertEquals("reactor", request.getUser());
+        Assert.assertNull(request.getUser());
         UserRequestContext.bind("user-001");
         try {
-            AgentRequest agentRequest = factory.build(request);
+            AgentExecutionCommand agentRequest = mapper.toExecutionCommand(request, "user-001");
             Assert.assertNotNull(agentRequest);
             Assert.assertEquals("user-001", agentRequest.getUserId());
             Assert.assertNull(agentRequest.getErp());
@@ -41,8 +40,8 @@ public class AgentQueryServiceUserIdPropagationTest {
 
     @Test
     public void shouldPropagateForcePlanMode() {
-        GptQueryAgentRequestFactory factory = new GptQueryAgentRequestFactory(buildReactorConfig());
-        GptQueryReq request = GptQueryReq.builder()
+        AgentExecutionCommandMapper mapper = mapper();
+        GptQueryCommand request = GptQueryCommand.builder()
                 .traceId("trace-plan-001")
                 .sessionId("session-plan-001")
                 .requestId("req-plan-001")
@@ -52,7 +51,7 @@ public class AgentQueryServiceUserIdPropagationTest {
                 .user("reactor")
                 .build();
 
-        AgentRequest agentRequest = factory.build(request);
+        AgentExecutionCommand agentRequest = mapper.toExecutionCommand(request, null);
         Assert.assertTrue(Boolean.TRUE.equals(agentRequest.getForcePlanMode()));
         Assert.assertEquals(Integer.valueOf(3), agentRequest.getAgentType());
     }
@@ -63,5 +62,11 @@ public class AgentQueryServiceUserIdPropagationTest {
         ReflectionTestUtils.setField(reactorConfig, "sseClientReadTimeout", 300);
         ReflectionTestUtils.setField(reactorConfig, "sseClientConnectTimeout", 60);
         return reactorConfig;
+    }
+
+    private AgentExecutionCommandMapper mapper() {
+        AgentExecutionCommandMapper mapper = new AgentExecutionCommandMapper();
+        ReflectionTestUtils.setField(mapper, "reactorConfig", buildReactorConfig());
+        return mapper;
     }
 }

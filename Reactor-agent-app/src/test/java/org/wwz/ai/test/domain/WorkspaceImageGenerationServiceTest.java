@@ -4,21 +4,21 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationExecutionResult;
-import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageFile;
-import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageGenerationCommand;
-import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageGenerationHistoryPage;
-import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageGenerationResult;
+import org.wwz.ai.domain.agent.image.model.ImageGenerationExecutionResult;
+import org.wwz.ai.domain.agent.image.model.WorkspaceImageFile;
+import org.wwz.ai.domain.agent.image.model.WorkspaceImageGenerationCommand;
+import org.wwz.ai.domain.agent.image.model.WorkspaceImageGenerationHistoryPage;
+import org.wwz.ai.domain.agent.image.model.WorkspaceImageGenerationResult;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ImageGenerationToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRef;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputView;
-import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationBatchPersistenceService;
-import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
-import org.wwz.ai.domain.agent.reactor.service.imagegeneration.impl.ImageGenerationBatchPersistenceServiceImpl;
+import org.wwz.ai.domain.agent.image.service.IImageGenerationBatchPersistenceService;
+import org.wwz.ai.domain.agent.image.service.IImageGenerationExecutionKernel;
+import org.wwz.ai.domain.agent.image.service.impl.ImageGenerationBatchPersistenceServiceImpl;
 import org.wwz.ai.domain.agent.ledger.tooloutput.ToolOutputReader;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputImageGenerationDao;
-import org.wwz.ai.infrastructure.reactor.service.impl.WorkspaceImageGenerationServiceImpl;
+import org.wwz.ai.infrastructure.imagegeneration.WorkspaceImageGenerationServiceImpl;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -33,11 +33,11 @@ public class WorkspaceImageGenerationServiceTest {
         WorkspaceImageGenerationServiceImpl service = new WorkspaceImageGenerationServiceImpl();
         AtomicReference<String> persistedRequestId = new AtomicReference<>();
         AtomicReference<ImageGenerationExecutionResult> persistedResult = new AtomicReference<>();
-        AtomicReference<org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationExecuteCommand> capturedCommand = new AtomicReference<>();
+        AtomicReference<org.wwz.ai.domain.agent.image.model.ImageGenerationExecuteCommand> capturedCommand = new AtomicReference<>();
 
         IImageGenerationExecutionKernel kernel = Mockito.mock(IImageGenerationExecutionKernel.class);
         Mockito.when(kernel.execute(Mockito.any())).thenAnswer(invocation -> {
-            org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationExecuteCommand command = invocation.getArgument(0);
+            org.wwz.ai.domain.agent.image.model.ImageGenerationExecuteCommand command = invocation.getArgument(0);
             capturedCommand.set(command);
             return ImageGenerationExecutionResult.builder()
                     .requestId(command.getRequestId())

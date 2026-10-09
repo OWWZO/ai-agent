@@ -12,13 +12,10 @@ import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteStreamPort;
-import org.wwz.ai.domain.agent.runtime.llm.DomainMessageConverter;
-import org.wwz.ai.domain.agent.runtime.llm.LlmChatModelResolver;
-import org.wwz.ai.domain.agent.runtime.llm.LlmChatResponseMapper;
+import org.wwz.ai.domain.agent.runtime.llm.LlmCompletionPort;
 import org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog;
-import org.wwz.ai.domain.agent.runtime.llm.OpenAiChatOptionsFactory;
 import org.wwz.ai.domain.agent.runtime.llm.StreamResponseHandler;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.port.McpToolExecutor;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.runtime.ReactorLlmDependencies;
 import org.wwz.ai.domain.agent.memory.SessionContextCompactionService;
@@ -30,7 +27,7 @@ import org.wwz.ai.domain.agent.memory.ltm.SessionSearchService;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.tasklist.TasklistPersistencePort;
 import org.springframework.beans.factory.ObjectProvider;
-import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
+import org.wwz.ai.domain.agent.image.service.IImageGenerationExecutionKernel;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentConcurrencyGate;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
 import org.wwz.ai.types.agent.config.AgentExecutorProperties;
@@ -47,18 +44,21 @@ import java.util.concurrent.Executor;
 @Configuration
 public class ReactorRuntimeAutoConfiguration {
 
+    /**
+     * StreamResponseHandler 已按 domain 边界要求移除 Spring 注解（不再 import Spring AI），
+     * 因此必须由 app 侧显式注册；其 @Resource ReactorConfig 字段由容器完成注入。
+     */
     @Bean
-    public ReactorLlmDependencies reactorLlmDependencies(LlmChatModelResolver chatModelResolver,
-                                                         OpenAiChatOptionsFactory chatOptionsFactory,
-                                                         DomainMessageConverter messageConverter,
-                                                         LlmChatResponseMapper responseMapper,
+    public StreamResponseHandler streamResponseHandler() {
+        return new StreamResponseHandler();
+    }
+
+    @Bean
+    public ReactorLlmDependencies reactorLlmDependencies(LlmCompletionPort completionPort,
                                                          StreamResponseHandler streamResponseHandler,
                                                          ObjectProvider<LlmModelCatalog> modelCatalogProvider) {
         return ReactorLlmDependencies.builder()
-                .chatModelResolver(chatModelResolver)
-                .chatOptionsFactory(chatOptionsFactory)
-                .messageConverter(messageConverter)
-                .responseMapper(responseMapper)
+                .completionPort(completionPort)
                 .streamResponseHandler(streamResponseHandler)
                 .modelCatalog(modelCatalogProvider.getIfAvailable())
                 .build();

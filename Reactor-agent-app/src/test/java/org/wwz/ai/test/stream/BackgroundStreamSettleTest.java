@@ -3,12 +3,12 @@ package org.wwz.ai.test.stream;
 import org.junit.Assert;
 import org.junit.Test;
 import org.wwz.ai.application.agent.query.GptQueryApplicationService;
-import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
+import org.wwz.ai.application.agent.stream.AgentStreamProjection;
 import org.wwz.ai.application.agent.stream.AgentSessionPrinter;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
 import org.wwz.ai.application.agent.stream.SessionProjectionRegistry;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
-import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamEvent;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.runtime.tasklist.RuntimeBackgroundTask;
@@ -35,7 +35,7 @@ public class BackgroundStreamSettleTest {
                     .registerLocalAgent("后台探查", "general-purpose", "scan");
 
             CapturingStream stream = new CapturingStream();
-            AgentRequest request = new AgentRequest();
+            AgentExecutionCommand request = new AgentExecutionCommand();
             request.setRequestId("req-bg-defer");
             request.setSessionId(sessionId);
             AgentSessionPrinter printer = new AgentSessionPrinter(stream, request, 5);
@@ -45,7 +45,7 @@ public class BackgroundStreamSettleTest {
             printer.send("result", summary);
 
             Assert.assertEquals(1, stream.payloads.size());
-            AgentResponse response = (AgentResponse) stream.payloads.get(0);
+            AgentStreamEvent response = (AgentStreamEvent) stream.payloads.get(0);
             Assert.assertEquals("result", response.getMessageType());
             Assert.assertFalse(Boolean.TRUE.equals(response.getFinish()));
             Assert.assertFalse(stream.completed.get());
@@ -60,7 +60,7 @@ public class BackgroundStreamSettleTest {
         SessionBackgroundTaskHub.evict(sessionId);
         try {
             CapturingStream stream = new CapturingStream();
-            AgentRequest request = new AgentRequest();
+            AgentExecutionCommand request = new AgentExecutionCommand();
             request.setRequestId("req-bg-settle");
             request.setSessionId(sessionId);
             AgentSessionPrinter printer = new AgentSessionPrinter(stream, request, 5);
@@ -70,7 +70,7 @@ public class BackgroundStreamSettleTest {
             printer.send("stream_settle", settle);
 
             Assert.assertEquals(1, stream.payloads.size());
-            AgentResponse response = (AgentResponse) stream.payloads.get(0);
+            AgentStreamEvent response = (AgentStreamEvent) stream.payloads.get(0);
             Assert.assertEquals("stream_settle", response.getMessageType());
             Assert.assertTrue(Boolean.TRUE.equals(response.getFinish()));
         } finally {
@@ -161,11 +161,11 @@ public class BackgroundStreamSettleTest {
                     .registerLocalAgent("后台探查", "general-purpose", "scan");
 
             CapturingStream downstream = new CapturingStream();
-            AgentRequest request = new AgentRequest();
+            AgentExecutionCommand request = new AgentExecutionCommand();
             request.setRequestId("req-bg-gpt-defer");
             request.setSessionId(sessionId);
-            AgentResponseProjectionStream projecting =
-                    new AgentResponseProjectionStream(downstream, request, Map.of());
+            AgentStreamProjection projecting =
+                    new AgentStreamProjection(downstream, request, Map.of());
 
             GptQueryApplicationService.completeProjectionUnlessBackgroundRunning(request, projecting);
 
@@ -187,11 +187,11 @@ public class BackgroundStreamSettleTest {
         try {
             registry.begin("req-end-run", sessionId, null);
             CapturingStream downstream = new CapturingStream();
-            AgentRequest request = new AgentRequest();
+            AgentExecutionCommand request = new AgentExecutionCommand();
             request.setRequestId("req-end-run");
             request.setSessionId(sessionId);
-            AgentResponseProjectionStream projecting =
-                    new AgentResponseProjectionStream(downstream, request, Map.of());
+            AgentStreamProjection projecting =
+                    new AgentStreamProjection(downstream, request, Map.of());
 
             GptQueryApplicationService.completeProjectionUnlessBackgroundRunning(
                     request, projecting, registry);
@@ -213,11 +213,11 @@ public class BackgroundStreamSettleTest {
             RuntimeBackgroundTask task = SessionBackgroundTaskHub.getOrCreate(sessionId, null)
                     .registerLocalAgent("后台探查", "general-purpose", "scan");
             CapturingStream downstream = new CapturingStream();
-            AgentRequest request = new AgentRequest();
+            AgentExecutionCommand request = new AgentExecutionCommand();
             request.setRequestId("req-keep-run");
             request.setSessionId(sessionId);
-            AgentResponseProjectionStream projecting =
-                    new AgentResponseProjectionStream(downstream, request, Map.of());
+            AgentStreamProjection projecting =
+                    new AgentStreamProjection(downstream, request, Map.of());
 
             GptQueryApplicationService.completeProjectionUnlessBackgroundRunning(
                     request, projecting, registry);
@@ -239,11 +239,11 @@ public class BackgroundStreamSettleTest {
             registry.begin("req-parent", sessionId, "user-1");
             SessionBackgroundTaskHub.getOrCreate(sessionId, null)
                     .registerLocalAgent("后台探查", "general-purpose", "scan");
-            AgentRequest request = new AgentRequest();
+            AgentExecutionCommand request = new AgentExecutionCommand();
             request.setRequestId("req-parent");
             request.setSessionId(sessionId);
-            AgentResponseProjectionStream projecting =
-                    new AgentResponseProjectionStream(new CapturingStream(), request, Map.of());
+            AgentStreamProjection projecting =
+                    new AgentStreamProjection(new CapturingStream(), request, Map.of());
 
             GptQueryApplicationService.completeProjectionUnlessBackgroundRunning(
                     request, projecting, registry);
@@ -265,11 +265,11 @@ public class BackgroundStreamSettleTest {
         try {
             SessionBackgroundTaskHub.getOrCreate(sessionId, null)
                     .registerLocalAgent("后台探查", "general-purpose", "scan");
-            AgentRequest request = new AgentRequest();
+            AgentExecutionCommand request = new AgentExecutionCommand();
             request.setRequestId("req-proj");
             request.setSessionId(sessionId);
-            AgentResponseProjectionStream projecting =
-                    new AgentResponseProjectionStream(new CapturingStream(), request, Map.of())
+            AgentStreamProjection projecting =
+                    new AgentStreamProjection(new CapturingStream(), request, Map.of())
                             .bindRegistry(projections);
 
             GptQueryApplicationService.completeProjectionUnlessBackgroundRunning(request, projecting);

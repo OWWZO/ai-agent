@@ -7,10 +7,11 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.wwz.ai.domain.agent.runtime.dto.Message;
-import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
-import org.wwz.ai.domain.agent.runtime.llm.DomainMessageConverter;
+import org.wwz.ai.domain.agent.runtime.enums.RoleType;
+import org.wwz.ai.domain.agent.runtime.llm.LlmMessage;
+import org.wwz.ai.domain.agent.runtime.llm.LlmToolCall;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.infrastructure.llm.springai.SpringAiMessageMapper;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -23,22 +24,21 @@ public class DomainMessageConverterTest {
 
     @Test
     public void test_convertMessagesWithToolReplayAndImage() {
-        DomainMessageConverter converter = newConverter();
+        SpringAiMessageMapper converter = newConverter();
 
-        ToolCall toolCall = ToolCall.builder()
+        LlmToolCall toolCall = LlmToolCall.builder()
                 .id("call-1")
                 .type("function")
-                .function(ToolCall.Function.builder()
-                        .name("deep_search")
-                        .arguments("{\"query\":\"spring ai\"}")
-                        .build())
+                .name("deep_search")
+                .arguments("{\"query\":\"spring ai\"}")
                 .build();
 
         List<org.springframework.ai.chat.messages.Message> converted = converter.convert(List.of(
-                Message.systemMessage("你是一个助手", null),
-                Message.userMessage("请看图", Base64.getEncoder().encodeToString("img".getBytes(StandardCharsets.UTF_8))),
-                Message.fromToolCalls("我先搜索资料", List.of(toolCall)),
-                Message.toolMessage("搜索完成", "call-1", null)
+                LlmMessage.builder().role(RoleType.SYSTEM).content("你是一个助手").build(),
+                LlmMessage.builder().role(RoleType.USER).content("请看图")
+                        .base64Image(Base64.getEncoder().encodeToString("img".getBytes(StandardCharsets.UTF_8))).build(),
+                LlmMessage.builder().role(RoleType.ASSISTANT).content("我先搜索资料").toolCalls(List.of(toolCall)).build(),
+                LlmMessage.builder().role(RoleType.TOOL).content("搜索完成").toolCallId("call-1").build()
         ));
 
         Assert.assertEquals(4, converted.size());
@@ -60,23 +60,21 @@ public class DomainMessageConverterTest {
 
     @Test
     public void test_toolResultWithImageExpandsToMediaUserMessage() {
-        DomainMessageConverter converter = newConverter();
+        SpringAiMessageMapper converter = newConverter();
         String dataUrl = "data:image/png;base64,"
                 + Base64.getEncoder().encodeToString("png-bytes".getBytes(StandardCharsets.UTF_8));
         String observation = "{\"type\":\"image\",\"path\":\"shot.png\",\"mimeType\":\"image/png\",\"size\":9}";
 
-        ToolCall toolCall = ToolCall.builder()
+        LlmToolCall toolCall = LlmToolCall.builder()
                 .id("call-img")
                 .type("function")
-                .function(ToolCall.Function.builder()
-                        .name("workspace_read")
-                        .arguments("{\"path\":\"shot.png\"}")
-                        .build())
+                .name("workspace_read")
+                .arguments("{\"path\":\"shot.png\"}")
                 .build();
 
         List<org.springframework.ai.chat.messages.Message> converted = converter.convert(List.of(
-                Message.fromToolCalls("read image", List.of(toolCall)),
-                Message.toolMessage(observation, "call-img", dataUrl)
+                LlmMessage.builder().role(RoleType.ASSISTANT).content("read image").toolCalls(List.of(toolCall)).build(),
+                LlmMessage.builder().role(RoleType.TOOL).content(observation).toolCallId("call-img").base64Image(dataUrl).build()
         ));
 
         Assert.assertEquals(3, converted.size());
@@ -97,11 +95,12 @@ public class DomainMessageConverterTest {
 
     @Test
     public void test_orphanToolResultIsDroppedInsteadOfThrowing() {
-        DomainMessageConverter converter = newConverter();
+        SpringAiMessageMapper converter = newConverter();
 
         List<org.springframework.ai.chat.messages.Message> converted = converter.convert(List.of(
-                Message.userMessage("continue after compact", null),
-                Message.toolMessage("search done", "call_i5AJ4CBehK9w8ThWiNnoaD3V", null)
+                LlmMessage.builder().role(RoleType.USER).content("continue after compact").build(),
+                LlmMessage.builder().role(RoleType.TOOL).content("search done")
+                        .toolCallId("call_i5AJ4CBehK9w8ThWiNnoaD3V").build()
         ));
 
         Assert.assertEquals(1, converted.size());
@@ -109,8 +108,8 @@ public class DomainMessageConverterTest {
         Assert.assertEquals("continue after compact", converted.get(0).getText());
     }
 
-    private DomainMessageConverter newConverter() {
-        DomainMessageConverter converter = new DomainMessageConverter();
+    private SpringAiMessageMapper newConverter() {
+        SpringAiMessageMapper converter = new SpringAiMessageMapper();
         ReactorConfig reactorConfig = new ReactorConfig();
         reactorConfig.setSensitivePatterns("{}");
         ReflectionTestUtils.setField(converter, "reactorConfig", reactorConfig);

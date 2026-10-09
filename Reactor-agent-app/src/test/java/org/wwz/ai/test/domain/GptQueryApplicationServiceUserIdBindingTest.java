@@ -7,18 +7,18 @@ import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.application.agent.dispatch.IAgentDispatchService;
 import org.wwz.ai.application.agent.query.AgentQuerySubmitResult;
+import org.wwz.ai.application.agent.query.GptQueryCommand;
 import org.wwz.ai.application.agent.query.GptQueryApplicationService;
+import org.wwz.ai.application.agent.query.mapper.AgentExecutionCommandMapper;
 import org.wwz.ai.application.agent.run.AgentRunLaunchGate;
 import org.wwz.ai.application.agent.stream.AgentSessionEventBus;
 import org.wwz.ai.application.agent.authorization.ConversationSessionAuthorizationService;
 import org.wwz.ai.domain.agent.ledger.entity.DialogueSession;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
-import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
-import org.wwz.ai.domain.agent.runtime.GptQueryAgentRequestFactory;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.runtime.cancel.RunCancellation;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
-import org.wwz.ai.domain.agent.runtime.handler.AgentResponseHandler;
+import org.wwz.ai.domain.agent.runtime.handler.AgentStreamEventHandler;
 import org.wwz.ai.types.agent.user.UserRequestContext;
 
 import java.util.Collections;
@@ -35,27 +35,24 @@ public class GptQueryApplicationServiceUserIdBindingTest {
     @Test
     public void shouldBindSessionBeforeDispatchingQuery() throws Exception {
         GptQueryApplicationService service = newService();
-        GptQueryAgentRequestFactory factory = Mockito.mock(GptQueryAgentRequestFactory.class);
+        AgentExecutionCommandMapper mapper = Mockito.mock(AgentExecutionCommandMapper.class);
         IAgentDispatchService dispatchService = Mockito.mock(IAgentDispatchService.class);
         ConversationSessionAuthorizationService ownershipService =
                 Mockito.mock(ConversationSessionAuthorizationService.class);
 
-        ReflectionTestUtils.setField(service, "gptQueryAgentRequestFactory", factory);
+        ReflectionTestUtils.setField(service, "agentExecutionCommandMapper", mapper);
         ReflectionTestUtils.setField(service, "agentDispatchService", dispatchService);
         ReflectionTestUtils.setField(service, "conversationSessionAuthorizationService", ownershipService);
 
-        GptQueryReq params = new GptQueryReq();
-        params.setRequestId("req-001");
-        params.setSessionId("session-001");
-        params.setQuery("帮我总结一下这个项目");
+        GptQueryCommand params = GptQueryCommand.builder()
+                .requestId("req-001").sessionId("session-001").query("帮我总结一下这个项目").build();
 
-        AgentRequest agentRequest = AgentRequest.builder()
+        AgentExecutionCommand agentRequest = AgentExecutionCommand.builder()
                 .requestId("req-001")
                 .sessionId("session-001")
                 .query("帮我总结一下这个项目")
                 .build();
-        Mockito.doNothing().when(factory).normalize(params);
-        Mockito.when(factory.build(params)).thenReturn(agentRequest);
+        Mockito.when(mapper.toExecutionCommand(params, "user-001")).thenReturn(agentRequest);
         Mockito.when(ownershipService.ensureSessionAccessible("user-001", "session-001", "帮我总结一下这个项目"))
                 .thenReturn(DialogueSession.builder().sessionId("session-001").userId("user-001").build());
 
@@ -63,7 +60,7 @@ public class GptQueryApplicationServiceUserIdBindingTest {
         Mockito.doAnswer(invocation -> {
             latch.countDown();
             return null;
-        }).when(dispatchService).dispatch(Mockito.any(AgentRequest.class), Mockito.any());
+        }).when(dispatchService).dispatch(Mockito.any(AgentExecutionCommand.class), Mockito.any());
 
         UserRequestContext.bind("user-001");
         AgentQuerySubmitResult submitted;
@@ -82,28 +79,25 @@ public class GptQueryApplicationServiceUserIdBindingTest {
     @Test
     public void shouldPreferServerResolvedUserOverCallerSuppliedValue() throws Exception {
         GptQueryApplicationService service = newService();
-        GptQueryAgentRequestFactory factory = Mockito.mock(GptQueryAgentRequestFactory.class);
+        AgentExecutionCommandMapper mapper = Mockito.mock(AgentExecutionCommandMapper.class);
         IAgentDispatchService dispatchService = Mockito.mock(IAgentDispatchService.class);
         ConversationSessionAuthorizationService ownershipService =
                 Mockito.mock(ConversationSessionAuthorizationService.class);
 
-        ReflectionTestUtils.setField(service, "gptQueryAgentRequestFactory", factory);
+        ReflectionTestUtils.setField(service, "agentExecutionCommandMapper", mapper);
         ReflectionTestUtils.setField(service, "agentDispatchService", dispatchService);
         ReflectionTestUtils.setField(service, "conversationSessionAuthorizationService", ownershipService);
 
-        GptQueryReq params = new GptQueryReq();
-        params.setRequestId("req-002");
-        params.setSessionId("session-002");
-        params.setQuery("继续这个会话");
+        GptQueryCommand params = GptQueryCommand.builder()
+                .requestId("req-002").sessionId("session-002").query("继续这个会话").build();
 
-        AgentRequest agentRequest = AgentRequest.builder()
+        AgentExecutionCommand agentRequest = AgentExecutionCommand.builder()
                 .requestId("req-002")
                 .sessionId("session-002")
                 .userId("forged-user")
                 .query("继续这个会话")
                 .build();
-        Mockito.doNothing().when(factory).normalize(params);
-        Mockito.when(factory.build(params)).thenReturn(agentRequest);
+        Mockito.when(mapper.toExecutionCommand(params, "user-002")).thenReturn(agentRequest);
         Mockito.when(ownershipService.ensureSessionAccessible("user-002", "session-002", "继续这个会话"))
                 .thenReturn(DialogueSession.builder().sessionId("session-002").userId("user-002").build());
 
@@ -117,7 +111,7 @@ public class GptQueryApplicationServiceUserIdBindingTest {
         Assert.assertEquals("user-002", agentRequest.getUserId());
         Mockito.verify(ownershipService).ensureSessionAccessible("user-002", "session-002", "继续这个会话");
 
-        ArgumentCaptor<AgentRequest> captor = ArgumentCaptor.forClass(AgentRequest.class);
+        ArgumentCaptor<AgentExecutionCommand> captor = ArgumentCaptor.forClass(AgentExecutionCommand.class);
         Mockito.verify(dispatchService).dispatch(captor.capture(), Mockito.any());
         Assert.assertEquals("user-002", captor.getValue().getUserId());
     }
@@ -125,7 +119,7 @@ public class GptQueryApplicationServiceUserIdBindingTest {
     @Test
     public void shouldRejectUnavailableExplicitModelBeforeStartingRun() {
         GptQueryApplicationService service = newService();
-        GptQueryAgentRequestFactory factory = Mockito.mock(GptQueryAgentRequestFactory.class);
+        AgentExecutionCommandMapper mapper = Mockito.mock(AgentExecutionCommandMapper.class);
         IAgentDispatchService dispatchService = Mockito.mock(IAgentDispatchService.class);
         ConversationSessionAuthorizationService ownershipService =
                 Mockito.mock(ConversationSessionAuthorizationService.class);
@@ -133,24 +127,24 @@ public class GptQueryApplicationServiceUserIdBindingTest {
                 Mockito.mock(org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog.class);
         ActiveAgentRunRegistry registry = Mockito.mock(ActiveAgentRunRegistry.class);
 
-        ReflectionTestUtils.setField(service, "gptQueryAgentRequestFactory", factory);
+        ReflectionTestUtils.setField(service, "agentExecutionCommandMapper", mapper);
         ReflectionTestUtils.setField(service, "agentDispatchService", dispatchService);
         ReflectionTestUtils.setField(service, "conversationSessionAuthorizationService", ownershipService);
         ReflectionTestUtils.setField(service, "llmModelCatalog", modelCatalog);
         ReflectionTestUtils.setField(service, "activeAgentRunRegistry", registry);
 
-        GptQueryReq params = new GptQueryReq();
-        params.setRequestId("req-invalid-model");
-        params.setSessionId("session-invalid-model");
-        params.setQuery("使用指定模型");
-        AgentRequest agentRequest = AgentRequest.builder()
+        GptQueryCommand params = GptQueryCommand.builder()
+                .requestId("req-invalid-model")
+                .sessionId("session-invalid-model")
+                .query("使用指定模型")
+                .build();
+        AgentExecutionCommand agentRequest = AgentExecutionCommand.builder()
                 .requestId(params.getRequestId())
                 .sessionId(params.getSessionId())
                 .model("disabled-model")
                 .query(params.getQuery())
                 .build();
-        Mockito.doNothing().when(factory).normalize(params);
-        Mockito.when(factory.build(params)).thenReturn(agentRequest);
+        Mockito.when(mapper.toExecutionCommand(params, null)).thenReturn(agentRequest);
         Mockito.when(modelCatalog.isUserSelectableModel("disabled-model")).thenReturn(false);
 
         try {
@@ -173,7 +167,7 @@ public class GptQueryApplicationServiceUserIdBindingTest {
                         invocation.getArgument(1),
                         invocation.getArgument(2),
                         new RunCancellation()));
-        ReflectionTestUtils.setField(service, "handlerMap", Collections.<AgentType, AgentResponseHandler>emptyMap());
+        ReflectionTestUtils.setField(service, "handlerMap", Collections.<AgentType, AgentStreamEventHandler>emptyMap());
         ReflectionTestUtils.setField(service, "dispatchExecutor", (Executor) Runnable::run);
         ReflectionTestUtils.setField(service, "activeAgentRunRegistry", registry);
         ReflectionTestUtils.setField(service, "agentSessionEventBus",

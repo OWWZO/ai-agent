@@ -15,7 +15,7 @@ import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionRunDetail;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationFinishRecord;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
-import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamResult;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -116,7 +116,7 @@ public class PlanSolveExecutionLedgerIntegrationTest {
                 .errorMsg("达到最大迭代次数，任务终止。")
                 .build());
 
-        List<GptProcessResult> historyFrames = ledger.replayService.queryConversationHistory(context.getSessionId())
+        List<AgentStreamResult> historyFrames = ledger.replayService.queryConversationHistory(context.getSessionId())
                 .getRuns()
                 .get(0)
                 .getReplayFrames();
@@ -131,23 +131,23 @@ public class PlanSolveExecutionLedgerIntegrationTest {
     }
 
     @SuppressWarnings("unchecked")
-    private String eventMessageType(GptProcessResult frame) {
-        return String.valueOf(((Map<String, Object>) frame.getResultMap().get("eventData")).get("messageType"));
+    private String eventMessageType(AgentStreamResult frame) {
+        return String.valueOf(((Map<String, Object>) frame.getEventData().get("eventData")).get("messageType"));
     }
 
     @SuppressWarnings("unchecked")
-    private String nestedMessageType(GptProcessResult frame) {
-        return String.valueOf(((Map<String, Object>) ((Map<String, Object>) frame.getResultMap().get("eventData")).get("resultMap")).get("messageType"));
+    private String nestedMessageType(AgentStreamResult frame) {
+        return String.valueOf(((Map<String, Object>) ((Map<String, Object>) frame.getEventData().get("eventData")).get("resultMap")).get("messageType"));
     }
 
     @SuppressWarnings("unchecked")
-    private String nestedResult(GptProcessResult frame) {
-        return String.valueOf(((Map<String, Object>) ((Map<String, Object>) frame.getResultMap().get("eventData")).get("resultMap")).get("result"));
+    private String nestedResult(AgentStreamResult frame) {
+        return String.valueOf(((Map<String, Object>) ((Map<String, Object>) frame.getEventData().get("eventData")).get("resultMap")).get("result"));
     }
 
     @SuppressWarnings("unchecked")
-    private String nestedTask(GptProcessResult frame) {
-        return String.valueOf(((Map<String, Object>) ((Map<String, Object>) frame.getResultMap().get("eventData")).get("resultMap")).get("task"));
+    private String nestedTask(AgentStreamResult frame) {
+        return String.valueOf(((Map<String, Object>) ((Map<String, Object>) frame.getEventData().get("eventData")).get("resultMap")).get("task"));
     }
 
     private static final class TestAgent extends BaseAgent {
