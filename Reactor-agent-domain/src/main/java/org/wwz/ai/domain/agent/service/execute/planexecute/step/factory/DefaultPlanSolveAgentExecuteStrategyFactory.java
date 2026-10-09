@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReActAgent;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.service.execute.planexecute.step.PrepareAgentContextNode;
 
 /**
@@ -26,7 +26,7 @@ public class DefaultPlanSolveAgentExecuteStrategyFactory {
         this.prepareNode = prepareNode;
     }
 
-    public StrategyHandler<AgentRequest, DynamicContext, String> armoryStrategyHandler() {
+    public StrategyHandler<AgentExecutionCommand, DynamicContext, String> armoryStrategyHandler() {
         return prepareNode;
     }
 

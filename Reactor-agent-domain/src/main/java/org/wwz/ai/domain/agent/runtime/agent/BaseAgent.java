@@ -6,7 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.memory.ltm.LtmMemoryGuard;
 import org.wwz.ai.domain.agent.memory.ltm.LtmPromptGuidance;
-import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
+import org.wwz.ai.domain.agent.runtime.stream.ToolResultStreamPayload;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactFormatter;
 import org.wwz.ai.domain.agent.runtime.cancel.PendingInjectMessage;
@@ -33,7 +33,7 @@ import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
 import org.wwz.ai.domain.agent.runtime.tool.common.MemoryTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.SessionSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.skill.SkillViewTool;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.DeferredToolCall;
+import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolCall;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillPromptIndexBuilder;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadStateStore;
 import org.wwz.ai.domain.agent.runtime.util.FileUtil;
@@ -211,7 +211,7 @@ public abstract class BaseAgent {
         if (TOOLS_WITHOUT_RESULT_EVENT.contains(toolName)) {
             return;
         }
-        AgentResponse.ToolResult result = AgentResponse.ToolResult.builder()
+        ToolResultStreamPayload result = ToolResultStreamPayload.builder()
                 .toolName(toolName)
                 .toolParam(toolParam)
                 .toolResult(toolResult)

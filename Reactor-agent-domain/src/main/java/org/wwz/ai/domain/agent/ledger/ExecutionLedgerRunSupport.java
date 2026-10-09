@@ -3,12 +3,12 @@ package org.wwz.ai.domain.agent.ledger;
 import com.alibaba.fastjson.JSON;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
-import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionFile;
 import org.wwz.ai.domain.agent.ledger.model.ArtifactRecordCommand;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunFinishRecord;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunStartRecord;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -29,7 +29,7 @@ public final class ExecutionLedgerRunSupport {
      */
     public static void initializeRun(AgentExecutionRecorder recorder,
                                      AgentContext agentContext,
-                                     AgentRequest request,
+                                     AgentExecutionCommand request,
                                      String entryAgent) {
         if (recorder == null || agentContext == null || request == null) {
             return;
@@ -73,7 +73,7 @@ public final class ExecutionLedgerRunSupport {
     }
 
     private static void recordInputArtifacts(AgentExecutionRecorder recorder,
-                                             List<FileInformation> sessionFiles,
+                                              List<AgentExecutionFile> sessionFiles,
                                              Long runId,
                                              String requestId) {
         List<ArtifactRecordCommand> inputArtifacts = buildInputArtifacts(sessionFiles, runId, requestId);
@@ -82,14 +82,14 @@ public final class ExecutionLedgerRunSupport {
         }
     }
 
-    private static List<ArtifactRecordCommand> buildInputArtifacts(List<FileInformation> sessionFiles,
+    private static List<ArtifactRecordCommand> buildInputArtifacts(List<AgentExecutionFile> sessionFiles,
                                                                    Long runId,
                                                                    String requestId) {
         if (runId == null || sessionFiles == null || sessionFiles.isEmpty()) {
             return List.of();
         }
         List<ArtifactRecordCommand> records = new ArrayList<>(sessionFiles.size());
-        for (FileInformation sessionFile : sessionFiles) {
+        for (AgentExecutionFile sessionFile : sessionFiles) {
             if (!hasValidFileName(sessionFile)) {
                 continue;
             }
@@ -118,11 +118,11 @@ public final class ExecutionLedgerRunSupport {
                 && agentContext.getAgentRunState() != null;
     }
 
-    private static boolean hasValidFileName(FileInformation sessionFile) {
+    private static boolean hasValidFileName(AgentExecutionFile sessionFile) {
         return sessionFile != null && StringUtils.isNotBlank(sessionFile.getFileName());
     }
 
-    private static String resolveStorageKey(FileInformation sessionFile) {
+    private static String resolveStorageKey(AgentExecutionFile sessionFile) {
         if (StringUtils.isNotBlank(sessionFile.getResourceKey())) {
             return sessionFile.getResourceKey();
         }
@@ -141,7 +141,7 @@ public final class ExecutionLedgerRunSupport {
         return sessionFile.getFileName();
     }
 
-    private static String buildInputMetadata(FileInformation sessionFile) {
+    private static String buildInputMetadata(AgentExecutionFile sessionFile) {
         Map<String, Object> metadata = new LinkedHashMap<>();
         if (StringUtils.isNotBlank(sessionFile.getFileDesc())) {
             metadata.put("fileDesc", sessionFile.getFileDesc());

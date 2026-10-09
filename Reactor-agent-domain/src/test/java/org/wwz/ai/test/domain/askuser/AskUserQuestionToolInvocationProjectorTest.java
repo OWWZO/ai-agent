@@ -5,7 +5,7 @@ import org.junit.Test;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 import org.wwz.ai.domain.agent.ledger.model.replay.ProjectedReplayEvent;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.AskUserQuestionToolInvocationProjector;
-import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamAccumulator;
 import org.wwz.ai.domain.agent.runtime.askuser.IUserQuestionRepository;
 import org.wwz.ai.domain.agent.runtime.askuser.UserQuestionRecord;
 
@@ -26,7 +26,7 @@ public class AskUserQuestionToolInvocationProjectorTest {
                 .build();
 
         List<ProjectedReplayEvent> events = new AskUserQuestionToolInvocationProjector()
-                .project(invocation, List.of(), new EventResult());
+                .project(invocation, List.of(), new AgentStreamAccumulator());
 
         Assert.assertEquals(1, events.size());
         Map<String, Object> response = castMap(events.get(0).getResultMap());
@@ -69,7 +69,7 @@ public class AskUserQuestionToolInvocationProjectorTest {
         };
 
         List<ProjectedReplayEvent> events = new AskUserQuestionToolInvocationProjector(repository)
-                .project(invocation, List.of(), new EventResult());
+                .project(invocation, List.of(), new AgentStreamAccumulator());
 
         Map<String, Object> response = castMap(events.get(0).getResultMap());
         Map<String, Object> payload = castMap(response.get("resultMap"));
@@ -108,7 +108,7 @@ public class AskUserQuestionToolInvocationProjectorTest {
         };
 
         List<ProjectedReplayEvent> events = new AskUserQuestionToolInvocationProjector(repository)
-                .project(invocation, List.of(), new EventResult());
+                .project(invocation, List.of(), new AgentStreamAccumulator());
 
         Map<String, Object> response = castMap(events.get(0).getResultMap());
         Map<String, Object> payload = castMap(response.get("resultMap"));

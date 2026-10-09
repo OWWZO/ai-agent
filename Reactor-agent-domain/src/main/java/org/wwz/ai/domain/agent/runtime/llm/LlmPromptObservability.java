@@ -4,7 +4,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
@@ -275,14 +274,6 @@ public final class LlmPromptObservability {
 
     public static void clear() {
         LAST_BUNDLE.remove();
-    }
-
-    public static LlmUsageSnapshot resolveUsage(ChatResponseMetadata metadata) {
-        return LlmUsageSnapshot.resolve(metadata);
-    }
-
-    public static Integer resolveCachedPromptTokens(ChatResponseMetadata metadata) {
-        return resolveUsage(metadata).getCachedPromptTokens();
     }
 
     private record PromptSnapshot(String systemFingerprint, String toolNamesKey, String toolSchemaFingerprint,

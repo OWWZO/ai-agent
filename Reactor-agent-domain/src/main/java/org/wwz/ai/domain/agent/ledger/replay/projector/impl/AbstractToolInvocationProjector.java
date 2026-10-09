@@ -5,7 +5,7 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.ledger.model.ArtifactView;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
-import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamAccumulator;
 import org.wwz.ai.domain.agent.ledger.model.replay.ProjectedReplayEvent;
 import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRef;
@@ -142,7 +142,7 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
         }
     }
 
-    protected ProjectedReplayEvent buildTaskEvent(EventResult state,
+    protected ProjectedReplayEvent buildTaskEvent(AgentStreamAccumulator state,
                                                   ToolInvocationView invocation,
                                                   String logicalMessageType,
                                                   Object responsePayload,
@@ -178,7 +178,7 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
         Map<String, Object> response = newToolReplayEnvelope(invocation, "tool_result");
         response.put("toolResult", toolResult);
         mirrorNestingToOuter(response, invocation);
-        // 镜像进 resultMap，对齐 BaseAgentResponseHandler 实时路径
+        // 镜像进 resultMap，对齐 BaseAgentStreamEventHandler 实时路径
         if (StringUtils.isNotBlank(invocation == null ? null : invocation.getParentToolCallId())) {
             Map<String, Object> nested = new LinkedHashMap<>();
             decorateToolPayload(nested, invocation);
@@ -221,7 +221,7 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
     }
 
     /**
-     * 还原子 Agent 嵌套标签，与 SubAgentPrinter / BaseAgentResponseHandler 实时契约一致。
+     * 还原子 Agent 嵌套标签，与 SubAgentPrinter / BaseAgentStreamEventHandler 实时契约一致。
      */
     protected void appendSubAgentNestingTags(Map<String, Object> target, ToolInvocationView invocation) {
         if (target == null || invocation == null) {

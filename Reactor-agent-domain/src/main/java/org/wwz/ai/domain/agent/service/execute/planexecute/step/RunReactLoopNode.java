@@ -7,7 +7,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReactFinalAnswerResolver;
 import org.wwz.ai.domain.agent.runtime.agent.ReactImplAgent;
@@ -45,7 +45,7 @@ public class RunReactLoopNode extends AbstractExecuteSupport {
     private PlanApprovalYieldService planApprovalYieldService;
 
     @Override
-    protected String doApply(AgentRequest requestParameter,
+    protected String doApply(AgentExecutionCommand requestParameter,
                              DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("PlanSolve Run: loop for requestId: {}", requestParameter.getRequestId());
 
@@ -122,8 +122,8 @@ public class RunReactLoopNode extends AbstractExecuteSupport {
     }
 
     @Override
-    public StrategyHandler<AgentRequest, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext, String> get(
-            AgentRequest requestParameter,
+    public StrategyHandler<AgentExecutionCommand, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext, String> get(
+            AgentExecutionCommand requestParameter,
             DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         if (dynamicContext != null && Boolean.TRUE.equals(dynamicContext.getWaitingUserInput())) {
             return null;

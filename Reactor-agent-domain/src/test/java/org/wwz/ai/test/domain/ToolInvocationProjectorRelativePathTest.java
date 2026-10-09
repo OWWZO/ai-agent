@@ -10,7 +10,7 @@ import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRef;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRefMapper;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.CanvasPublishToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DefaultToolInvocationProjector;
-import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamAccumulator;
 import org.wwz.ai.domain.agent.runtime.dto.CodeInterpreterResponse;
 
 import java.util.List;
@@ -34,7 +34,7 @@ public class ToolInvocationProjectorRelativePathTest {
                 .build();
 
         List<ProjectedReplayEvent> events = new DefaultToolInvocationProjector()
-                .project(invocation, List.of(css), new EventResult());
+                .project(invocation, List.of(css), new AgentStreamAccumulator());
 
         Assert.assertEquals(1, events.size());
         Assert.assertEquals("site/css/style.css", events.get(0).getArtifactRefs().get(0).get("relativePath"));
@@ -68,7 +68,7 @@ public class ToolInvocationProjectorRelativePathTest {
                 .build();
 
         List<ProjectedReplayEvent> events = new CanvasPublishToolInvocationProjector()
-                .project(invocation, List.of(html), new EventResult());
+                .project(invocation, List.of(html), new AgentStreamAccumulator());
 
         Map<String, Object> response = castMap(events.get(0).getResultMap());
         Map<String, Object> resultMap = castMap(response.get("resultMap"));

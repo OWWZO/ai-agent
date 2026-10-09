@@ -6,7 +6,7 @@ import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.DeferredToolCall;
+import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolCall;
 
 import java.util.LinkedHashMap;
 import java.util.List;

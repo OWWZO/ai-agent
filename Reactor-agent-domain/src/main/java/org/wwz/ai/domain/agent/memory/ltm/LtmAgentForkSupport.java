@@ -3,12 +3,12 @@ package org.wwz.ai.domain.agent.memory.ltm;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReactImplAgent;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
-import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.model.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.printer.LogPrinter;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
@@ -126,7 +126,7 @@ public final class LtmAgentForkSupport {
         int before = beforeMap.size();
         long startedAt = System.currentTimeMillis();
         Callable<LtmForkRunResult> task = () -> {
-            AgentRequest fake = new AgentRequest();
+            AgentExecutionCommand fake = new AgentExecutionCommand();
             fake.setRequestId(forkRequestId);
             fake.setSessionId(sid);
 

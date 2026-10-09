@@ -15,8 +15,8 @@ import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceSessionFileMaterializer;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadStateStore;
 import org.wwz.ai.domain.agent.runtime.util.DateUtil;
-import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionFile;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
@@ -64,7 +64,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
     private org.wwz.ai.domain.agent.runtime.capability.SessionCapabilityService sessionCapabilityService;
 
     @Override
-    protected String doApply(AgentRequest request, DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+    protected String doApply(AgentExecutionCommand request, DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("React Prepare: context and tools for requestId: {}", request.getRequestId());
 
         // 根节点只负责把请求翻译成运行时上下文，并把后续节点需要的能力装配齐；它是
@@ -124,7 +124,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
         activeAgentRunRegistry.bindContext(agentContext.getRequestId(), agentContext);
     }
 
-    private ToolCollection buildToolCollection(AgentContext agentContext, AgentRequest request) {
+    private ToolCollection buildToolCollection(AgentContext agentContext, AgentExecutionCommand request) {
         // 工具集合必须以已完成初始化的 AgentContext 为输入，确保工具看到相同的 session、
         // workspace、取消信号和执行记录器，而不是各自从请求参数重新推导运行状态。
         return agentToolCollectionFactory.buildForReact(agentContext, request);
@@ -139,7 +139,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
     @jakarta.annotation.Resource
     private org.wwz.ai.domain.agent.runtime.planmode.PlanArtifactStore planArtifactStore;
 
-    private void restoreResumePlanMode(AgentContext agentContext, AgentRequest request) {
+    private void restoreResumePlanMode(AgentContext agentContext, AgentExecutionCommand request) {
         if (agentContext == null || request == null || org.apache.commons.lang3.StringUtils.isBlank(request.getResumeContextJson())) {
             return;
         }
@@ -149,7 +149,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
         applyPlanApprovalDecision(agentContext, request);
     }
 
-    private void applyPlanApprovalDecision(AgentContext agentContext, AgentRequest request) {
+    private void applyPlanApprovalDecision(AgentContext agentContext, AgentExecutionCommand request) {
         if (agentContext == null || request == null
                 || org.apache.commons.lang3.StringUtils.isBlank(request.getResumeApprovalId())
                 || planApprovalRepository == null) {
@@ -188,7 +188,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
         }
     }
 
-    private void materializeSessionFiles(AgentContext agentContext, java.util.List<FileInformation> sessionFiles) {
+    private void materializeSessionFiles(AgentContext agentContext, java.util.List<AgentExecutionFile> sessionFiles) {
         if (workspaceSessionFileMaterializer == null) {
             return;
         }
@@ -213,12 +213,12 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
         }
     }
 
-    private List<File> convertFiles(List<FileInformation> sessionFiles) {
+    private List<File> convertFiles(List<AgentExecutionFile> sessionFiles) {
         if (sessionFiles == null || sessionFiles.isEmpty()) {
             return List.of();
         }
         List<File> files = new ArrayList<>(sessionFiles.size());
-        for (FileInformation sessionFile : sessionFiles) {
+        for (AgentExecutionFile sessionFile : sessionFiles) {
             files.add(File.builder()
                     .fileName(sessionFile.getFileName())
                     .description(sessionFile.getFileDesc())
@@ -234,18 +234,18 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
         return files;
     }
 
-    private List<Message> convertMessages(List<AgentRequest.Message> messages) {
+    private List<Message> convertMessages(List<AgentExecutionCommand.Message> messages) {
         if (messages == null || messages.isEmpty()) {
             return List.of();
         }
         List<Message> result = new ArrayList<>(messages.size());
-        for (AgentRequest.Message message : messages) {
+        for (AgentExecutionCommand.Message message : messages) {
             result.add(convertMessage(message));
         }
         return result;
     }
 
-    private Message convertMessage(AgentRequest.Message message) {
+    private Message convertMessage(AgentExecutionCommand.Message message) {
         if (message == null) {
             return Message.builder()
                     .role(RoleType.USER)
@@ -258,7 +258,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
                 .build();
     }
 
-    private RoleType resolveRoleType(AgentRequest.Message message) {
+    private RoleType resolveRoleType(AgentExecutionCommand.Message message) {
         if (hasStructuredToolTrace(message)) {
             return RoleType.ASSISTANT;
         }
@@ -280,7 +280,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
      * 历史续聊消息保留工具调用文本，但不再把旧的 tool_call 结构直接发给 LLM，
      * 避免网关将其误判为未闭合的原生 function-call 链路。
      */
-    private String buildHistoryMessageContent(AgentRequest.Message message) {
+    private String buildHistoryMessageContent(AgentExecutionCommand.Message message) {
         if (message == null) {
             return null;
         }
@@ -297,7 +297,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
         return message.getContent();
     }
 
-    private boolean hasStructuredToolTrace(AgentRequest.Message message) {
+    private boolean hasStructuredToolTrace(AgentExecutionCommand.Message message) {
         if (message == null) {
             return false;
         }
@@ -329,12 +329,12 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
         return String.join("\n", parts);
     }
 
-    private String buildArtifactHint(AgentRequest.Message message) {
+    private String buildArtifactHint(AgentExecutionCommand.Message message) {
         if (message.getFiles() == null || message.getFiles().isEmpty()) {
             return null;
         }
         List<String> names = new ArrayList<>();
-        for (FileInformation file : message.getFiles()) {
+        for (AgentExecutionFile file : message.getFiles()) {
             if (file != null && file.getFileName() != null && !file.getFileName().isBlank()) {
                 names.add(file.getFileName());
             }
@@ -366,8 +366,8 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
     }
 
     @Override
-    public StrategyHandler<AgentRequest, DefaultReactAgentExecuteStrategyFactory.DynamicContext, String> get(
-            AgentRequest requestParameter,
+    public StrategyHandler<AgentExecutionCommand, DefaultReactAgentExecuteStrategyFactory.DynamicContext, String> get(
+            AgentExecutionCommand requestParameter,
             DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         return runReactLoopNode;
     }

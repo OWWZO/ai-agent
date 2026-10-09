@@ -1,84 +1,89 @@
 package org.wwz.ai.domain.agent.rag;
 
-
+import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpRequest;
-import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConfig;
-import org.wwz.ai.domain.agent.reactor.data.dto.ChatSchemaDto;
-import org.wwz.ai.domain.agent.reactor.data.dto.NL2SQLReq;
-import org.wwz.ai.domain.agent.reactor.data.dto.TableRagResult;
+import org.wwz.ai.domain.agent.rag.model.config.DataQuerySettings;
+import org.wwz.ai.domain.agent.rag.model.query.Nl2SqlQuery;
+import org.wwz.ai.domain.agent.rag.model.schema.DataQuerySchema;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
-import java.util.Objects;
-import java.util.stream.Collectors;
+import java.util.Map;
 
-/**
- * 表级 schema RAG 服务。
- * <p>
- * 调用 reactor-tool 的 table_rag 接口并把返回结构转换为 NL2SQL 使用的 schema DTO；
- * ES/Qdrant 未启用时主动返回空结果，由问数服务执行数据库 schema 回退。
- */
+/** Table-level schema recall; an unavailable or empty recall leaves fallback to the caller. */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class TableRagService {
 
     public static final String TABLE_RAG_URL = "/v1/tool/table_rag";
 
-    @Autowired
-    DataAgentConfig dataAgentConfig;
-    @Autowired
-    RemoteHttpPort remoteHttpPort;
+    private final DataQuerySettings settings;
+    private final RemoteHttpPort remoteHttpPort;
 
-    public List<ChatSchemaDto> tableRag(NL2SQLReq req) throws IOException {
-        // 召回源是可选能力，关闭时不发起远端请求，避免把配置关闭误判成服务故障。
-        if (!dataAgentConfig.getEsConfig().getEnable() && !dataAgentConfig.getQdrantConfig().getEnable()) {
-            log.info("{},{} 未开启向量和es，不进行tableRag",req.getTraceId(),req.getRequestId());
+    public List<DataQuerySchema> tableRag(Nl2SqlQuery query) throws IOException {
+        if (!Boolean.TRUE.equals(settings.getEsConfig().getEnable())
+                && !Boolean.TRUE.equals(settings.getQdrantConfig().getEnable())) {
+            log.info("{},{} 未开启向量和es，不进行tableRag", query.getTraceId(), query.getRequestId());
             return new ArrayList<>();
         }
-        String res;
+
+        String response;
         try {
-            res = postTableRag(req);
+            response = postTableRag(query);
         } catch (Exception e) {
-            // table_rag 是查询前置步骤，保留一次重试以覆盖短暂网络抖动；持续失败交给上层回退。
-            log.warn("{},{} tableRag server error,retry:{}",req.getTraceId(),req.getRequestId(), e.getMessage());
-            res = postTableRag(req);
+            log.warn("{},{} tableRag server error,retry:{}", query.getTraceId(), query.getRequestId(), e.getMessage());
+            response = postTableRag(query);
         }
-        log.info("{},{} tableRag result:{}", req.getTraceId(),req.getRequestId(),res);
-        TableRagResult tableRagResult = JSONObject.parseObject(res, TableRagResult.class);
-        if (tableRagResult == null || tableRagResult.getCode() == null) {
+        log.info("{},{} tableRag result:{}", query.getTraceId(), query.getRequestId(), response);
+
+        JSONObject body = JSONObject.parseObject(response);
+        if (body == null || body.getInteger("code") == null) {
             throw new RuntimeException("tableRag result is null");
         }
-        if (tableRagResult.getCode() != 200) {
+        if (body.getIntValue("code") != 200) {
             throw new RuntimeException("tableRag server return error");
         }
-        List<TableRagResult.TableRagData> data = tableRagResult.getData();
-        if (CollectionUtils.isEmpty(data)) {
+        JSONArray data = body.getJSONArray("data");
+        if (data == null || data.isEmpty()) {
             log.warn("{},{} tableRag result data is empty，降级为空结果，由上游决定是否回退",
-                    req.getTraceId(), req.getRequestId());
+                    query.getTraceId(), query.getRequestId());
             return new ArrayList<>();
         }
-        return data.stream()
-                .filter(Objects::nonNull)
-                .map(TableRagResult.TableRagData::getSchemaList)
-                .filter(CollectionUtils::isNotEmpty)
-                .flatMap(Collection::stream)
-                .collect(Collectors.toList());
+
+        List<DataQuerySchema> schemas = new ArrayList<>();
+        for (int i = 0; i < data.size(); i++) {
+            JSONObject model = data.getJSONObject(i);
+            if (model == null) {
+                continue;
+            }
+            JSONArray schemaList = model.getJSONArray("schemaList");
+            if (CollectionUtils.isEmpty(schemaList)) {
+                continue;
+            }
+            for (int j = 0; j < schemaList.size(); j++) {
+                JSONObject schema = schemaList.getJSONObject(j);
+                if (schema != null) {
+                    schemas.add(schema.toJavaObject(DataQuerySchema.class));
+                }
+            }
+        }
+        return schemas;
     }
 
-    private String postTableRag(NL2SQLReq req) throws IOException {
+    private String postTableRag(Nl2SqlQuery query) throws IOException {
         return remoteHttpPort.execute(RemoteHttpRequest.builder()
                 .method("POST")
-                .url(dataAgentConfig.getAgentUrl() + TABLE_RAG_URL)
-                .headers(java.util.Map.of("Content-Type", "application/json"))
-                .body(JSONObject.toJSONString(req))
+                .url(settings.getAgentUrl() + TABLE_RAG_URL)
+                .headers(Map.of("Content-Type", "application/json"))
+                .body(JSONObject.toJSONString(query))
                 .build());
     }
 }

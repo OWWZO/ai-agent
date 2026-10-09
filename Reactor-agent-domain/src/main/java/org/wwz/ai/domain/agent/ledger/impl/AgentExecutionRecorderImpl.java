@@ -79,7 +79,8 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
             // run 是整条执行账本的根事实，必须先落库，后续 LLM、tool 和 artifact 才能挂载到 runId。
             executionLedgerWriteRepository.insertRun(entity);
             SessionHeadValues sessionHead = resolveSessionHead(record.getSessionId(), record.getQueryText());
-            upsertSessionHead(DialogueSessionUpsertRecord.builder()
+            // 会话主表由数据库原子累加 run_count：并发 run 不会互相覆盖，started_at 保留首次值。
+            executionLedgerWriteRepository.upsertSessionOnRunStart(DialogueSessionUpsertRecord.builder()
                     .sessionId(record.getSessionId())
                     .userId(record.getUserId())
                     .title(sessionHead.title())
@@ -87,10 +88,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
                     .latestRequestId(record.getRequestId())
                     .latestQueryText(sessionHead.latestQueryText())
                     .latestSummaryText(null)
-                    .runCount(increaseSessionRunCount(record.getSessionId()))
-                    .finishedRunCount(queryFinishedRunCount(record.getSessionId()))
-                    .failedRunCount(queryFailedRunCount(record.getSessionId()))
-                    .startedAt(resolveSessionStartedAt(record.getSessionId(), startedAt))
+                    .startedAt(startedAt)
                     .lastActiveAt(startedAt)
                     .build());
             markSuccess("createRun", null);
@@ -132,22 +130,20 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
                     .finishedAt(finishedAt)
                     .durationMs(calculateDuration(existing.getStartedAt(), finishedAt))
                     .build();
-            executionLedgerWriteRepository.updateRunFinish(updateEntity);
-            SessionHeadValues sessionHead = resolveSessionHead(existing.getSessionId(), existing.getQueryText());
-            upsertSessionHead(DialogueSessionUpsertRecord.builder()
-                    .sessionId(existing.getSessionId())
-                    .userId(existing.getUserId())
-                    .title(sessionHead.title())
-                    .status(record.getStatus())
-                    .latestRequestId(existing.getRequestId())
-                    .latestQueryText(sessionHead.latestQueryText())
-                    .latestSummaryText(record.getFinalSummaryText())
-                    .runCount(queryRunCount(existing.getSessionId()))
-                    .finishedRunCount(queryFinishedRunCount(existing.getSessionId()))
-                    .failedRunCount(queryFailedRunCount(existing.getSessionId()))
-                    .startedAt(resolveSessionStartedAt(existing.getSessionId(), existing.getStartedAt()))
-                    .lastActiveAt(finishedAt)
-                    .build());
+            // 终态守卫：只有 run 仍处于非终态时写入才生效。返回 0 说明已被并发/更早的回调结束，
+            // 此时既不能用陈旧状态覆盖 run，也不能重复累加会话计数。
+            int updated = executionLedgerWriteRepository.updateRunFinish(updateEntity);
+            if (updated == 0) {
+                return;
+            }
+            // 会话计数由数据库原子累加，只在首次进入终态时下发 delta=1。
+            executionLedgerWriteRepository.updateSessionRunFinish(
+                    existing.getSessionId(),
+                    record.getStatus(),
+                    record.getFinalSummaryText(),
+                    isSuccessStatus(record.getStatus()) ? 1 : 0,
+                    isFailedStatus(record.getStatus()) ? 1 : 0,
+                    finishedAt);
             markSuccess("finishRun", updateEntity.getDurationMs());
         } catch (Exception e) {
             markFailure("finishRun", record.getRequestId(), record.getRunId(), null, e);
@@ -460,16 +456,6 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
                 scene, requestId, runId, toolCallId, String.format("%.4f", successRate), e);
     }
 
-    /**
-     * 会话主表只承接摘要和排序字段，避免再扫一遍 tool/artifact 明细。
-     */
-    private void upsertSessionHead(DialogueSessionUpsertRecord record) {
-        if (record == null || StringUtils.isBlank(record.getSessionId())) {
-            return;
-        }
-        executionLedgerWriteRepository.upsertSession(record);
-    }
-
     private String resolveSessionTitle(String queryText) {
         String normalized = StringUtils.trimToEmpty(queryText);
         if (normalized.isEmpty()) {
@@ -526,24 +512,8 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
     private record SessionHeadValues(String title, String latestQueryText) {
     }
 
-    private int increaseSessionRunCount(String sessionId) {
-        return queryRunCount(sessionId) + 1;
-    }
-
-    private int queryRunCount(String sessionId) {
-        return executionLedgerWriteRepository.queryRunsBySessionId(sessionId).size();
-    }
-
-    private int queryFinishedRunCount(String sessionId) {
-        return (int) executionLedgerWriteRepository.queryRunsBySessionId(sessionId).stream()
-                .filter(item -> item != null && ExecutionLedgerConstants.STATUS_SUCCESS == defaultZero(item.getStatus()))
-                .count();
-    }
-
-    private int queryFailedRunCount(String sessionId) {
-        return (int) executionLedgerWriteRepository.queryRunsBySessionId(sessionId).stream()
-                .filter(item -> item != null && isFailedStatus(item.getStatus()))
-                .count();
+    private boolean isSuccessStatus(Integer status) {
+        return defaultZero(status) == ExecutionLedgerConstants.STATUS_SUCCESS;
     }
 
     private boolean isFailedStatus(Integer status) {
@@ -551,13 +521,5 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
         return normalizedStatus == ExecutionLedgerConstants.STATUS_FAILED
                 || normalizedStatus == ExecutionLedgerConstants.STATUS_TIMEOUT
                 || normalizedStatus == ExecutionLedgerConstants.STATUS_STOPPED;
-    }
-
-    private LocalDateTime resolveSessionStartedAt(String sessionId, LocalDateTime fallback) {
-        List<DialogueRunView> runs = executionLedgerWriteRepository.queryRunsBySessionId(sessionId);
-        if (CollectionUtils.isEmpty(runs) || runs.get(0) == null || runs.get(0).getStartedAt() == null) {
-            return fallback;
-        }
-        return runs.get(0).getStartedAt();
     }
 }

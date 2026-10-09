@@ -1,8 +1,6 @@
 package org.wwz.ai.domain.agent.runtime.llm;
 
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.ai.tool.definition.DefaultToolDefinition;
-import org.springframework.ai.tool.definition.ToolDefinition;
 import org.wwz.ai.domain.agent.runtime.util.ToolSchemaNormalizer;
 
 import java.nio.charset.StandardCharsets;
@@ -16,14 +14,14 @@ import com.google.common.cache.CacheBuilder;
 
 /**
  * 工具定义（name/description/inputSchema）进程级缓存。
- * 同一工具协议内容复用同一 ToolDefinition 字节，降低每轮重建导致的 tools 前缀漂移。
+ * 同一工具协议内容复用同一领域定义，降低每轮重建导致的 tools 前缀漂移。
  */
 public final class ToolDefinitionCache {
 
     static final long MAXIMUM_SIZE = 4096;
     static final long EXPIRE_AFTER_ACCESS_MS = TimeUnit.MINUTES.toMillis(30);
 
-    private static final Cache<String, ToolDefinition> CACHE = CacheBuilder.newBuilder()
+    private static final Cache<String, LlmToolDefinition> CACHE = CacheBuilder.newBuilder()
             .maximumSize(MAXIMUM_SIZE)
             .expireAfterAccess(EXPIRE_AFTER_ACCESS_MS, TimeUnit.MILLISECONDS)
             .build();
@@ -31,24 +29,24 @@ public final class ToolDefinitionCache {
     private ToolDefinitionCache() {
     }
 
-    public static ToolDefinition getOrCreate(String name, String description, String inputSchemaJson) {
+    public static LlmToolDefinition getOrCreate(String name, String description, String inputSchemaJson) {
         String toolName = StringUtils.defaultString(name);
         String desc = StringUtils.defaultString(description);
         String schema = StringUtils.defaultString(inputSchemaJson);
         String key = toolName + "\0" + sha12(desc + "\0" + schema);
-        return CACHE.asMap().computeIfAbsent(key, k -> DefaultToolDefinition.builder()
+        return CACHE.asMap().computeIfAbsent(key, k -> LlmToolDefinition.builder()
                 .name(toolName)
                 .description(desc)
                 .inputSchema(schema)
                 .build());
     }
 
-    public static ToolDefinition getOrCreateFromMap(String name, String description, Map<String, Object> rawSchema) {
+    public static LlmToolDefinition getOrCreateFromMap(String name, String description, Map<String, Object> rawSchema) {
         String schema = ToolSchemaNormalizer.normalizeSchemaStable(rawSchema, name);
         return getOrCreate(name, description, schema);
     }
 
-    public static ToolDefinition getOrCreateFromRawSchemaString(String name, String description, String rawSchema) {
+    public static LlmToolDefinition getOrCreateFromRawSchemaString(String name, String description, String rawSchema) {
         String schema = ToolSchemaNormalizer.normalizeSchema(rawSchema, name);
         return getOrCreate(name, description, schema);
     }

@@ -31,7 +31,7 @@ import org.wwz.ai.domain.agent.runtime.tool.common.planmode.RequestDesktopContro
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskToolNames;
 import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolCatalog;
 import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolSource;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.DeferredToolCall;
+import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolCall;
 
 import java.time.LocalDateTime;
 import java.time.Duration;

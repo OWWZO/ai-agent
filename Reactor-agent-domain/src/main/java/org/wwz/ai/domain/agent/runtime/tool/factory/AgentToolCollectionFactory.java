@@ -5,7 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
-import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.model.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
@@ -80,7 +80,7 @@ import org.wwz.ai.domain.agent.runtime.tool.common.skill.SkillsSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolCatalog;
 import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolEntry;
 import org.wwz.ai.domain.agent.runtime.tool.deferred.LocalToolDeferralPolicy;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.port.McpToolExecutor;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillCatalog;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillLoader;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRegistry;
@@ -97,7 +97,7 @@ import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceEditTool;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceWriteTool;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 
 import java.util.ArrayList;
@@ -133,11 +133,11 @@ public class AgentToolCollectionFactory {
     private final PendingPlanApprovalRegistry pendingPlanApprovalRegistry;
     private final PlanArtifactStore planArtifactStore;
 
-    public ToolCollection buildForReact(AgentContext agentContext, AgentRequest request) {
+    public ToolCollection buildForReact(AgentContext agentContext, AgentExecutionCommand request) {
         return build(agentContext, request, SkillAttachScope.REACT);
     }
 
-    public ToolCollection buildForPlanSolve(AgentContext agentContext, AgentRequest request) {
+    public ToolCollection buildForPlanSolve(AgentContext agentContext, AgentExecutionCommand request) {
         return build(agentContext, request, SkillAttachScope.PLAN_SOLVE);
     }
 
@@ -186,7 +186,7 @@ public class AgentToolCollectionFactory {
         return main;
     }
 
-    private ToolCollection build(AgentContext agentContext, AgentRequest request, SkillAttachScope attachScope) {
+    private ToolCollection build(AgentContext agentContext, AgentExecutionCommand request, SkillAttachScope attachScope) {
         // 工具集合是一次请求的能力快照：先绑定上下文和工作区，再按 outputStyle、
         // 配置白名单及 attachScope 装配工具，最后补 MCP、子 Agent 和 Plan Mode 能力。
         // 所有工具复用同一 AgentContext，才能保持 artifact、取消和 ledger 关联。
@@ -354,7 +354,7 @@ public class AgentToolCollectionFactory {
      * 装配本地/MCP 工具 + 三件套 bridge + Resources 元工具。
      * 本地和 MCP 候选在同一个不可变 catalog 中，不会因为搜索而进入 tools[]。
      */
-    private void attachMcpSurface(ToolCollection toolCollection, AgentContext agentContext, AgentRequest request) {
+    private void attachMcpSurface(ToolCollection toolCollection, AgentContext agentContext, AgentExecutionCommand request) {
         List<McpToolInfo> discovered = List.of();
         try {
             // MCP 是动态外部能力，发现失败只降级远程工具；本地工具集合已经可以
@@ -637,7 +637,7 @@ public class AgentToolCollectionFactory {
         addTool(toolCollection, sqlQueryTool, agentContext, SqlQueryTool::setAgentContext);
     }
 
-    private void registerBrowserTool(ToolCollection toolCollection, AgentContext agentContext, AgentRequest request) {
+    private void registerBrowserTool(ToolCollection toolCollection, AgentContext agentContext, AgentExecutionCommand request) {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
             return;
         }
@@ -656,7 +656,7 @@ public class AgentToolCollectionFactory {
 
     private void registerAgentBrowserTool(ToolCollection toolCollection,
                                           AgentContext agentContext,
-                                          AgentRequest request) {
+                                          AgentExecutionCommand request) {
         if (request == null || "dataAgent".equals(request.getOutputStyle())
                 || agentContext == null || agentContext.getRuntimeDependencies() == null) {
             return;

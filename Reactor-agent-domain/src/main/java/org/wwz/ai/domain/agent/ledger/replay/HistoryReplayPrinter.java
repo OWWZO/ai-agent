@@ -4,7 +4,7 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.reactor.model.constant.Constants;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
-import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamResult;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -16,8 +16,8 @@ import java.util.Map;
  */
 public class HistoryReplayPrinter {
 
-    public List<GptProcessResult> ensureReadableConclusion(DialogueRunView run, List<GptProcessResult> frames) {
-        List<GptProcessResult> result = frames == null ? new ArrayList<>() : new ArrayList<>(frames);
+    public List<AgentStreamResult> ensureReadableConclusion(DialogueRunView run, List<AgentStreamResult> frames) {
+        List<AgentStreamResult> result = frames == null ? new ArrayList<>() : new ArrayList<>(frames);
         if (hasReadableConclusion(result) || run == null || StringUtils.isBlank(run.getFinalSummaryText())) {
             return result;
         }
@@ -25,15 +25,15 @@ public class HistoryReplayPrinter {
         return result;
     }
 
-    private boolean hasReadableConclusion(List<GptProcessResult> frames) {
+    private boolean hasReadableConclusion(List<AgentStreamResult> frames) {
         if (CollectionUtils.isEmpty(frames)) {
             return false;
         }
-        for (GptProcessResult frame : frames) {
-            if (frame == null || frame.getResultMap() == null) {
+        for (AgentStreamResult frame : frames) {
+            if (frame == null || frame.getEventData() == null) {
                 continue;
             }
-            Object eventData = frame.getResultMap().get("eventData");
+            Object eventData = frame.getEventData().get("eventData");
             if (!(eventData instanceof Map<?, ?> eventDataMap)) {
                 continue;
             }
@@ -49,7 +49,7 @@ public class HistoryReplayPrinter {
         return false;
     }
 
-    private GptProcessResult buildFallbackConclusion(DialogueRunView run) {
+    private AgentStreamResult buildFallbackConclusion(DialogueRunView run) {
         SummaryReplayResultResolver.ResolvedSummary resolvedSummary =
                 SummaryReplayResultResolver.resolve(run.getFinalSummaryText(), run.getArtifactSummaries());
         Map<String, Object> nestedResultMap = new LinkedHashMap<>();
@@ -77,13 +77,13 @@ public class HistoryReplayPrinter {
         resultMap.put("multiAgent", new LinkedHashMap<>());
         resultMap.put("eventData", eventData);
 
-        return GptProcessResult.builder()
+        return AgentStreamResult.builder()
                 .status(Constants.SUCCESS)
-                .finished(true)
-                .reqId(run.getRequestId())
-                .resultMap(resultMap)
-                .response(resolvedSummary.getSummaryText())
-                .responseAll(resolvedSummary.getSummaryText())
+                .complete(true)
+                .requestId(run.getRequestId())
+                .eventData(resultMap)
+                .contentDelta(resolvedSummary.getSummaryText())
+                .content(resolvedSummary.getSummaryText())
                 .build();
     }
 }

@@ -6,8 +6,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.springframework.ai.chat.metadata.ChatResponseMetadata;
-import org.springframework.ai.chat.metadata.Usage;
 
 import java.lang.reflect.RecordComponent;
 import java.util.Map;
@@ -45,37 +43,42 @@ public class LlmUsageSnapshot {
     }
 
     /**
-     * 优先从接口原生 usage 解析；缺失字段再回退 Spring AI Usage getter。
+     * 优先从 adapter 转换的原生 usage 解析；缺失字段再回退标准字段。
      */
-    public static LlmUsageSnapshot resolve(ChatResponseMetadata metadata) {
-        if (metadata == null) {
+    public static LlmUsageSnapshot resolve(LlmUsage usage) {
+        if (usage == null) {
             return empty();
         }
-        LlmUsageSnapshot fromNative = empty();
-        LlmUsageSnapshot fromMetaKey = empty();
-        Usage usage = metadata.getUsage();
-        if (usage != null) {
-            try {
-                fromNative = fromObject(usage.getNativeUsage());
-            } catch (Exception ignored) {
-            }
+        LlmUsageSnapshot snapshot = fromObject(usage.getNativeUsage());
+        if (snapshot.getPromptTokens() == null) {
+            snapshot.setPromptTokens(usage.getPromptTokens());
         }
-        try {
-            fromMetaKey = fromObject(metadata.get("usage"));
-        } catch (Exception ignored) {
+        if (snapshot.getCompletionTokens() == null) {
+            snapshot.setCompletionTokens(usage.getCompletionTokens());
         }
-        // 原生接口字段优先于 metadata 旁路字段
-        LlmUsageSnapshot snapshot = mergePreferPrimary(fromMetaKey, fromNative);
-        if (usage != null) {
-            if (snapshot.getPromptTokens() == null) {
-                snapshot.setPromptTokens(usage.getPromptTokens());
-            }
-            if (snapshot.getCompletionTokens() == null) {
-                snapshot.setCompletionTokens(usage.getCompletionTokens());
-            }
-            if (snapshot.getTotalTokens() == null) {
-                snapshot.setTotalTokens(usage.getTotalTokens());
-            }
+        if (snapshot.getTotalTokens() == null) {
+            snapshot.setTotalTokens(usage.getTotalTokens());
+        }
+        if (snapshot.getCachedPromptTokens() == null) {
+            snapshot.setCachedPromptTokens(usage.getCachedPromptTokens());
+        }
+        if (snapshot.getPromptTextTokens() == null) {
+            snapshot.setPromptTextTokens(usage.getPromptTextTokens());
+        }
+        if (snapshot.getPromptAudioTokens() == null) {
+            snapshot.setPromptAudioTokens(usage.getPromptAudioTokens());
+        }
+        if (snapshot.getPromptImageTokens() == null) {
+            snapshot.setPromptImageTokens(usage.getPromptImageTokens());
+        }
+        if (snapshot.getCompletionTextTokens() == null) {
+            snapshot.setCompletionTextTokens(usage.getCompletionTextTokens());
+        }
+        if (snapshot.getCompletionAudioTokens() == null) {
+            snapshot.setCompletionAudioTokens(usage.getCompletionAudioTokens());
+        }
+        if (snapshot.getReasoningTokens() == null) {
+            snapshot.setReasoningTokens(usage.getReasoningTokens());
         }
         fillTotalIfMissing(snapshot);
         return snapshot;

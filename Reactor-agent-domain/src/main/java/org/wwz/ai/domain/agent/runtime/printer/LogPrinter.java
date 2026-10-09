@@ -4,7 +4,7 @@ package org.wwz.ai.domain.agent.runtime.printer;
 import com.alibaba.fastjson.JSON;
 import lombok.extern.slf4j.Slf4j;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 
 import java.util.Map;
 
@@ -13,9 +13,9 @@ import java.util.Map;
  */
 @Slf4j
 public class LogPrinter implements Printer {
-    private final AgentRequest request;
+    private final AgentExecutionCommand request;
 
-    public LogPrinter(AgentRequest request) {
+    public LogPrinter(AgentExecutionCommand request) {
         this.request = request;
     }
 

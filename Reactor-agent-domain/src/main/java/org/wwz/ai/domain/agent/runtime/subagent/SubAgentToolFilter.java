@@ -1,7 +1,7 @@
 package org.wwz.ai.domain.agent.runtime.subagent;
 
 import org.wwz.ai.domain.agent.memory.ltm.LtmMemoryGuard;
-import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.model.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.common.AgentDispatchTool;

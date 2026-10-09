@@ -13,13 +13,13 @@ import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
-import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.model.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.tool.common.mcp.McpToolNames;
 import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolCatalog;
 import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolEntry;
 import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolSource;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.DeferredToolCall;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
+import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolCall;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.port.McpToolExecutor;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

@@ -13,7 +13,7 @@ import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionRunDetail;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationView;
 import org.wwz.ai.domain.agent.ledger.model.RunCursor;
-import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamResult;
 import org.wwz.ai.domain.agent.ledger.model.replay.ReplayFactBundle;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerQueryService;
 import org.wwz.ai.domain.agent.runtime.llm.ContextUsagePayload;
@@ -116,7 +116,7 @@ public class ConversationHistoryReplayService {
                 .toolInvocations(runDetail.getToolInvocations())
                 .artifacts(runDetail.getArtifacts())
                 .build();
-        List<GptProcessResult> frames =
+        List<AgentStreamResult> frames =
                 replayProjector == null ? List.of() : replayProjector.projectHistoryFrames(bundle);
         return ConversationRunReplay.builder()
                 .run(run)
@@ -170,7 +170,7 @@ public class ConversationHistoryReplayService {
                         .toolInvocations(runDetail == null ? List.of() : runDetail.getToolInvocations())
                         .artifacts(runDetail == null ? List.of() : runDetail.getArtifacts())
                         .build();
-                List<GptProcessResult> replayFrames = replayProjector == null
+                List<AgentStreamResult> replayFrames = replayProjector == null
                         ? List.of()
                         : replayProjector.projectHistoryFrames(bundle);
                 historyModeSnapshot = resolveHistoryModeSnapshot(run);

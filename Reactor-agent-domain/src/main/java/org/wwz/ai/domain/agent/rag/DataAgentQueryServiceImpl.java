@@ -7,29 +7,28 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.adapter.port.AgentMessageStream;
-import org.wwz.ai.domain.agent.adapter.port.DataQueryExecutionPort;
-import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConfig;
-import org.wwz.ai.domain.agent.reactor.config.data.DbConfig;
-import org.wwz.ai.domain.agent.reactor.data.QueryResult;
-import org.wwz.ai.domain.agent.reactor.data.dto.ChatModelInfoDto;
-import org.wwz.ai.domain.agent.reactor.data.dto.ChatQueryData;
-import org.wwz.ai.domain.agent.reactor.data.dto.ChatSchemaDto;
-import org.wwz.ai.domain.agent.reactor.data.dto.ColumnEsRecallReq;
-import org.wwz.ai.domain.agent.reactor.data.dto.ColumnVectorRecallReq;
-import org.wwz.ai.domain.agent.reactor.data.dto.NL2SQLReq;
-import org.wwz.ai.domain.agent.ledger.entity.ChatModelInfo;
-import org.wwz.ai.domain.agent.ledger.entity.ChatModelSchema;
-import org.wwz.ai.domain.agent.reactor.model.enums.EventTypeEnum;
-import org.wwz.ai.domain.agent.reactor.model.req.DataAgentChatReq;
-import org.wwz.ai.domain.agent.reactor.model.response.ChatDataMessage;
-import org.wwz.ai.domain.agent.reactor.service.ChatModelInfoService;
-import org.wwz.ai.domain.agent.reactor.service.ChatModelSchemaService;
+import org.wwz.ai.domain.agent.rag.model.column.ColumnValueSearchRequest;
+import org.wwz.ai.domain.agent.rag.model.config.DataQuerySettings;
+import org.wwz.ai.domain.agent.rag.model.query.ColumnSchemaRecallQuery;
+import org.wwz.ai.domain.agent.rag.model.query.DataAgentChatQuery;
+import org.wwz.ai.domain.agent.rag.model.query.DataQueryResult;
+import org.wwz.ai.domain.agent.rag.model.query.DataQueryStreamEvent;
+import org.wwz.ai.domain.agent.rag.model.query.Nl2SqlQuery;
+import org.wwz.ai.domain.agent.rag.model.query.SqlExecutionResult;
+import org.wwz.ai.domain.agent.rag.model.schema.DataQueryModelDescriptor;
+import org.wwz.ai.domain.agent.rag.model.schema.DataQuerySchema;
+import org.wwz.ai.domain.agent.rag.model.chatmodel.ChatModelInfo;
+import org.wwz.ai.domain.agent.rag.model.chatmodel.ChatModelSchema;
+import org.wwz.ai.domain.agent.rag.port.DataQueryExecutionPort;
+import org.wwz.ai.domain.agent.rag.service.ChatModelInfoService;
+import org.wwz.ai.domain.agent.rag.service.ChatModelSchemaService;
+import org.wwz.ai.domain.agent.rag.service.SchemaRecallService;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
+import org.wwz.ai.domain.agent.reactor.model.enums.EventTypeEnum;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
 
 import jakarta.annotation.Resource;
 import java.io.IOException;
-import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.format.TextStyle;
 import java.util.ArrayList;
@@ -42,16 +41,13 @@ import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
-/**
- * 数据问答稳定领域实现。
- * 通过 rag 子域语义收口 legacy dataagent 主链路，避免 case 继续直连旧 bridge。
- */
+/** Data Query domain orchestration for schema recall, NL2SQL, and result execution. */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class DataAgentQueryServiceImpl implements DataAgentQueryService {
 
-    private final DataAgentConfig dataAgentConfig;
+    private final DataQuerySettings settings;
     private final TableRagService tableRagService;
     private final ChatModelInfoService chatModelInfoService;
     private final ChatModelSchemaService chatModelSchemaService;
@@ -63,50 +59,54 @@ public class DataAgentQueryServiceImpl implements DataAgentQueryService {
     private Executor toolExecutor;
 
     @Override
-    public NL2SQLReq queryAllSchemaNl2SqlReq() {
-        NL2SQLReq baseNl2SqlReq = buildBaseNl2SqlReq("");
-        List<ChatSchemaDto> chatSchemaDtos = chatModelSchemaService.queryAllSchemaDto();
-        Map<String, List<ChatSchemaDto>> schemaMap = chatSchemaDtos.stream()
-                .collect(Collectors.groupingBy(ChatSchemaDto::getModelCode, Collectors.toList()));
-        for (ChatModelInfoDto modelInfoDto : baseNl2SqlReq.getSchemaInfo()) {
-            modelInfoDto.setSchemaList(schemaMap.get(modelInfoDto.getModelCode()));
+    public Nl2SqlQuery queryAllSchema() {
+        Nl2SqlQuery query = buildBaseQuery("");
+        List<DataQuerySchema> schemas = chatModelSchemaService.queryAllSchemas();
+        Map<String, List<DataQuerySchema>> schemaMap = schemas.stream()
+                .collect(Collectors.groupingBy(DataQuerySchema::getModelCode, Collectors.toList()));
+        for (DataQueryModelDescriptor model : query.getSchemaInfo()) {
+            model.setSchemaList(schemaMap.get(model.getModelCode()));
         }
-        return baseNl2SqlReq;
+        return query;
     }
 
     @Override
-    public List<Map<String, Object>> vectorRecall(ColumnVectorRecallReq req) {
-        return schemaRecallService.vectorRecall(req);
+    public List<Map<String, Object>> recallSchemaColumns(ColumnSchemaRecallQuery query) {
+        if (!Boolean.TRUE.equals(settings.getQdrantConfig().getEnable())) {
+            return new ArrayList<>();
+        }
+        return schemaRecallService.vectorRecall(query);
     }
 
     @Override
-    public List<Map<String, Object>> esRecall(ColumnEsRecallReq req) throws IOException {
-        return schemaRecallService.esValueRecall(req);
+    public List<Map<String, Object>> recallColumnValues(ColumnValueSearchRequest query) {
+        if (!Boolean.TRUE.equals(settings.getEsConfig().getEnable())) {
+            return new ArrayList<>();
+        }
+        return schemaRecallService.esValueRecall(query);
     }
 
     @Override
-    public void chatQuery(DataAgentChatReq req, AgentMessageStream stream) throws Exception {
-        NL2SQLReq nl2SqlReq = prepareNl2SqlReq(req.getContent(), null);
-        stream.send(ChatDataMessage.ofStatus(EventTypeEnum.DEBUG.name(), nl2SqlReq.getRequestId()));
-        // 先同步发送 requestId 让前端建立查询上下文，再把慢查询放入受控执行器；流只在 finally 中关闭。
-        // 远端 NL2SQL 和数据库查询可能较慢，放入受控工具执行器；无论成功失败都发送 ready 并关闭流。
+    public void chatQuery(DataAgentChatQuery request, AgentMessageStream stream) throws Exception {
+        Nl2SqlQuery nl2SqlQuery = prepareNl2SqlQuery(request.content(), null);
+        stream.send(new DataQueryStreamEvent(EventTypeEnum.DEBUG.name(), nl2SqlQuery.getRequestId()));
         AgentExecutorSupport.execute(toolExecutor, "dataAgentChatQuery", () -> {
             try {
-                List<ChatQueryData> result = nl2SqlQueryService.runNL2SQLSse(nl2SqlReq, stream);
-                stream.send(ChatDataMessage.ofData(result));
+                List<DataQueryResult> result = nl2SqlQueryService.runNL2SQLSse(nl2SqlQuery, stream);
+                stream.send(new DataQueryStreamEvent(EventTypeEnum.CHART_DATA.name(), result));
             } catch (Exception e) {
-                log.error("{},{} 智能问数异常：{}", nl2SqlReq.getTraceId(), nl2SqlReq.getRequestId(), e.getMessage(), e);
+                log.error("{},{} 智能问数异常：{}", nl2SqlQuery.getTraceId(), nl2SqlQuery.getRequestId(), e.getMessage(), e);
                 try {
-                    stream.send(ChatDataMessage.ofError(e.getMessage()));
+                    stream.send(new DataQueryStreamEvent(EventTypeEnum.ERROR.name(), e.getMessage()));
                 } catch (Exception sendException) {
-                    log.warn("{},{} sse 发送异常：{}", nl2SqlReq.getTraceId(), nl2SqlReq.getRequestId(),
+                    log.warn("{},{} sse 发送异常：{}", nl2SqlQuery.getTraceId(), nl2SqlQuery.getRequestId(),
                             sendException.getMessage(), sendException);
                 }
             } finally {
                 try {
-                    stream.send(ChatDataMessage.ofReady(""));
+                    stream.send(new DataQueryStreamEvent(EventTypeEnum.READY.name(), ""));
                 } catch (Exception sendException) {
-                    log.warn("{},{} sse 发送异常：{}", nl2SqlReq.getTraceId(), nl2SqlReq.getRequestId(),
+                    log.warn("{},{} sse 发送异常：{}", nl2SqlQuery.getTraceId(), nl2SqlQuery.getRequestId(),
                             sendException.getMessage(), sendException);
                 }
                 stream.complete();
@@ -115,148 +115,135 @@ public class DataAgentQueryServiceImpl implements DataAgentQueryService {
     }
 
     @Override
-    public List<ChatQueryData> apiChatQuery(DataAgentChatReq req) {
+    public List<DataQueryResult> apiChatQuery(DataAgentChatQuery request) {
         long start = System.currentTimeMillis();
-        NL2SQLReq nl2SqlReq = prepareNl2SqlReq(req.getContent(), req.getTraceId());
-        log.info("{},api chat query request: {}", nl2SqlReq.getRequestId(), req);
+        Nl2SqlQuery nl2SqlQuery = prepareNl2SqlQuery(request.content(), request.traceId());
+        log.info("{},api chat query request: {}", nl2SqlQuery.getRequestId(), request);
         try {
-            return nl2SqlQueryService.runNL2SQLSync(nl2SqlReq);
+            return nl2SqlQueryService.runNL2SQLSync(nl2SqlQuery);
         } catch (Exception e) {
-            log.error("{},{} api chat query error : {}", nl2SqlReq.getTraceId(),
-                    nl2SqlReq.getRequestId(), e.getMessage(), e);
+            log.error("{},{} api chat query error : {}", nl2SqlQuery.getTraceId(),
+                    nl2SqlQuery.getRequestId(), e.getMessage(), e);
             return new ArrayList<>();
         } finally {
-            log.info("{},{} query:{},数据分析取数耗时:{}",
-                    nl2SqlReq.getTraceId(), nl2SqlReq.getRequestId(), req.getContent(),
-                    System.currentTimeMillis() - start);
+            log.info("{},{} query:{},数据分析取数耗时:{}", nl2SqlQuery.getTraceId(), nl2SqlQuery.getRequestId(),
+                    request.content(), System.currentTimeMillis() - start);
         }
     }
 
     @Override
-    public Object testQuery(DataAgentChatReq req) throws SQLException {
-        DbConfig dbConfig = dataAgentConfig.getDbConfig();
-        return dataQueryExecutionPort.query(dbConfig, req.getContent());
+    public SqlExecutionResult testQuery(DataAgentChatQuery request) {
+        return dataQueryExecutionPort.query(request.content());
     }
 
     @Override
-    public NL2SQLReq getNl2SqlReq(String query) throws Exception {
-        return prepareNl2SqlReq(query, null);
+    public Nl2SqlQuery buildNl2SqlQuery(String query) {
+        return prepareNl2SqlQuery(query, null);
     }
 
     @Override
-    public List<?> queryAllModelsWithSchema() {
+    public List<DataQueryModelDescriptor> queryAllModelsWithSchema() {
         return chatModelInfoService.queryAllModelsWithSchema();
     }
 
     @Override
-    public QueryResult previewData(String modelCode) throws Exception {
+    public SqlExecutionResult previewData(String modelCode) {
         return chatModelInfoService.previewData(modelCode);
     }
 
-    void enrichNl2Sql(NL2SQLReq baseNl2SqlReq) throws IOException {
-        List<ChatSchemaDto> chatSchemaDtoList = recallModelSchema(baseNl2SqlReq);
-        Map<String, List<ChatSchemaDto>> modelSchemaMap = chatSchemaDtoList.stream()
+    void enrichNl2Sql(Nl2SqlQuery query) throws IOException {
+        List<DataQuerySchema> recalled = recallModelSchema(query);
+        Map<String, List<DataQuerySchema>> modelSchemaMap = recalled.stream()
                 .filter(schema -> StringUtils.isNotBlank(schema.getColumnId()))
-                .collect(Collectors.groupingBy(ChatSchemaDto::getModelCode, Collectors.toList()));
-        for (ChatModelInfoDto dto : baseNl2SqlReq.getSchemaInfo()) {
-            dto.setSchemaList(modelSchemaMap.get(dto.getModelCode()));
+                .collect(Collectors.groupingBy(DataQuerySchema::getModelCode, Collectors.toList()));
+        for (DataQueryModelDescriptor model : query.getSchemaInfo()) {
+            model.setSchemaList(modelSchemaMap.get(model.getModelCode()));
         }
     }
 
-    private NL2SQLReq prepareNl2SqlReq(String query, String traceId) {
+    private Nl2SqlQuery prepareNl2SqlQuery(String query, String traceId) {
         try {
-            // 请求构建集中完成 request/trace/db 标识和 schema 召回，保证 chat、API、preview 使用同一输入契约。
-            NL2SQLReq nl2SqlReq = buildBaseNl2SqlReq(query);
-            nl2SqlReq.setRequestId(UUID.randomUUID().toString());
-            nl2SqlReq.setTraceId(StringUtils.isNotBlank(traceId) ? traceId : nl2SqlReq.getRequestId());
-            nl2SqlReq.setDbType(dataAgentConfig.getDbConfig().getType());
-            enrichNl2Sql(nl2SqlReq);
-            return nl2SqlReq;
+            Nl2SqlQuery nl2SqlQuery = buildBaseQuery(query);
+            nl2SqlQuery.setRequestId(UUID.randomUUID().toString());
+            nl2SqlQuery.setTraceId(StringUtils.isNotBlank(traceId) ? traceId : nl2SqlQuery.getRequestId());
+            nl2SqlQuery.setDbType(settings.getDbConfig().getType());
+            enrichNl2Sql(nl2SqlQuery);
+            return nl2SqlQuery;
         } catch (IOException e) {
             throw new IllegalStateException("构建 NL2SQL 请求失败", e);
         }
     }
 
-    private List<ChatSchemaDto> recallModelSchema(NL2SQLReq baseNl2SqlReq) throws IOException {
-        List<ChatSchemaDto> recallSchema = null;
+    private List<DataQuerySchema> recallModelSchema(Nl2SqlQuery query) throws IOException {
+        List<DataQuerySchema> recalled = null;
         try {
-            // 先用 RAG 缩小 schema，召回失败或为空时回退数据库全量 schema，保证问数仍可执行。
-            recallSchema = tableRagService.tableRag(baseNl2SqlReq);
+            recalled = tableRagService.tableRag(query);
         } catch (Exception e) {
-            log.warn("{},{} tableRag 异常：{}", baseNl2SqlReq.getTraceId(),
-                    baseNl2SqlReq.getRequestId(), e.getMessage(), e);
+            log.warn("{},{} tableRag 异常：{}", query.getTraceId(), query.getRequestId(), e.getMessage(), e);
         }
 
-        if (CollectionUtils.isEmpty(recallSchema)) {
-            log.warn("{},{} 召回schema为空，读取数据库", baseNl2SqlReq.getTraceId(), baseNl2SqlReq.getRequestId());
-            // RAG 只用于缩小候选 schema，不是执行必需条件；召回不可用时使用数据库元数据保证主链路可用。
-            List<ChatModelSchema> list = chatModelSchemaService.listDistinctSchemas();
-            List<ChatSchemaDto> dtoList = new ArrayList<>();
-            for (ChatModelSchema schema : list) {
-                ChatSchemaDto dto = new ChatSchemaDto();
-                BeanUtils.copyProperties(schema, dto);
-                dtoList.add(dto);
-            }
-            return dtoList;
+        if (CollectionUtils.isEmpty(recalled)) {
+            log.warn("{},{} 召回schema为空，读取数据库", query.getTraceId(), query.getRequestId());
+            return chatModelSchemaService.listDistinctSchemas().stream()
+                    .map(this::toDataQuerySchema)
+                    .collect(Collectors.toCollection(ArrayList::new));
         }
 
-        List<ChatModelSchema> defaultRecallSchema = chatModelSchemaService.queryDefaultRecallFields();
-        // 默认字段是确定性补集，只补缺失列，不覆盖 RAG 对同一列的描述。
-        mergeSchema(recallSchema, defaultRecallSchema);
-        return recallSchema;
+        List<ChatModelSchema> defaults = chatModelSchemaService.queryDefaultRecallFields();
+        mergeSchema(recalled, defaults);
+        return recalled;
     }
 
-    private void mergeSchema(List<ChatSchemaDto> schemaList, List<ChatModelSchema> defaultRecallSchema) {
-        if (CollectionUtils.isEmpty(defaultRecallSchema)) {
+    private void mergeSchema(List<DataQuerySchema> schemas, List<ChatModelSchema> defaults) {
+        if (CollectionUtils.isEmpty(defaults)) {
             return;
         }
-        Map<String, Set<String>> existMap = schemaList.stream()
-                .collect(Collectors.groupingBy(
-                        ChatSchemaDto::getModelCode,
-                        Collectors.mapping(ChatSchemaDto::getColumnId, Collectors.toSet())
-                ));
-        List<ChatSchemaDto> toAdd = defaultRecallSchema.stream()
-                .filter(schema -> !existMap.getOrDefault(schema.getModelCode(), Collections.emptySet())
+        Map<String, Set<String>> existing = schemas.stream()
+                .collect(Collectors.groupingBy(DataQuerySchema::getModelCode,
+                        Collectors.mapping(DataQuerySchema::getColumnId, Collectors.toSet())));
+        List<DataQuerySchema> missing = defaults.stream()
+                .filter(schema -> !existing.getOrDefault(schema.getModelCode(), Collections.emptySet())
                         .contains(schema.getColumnId()))
-                .map(schema -> {
-                    ChatSchemaDto dto = new ChatSchemaDto();
-                    BeanUtils.copyProperties(schema, dto);
-                    return dto;
-                })
+                .map(this::toDataQuerySchema)
                 .toList();
-        schemaList.addAll(toAdd);
+        schemas.addAll(missing);
     }
 
-    private NL2SQLReq buildBaseNl2SqlReq(String query) {
-        NL2SQLReq nl2SQLReq = new NL2SQLReq();
-        nl2SQLReq.setQuery(query);
-        nl2SQLReq.setUseElastic(dataAgentConfig.getEsConfig().getEnable());
-        nl2SQLReq.setUseVector(dataAgentConfig.getQdrantConfig().getEnable());
+    private Nl2SqlQuery buildBaseQuery(String query) {
+        Nl2SqlQuery nl2SqlQuery = new Nl2SqlQuery();
+        nl2SqlQuery.setQuery(query);
+        nl2SqlQuery.setUseElastic(settings.getEsConfig().getEnable());
+        nl2SqlQuery.setUseVector(settings.getQdrantConfig().getEnable());
 
         String week = LocalDate.now().getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.CHINA);
-        nl2SQLReq.setCurrentDateInfo(String.format(nl2SQLReq.getCurrentDateInfo(), LocalDate.now(), week));
+        nl2SqlQuery.setCurrentDateInfo(String.format(nl2SqlQuery.getCurrentDateInfo(), LocalDate.now(), week));
 
         List<ChatModelInfo> modelList = chatModelInfoService.listDistinctModels();
         if (CollectionUtils.isEmpty(modelList)) {
             throw new IllegalStateException("问数模型为空，请检查 chat_model_info 表是否存在 yn=1 的有效数据，以及 MyBatis-Plus 逻辑删除配置是否正确");
         }
 
-        List<String> modelCodeList = new ArrayList<>();
-        List<ChatModelInfoDto> dtoList = new ArrayList<>();
-        nl2SQLReq.setModelCodeList(modelCodeList);
-        nl2SQLReq.setSchemaInfo(dtoList);
-
+        List<String> modelCodes = new ArrayList<>();
+        List<DataQueryModelDescriptor> models = new ArrayList<>();
+        nl2SqlQuery.setModelCodeList(modelCodes);
+        nl2SqlQuery.setSchemaInfo(models);
         for (ChatModelInfo modelInfo : modelList) {
-            ChatModelInfoDto dto = new ChatModelInfoDto();
-            dto.setModelCode(modelInfo.getCode());
-            dto.setModelName(modelInfo.getName());
-            dto.setBusinessPrompt(modelInfo.getBusinessPrompt());
-            dto.setUsePrompt(modelInfo.getUsePrompt());
-            dto.setType(modelInfo.getType());
-            dto.setContent(modelInfo.getContent());
-            modelCodeList.add(modelInfo.getCode());
-            dtoList.add(dto);
+            DataQueryModelDescriptor model = new DataQueryModelDescriptor();
+            model.setModelCode(modelInfo.getCode());
+            model.setModelName(modelInfo.getName());
+            model.setBusinessPrompt(modelInfo.getBusinessPrompt());
+            model.setUsePrompt(modelInfo.getUsePrompt());
+            model.setType(modelInfo.getType());
+            model.setContent(modelInfo.getContent());
+            modelCodes.add(modelInfo.getCode());
+            models.add(model);
         }
-        return nl2SQLReq;
+        return nl2SqlQuery;
+    }
+
+    private DataQuerySchema toDataQuerySchema(ChatModelSchema schema) {
+        DataQuerySchema result = new DataQuerySchema();
+        BeanUtils.copyProperties(schema, result);
+        return result;
     }
 }

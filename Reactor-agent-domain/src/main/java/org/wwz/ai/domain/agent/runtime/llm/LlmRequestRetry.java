@@ -1,13 +1,8 @@
 package org.wwz.ai.domain.agent.runtime.llm;
 
-import org.springframework.ai.chat.model.ChatResponse;
-import reactor.core.publisher.Flux;
-import reactor.util.retry.Retry;
-
 import java.io.IOException;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
-import java.time.Duration;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
@@ -16,7 +11,6 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -389,39 +383,6 @@ public final class LlmRequestRetry {
             current = current.getCause();
         }
         return current;
-    }
-
-    public static Flux<ChatResponse> stream(String label, Supplier<Flux<ChatResponse>> openStream) {
-        return stream(label, openStream, null);
-    }
-
-    public static Flux<ChatResponse> stream(String label,
-                                            Supplier<Flux<ChatResponse>> openStream,
-                                            RetryListener listener) {
-        AtomicBoolean emitted = new AtomicBoolean(false);
-        int retries = maxRetries();
-        int maxAttempts = retries + 1;
-        // 流式一旦向客户端发出 chunk 就不能透明重开，否则会重复内容；因此 retry 条件绑定 emitted 状态。
-        return Flux.defer(() -> {
-                    emitted.set(false);
-                    return openStream.get().doOnNext(ignored -> emitted.set(true));
-                })
-                .retryWhen(Retry.backoff(retries, Duration.ofMillis(baseDelayMs()))
-                        .maxBackoff(Duration.ofMillis(maxDelayMs()))
-                        .filter(error -> !emitted.get() && isTransient(error))
-                        .doBeforeRetry(signal -> {
-                            int failedAttempt = (int) signal.totalRetries() + 1;
-                            int nextAttempt = failedAttempt + 1;
-                            Throwable failure = signal.failure();
-                            LOG.log(Level.WARNING, String.format(
-                                    "[%s] stream transient failure before first chunk (attempt %d/%d): %s",
-                                    label,
-                                    failedAttempt,
-                                    maxAttempts,
-                                    failure == null ? "unknown" : failure.getMessage()
-                            ));
-                            notifyRetry(listener, label, nextAttempt, maxAttempts, failure, 0L);
-                        }));
     }
 
     private static void notifyRetry(RetryListener listener,

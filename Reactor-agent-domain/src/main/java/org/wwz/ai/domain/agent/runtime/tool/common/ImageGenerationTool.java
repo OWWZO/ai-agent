@@ -12,12 +12,12 @@ import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
-import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationExecuteCommand;
-import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationExecutionResult;
-import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageFile;
+import org.wwz.ai.domain.agent.image.model.ImageGenerationExecuteCommand;
+import org.wwz.ai.domain.agent.image.model.ImageGenerationExecutionResult;
+import org.wwz.ai.domain.agent.image.model.WorkspaceImageFile;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ImageGenerationToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRef;
-import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
+import org.wwz.ai.domain.agent.image.service.IImageGenerationExecutionKernel;
 
 import java.util.*;
 import java.util.stream.Collectors;

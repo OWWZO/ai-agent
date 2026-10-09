@@ -3,7 +3,7 @@ package org.wwz.ai.domain.agent.runtime.planmode;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 
 import java.util.List;
 
@@ -16,7 +16,7 @@ public final class PlanModeEntryPolicy {
     private PlanModeEntryPolicy() {
     }
 
-    public static boolean shouldAutoEnter(AgentRequest request,
+    public static boolean shouldAutoEnter(AgentExecutionCommand request,
                                           boolean resumedApprovedPlan,
                                           boolean hasPriorPlanSolveUserTurn) {
         if (request == null || resumedApprovedPlan || isContinuation(request)) {
@@ -28,7 +28,7 @@ public final class PlanModeEntryPolicy {
         return !hasPriorPlanSolveUserTurn;
     }
 
-    public static boolean isContinuation(AgentRequest request) {
+    public static boolean isContinuation(AgentExecutionCommand request) {
         return request != null
                 && (StringUtils.isNotBlank(request.getResumeQuestionId())
                 || StringUtils.isNotBlank(request.getResumeApprovalId()));

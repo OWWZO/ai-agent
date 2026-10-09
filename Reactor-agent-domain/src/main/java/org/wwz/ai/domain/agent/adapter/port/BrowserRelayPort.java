@@ -4,7 +4,11 @@ import java.time.Duration;
 import java.util.Map;
 
 /**
- * 云端遥控用户本机浏览器的领域端口。实现不得把 WebSocket 对象暴露给 domain。
+ * Outbound Browser Relay capability consumed by Agent tools.
+ *
+ * <p>This compatibility port is intentionally separate from the inbound
+ * {@link BrowserRelaySocketPort} lifecycle/application adapter. It contains
+ * no WebSocket object or connection lifecycle methods.</p>
  */
 public interface BrowserRelayPort {
 

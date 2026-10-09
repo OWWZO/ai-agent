@@ -5,7 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
-import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionFile;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.File;
 
@@ -34,7 +34,7 @@ public class WorkspaceSessionFileMaterializer {
     private final WorkspaceService workspaceService;
     private final FileArtifactPort fileArtifactPort;
 
-    public List<String> materialize(AgentContext agentContext, List<FileInformation> sessionFiles) {
+    public List<String> materialize(AgentContext agentContext, List<AgentExecutionFile> sessionFiles) {
         List<String> written = new ArrayList<>();
         if (agentContext == null || !workspaceService.isEnabled()) {
             return written;
@@ -56,7 +56,7 @@ public class WorkspaceSessionFileMaterializer {
         }
 
         Set<String> usedNames = new HashSet<>();
-        for (FileInformation sessionFile : sessionFiles) {
+        for (AgentExecutionFile sessionFile : sessionFiles) {
             if (sessionFile == null) {
                 continue;
             }
@@ -142,7 +142,7 @@ public class WorkspaceSessionFileMaterializer {
         }
     }
 
-    private String resolveSafeFileName(FileInformation sessionFile, Set<String> usedNames) {
+    private String resolveSafeFileName(AgentExecutionFile sessionFile, Set<String> usedNames) {
         String raw = firstNonBlank(sessionFile.getFileName(), sessionFile.getOriginFileName(), "session-file.txt");
         if (StringUtils.isBlank(raw)) {
             return null;

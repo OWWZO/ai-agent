@@ -1,7 +1,7 @@
 package org.wwz.ai.domain.agent.memory.ltm;
 
 import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 
@@ -16,7 +16,7 @@ public final class LtmRuntimeBootstrap {
     private LtmRuntimeBootstrap() {
     }
 
-    public static void bootstrap(AgentContext agentContext, AgentRequest request) {
+    public static void bootstrap(AgentContext agentContext, AgentExecutionCommand request) {
         if (agentContext == null || request == null) {
             return;
         }

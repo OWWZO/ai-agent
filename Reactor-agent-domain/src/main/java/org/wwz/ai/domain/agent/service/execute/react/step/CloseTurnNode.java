@@ -5,7 +5,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
 import org.wwz.ai.domain.agent.service.execute.support.ReactTurnCloseSupport;
@@ -21,7 +21,7 @@ public class CloseTurnNode extends AbstractExecuteSupport {
     private ReactTurnCloseSupport reactTurnCloseSupport;
 
     @Override
-    protected String doApply(AgentRequest requestParameter,
+    protected String doApply(AgentExecutionCommand requestParameter,
                              DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("React Close: final answer for requestId: {}", requestParameter.getRequestId());
 
@@ -40,8 +40,8 @@ public class CloseTurnNode extends AbstractExecuteSupport {
     }
 
     @Override
-    public StrategyHandler<AgentRequest, DefaultReactAgentExecuteStrategyFactory.DynamicContext, String> get(
-            AgentRequest requestParameter,
+    public StrategyHandler<AgentExecutionCommand, DefaultReactAgentExecuteStrategyFactory.DynamicContext, String> get(
+            AgentExecutionCommand requestParameter,
             DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         return null;
     }

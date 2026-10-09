@@ -4,8 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.adapter.repository.ISessionCapabilityRepository;
-import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.model.McpToolInfo;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.port.McpToolExecutor;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillDefinition;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRegistry;
 

@@ -4,7 +4,7 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanModeEntryPolicy;
 
 import java.util.List;
@@ -16,7 +16,7 @@ public class PlanModeEntryPolicyTest {
 
     @Test
     public void firstPlanSolveTurnAutoEnters() {
-        AgentRequest request = AgentRequest.builder()
+        AgentExecutionCommand request = AgentExecutionCommand.builder()
                 .requestId("req-1")
                 .sessionId("s-1")
                 .build();
@@ -25,7 +25,7 @@ public class PlanModeEntryPolicyTest {
 
     @Test
     public void subsequentPlanSolveTurnDoesNotAutoEnter() {
-        AgentRequest request = AgentRequest.builder()
+        AgentExecutionCommand request = AgentExecutionCommand.builder()
                 .requestId("req-2")
                 .sessionId("s-1")
                 .build();
@@ -34,7 +34,7 @@ public class PlanModeEntryPolicyTest {
 
     @Test
     public void forcePlanModeEntersEvenWithPriorTurn() {
-        AgentRequest request = AgentRequest.builder()
+        AgentExecutionCommand request = AgentExecutionCommand.builder()
                 .requestId("req-3")
                 .sessionId("s-1")
                 .forcePlanMode(true)
@@ -44,7 +44,7 @@ public class PlanModeEntryPolicyTest {
 
     @Test
     public void continuationNeverAutoEnters() {
-        AgentRequest request = AgentRequest.builder()
+        AgentExecutionCommand request = AgentExecutionCommand.builder()
                 .requestId("req-4")
                 .sessionId("s-1")
                 .resumeApprovalId("appr-1")
@@ -55,7 +55,7 @@ public class PlanModeEntryPolicyTest {
 
     @Test
     public void approvedResumeNeverAutoEnters() {
-        AgentRequest request = AgentRequest.builder()
+        AgentExecutionCommand request = AgentExecutionCommand.builder()
                 .requestId("req-5")
                 .sessionId("s-1")
                 .forcePlanMode(true)

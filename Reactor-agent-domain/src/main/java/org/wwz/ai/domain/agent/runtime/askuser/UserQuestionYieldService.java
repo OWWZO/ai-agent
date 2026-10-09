@@ -11,7 +11,7 @@ import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord;
 import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReActAgent;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.AskUserQuestionTool;
@@ -35,7 +35,7 @@ public class UserQuestionYieldService {
     @Transactional(rollbackFor = Exception.class)
     public UserQuestionRecord yieldAndNotify(AgentContext agentContext,
                                              ReActAgent executor,
-                                             AgentRequest request,
+                                             AgentExecutionCommand request,
                                              UserInputRequiredException signal,
                                              String entryAgent) {
         if (agentContext == null || signal == null) {

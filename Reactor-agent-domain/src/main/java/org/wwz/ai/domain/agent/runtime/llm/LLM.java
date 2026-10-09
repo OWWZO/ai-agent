@@ -10,19 +10,17 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.util.CollectionUtils;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolChoice;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanModeToolPolicy;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
+import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
+import org.wwz.ai.domain.agent.runtime.util.ToolSchemaNormalizer;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.model.McpToolInfo;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationFinishRecord;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationStartRecord;
@@ -33,10 +31,11 @@ import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
+import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
@@ -49,7 +48,7 @@ import java.util.regex.Pattern;
  * LLM 领域门面。
  * <p>
  * 统一处理消息转换、模型调用、工具调用、流式增量和 LLM invocation 账本。
- * 主路径全部走 Spring AI；struct_parse 仅作为无原生 tools[] 时的兼容协议。
+ * 出站调用全部经由 LlmCompletionPort；struct_parse 仅作为无原生 tools[] 时的兼容协议。
  */
 @Slf4j
 @Data
@@ -85,10 +84,7 @@ public class LLM {
 
     /** 显式注入的运行时依赖。 */
     private final transient ReactorRuntimeDependencies runtimeDependencies;
-    private final transient LlmChatModelResolver chatModelResolver;
-    private final transient OpenAiChatOptionsFactory chatOptionsFactory;
-    private final transient DomainMessageConverter messageConverter;
-    private final transient LlmChatResponseMapper responseMapper;
+    private final transient LlmCompletionPort completionPort;
     private final transient StreamResponseHandler streamResponseHandler;
     /** false 表示本实例已是备援路径，禁止再嵌套 fallback。 */
     private final boolean allowModelFallback;
@@ -106,10 +102,7 @@ public class LLM {
         this.modelReference = modelName;
         this.runtimeDependencies = requireRuntimeDependencies(runtimeDependencies);
         ReactorLlmDependencies llmDependencies = this.runtimeDependencies.requireLlmDependencies();
-        this.chatModelResolver = llmDependencies.getChatModelResolver();
-        this.chatOptionsFactory = llmDependencies.getChatOptionsFactory();
-        this.messageConverter = llmDependencies.getMessageConverter();
-        this.responseMapper = llmDependencies.getResponseMapper();
+        this.completionPort = llmDependencies.getCompletionPort();
         this.streamResponseHandler = llmDependencies.getStreamResponseHandler();
 
         LLMSettings config = this.runtimeDependencies.resolveLlmSettings(modelName);
@@ -235,13 +228,15 @@ public class LLM {
                 );
                 return failedFuture(new LlmCancelledException(context.getRunCancelReason(), null));
             }
-            Prompt prompt = buildPrompt(
+            LlmRequest request = buildRequest(
+                    context,
                     mergeMessages(systemMsgs, messages),
-                    chatOptionsFactory.buildTextOptions(llmSettings, temperature)
+                    List.of(),
+                    null,
+                    temperature
             );
-            OpenAiChatModel chatModel = resolveChatModel();
 
-            log.info("{} call llm ask via Spring AI, model={}, stream={}",
+            log.info("{} call llm ask via completion port, model={}, stream={}",
                     context.getRequestId(), model, stream);
 
             String retryLabel = "llm-ask:" + model;
@@ -250,14 +245,14 @@ public class LLM {
                 // stop 会 cancel 这个 Future，从而打断阻塞中的 call。
                 return abortOnRunCancel(context, AgentExecutorSupport.supplyAsync(runtimeDependencies.requireLlmExecutor(), "llmAsk", context, () -> {
                     try {
-                        ChatResponse response = LlmRequestRetry.call(
-                                retryLabel, () -> chatModel.call(prompt), retryNotifier(context));
+                        LlmResponse response = LlmRequestRetry.call(
+                                retryLabel, () -> completionPort.complete(request), retryNotifier(context));
                         ReasoningContentExtractor.SplitResult split =
-                                ReasoningContentExtractor.splitFromChatResponse(response);
+                                ReasoningContentExtractor.splitFromResponse(response);
                         String content = split.hasContent()
                                 ? split.content()
-                                : responseMapper.toText(response);
-                        LlmUsageSnapshot usage = LlmUsageSnapshot.resolve(response.getMetadata());
+                                : resolveResponseText(response);
+                        LlmUsageSnapshot usage = LlmUsageSnapshot.resolve(response == null ? null : response.getUsage());
                         if (context != null && context.isRunCancelled()) {
                             finishLlmInvocation(
                                     context,
@@ -306,9 +301,9 @@ public class LLM {
             // callAsync：整次 handler 失败后丢弃半截累积并新开流，覆盖首 chunk 前与中途断流。
             CompletableFuture<StreamResponseHandler.StringStreamResult> streamFuture = LlmRequestRetry.callAsync(
                     retryLabel,
-                    () -> streamResponseHandler.handleStringStreamWithUsage(
-                            context,
-                            chatModel.stream(prompt),
+                             () -> streamResponseHandler.handleStringStreamWithUsage(
+                                     context,
+                             completionPort.stream(request),
                             null,
                             false,
                             pushToClient,
@@ -400,7 +395,7 @@ public class LLM {
     ) {
         try {
             tools = PlanModeToolPolicy.filterTools(context, tools);
-            // 工具调用有两条协议分支：原生 function_call 由 Spring AI 组装 tools[]，
+            // 工具调用有两条协议分支：原生 function_call 由出站 Adapter 组装 tools[]，
             // struct_parse 则把 schema 放入 system 文本后自行解析 JSON；两者共用观测和账本入口。
             if (!ToolChoice.isValid(toolChoice)) {
                 throw new IllegalArgumentException("Invalid tool_choice: " + toolChoice);
@@ -435,14 +430,16 @@ public class LLM {
                 return askToolWithStructParse(
                         context, messages, systemMsgs, tools, temperature, stream, timeout, startTime, invocationHandle);
             }
-            // function_call 主路径：Spring AI 负责 tools[] 与 tool_choice。
-            Prompt prompt = buildPrompt(
+            // function_call 主路径：Adapter 负责供应商 tools[] 与 tool_choice 映射。
+            LlmRequest request = buildRequest(
+                    context,
                     mergeMessages(systemMsgs, messages),
-                    chatOptionsFactory.buildToolOptions(llmSettings, temperature, tools, toolChoice)
+                    buildToolDefinitions(tools),
+                    toolChoice.getValue(),
+                    temperature
             );
-            OpenAiChatModel chatModel = resolveChatModel();
 
-            log.info("{} call llm askTool via Spring AI, model={}, stream={}, mode=function_call, invocationId={}, thread={}",
+            log.info("{} call llm askTool via completion port, model={}, stream={}, mode=function_call, invocationId={}, thread={}",
                     context.getRequestId(), model, stream, invocationHandle.invocationId(), Thread.currentThread().getName());
 
             String retryLabel = "llm-askTool:" + model;
@@ -454,9 +451,9 @@ public class LLM {
                                 context,
                                 () -> {
                                     try {
-                                        ChatResponse response = LlmRequestRetry.call(
-                                                retryLabel, () -> chatModel.call(prompt), retryNotifier(context));
-                                        return responseMapper.toToolCallResponse(response, startTime);
+                                         LlmResponse response = LlmRequestRetry.call(
+                                                 retryLabel, () -> completionPort.complete(request), retryNotifier(context));
+                                         return toToolCallResponse(response, startTime);
                                     } catch (Exception e) {
                                         throw new CompletionException(e);
                                     }
@@ -477,8 +474,8 @@ public class LLM {
             CompletableFuture<ToolCallResponse> streamFuture = LlmRequestRetry.callAsync(
                     retryLabel,
                     () -> streamResponseHandler.handleToolCallStream(
-                            context,
-                            chatModel.stream(prompt),
+                             context,
+                             completionPort.stream(request),
                             startTime,
                             pushToClient,
                             timeout,
@@ -505,11 +502,11 @@ public class LLM {
                                         context,
                                         () -> {
                                             try {
-                                                ChatResponse callResponse = LlmRequestRetry.call(
-                                                        retryLabel + ":empty-stream-retry",
-                                                        () -> chatModel.call(prompt),
-                                                        retryNotifier(context));
-                                                return responseMapper.toToolCallResponse(callResponse, startTime);
+                                                 LlmResponse callResponse = LlmRequestRetry.call(
+                                                         retryLabel + ":empty-stream-retry",
+                                                         () -> completionPort.complete(request),
+                                                         retryNotifier(context));
+                                                 return toToolCallResponse(callResponse, startTime);
                                             } catch (Exception e) {
                                                 throw new CompletionException(e);
                                             }
@@ -548,13 +545,15 @@ public class LLM {
     ) {
         // struct_parse 不支持原生 tools[]，因此 system 中的工具 schema 和模型返回的 JSON 共同构成协议。
         Message mergedSystemMessage = buildStructParseSystemMessage(systemMsg, tools);
-        Prompt prompt = buildPrompt(
+        LlmRequest request = buildRequest(
+                context,
                 mergeMessages(mergedSystemMessage, messages),
-                chatOptionsFactory.buildTextOptions(llmSettings, temperature)
+                List.of(),
+                null,
+                temperature
         );
-        OpenAiChatModel chatModel = resolveChatModel();
 
-        log.info("{} call llm askTool via Spring AI, model={}, stream={}, mode=struct_parse, invocationId={}, thread={}",
+        log.info("{} call llm askTool via completion port, model={}, stream={}, mode=struct_parse, invocationId={}, thread={}",
                 context.getRequestId(), model, stream, invocationHandle.invocationId(), Thread.currentThread().getName());
 
         String retryLabel = "llm-askTool-struct:" + model;
@@ -567,17 +566,18 @@ public class LLM {
                             context,
                             () -> {
                                 try {
-                                    ChatResponse response = LlmRequestRetry.call(
-                                            retryLabel, () -> chatModel.call(prompt), retryNotifier(context));
-                                    LlmUsageSnapshot usage = LlmUsageSnapshot.resolve(response.getMetadata());
-                                    ToolCallResponse toolCallResponse = buildStructParseToolCallResponse(
-                                            context,
-                                            responseMapper.toText(response),
+                                     LlmResponse response = LlmRequestRetry.call(
+                                             retryLabel, () -> completionPort.complete(request), retryNotifier(context));
+                                     LlmUsageSnapshot usage = LlmUsageSnapshot.resolve(
+                                             response == null ? null : response.getUsage());
+                                     ToolCallResponse toolCallResponse = buildStructParseToolCallResponse(
+                                             context,
+                                             resolveResponseText(response),
                                             resolveFinishReason(response),
                                             usage.getTotalTokens(),
                                             startTime
                                     );
-                                    responseMapper.applyUsage(toolCallResponse, usage);
+                                     applyUsage(toolCallResponse, usage);
                                     if (context != null && context.isRunCancelled()) {
                                         LlmCancelledException cancelled = new LlmCancelledException(
                                                 context.getRunCancelReason(), toolCallResponse.getContent());
@@ -601,8 +601,8 @@ public class LLM {
         return LlmRequestRetry.callAsync(
                         retryLabel,
                         () -> streamResponseHandler.handleStringStreamWithUsage(
-                                context,
-                                chatModel.stream(prompt),
+                                 context,
+                                 completionPort.stream(request),
                                 STRUCT_PARSE_JSON_MARKER,
                                 true,
                                 true,
@@ -619,8 +619,9 @@ public class LLM {
                             result == null || result.getUsage() == null ? null : result.getUsage().getTotalTokens(),
                             startTime
                     );
-                    return responseMapper.applyUsage(toolCallResponse,
-                            result == null ? LlmUsageSnapshot.empty() : result.getUsage());
+                     applyUsage(toolCallResponse,
+                             result == null ? LlmUsageSnapshot.empty() : result.getUsage());
+                     return toolCallResponse;
                 })
                 .whenComplete((response, throwable) -> {
                     if (throwable == null) {
@@ -688,8 +689,117 @@ public class LLM {
         return LlmPromptShapeFactory.buildStructParseSystemMessage(systemMsg, tools);
     }
 
-    private Prompt buildPrompt(List<Message> domainMessages, OpenAiChatOptions options) {
-        return new Prompt(messageConverter.convert(domainMessages), options);
+    private LlmRequest buildRequest(AgentContext context,
+                                    List<Message> domainMessages,
+                                    List<LlmToolDefinition> tools,
+                                    String toolChoice,
+                                    Double overrideTemperature) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        if (context != null) {
+            putIfNotNull(metadata, "requestId", context.getRequestId());
+            putIfNotNull(metadata, "sessionId", context.getSessionId());
+            if (context.getAgentRunState() != null) {
+                putIfNotNull(metadata, "agentName", context.getAgentRunState().getCurrentAgentName());
+                putIfNotNull(metadata, "stepNo", context.getAgentRunState().getCurrentStepNo());
+            }
+        }
+        return LlmRequest.builder()
+                .model(model)
+                .settings(llmSettings)
+                .messages(toLlmMessages(domainMessages))
+                .tools(toList(tools))
+                .toolChoice(toolChoice)
+                .temperature(overrideTemperature)
+                .sessionId(context == null ? null : context.getSessionId())
+                .metadata(metadata)
+                .build();
+    }
+
+    private List<LlmMessage> toLlmMessages(List<Message> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return List.of();
+        }
+        List<LlmMessage> result = new ArrayList<>();
+        for (Message message : messages) {
+            if (message == null) {
+                continue;
+            }
+            List<LlmToolCall> toolCalls = new ArrayList<>();
+            if (message.getToolCalls() != null) {
+                for (ToolCall toolCall : message.getToolCalls()) {
+                    if (toolCall == null || toolCall.getFunction() == null) {
+                        continue;
+                    }
+                    toolCalls.add(LlmToolCall.builder()
+                            .id(toolCall.getId())
+                            .type(toolCall.getType())
+                            .name(toolCall.getFunction().getName())
+                            .arguments(toolCall.getFunction().getArguments())
+                            .build());
+                }
+            }
+            result.add(LlmMessage.builder()
+                    .role(message.getRole())
+                    .content(message.getContent())
+                    .reasoningContent(message.getReasoningContent())
+                    .base64Image(message.getBase64Image())
+                    .toolCallId(message.getToolCallId())
+                    .toolCalls(toolCalls)
+                    .build());
+        }
+        return result;
+    }
+
+    private List<LlmToolDefinition> buildToolDefinitions(ToolCollection tools) {
+        if (tools == null) {
+            return List.of();
+        }
+        List<LlmToolDefinition> definitions = new ArrayList<>();
+        List<BaseTool> localTools = tools.getToolMap() == null
+                ? List.of()
+                : tools.getToolMap().values().stream()
+                .filter(tool -> tool != null && StringUtils.isNotBlank(tool.getName()))
+                .sorted(Comparator.comparing(BaseTool::getName, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+        for (BaseTool tool : localTools) {
+            LlmToolDefinition definition = ToolDefinitionCache.getOrCreateFromMap(
+                    tool.getName(), StringUtils.defaultString(tool.getDescription()), tool.toParams());
+            definitions.add(definition.withInvoker(input -> tool.execute(parseToolInput(input))));
+        }
+
+        List<McpToolInfo> mcpTools = tools.getMcpToolMap() == null
+                ? List.of()
+                : tools.getMcpToolMap().values().stream()
+                .filter(tool -> tool != null && StringUtils.isNotBlank(tool.getName()))
+                .sorted(Comparator.comparing(McpToolInfo::getName, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+        for (McpToolInfo tool : mcpTools) {
+            LlmToolDefinition definition = ToolDefinitionCache.getOrCreateFromRawSchemaString(
+                    tool.getName(), StringUtils.defaultString(tool.getDesc()), tool.getParameters());
+            definitions.add(definition.withInvoker(input -> tools.execute(tool.getName(), input)));
+        }
+        return definitions;
+    }
+
+    private Object parseToolInput(String toolInput) {
+        if (StringUtils.isBlank(toolInput)) {
+            return new LinkedHashMap<String, Object>();
+        }
+        try {
+            return objectMapper.readValue(toolInput, Object.class);
+        } catch (Exception ignored) {
+            return toolInput;
+        }
+    }
+
+    private void putIfNotNull(Map<String, Object> target, String key, Object value) {
+        if (value != null) {
+            target.put(key, value);
+        }
+    }
+
+    private List<LlmToolDefinition> toList(List<LlmToolDefinition> tools) {
+        return tools == null || tools.isEmpty() ? List.of() : List.copyOf(tools);
     }
 
     private List<Message> mergeMessages(List<Message> systemMsgs, List<Message> messages) {
@@ -724,10 +834,6 @@ public class LLM {
             }
         }
         return mergedMessages;
-    }
-
-    private OpenAiChatModel resolveChatModel() {
-        return chatModelResolver.resolve(llmSettings);
     }
 
     private boolean isStructParseMode() {
@@ -786,11 +892,61 @@ public class LLM {
 
 
 
-    private String resolveFinishReason(ChatResponse response) {
-        if (response == null || response.getResult() == null || response.getResult().getMetadata() == null) {
-            return null;
+    private String resolveFinishReason(LlmResponse response) {
+        return response == null ? null : response.getFinishReason();
+    }
+
+    private String resolveResponseText(LlmResponse response) {
+        if (response == null || StringUtils.isBlank(response.getContent())
+                || "null".equals(response.getContent())) {
+            throw new IllegalArgumentException("Empty or invalid response from LLM");
         }
-        return response.getResult().getMetadata().getFinishReason();
+        return response.getContent();
+    }
+
+    private ToolCallResponse toToolCallResponse(LlmResponse response, long startTimeMs) {
+        ReasoningContentExtractor.SplitResult split = ReasoningContentExtractor.splitFromResponse(response);
+        List<ToolCall> toolCalls = new ArrayList<>();
+        if (response != null && response.getToolCalls() != null) {
+            for (LlmToolCall toolCall : response.getToolCalls()) {
+                if (toolCall == null || StringUtils.isBlank(toolCall.getName())) {
+                    continue;
+                }
+                toolCalls.add(ToolCall.builder()
+                        .id(StringUtils.defaultIfBlank(toolCall.getId(), StringUtil.getUUID()))
+                        .type(StringUtils.defaultIfBlank(toolCall.getType(), FUNCTION))
+                        .function(ToolCall.Function.builder()
+                                .name(toolCall.getName())
+                                .arguments(StringUtils.defaultIfBlank(toolCall.getArguments(), "{}"))
+                                .build())
+                        .build());
+            }
+        }
+        ToolCallResponse result = ToolCallResponse.builder()
+                .content(split.content())
+                .reasoningContent(split.reasoningContent())
+                .toolCalls(toolCalls)
+                .finishReason(resolveFinishReason(response))
+                .duration(System.currentTimeMillis() - startTimeMs)
+                .build();
+        applyUsage(result, LlmUsageSnapshot.resolve(response == null ? null : response.getUsage()));
+        return result;
+    }
+
+    private void applyUsage(ToolCallResponse response, LlmUsageSnapshot usage) {
+        if (response == null || usage == null) {
+            return;
+        }
+        response.setPromptTokens(usage.getPromptTokens());
+        response.setCompletionTokens(usage.getCompletionTokens());
+        response.setTotalTokens(usage.getTotalTokens());
+        response.setCachedPromptTokens(usage.getCachedPromptTokens());
+        response.setPromptTextTokens(usage.getPromptTextTokens());
+        response.setPromptAudioTokens(usage.getPromptAudioTokens());
+        response.setPromptImageTokens(usage.getPromptImageTokens());
+        response.setCompletionTextTokens(usage.getCompletionTextTokens());
+        response.setCompletionAudioTokens(usage.getCompletionAudioTokens());
+        response.setReasoningTokens(usage.getReasoningTokens());
     }
 
     private LlmInvocationHandle startLlmInvocation(AgentContext context, String callKind, boolean stream) {

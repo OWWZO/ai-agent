@@ -1,7 +1,7 @@
 package org.wwz.ai.domain.agent.runtime.tool.deferred;
 
 import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.model.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.util.ToolSchemaNormalizer;
 

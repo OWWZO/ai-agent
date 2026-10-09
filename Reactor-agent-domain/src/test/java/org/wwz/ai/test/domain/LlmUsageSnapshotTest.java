@@ -3,7 +3,6 @@ package org.wwz.ai.test.domain;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.Assert;
 import org.junit.Test;
-import org.springframework.ai.openai.api.OpenAiApi;
 import org.wwz.ai.domain.agent.runtime.llm.LlmUsageSnapshot;
 
 import java.util.LinkedHashMap;
@@ -93,13 +92,13 @@ public class LlmUsageSnapshotTest {
     }
 
     @Test
-    public void test_fromObjectParsesSpringAiOpenAiUsageRecord() {
-        OpenAiApi.Usage usage = new OpenAiApi.Usage(
+    public void test_fromObjectParsesRecordUsageShape() {
+        UsageRecord usage = new UsageRecord(
                 22,
                 80,
                 102,
-                new OpenAiApi.Usage.PromptTokensDetails(0, 18),
-                new OpenAiApi.Usage.CompletionTokenDetails(17, null, 0, null)
+                new PromptTokensDetails(0, 18),
+                new CompletionTokenDetails(17, null, 0, null)
         );
 
         LlmUsageSnapshot snapshot = LlmUsageSnapshot.fromObject(usage);
@@ -110,5 +109,23 @@ public class LlmUsageSnapshotTest {
         Assert.assertEquals(Integer.valueOf(0), snapshot.getPromptAudioTokens());
         Assert.assertEquals(Integer.valueOf(17), snapshot.getReasoningTokens());
         Assert.assertEquals(Integer.valueOf(0), snapshot.getCompletionAudioTokens());
+    }
+
+    public record UsageRecord(
+            Integer completionTokens,
+            Integer promptTokens,
+            Integer totalTokens,
+            PromptTokensDetails promptTokensDetails,
+            CompletionTokenDetails completionTokenDetails) {
+    }
+
+    public record PromptTokensDetails(Integer audioTokens, Integer cachedTokens) {
+    }
+
+    public record CompletionTokenDetails(
+            Integer reasoningTokens,
+            Integer acceptedPredictionTokens,
+            Integer audioTokens,
+            Integer rejectedPredictionTokens) {
     }
 }

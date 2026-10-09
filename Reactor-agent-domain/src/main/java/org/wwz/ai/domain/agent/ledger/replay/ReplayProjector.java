@@ -8,8 +8,8 @@ import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationView;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 import org.wwz.ai.domain.agent.reactor.model.constant.Constants;
-import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
-import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamAccumulator;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamResult;
 import org.wwz.ai.domain.agent.ledger.model.replay.ProjectedReplayEvent;
 import org.wwz.ai.domain.agent.ledger.model.replay.ReplayFactBundle;
 import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
@@ -32,7 +32,7 @@ public class ReplayProjector {
     private final ToolInvocationProjectorRegistry toolInvocationProjectorRegistry;
 
     public List<ProjectedReplayEvent> projectHistory(ReplayFactBundle bundle) {
-        EventResult state = new EventResult();
+        AgentStreamAccumulator state = new AgentStreamAccumulator();
         List<ProjectedReplayEvent> events = new ArrayList<>();
         if (bundle == null) {
             return events;
@@ -65,12 +65,12 @@ public class ReplayProjector {
         return events;
     }
 
-    public List<GptProcessResult> projectHistoryFrames(ReplayFactBundle bundle) {
+    public List<AgentStreamResult> projectHistoryFrames(ReplayFactBundle bundle) {
         List<ProjectedReplayEvent> events = projectHistory(bundle);
         if (events.isEmpty()) {
             return List.of();
         }
-        List<GptProcessResult> frames = new ArrayList<>(events.size());
+        List<AgentStreamResult> frames = new ArrayList<>(events.size());
         String requestId = bundle == null || bundle.getRun() == null ? null : bundle.getRun().getRequestId();
         for (ProjectedReplayEvent event : events) {
             frames.add(toFrame(requestId, event, true, Constants.SUCCESS));
@@ -82,14 +82,14 @@ public class ReplayProjector {
      * 实时与历史共用同一套 frame 组装逻辑。
      * 实时链路只需要提供已经收口好的 ProjectedReplayEvent，即可得到前端可直接消费的 eventData。
      */
-    public GptProcessResult projectFrame(String requestId,
+    public AgentStreamResult projectFrame(String requestId,
                                          ProjectedReplayEvent event,
                                          boolean finished,
                                          String status) {
         return toFrame(requestId, event, finished, status);
     }
 
-    private List<ProjectedReplayEvent> projectLlmHistory(ReplayFactBundle bundle, EventResult state) {
+    private List<ProjectedReplayEvent> projectLlmHistory(ReplayFactBundle bundle, AgentStreamAccumulator state) {
         if (bundle == null || bundle.getLlmInvocations() == null || bundle.getLlmInvocations().isEmpty()) {
             return List.of();
         }
@@ -101,12 +101,27 @@ public class ReplayProjector {
                 continue;
             }
             String messageType = resolveLlmMessageType(invocation);
-            events.add(buildLlmReplayEvent(bundle, state, invocation, messageType, null));
+            // 仅有 LLM 事实（无工具）时，plan_thought 的 plannerRoundId 回退到该次 LLM 调用 id，
+            // 使前端仍能按 planner round 归组历史计划思考。
+            events.add(buildLlmReplayEvent(
+                    bundle,
+                    state,
+                    invocation,
+                    messageType,
+                    resolveLlmHistoryPlannerRoundId(messageType, invocation)
+            ));
         }
         return events;
     }
 
-    private List<ProjectedReplayEvent> projectMixedHistory(ReplayFactBundle bundle, EventResult state) {
+    private String resolveLlmHistoryPlannerRoundId(String messageType, LlmInvocationView invocation) {
+        if (!"plan_thought".equals(messageType) || invocation == null || invocation.getId() == null) {
+            return null;
+        }
+        return String.valueOf(invocation.getId());
+    }
+
+    private List<ProjectedReplayEvent> projectMixedHistory(ReplayFactBundle bundle, AgentStreamAccumulator state) {
         List<ProjectedReplayEvent> events = new ArrayList<>();
         Map<Long, List<ArtifactView>> artifactsByInvocationId = groupArtifacts(bundle.getArtifacts());
         Map<Long, List<ToolInvocationView>> toolsByLlmInvocationId = groupToolsByLlmInvocationId(bundle.getToolInvocations());
@@ -201,7 +216,7 @@ public class ReplayProjector {
     private void appendLinkedToolEvents(List<ProjectedReplayEvent> events,
                                         List<ToolInvocationView> linkedTools,
                                         Map<Long, List<ArtifactView>> artifactsByInvocationId,
-                                        EventResult state) {
+                                         AgentStreamAccumulator state) {
         if (events == null || linkedTools == null || linkedTools.isEmpty()) {
             return;
         }
@@ -291,7 +306,7 @@ public class ReplayProjector {
     }
 
     private ProjectedReplayEvent buildLlmReplayEvent(ReplayFactBundle bundle,
-                                                     EventResult state,
+                                                     AgentStreamAccumulator state,
                                                      LlmInvocationView invocation,
                                                      String messageType,
                                                      String plannerRoundId) {
@@ -299,7 +314,7 @@ public class ReplayProjector {
     }
 
     private ProjectedReplayEvent buildLlmReplayEvent(ReplayFactBundle bundle,
-                                                     EventResult state,
+                                                      AgentStreamAccumulator state,
                                                      LlmInvocationView invocation,
                                                      String messageType,
                                                      String plannerRoundId,
@@ -327,7 +342,7 @@ public class ReplayProjector {
                 .build();
     }
 
-    private List<ProjectedReplayEvent> projectToolHistory(ReplayFactBundle bundle, EventResult state) {
+    private List<ProjectedReplayEvent> projectToolHistory(ReplayFactBundle bundle, AgentStreamAccumulator state) {
         if (bundle == null || bundle.getToolInvocations() == null || bundle.getToolInvocations().isEmpty()) {
             return List.of();
         }
@@ -385,7 +400,7 @@ public class ReplayProjector {
     /**
      * 当历史账本里没有显式结果事件时，补一个最终结论事件，避免前端恢复后缺少底部结论区。
      */
-    private void appendRunSummaryFallback(List<ProjectedReplayEvent> events, ReplayFactBundle bundle, EventResult state) {
+    private void appendRunSummaryFallback(List<ProjectedReplayEvent> events, ReplayFactBundle bundle, AgentStreamAccumulator state) {
         if (bundle == null || bundle.getRun() == null || hasResultEvent(events)) {
             return;
         }
@@ -564,7 +579,7 @@ public class ReplayProjector {
         response.put("resultMap", nested);
     }
 
-    private void syncPlannerRoundState(EventResult state, String messageType, String plannerRoundId) {
+    private void syncPlannerRoundState(AgentStreamAccumulator state, String messageType, String plannerRoundId) {
         if (state == null) {
             return;
         }
@@ -577,7 +592,7 @@ public class ReplayProjector {
         if (response == null || StringUtils.isBlank(plannerRoundId)) {
             return;
         }
-        response.put(EventResult.PLANNER_ROUND_ID_KEY, plannerRoundId);
+        response.put(AgentStreamAccumulator.PLANNER_ROUND_ID_KEY, plannerRoundId);
     }
 
     private String resolvePlannerRoundId(String messageType, List<ToolInvocationView> linkedTools) {
@@ -594,7 +609,7 @@ public class ReplayProjector {
         return null;
     }
 
-    private GptProcessResult toFrame(String requestId,
+    private AgentStreamResult toFrame(String requestId,
                                      ProjectedReplayEvent event,
                                      boolean finished,
                                      String status) {
@@ -617,11 +632,11 @@ public class ReplayProjector {
         }
         eventData.put("resultMap", event.getResultMap());
         resultMap.put("eventData", eventData);
-        return GptProcessResult.builder()
+        return AgentStreamResult.builder()
                 .status(status)
-                .finished(finished)
-                .reqId(requestId)
-                .resultMap(resultMap)
+                .complete(finished)
+                .requestId(requestId)
+                .eventData(resultMap)
                 .build();
     }
 

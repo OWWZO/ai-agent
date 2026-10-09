@@ -5,8 +5,8 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParser;
 import org.junit.Assert;
 import org.junit.Test;
-import org.wwz.ai.domain.agent.reactor.data.model.SqlModel;
-import org.wwz.ai.domain.agent.reactor.data.sql.SqlParserUtils;
+import org.wwz.ai.domain.agent.rag.model.sql.SqlModel;
+import org.wwz.ai.domain.agent.rag.sql.SqlParserUtils;
 
 public class SqlParserUtilsTest {
 
@@ -37,5 +37,15 @@ public class SqlParserUtilsTest {
         Assert.assertNotNull(sqlModel.getFromTable());
         Assert.assertTrue(sqlModel.getFromTable().getTableName().contains("t_qtpbgamccmrctthlurauclckq"));
         Assert.assertEquals(5, sqlModel.getColumnList().size());
+    }
+
+    @Test
+    public void parsesSupportedDialectsAndRejectsNonSelectStatements() throws Exception {
+        Assert.assertTrue(SqlParserUtils.isSelectSql("SELECT id FROM sales_data LIMIT 10", "mysql"));
+        Assert.assertTrue(SqlParserUtils.isSelectSql("SELECT id FROM sales_data LIMIT 10", "clickhouse"));
+
+        RuntimeException exception = Assert.assertThrows(RuntimeException.class,
+                () -> SqlParserUtils.parseSelectSql("DELETE FROM sales_data", "mysql"));
+        Assert.assertEquals("请检查sql是否正确", exception.getMessage());
     }
 }

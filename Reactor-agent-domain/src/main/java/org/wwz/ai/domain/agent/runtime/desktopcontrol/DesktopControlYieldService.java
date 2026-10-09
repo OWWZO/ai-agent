@@ -13,7 +13,7 @@ import org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord;
 import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwnerResolver;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReActAgent;
 import org.wwz.ai.domain.agent.runtime.askuser.UserQuestionResumeContext;
@@ -33,7 +33,7 @@ public class DesktopControlYieldService {
     @Transactional(rollbackFor = Exception.class)
     public DesktopControlRecord yieldAndNotify(AgentContext agentContext,
                                                ReActAgent executor,
-                                               AgentRequest request,
+                                               AgentExecutionCommand request,
                                                DesktopControlRequiredException signal,
                                                String entryAgent) {
         if (agentContext == null || signal == null) {

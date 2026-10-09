@@ -4,7 +4,7 @@ import com.alibaba.fastjson.JSON;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
-import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.model.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanModeToolPolicy;
 import org.wwz.ai.domain.agent.runtime.prompt.AgentPrompt;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;

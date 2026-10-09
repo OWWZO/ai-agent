@@ -28,9 +28,27 @@ public interface IExecutionLedgerWriteRepository {
 
     List<ArtifactRecord> queryArtifactsByRunId(Long runId);
 
-    void updateRunFinish(DialogueRun run);
+    /**
+     * 写入 run 终态。返回受影响行数：0 表示该 run 已是终态（陈旧/重复回调），调用方不应再累加会话计数。
+     */
+    int updateRunFinish(DialogueRun run);
 
     void upsertSession(DialogueSessionUpsertRecord record);
+
+    /**
+     * run 启动：会话 run_count 原子 +1（行不存在则新建），不做读-改-写。
+     */
+    void upsertSessionOnRunStart(DialogueSessionUpsertRecord record);
+
+    /**
+     * run 结束：按终态原子累加 finished/failed 计数。
+     */
+    int updateSessionRunFinish(String sessionId,
+                               int status,
+                               String latestSummaryText,
+                               int finishedDelta,
+                               int failedDelta,
+                               LocalDateTime lastActiveAt);
 
     List<org.wwz.ai.domain.agent.ledger.model.DialogueRunView> queryRunsBySessionId(String sessionId);
 

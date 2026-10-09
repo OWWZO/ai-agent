@@ -5,7 +5,7 @@ import org.junit.Test;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 import org.wwz.ai.domain.agent.ledger.model.replay.ProjectedReplayEvent;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.RequestDesktopControlToolInvocationProjector;
-import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamAccumulator;
 import org.wwz.ai.domain.agent.runtime.desktopcontrol.DesktopControlRecord;
 import org.wwz.ai.domain.agent.runtime.desktopcontrol.DesktopControlStatuses;
 import org.wwz.ai.domain.agent.runtime.desktopcontrol.IDesktopControlRepository;
@@ -27,7 +27,7 @@ public class RequestDesktopControlToolInvocationProjectorTest {
                 .build();
 
         List<ProjectedReplayEvent> events = new RequestDesktopControlToolInvocationProjector()
-                .project(invocation, List.of(), new EventResult());
+                .project(invocation, List.of(), new AgentStreamAccumulator());
 
         Assert.assertEquals(1, events.size());
         Map<String, Object> response = castMap(events.get(0).getResultMap());
@@ -104,7 +104,7 @@ public class RequestDesktopControlToolInvocationProjectorTest {
         };
 
         List<ProjectedReplayEvent> events = new RequestDesktopControlToolInvocationProjector(repository)
-                .project(invocation, List.of(), new EventResult());
+                .project(invocation, List.of(), new AgentStreamAccumulator());
         Map<String, Object> payload = castMap(castMap(events.get(0).getResultMap()).get("resultMap"));
         Assert.assertEquals("completed", payload.get("status"));
         Assert.assertEquals("COMPLETED", payload.get("persistenceStatus"));

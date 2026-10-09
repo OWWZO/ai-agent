@@ -7,7 +7,7 @@ import org.wwz.ai.domain.agent.ledger.model.ArtifactView;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 import org.wwz.ai.domain.agent.ledger.model.replay.ProjectedReplayEvent;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.GenUiPatchToolOutput;
-import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamAccumulator;
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.CanvasToolNames;
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.GenUiSchema;
 
@@ -32,7 +32,7 @@ public class GenUiPatchToolInvocationProjector extends AbstractToolInvocationPro
     @SuppressWarnings("unchecked")
     public List<ProjectedReplayEvent> project(ToolInvocationView invocation,
                                               List<ArtifactView> artifacts,
-                                              EventResult state) {
+                                              AgentStreamAccumulator state) {
         GenUiPatchToolOutput output = invocation != null
                 && invocation.getStructuredOutput() instanceof GenUiPatchToolOutput structured
                 ? structured

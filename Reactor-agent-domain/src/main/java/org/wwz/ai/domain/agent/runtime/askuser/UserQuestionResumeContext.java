@@ -6,7 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanModeState;
 
@@ -43,7 +43,7 @@ public class UserQuestionResumeContext {
         private boolean needsPlanModeExitAttachment;
     }
 
-    public static UserQuestionResumeContext from(AgentContext context, AgentRequest request, String entryAgent) {
+    public static UserQuestionResumeContext from(AgentContext context, AgentExecutionCommand request, String entryAgent) {
         PlanModeState state = context == null ? null : context.getPlanModeState();
         PlanModeSnapshot snapshot = null;
         if (state != null) {

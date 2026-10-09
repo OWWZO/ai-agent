@@ -2,7 +2,7 @@ package org.wwz.ai.domain.agent.ledger.replay.projector;
 
 import org.wwz.ai.domain.agent.ledger.model.ArtifactView;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
-import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamAccumulator;
 import org.wwz.ai.domain.agent.ledger.model.replay.ProjectedReplayEvent;
 
 import java.util.List;
@@ -22,5 +22,5 @@ public interface ToolInvocationProjector {
      */
     List<ProjectedReplayEvent> project(ToolInvocationView invocation,
                                        List<ArtifactView> artifacts,
-                                       EventResult state);
+                                       AgentStreamAccumulator state);
 }

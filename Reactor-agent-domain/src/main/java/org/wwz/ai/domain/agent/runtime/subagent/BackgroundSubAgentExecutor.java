@@ -5,7 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord;
-import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
+import org.wwz.ai.domain.agent.runtime.stream.ToolResultStreamPayload;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.runtime.cancel.RunCancellation;
@@ -300,7 +300,7 @@ public final class BackgroundSubAgentExecutor {
                 toolParam.put("run_in_background", true);
 
                 String observation = ToolObservationSerializer.serializeSuccess(data);
-                AgentResponse.ToolResult toolResult = AgentResponse.ToolResult.builder()
+                ToolResultStreamPayload toolResult = ToolResultStreamPayload.builder()
                         .toolName(toolName)
                         .toolCallId(parentToolUseId)
                         .toolParam(toolParam)

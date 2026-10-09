@@ -20,7 +20,7 @@ import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DataAnalysisToolOutput;
-import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
+import org.wwz.ai.domain.agent.runtime.stream.ToolResultStreamPayload;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRefMapper;
 
 import java.util.*;
@@ -113,7 +113,7 @@ public class DataAnalysisTool implements ContextIsolatableTool {
         } catch (Exception e) {
             log.error("{} auto_analysis agent error", agentContext.getRequestId(), e);
             String message = "data_analysis 执行失败：" + StringUtils.defaultIfBlank(e.getMessage(), "未知异常");
-            agentContext.getPrinter().send("tool_result", AgentResponse.ToolResult.builder()
+            agentContext.getPrinter().send("tool_result", ToolResultStreamPayload.builder()
                     .toolName("数据分析智能体")
                     .toolParam(new HashMap<>())
                     .toolResult("执行失败")

@@ -6,7 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.askuser.UserQuestionResumeContext;
 
@@ -26,7 +26,7 @@ public class PlanApprovalResumeContext {
     private String thinkingEffort;
     private UserQuestionResumeContext.PlanModeSnapshot planMode;
 
-    public static PlanApprovalResumeContext from(AgentContext context, AgentRequest request, String entryAgent) {
+    public static PlanApprovalResumeContext from(AgentContext context, AgentExecutionCommand request, String entryAgent) {
         UserQuestionResumeContext shared = UserQuestionResumeContext.from(context, request, entryAgent);
         return PlanApprovalResumeContext.builder()
                 .entryAgent(shared.getEntryAgent())

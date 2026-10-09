@@ -2,12 +2,9 @@ package org.wwz.ai.test.domain;
 
 import org.junit.Assert;
 import org.junit.Test;
-import org.springframework.ai.chat.model.ChatResponse;
 import org.wwz.ai.domain.agent.runtime.llm.LlmRequestRetry;
-import reactor.core.publisher.Flux;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -101,51 +98,6 @@ public class LlmRequestRetryTest {
     }
 
     @Test
-    public void shouldRetryStreamBeforeFirstChunk() {
-        AtomicInteger attempts = new AtomicInteger();
-        List<ChatResponse> responses = LlmRequestRetry.stream("test-stream", () -> {
-            if (attempts.incrementAndGet() < 2) {
-                return Flux.error(new RuntimeException("Upstream request failed"));
-            }
-            return Flux.just(new ChatResponse(List.of()));
-        }).collectList().block();
-
-        Assert.assertNotNull(responses);
-        Assert.assertEquals(1, responses.size());
-        Assert.assertEquals(2, attempts.get());
-    }
-
-    @Test
-    public void shouldRetryStreamOn524BeforeFirstChunk() {
-        AtomicInteger attempts = new AtomicInteger();
-        List<ChatResponse> responses = LlmRequestRetry.stream("test-stream-524", () -> {
-            if (attempts.incrementAndGet() < 2) {
-                return Flux.error(new RuntimeException("Unknown status code [524]"));
-            }
-            return Flux.just(new ChatResponse(List.of()));
-        }).collectList().block();
-
-        Assert.assertNotNull(responses);
-        Assert.assertEquals(1, responses.size());
-        Assert.assertEquals(2, attempts.get());
-    }
-
-    @Test
-    public void shouldRetryStreamOnConnectionResetBeforeFirstChunk() {
-        AtomicInteger attempts = new AtomicInteger();
-        List<ChatResponse> responses = LlmRequestRetry.stream("test-stream-reset", () -> {
-            if (attempts.incrementAndGet() < 2) {
-                return Flux.error(new IOException("Connection reset"));
-            }
-            return Flux.just(new ChatResponse(List.of()));
-        }).collectList().block();
-
-        Assert.assertNotNull(responses);
-        Assert.assertEquals(1, responses.size());
-        Assert.assertEquals(2, attempts.get());
-    }
-
-    @Test
     public void shouldRetryCallAsyncAfterMidStreamTransientFailure() {
         AtomicInteger attempts = new AtomicInteger();
         String result = LlmRequestRetry.callAsync("test-call-async", () -> {
@@ -208,20 +160,4 @@ public class LlmRequestRetryTest {
         Assert.assertTrue(source.isCancelled());
     }
 
-    @Test
-    public void shouldNotRetryStreamAfterFirstChunk() {
-        AtomicInteger attempts = new AtomicInteger();
-        try {
-            LlmRequestRetry.stream("test-stream", () -> {
-                attempts.incrementAndGet();
-                return Flux.concat(
-                        Flux.just(new ChatResponse(List.of())),
-                        Flux.error(new RuntimeException("Upstream request failed"))
-                );
-            }).collectList().block();
-            Assert.fail("expected RuntimeException");
-        } catch (RuntimeException expected) {
-            Assert.assertEquals(1, attempts.get());
-        }
-    }
 }

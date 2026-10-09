@@ -18,11 +18,11 @@ import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceSessionFileMaterializer;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadStateStore;
 import org.wwz.ai.domain.agent.runtime.util.DateUtil;
-import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionFile;
 import org.wwz.ai.domain.agent.ledger.IExecutionLedgerReadRepository;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.ledger.AgentExecutionRecorder;
 import org.wwz.ai.domain.agent.memory.ltm.LtmRuntimeBootstrap;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
@@ -75,7 +75,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
     private IExecutionLedgerReadRepository executionLedgerReadRepository;
 
     @Override
-    protected String doApply(AgentRequest request, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+    protected String doApply(AgentExecutionCommand request, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("PlanSolve Prepare: SOP recall and context for requestId: {}", request.getRequestId());
 
         // 先构造上下文，再执行 SOP 召回和 plan mode 初始化，后续主代理只依赖 AgentContext。
@@ -172,7 +172,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
                 agentContext.getRequestId(), forced, planPathHint);
     }
 
-    private boolean hasPriorPlanSolveUserTurn(AgentRequest request) {
+    private boolean hasPriorPlanSolveUserTurn(AgentExecutionCommand request) {
         if (executionLedgerReadRepository == null || request == null
                 || StringUtils.isBlank(request.getSessionId())) {
             return false;
@@ -203,7 +203,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
     @jakarta.annotation.Resource
     private org.wwz.ai.domain.agent.runtime.planmode.IPlanApprovalRepository planApprovalRepository;
 
-    private boolean restoreResumePlanMode(AgentContext agentContext, AgentRequest request) {
+    private boolean restoreResumePlanMode(AgentContext agentContext, AgentExecutionCommand request) {
         if (agentContext == null || request == null || StringUtils.isBlank(request.getResumeContextJson())) {
             return false;
         }
@@ -213,7 +213,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
         return applyPlanApprovalDecision(agentContext, request);
     }
 
-    private boolean applyPlanApprovalDecision(AgentContext agentContext, AgentRequest request) {
+    private boolean applyPlanApprovalDecision(AgentContext agentContext, AgentExecutionCommand request) {
         if (agentContext == null || request == null
                 || StringUtils.isBlank(request.getResumeApprovalId())
                 || planApprovalRepository == null) {
@@ -255,7 +255,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
         }
     }
 
-    private void materializeSessionFiles(AgentContext agentContext, java.util.List<FileInformation> sessionFiles) {
+    private void materializeSessionFiles(AgentContext agentContext, java.util.List<AgentExecutionFile> sessionFiles) {
         if (workspaceSessionFileMaterializer == null) {
             return;
         }
@@ -282,16 +282,16 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
         }
     }
 
-    private ToolCollection buildToolCollection(AgentContext agentContext, AgentRequest request) {
+    private ToolCollection buildToolCollection(AgentContext agentContext, AgentExecutionCommand request) {
         return agentToolCollectionFactory.buildForPlanSolve(agentContext, request);
     }
 
-    private List<File> convertFiles(List<FileInformation> sessionFiles) {
+    private List<File> convertFiles(List<AgentExecutionFile> sessionFiles) {
         if (sessionFiles == null || sessionFiles.isEmpty()) {
             return List.of();
         }
         List<File> files = new ArrayList<>(sessionFiles.size());
-        for (FileInformation sessionFile : sessionFiles) {
+        for (AgentExecutionFile sessionFile : sessionFiles) {
             files.add(File.builder()
                     .fileName(sessionFile.getFileName())
                     .description(sessionFile.getFileDesc())
@@ -307,19 +307,19 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
         return files;
     }
 
-    private List<Message> convertMessages(List<AgentRequest.Message> messages) {
+    private List<Message> convertMessages(List<AgentExecutionCommand.Message> messages) {
         if (messages == null || messages.isEmpty()) {
             return List.of();
         }
         List<Message> result = new ArrayList<>(messages.size());
         // 历史消息只做运行时 DTO 翻译；它们属于输入上下文，不会在这里重新写入 Execution Ledger。
-        for (AgentRequest.Message message : messages) {
+        for (AgentExecutionCommand.Message message : messages) {
             result.add(convertMessage(message));
         }
         return result;
     }
 
-    private Message convertMessage(AgentRequest.Message message) {
+    private Message convertMessage(AgentExecutionCommand.Message message) {
         RoleType role = resolveRoleType(message == null ? null : message.getRole());
         Message.MessageBuilder builder = Message.builder()
                 .role(role)
@@ -344,8 +344,8 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
     }
 
     @Override
-    public StrategyHandler<AgentRequest, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext, String> get(
-            AgentRequest requestParameter,
+    public StrategyHandler<AgentExecutionCommand, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext, String> get(
+            AgentExecutionCommand requestParameter,
             DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         return runReactLoopNode;
     }

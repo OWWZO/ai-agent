@@ -4,7 +4,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.ledger.model.ArtifactView;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 import org.wwz.ai.domain.agent.ledger.model.replay.ProjectedReplayEvent;
-import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamAccumulator;
 import org.wwz.ai.domain.agent.runtime.askuser.AskUserQuestionObservationSupport;
 import org.wwz.ai.domain.agent.runtime.askuser.IUserQuestionRepository;
 import org.wwz.ai.domain.agent.runtime.askuser.UserQuestionRecord;
@@ -37,7 +37,7 @@ public class AskUserQuestionToolInvocationProjector extends AbstractToolInvocati
     @Override
     public List<ProjectedReplayEvent> project(ToolInvocationView invocation,
                                               List<ArtifactView> artifacts,
-                                              EventResult state) {
+                                              AgentStreamAccumulator state) {
         Map<String, Object> input = readMap(invocation == null ? null : invocation.getInputJson());
         Map<String, Object> observation = readMap(invocation == null ? null : invocation.getLlmObservation());
         Map<String, Object> payload = new LinkedHashMap<>();
