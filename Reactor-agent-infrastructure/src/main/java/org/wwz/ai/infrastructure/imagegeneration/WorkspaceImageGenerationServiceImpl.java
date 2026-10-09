@@ -1,24 +1,24 @@
-package org.wwz.ai.infrastructure.reactor.service.impl;
+package org.wwz.ai.infrastructure.imagegeneration;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
-import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationExecuteCommand;
-import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationExecutionResult;
-import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageFile;
-import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageGenerationCommand;
-import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageGenerationHistoryBatch;
-import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageGenerationHistoryPage;
-import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageGenerationResult;
+import org.wwz.ai.domain.agent.image.model.ImageGenerationExecuteCommand;
+import org.wwz.ai.domain.agent.image.model.ImageGenerationExecutionResult;
+import org.wwz.ai.domain.agent.image.model.WorkspaceImageFile;
+import org.wwz.ai.domain.agent.image.model.WorkspaceImageGenerationCommand;
+import org.wwz.ai.domain.agent.image.model.WorkspaceImageGenerationHistoryBatch;
+import org.wwz.ai.domain.agent.image.model.WorkspaceImageGenerationHistoryPage;
+import org.wwz.ai.domain.agent.image.model.WorkspaceImageGenerationResult;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ImageGenerationToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputNames;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputView;
-import org.wwz.ai.domain.agent.reactor.service.IWorkspaceImageGenerationService;
-import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationBatchPersistenceService;
-import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
+import org.wwz.ai.domain.agent.image.service.IWorkspaceImageGenerationService;
+import org.wwz.ai.domain.agent.image.service.IImageGenerationBatchPersistenceService;
+import org.wwz.ai.domain.agent.image.service.IImageGenerationExecutionKernel;
 import org.wwz.ai.domain.agent.ledger.tooloutput.ToolOutputReader;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputImageGenerationDao;
 

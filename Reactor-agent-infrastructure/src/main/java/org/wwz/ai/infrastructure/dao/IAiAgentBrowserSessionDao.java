@@ -23,8 +23,4 @@ public interface IAiAgentBrowserSessionDao {
     int updateLastUsedAt(@Param("ownerKey") String ownerKey, @Param("lastUsedAt") LocalDateTime lastUsedAt);
 
     int deleteByOwnerKey(@Param("ownerKey") String ownerKey);
-
-    Integer getLock(@Param("name") String name, @Param("timeoutSeconds") int timeoutSeconds);
-
-    Integer releaseLock(@Param("name") String name);
 }

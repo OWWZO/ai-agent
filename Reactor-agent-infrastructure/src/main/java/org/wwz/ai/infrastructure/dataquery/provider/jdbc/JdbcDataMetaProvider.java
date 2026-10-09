@@ -3,11 +3,10 @@ package org.wwz.ai.infrastructure.dataquery.provider.jdbc;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.wwz.ai.domain.agent.reactor.data.SimpleTable;
-import org.wwz.ai.domain.agent.reactor.data.TableColumn;
+import org.wwz.ai.domain.agent.rag.model.schema.DataQueryTable;
+import org.wwz.ai.domain.agent.rag.model.schema.DataQueryTableColumn;
 import org.wwz.ai.infrastructure.dataquery.jdbc.connection.ConnectionWrapper;
 import org.wwz.ai.infrastructure.dataquery.jdbc.connection.JdbcConnectionFactory;
-import org.wwz.ai.domain.agent.reactor.data.provider.DataMetaProvider;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -28,7 +27,7 @@ import static org.wwz.ai.infrastructure.dataquery.jdbc.catalog.AbstractJdbcCatal
 public class JdbcDataMetaProvider implements DataMetaProvider<JdbcQueryRequest> {
 
     @Override
-    public List<SimpleTable> queryTables(JdbcQueryRequest request, String schemaPattern) throws SQLException {
+    public List<DataQueryTable> queryTables(JdbcQueryRequest request, String schemaPattern) throws SQLException {
         try (ConnectionWrapper wrapper = JdbcConnectionFactory.getConnection(request.getJdbcConnectionConfig());
              Connection connection = wrapper.getConnection()) {
             return wrapper.getCatalog().listTables(connection, schemaPattern);
@@ -36,7 +35,7 @@ public class JdbcDataMetaProvider implements DataMetaProvider<JdbcQueryRequest> 
     }
 
     @Override
-    public List<TableColumn> queryColumns(JdbcQueryRequest request, String tableName, String schema) throws SQLException {
+    public List<DataQueryTableColumn> queryColumns(JdbcQueryRequest request, String tableName, String schema) throws SQLException {
         try (ConnectionWrapper wrapper = JdbcConnectionFactory.getConnection(request.getJdbcConnectionConfig());
              Connection connection = wrapper.getConnection()) {
             return wrapper.getCatalog().getTableColumns(connection, tableName, schema);
@@ -44,12 +43,12 @@ public class JdbcDataMetaProvider implements DataMetaProvider<JdbcQueryRequest> 
     }
 
     @Override
-    public List<TableColumn> getTableColumnsOfSql(JdbcQueryRequest request) throws SQLException {
+    public List<DataQueryTableColumn> getTableColumnsOfSql(JdbcQueryRequest request) throws SQLException {
         try (ConnectionWrapper wrapper = JdbcConnectionFactory.getConnection(request.getJdbcConnectionConfig())) {
             // 元数据查询同样使用方言格式化和 limit，保证字段探测与真正执行 SQL 的约束一致。
             request.setSql(wrapper.getJdbcDialect().formatSql(request.getSql()));
             log.info("jdbc meta 执行sql:{}", request.getSql());
-            List<TableColumn> columnList = new ArrayList<>();
+            List<DataQueryTableColumn> columnList = new ArrayList<>();
             try (Connection connection = wrapper.getConnection()) {
             try (
                     Statement ps = wrapper.createStatement(connection, request.getLimit());
@@ -63,7 +62,7 @@ public class JdbcDataMetaProvider implements DataMetaProvider<JdbcQueryRequest> 
                     int intDataType = metaData.getColumnType(i);
                     JDBCType jdbcType = JDBCType.valueOf(intDataType);
                     String dataType = typeConvert(jdbcType);
-                    TableColumn column = TableColumn.builder().name(name)
+                    DataQueryTableColumn column = DataQueryTableColumn.builder().name(name)
                             .comment(name)
                             .dataType(dataType)
                             .originDataType(jdbcType.name())

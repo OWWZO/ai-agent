@@ -17,6 +17,22 @@ public interface IDialogueSessionLedgerDao {
 
     int upsertSession(DialogueSessionUpsertRecord record);
 
+    /**
+     * run 启动时的会话主表写入：行不存在则按 run_count=1 新建，已存在则 run_count 原子 +1。
+     * 不覆盖 started_at 与 finished/failed 计数，避免并发下的丢更新。
+     */
+    int upsertSessionOnRunStart(DialogueSessionUpsertRecord record);
+
+    /**
+     * run 结束时的会话主表写入：按终态原子累加 finished/failed 计数，不做读-改-写。
+     */
+    int updateSessionRunFinish(@Param("sessionId") String sessionId,
+                               @Param("status") int status,
+                               @Param("latestSummaryText") String latestSummaryText,
+                               @Param("finishedDelta") int finishedDelta,
+                               @Param("failedDelta") int failedDelta,
+                               @Param("lastActiveAt") LocalDateTime lastActiveAt);
+
     DialogueSession queryBySessionId(@Param("sessionId") String sessionId);
 
     DialogueSession querySessionOwnership(@Param("sessionId") String sessionId);

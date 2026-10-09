@@ -24,7 +24,7 @@ import org.wwz.ai.domain.agent.memory.ltm.MemoryFlushPolicy;
 import org.wwz.ai.domain.agent.memory.ltm.LtmServices;
 import org.wwz.ai.domain.agent.memory.ltm.MemoryFlushService;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
@@ -466,7 +466,7 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
         String modelName = resolveCompactModelName();
         LLM llm = new LLM(modelName, "", runtimeDependencies());
 
-        AgentRequest fakeRequest = new AgentRequest();
+        AgentExecutionCommand fakeRequest = new AgentExecutionCommand();
         fakeRequest.setRequestId(StringUtils.defaultIfBlank(requestId, "compact") + "-compact");
         fakeRequest.setSessionId(sessionId);
 

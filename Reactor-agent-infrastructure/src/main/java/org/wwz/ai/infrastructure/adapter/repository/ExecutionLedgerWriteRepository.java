@@ -65,13 +65,29 @@ public class ExecutionLedgerWriteRepository implements IExecutionLedgerWriteRepo
     }
 
     @Override
-    public void updateRunFinish(DialogueRun run) {
-        dialogueRunLedgerDao.updateRunFinish(run);
+    public int updateRunFinish(DialogueRun run) {
+        return dialogueRunLedgerDao.updateRunFinish(run);
     }
 
     @Override
     public void upsertSession(DialogueSessionUpsertRecord record) {
         dialogueSessionLedgerDao.upsertSession(record);
+    }
+
+    @Override
+    public void upsertSessionOnRunStart(DialogueSessionUpsertRecord record) {
+        dialogueSessionLedgerDao.upsertSessionOnRunStart(record);
+    }
+
+    @Override
+    public int updateSessionRunFinish(String sessionId,
+                                      int status,
+                                      String latestSummaryText,
+                                      int finishedDelta,
+                                      int failedDelta,
+                                      java.time.LocalDateTime lastActiveAt) {
+        return dialogueSessionLedgerDao.updateSessionRunFinish(
+                sessionId, status, latestSummaryText, finishedDelta, failedDelta, lastActiveAt);
     }
 
     @Override

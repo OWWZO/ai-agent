@@ -7,7 +7,7 @@ import org.wwz.ai.domain.agent.memory.ltm.CuratedMemoryStore;
 import org.wwz.ai.domain.agent.memory.ltm.LtmExtractionApplier;
 import org.wwz.ai.domain.agent.memory.ltm.LtmExtractionOp;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
@@ -41,7 +41,7 @@ public final class LtmLlmExtractionSupport {
         try {
             String modelName = resolveModel(deps);
             LLM llm = new LLM(modelName, "", deps);
-            AgentRequest fake = new AgentRequest();
+            AgentExecutionCommand fake = new AgentExecutionCommand();
             fake.setRequestId(StringUtils.defaultIfBlank(requestId, "ltm") + "-ltm-extract");
             fake.setSessionId(sessionId);
             AgentContext ctx = AgentContext.builder()

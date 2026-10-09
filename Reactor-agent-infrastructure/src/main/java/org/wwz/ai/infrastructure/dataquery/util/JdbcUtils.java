@@ -2,13 +2,13 @@ package org.wwz.ai.infrastructure.dataquery.util;
 
 
 import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.reactor.config.data.DbConfig;
 import org.wwz.ai.infrastructure.dataquery.jdbc.JdbcConnectionConfig;
+import org.wwz.ai.infrastructure.dataquery.jdbc.JdbcDataSourceProperties;
 import org.wwz.ai.infrastructure.dataquery.jdbc.dialect.DialectEnum;
 
 public class JdbcUtils {
 
-    public static JdbcConnectionConfig parseJdbcConnectionConfig(DbConfig dbConfig) {
+    public static JdbcConnectionConfig parseJdbcConnectionConfig(JdbcDataSourceProperties dbConfig) {
         if (dbConfig == null) {
             throw new IllegalArgumentException("dbConfig cannot be null");
         }
@@ -24,7 +24,7 @@ public class JdbcUtils {
     /**
      * 优先使用完整 JDBC URL，兼容独立问数库配置。
      */
-    private static String resolveJdbcUrl(DbConfig dbConfig) {
+    private static String resolveJdbcUrl(JdbcDataSourceProperties dbConfig) {
         if (StringUtils.isNotBlank(dbConfig.getUrl())) {
             return dbConfig.getUrl().trim();
         }
@@ -41,5 +41,3 @@ public class JdbcUtils {
     }
 
 }
-
-

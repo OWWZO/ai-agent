@@ -3,14 +3,13 @@ package org.wwz.ai.infrastructure.dataquery.jdbc;
 
 import lombok.Data;
 import org.wwz.ai.infrastructure.dataquery.jdbc.dialect.DialectEnum;
-import org.wwz.ai.domain.agent.reactor.data.provider.QueryConfig;
 
 import java.io.Serializable;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
 @Data
-public class JdbcConnectionConfig implements Serializable, QueryConfig {
+public class JdbcConnectionConfig implements Serializable {
     private static final long serialVersionUID = 3205225174160474938L;
 
 
@@ -63,4 +62,3 @@ public class JdbcConnectionConfig implements Serializable, QueryConfig {
     private Long freshTimestamp;
 
 }
-

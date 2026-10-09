@@ -3,10 +3,10 @@ package org.wwz.ai.infrastructure.dataquery.jdbc.catalog.clickhouse;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.reactor.data.SimpleTable;
-import org.wwz.ai.domain.agent.reactor.data.exception.CatalogException;
+import org.wwz.ai.domain.agent.rag.model.schema.DataQueryTable;
+import org.wwz.ai.domain.agent.rag.model.schema.StandardColumnType;
 import org.wwz.ai.infrastructure.dataquery.jdbc.catalog.AbstractJdbcCatalog;
-import org.wwz.ai.domain.agent.reactor.data.model.StandardColumnType;
+import org.wwz.ai.infrastructure.dataquery.jdbc.catalog.CatalogException;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -21,14 +21,14 @@ public class ClickhouseCatalog extends AbstractJdbcCatalog {
 
 
     @Override
-    public List<SimpleTable> listTables(Connection connection, String schema) throws CatalogException {
+    public List<DataQueryTable> listTables(Connection connection, String schema) throws CatalogException {
         // ClickHouse 的系统表以 database/name 组合标识表，返回值保留该完整路径。
         String sql = "SELECT concat(database,'.',name) as name FROM system.tables WHERE database = '" + schema + "'";
         try (Statement prepared = connection.createStatement();
              ResultSet rs = prepared.executeQuery(sql)) {
-            List<SimpleTable> tables = new ArrayList<>();
+            List<DataQueryTable> tables = new ArrayList<>();
             while (rs.next()) {
-                SimpleTable st = new SimpleTable();
+                DataQueryTable st = new DataQueryTable();
                 st.setTableSchema(schema);
                 st.setTableName(rs.getString("name"));
                 tables.add(st);

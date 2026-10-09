@@ -3,7 +3,7 @@ package org.wwz.ai.infrastructure.dataquery.jdbc.catalog;
 
 import lombok.Builder;
 import lombok.Data;
-import org.wwz.ai.domain.agent.reactor.data.TableColumn;
+import org.wwz.ai.domain.agent.rag.model.schema.DataQueryTableColumn;
 
 import java.util.List;
 import java.util.Properties;
@@ -17,11 +17,10 @@ import java.util.Properties;
 @Data
 public class CatalogTable {
 
-    private List<TableColumn> columnList;
+    private List<DataQueryTableColumn> columnList;
     private String schema;
     private String name;
     private String comment;
     private Properties config;
 
 }
-

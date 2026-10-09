@@ -4,9 +4,8 @@ package org.wwz.ai.infrastructure.dataquery.jdbc.catalog;
 
 
 
-import org.wwz.ai.domain.agent.reactor.data.SimpleTable;
-import org.wwz.ai.domain.agent.reactor.data.TableColumn;
-import org.wwz.ai.domain.agent.reactor.data.exception.CatalogException;
+import org.wwz.ai.domain.agent.rag.model.schema.DataQueryTable;
+import org.wwz.ai.domain.agent.rag.model.schema.DataQueryTableColumn;
 
 import java.sql.Connection;
 import java.util.List;
@@ -21,8 +20,8 @@ import java.util.List;
 public interface JdbcCatalog {
 
     /** 查询指定 schema 下可供问数使用的表。 */
-    List<SimpleTable> listTables(Connection connection, String schema) throws CatalogException;
+    List<DataQueryTable> listTables(Connection connection, String schema) throws CatalogException;
 
     /** 查询指定表的列信息，并保留原始类型与统一类型。 */
-    List<TableColumn> getTableColumns(Connection connection, String tablePath, String schema) throws CatalogException;
+    List<DataQueryTableColumn> getTableColumns(Connection connection, String tablePath, String schema) throws CatalogException;
 }

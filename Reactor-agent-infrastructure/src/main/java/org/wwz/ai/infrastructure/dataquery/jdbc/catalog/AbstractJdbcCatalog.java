@@ -2,10 +2,10 @@ package org.wwz.ai.infrastructure.dataquery.jdbc.catalog;
 
 
 import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.reactor.data.SimpleTable;
-import org.wwz.ai.domain.agent.reactor.data.TableColumn;
-import org.wwz.ai.domain.agent.reactor.data.exception.CatalogException;
-import org.wwz.ai.domain.agent.reactor.data.model.StandardColumnType;
+import org.wwz.ai.domain.agent.rag.model.schema.DataQueryTable;
+import org.wwz.ai.domain.agent.rag.model.schema.DataQueryTableColumn;
+import org.wwz.ai.domain.agent.rag.model.schema.StandardColumnType;
+import org.wwz.ai.infrastructure.dataquery.jdbc.catalog.CatalogException;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -21,13 +21,13 @@ import java.util.List;
 public abstract class AbstractJdbcCatalog implements JdbcCatalog {
 
     @Override
-    public List<SimpleTable> listTables(Connection connection, String schema) throws CatalogException {
+    public List<DataQueryTable> listTables(Connection connection, String schema) throws CatalogException {
         // ResultSet 由当前方法创建和关闭，调用方只持有连接，不承担元数据游标生命周期。
         try (ResultSet rs = connection.getMetaData().getTables(null,
                 schema, null, null)) {
-            List<SimpleTable> tables = new ArrayList<>();
+            List<DataQueryTable> tables = new ArrayList<>();
             while (rs.next()) {
-                SimpleTable st = new SimpleTable();
+                DataQueryTable st = new DataQueryTable();
                 st.setTableName(rs.getString("TABLE_NAME"));
                 st.setComments(rs.getString("REMARKS"));
                 st.setTableType(rs.getString("TABLE_TYPE"));
@@ -46,19 +46,19 @@ public abstract class AbstractJdbcCatalog implements JdbcCatalog {
 
 
     @Override
-    public List<TableColumn>  getTableColumns(Connection connection, String tablePath, String schema) throws CatalogException {
+    public List<DataQueryTableColumn> getTableColumns(Connection connection, String tablePath, String schema) throws CatalogException {
         // 列元数据同时保留原始 JDBC 类型和统一类型，前者用于展示，后者用于问数推理。
         try (ResultSet rs = connection.getMetaData().getColumns(null,
                 null, tablePath, null)) {
 
-            List<TableColumn> columnList = new ArrayList<>();
+            List<DataQueryTableColumn> columnList = new ArrayList<>();
             while (rs.next()) {
                 String name = rs.getString("COLUMN_NAME");
                 int intDataType = rs.getInt("DATA_TYPE");
                 JDBCType jdbcType = JDBCType.valueOf(intDataType);
                 String dataType = typeConvert(jdbcType);
 
-                TableColumn column = TableColumn.builder().name(name)
+                DataQueryTableColumn column = DataQueryTableColumn.builder().name(name)
                         .columnLength(rs.getInt("COLUMN_SIZE"))
                         .comment(rs.getString("REMARKS"))
                         .dataType(dataType)

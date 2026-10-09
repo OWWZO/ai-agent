@@ -4,11 +4,11 @@ package org.wwz.ai.infrastructure.dataquery.jdbc.catalog.mysql;
 
 
 import lombok.extern.slf4j.Slf4j;
-import org.wwz.ai.domain.agent.reactor.data.SimpleTable;
-import org.wwz.ai.domain.agent.reactor.data.TableColumn;
-import org.wwz.ai.domain.agent.reactor.data.exception.CatalogException;
+import org.wwz.ai.domain.agent.rag.model.schema.DataQueryTable;
+import org.wwz.ai.domain.agent.rag.model.schema.DataQueryTableColumn;
+import org.wwz.ai.domain.agent.rag.model.schema.StandardColumnType;
 import org.wwz.ai.infrastructure.dataquery.jdbc.catalog.AbstractJdbcCatalog;
-import org.wwz.ai.domain.agent.reactor.data.model.StandardColumnType;
+import org.wwz.ai.infrastructure.dataquery.jdbc.catalog.CatalogException;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -32,14 +32,14 @@ public class MySqlCatalog extends AbstractJdbcCatalog {
     }
 
     @Override
-    public List<SimpleTable> listTables(Connection connection, String schema) throws CatalogException {
+    public List<DataQueryTable> listTables(Connection connection, String schema) throws CatalogException {
         // MySQL 的 show tables 结果比通用 DatabaseMetaData 更稳定，表名直接取第一列。
         String sql = "show tables ";
         try (PreparedStatement prepared = connection.prepareStatement(sql);
              ResultSet rs = prepared.executeQuery()) {
-            List<SimpleTable> tables = new ArrayList<>();
+            List<DataQueryTable> tables = new ArrayList<>();
             while (rs.next()) {
-                SimpleTable st = new SimpleTable();
+                DataQueryTable st = new DataQueryTable();
                 st.setTableName(rs.getString(1));
                 tables.add(st);
             }
@@ -60,7 +60,7 @@ public class MySqlCatalog extends AbstractJdbcCatalog {
     }
 
     @Override
-    public List<TableColumn> getTableColumns(Connection connection, String tablePath, String schema) throws CatalogException {
+    public List<DataQueryTableColumn> getTableColumns(Connection connection, String tablePath, String schema) throws CatalogException {
         // INFORMATION_SCHEMA 同时提供字段注释、可空性和原始类型，是模型上下文的主要来源。
         String sql = String.format(
                 SELECT_COLUMNS_SQL_TEMPLATE, schema, tablePath);
@@ -68,13 +68,13 @@ public class MySqlCatalog extends AbstractJdbcCatalog {
         try (Statement prepared = connection.createStatement();
              ResultSet rs = prepared.executeQuery(sql)) {
             int i = 1;
-            List<TableColumn> columnList = new ArrayList<>();
+            List<DataQueryTableColumn> columnList = new ArrayList<>();
             while (rs.next()) {
                 String columnName = rs.getString("COLUMN_NAME");
                 String jdbcDataType = rs.getString("DATA_TYPE").toUpperCase();
                 String dataType = typeConvertMysql(jdbcDataType);
                 String comment = rs.getString("COLUMN_COMMENT");
-                TableColumn column = TableColumn.builder().name(columnName)
+                DataQueryTableColumn column = DataQueryTableColumn.builder().name(columnName)
                         .comment(comment)
                         .dataType(dataType)
                         .originDataType(jdbcDataType)

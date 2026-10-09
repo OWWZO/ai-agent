@@ -1,41 +1,16 @@
 package org.wwz.ai.infrastructure.adapter.port;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
-import org.springframework.stereotype.Component;
-import org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort;
-import org.wwz.ai.domain.agent.adapter.port.BrowserRelayStatus;
-import org.wwz.ai.domain.agent.adapter.port.BrowserRpcResult;
+import org.wwz.ai.domain.agent.adapter.port.BrowserRelaySocketPort;
+import org.wwz.ai.infrastructure.browserrelay.adapter.BrowserRelayPortAdapter;
 
-import java.time.Duration;
-import java.util.Map;
+/**
+ * Source-compatible name for the outbound BrowserRelayPort adapter.
+ * New relay logic lives under the browserrelay context package.
+ */
+@Deprecated
+public class BrowserRelayPortImpl extends BrowserRelayPortAdapter {
 
-@Component
-@ConditionalOnBean(BrowserRelaySocketBridge.class)
-public class BrowserRelayPortImpl implements BrowserRelayPort {
-
-    private final BrowserRelaySocketBridge bridge;
-
-    public BrowserRelayPortImpl(BrowserRelaySocketBridge bridge) {
-        this.bridge = bridge;
-    }
-
-    @Override
-    public boolean isOnline(String userId) {
-        return bridge.isOnline(userId);
-    }
-
-    @Override
-    public BrowserRelayStatus status(String userId) {
-        return bridge.status(userId);
-    }
-
-    @Override
-    public BrowserRpcResult call(String userId, String action, Map<String, Object> params, Duration timeout) {
-        return bridge.call(userId, action, params, timeout);
-    }
-
-    @Override
-    public void disconnect(String userId) {
-        bridge.disconnect(userId);
+    public BrowserRelayPortImpl(BrowserRelaySocketPort socketPort) {
+        super(socketPort);
     }
 }

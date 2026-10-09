@@ -11,11 +11,11 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 import org.wwz.ai.domain.agent.adapter.port.AgentBrowserLiveView;
 import org.wwz.ai.domain.agent.adapter.port.AgentBrowserSession;
 import org.wwz.ai.domain.agent.adapter.port.AgentBrowserSessionPort;
 import org.wwz.ai.domain.agent.adapter.port.AgentBrowserSessionStatus;
+import org.wwz.ai.infrastructure.adapter.repository.AgentBrowserSessionPersistenceService;
 import org.wwz.ai.infrastructure.dao.IAiAgentBrowserSessionDao;
 import org.wwz.ai.infrastructure.dao.po.AiAgentBrowserSession;
 import org.wwz.ai.types.agent.config.AgentBrowserProperties;
@@ -29,6 +29,7 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
 /**
@@ -44,12 +45,18 @@ public class AgentBrowserSessionAdapter implements AgentBrowserSessionPort {
     private static final MediaType JSON_MEDIA_TYPE = MediaType.get("application/json; charset=utf-8");
     private static final String DEFAULT_BASE_URL = "https://api.onkernel.com";
     private static final int DEFAULT_TIMEOUT_SECONDS = 259200;
-    private static final int LOCK_TIMEOUT_SECONDS = 30;
     private static final int BROWSER_NAME_HASH_LENGTH = 40;
+    /**
+     * 进程内按 owner 分片的互斥锁：不占用数据库连接，避免同一用户并发解析出多个浏览器。
+     * 分片而非每用户一把锁，保证锁结构有界、不会随用户数增长泄漏。
+     */
+    private static final int USER_LOCK_STRIPES = 256;
 
     private final AgentBrowserProperties properties;
     private final IAiAgentBrowserSessionDao sessionDao;
+    private final AgentBrowserSessionPersistenceService persistenceService;
     private final AgentBrowserHttpClient httpClient;
+    private final ReentrantLock[] userLocks = createUserLocks();
 
     /**
      * Production constructor. The shared client supplies the application's connection pool and dispatcher.
@@ -57,8 +64,9 @@ public class AgentBrowserSessionAdapter implements AgentBrowserSessionPort {
     @Autowired
     public AgentBrowserSessionAdapter(AgentBrowserProperties properties,
                                       IAiAgentBrowserSessionDao sessionDao,
+                                      AgentBrowserSessionPersistenceService persistenceService,
                                        OkHttpClient sharedClient) {
-        this(properties, sessionDao, new OkHttpAgentBrowserHttpClient(
+        this(properties, sessionDao, persistenceService, new OkHttpAgentBrowserHttpClient(
                 sharedClient,
                 resolveBaseUrl(properties),
                 properties.getApiKey()));
@@ -70,9 +78,26 @@ public class AgentBrowserSessionAdapter implements AgentBrowserSessionPort {
     public AgentBrowserSessionAdapter(AgentBrowserProperties properties,
                                       IAiAgentBrowserSessionDao sessionDao,
                                       AgentBrowserHttpClient httpClient) {
+        this(properties, sessionDao, new AgentBrowserSessionPersistenceService(sessionDao), httpClient);
+    }
+
+    public AgentBrowserSessionAdapter(AgentBrowserProperties properties,
+                                      IAiAgentBrowserSessionDao sessionDao,
+                                      AgentBrowserSessionPersistenceService persistenceService,
+                                      AgentBrowserHttpClient httpClient) {
         this.properties = Objects.requireNonNull(properties, "AgentBrowserProperties must not be null");
         this.sessionDao = Objects.requireNonNull(sessionDao, "IAiAgentBrowserSessionDao must not be null");
+        this.persistenceService = Objects.requireNonNull(persistenceService,
+                "AgentBrowserSessionPersistenceService must not be null");
         this.httpClient = Objects.requireNonNull(httpClient, "AgentBrowserHttpClient must not be null");
+    }
+
+    private static ReentrantLock[] createUserLocks() {
+        ReentrantLock[] locks = new ReentrantLock[USER_LOCK_STRIPES];
+        for (int i = 0; i < locks.length; i++) {
+            locks[i] = new ReentrantLock();
+        }
+        return locks;
     }
 
     /**
@@ -119,7 +144,6 @@ public class AgentBrowserSessionAdapter implements AgentBrowserSessionPort {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public AgentBrowserSession resolveForUser(String userId) {
         String normalizedUserId = requireUserId(userId);
         requireConfigured();
@@ -162,7 +186,6 @@ public class AgentBrowserSessionAdapter implements AgentBrowserSessionPort {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public AgentBrowserLiveView ensureLiveView(String userId) {
         String normalizedUserId = requireUserId(userId);
         requireConfigured();
@@ -184,7 +207,6 @@ public class AgentBrowserSessionAdapter implements AgentBrowserSessionPort {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void deleteForUser(String userId) {
         String normalizedUserId = requireUserId(userId);
         try {
@@ -205,7 +227,7 @@ public class AgentBrowserSessionAdapter implements AgentBrowserSessionPort {
                     }
                 }
                 // A remote 404 is already the desired remote state; local cleanup remains mandatory.
-                sessionDao.deleteByOwnerKey(normalizedUserId);
+                persistenceService.deleteMapping(normalizedUserId);
                 return null;
             });
         } catch (RuntimeException e) {
@@ -224,7 +246,7 @@ public class AgentBrowserSessionAdapter implements AgentBrowserSessionPort {
         if (sessionId != null) {
             BrowserSnapshot browser = getBrowser(sessionId, row.getAgentBrowserName());
             if (browser != null) {
-                return touchOrPersistExisting(userId, row, browser, false);
+                return touchOrPersistExisting(userId, browser, false);
             }
         }
 
@@ -232,7 +254,7 @@ public class AgentBrowserSessionAdapter implements AgentBrowserSessionPort {
         String browserName = StringUtils.defaultIfBlank(row.getAgentBrowserName(), desiredName);
         BrowserSnapshot browser = getBrowser(browserName, desiredName);
         if (browser != null) {
-            return touchOrPersistExisting(userId, row, browser, false);
+            return touchOrPersistExisting(userId, browser, false);
         }
 
         // Both references are gone. A new browser is an explicit reconstruction, never a silent resume.
@@ -269,23 +291,18 @@ public class AgentBrowserSessionAdapter implements AgentBrowserSessionPort {
                                                 BrowserSnapshot browser,
                                                 boolean reconstructed) {
         BrowserSnapshot normalized = normalizeBrowser(browser);
-        persistMapping(userId, normalized);
+        persistenceService.upsertMapping(
+                userId, normalized.sessionId(), normalized.name(), LocalDateTime.now());
         return new BrowserResolution(normalized, reconstructed);
     }
 
     private BrowserResolution touchOrPersistExisting(String userId,
-                                                       AiAgentBrowserSession existingRow,
                                                       BrowserSnapshot browser,
                                                       boolean reconstructed) {
         BrowserSnapshot normalized = normalizeBrowser(browser);
-        if (sameMapping(existingRow, normalized)) {
-            int updated = sessionDao.updateLastUsedAt(userId, LocalDateTime.now());
-            if (updated == 0) {
-                persistMapping(userId, normalized);
-            }
-        } else {
-            persistMapping(userId, normalized);
-        }
+        // 读-改-写收进持久化服务的短事务；Kernel HTTP 已经在事务外完成。
+        persistenceService.touchOrPersistMapping(
+                userId, normalized.sessionId(), normalized.name(), LocalDateTime.now());
         return new BrowserResolution(normalized, reconstructed);
     }
 
@@ -296,42 +313,6 @@ public class AgentBrowserSessionAdapter implements AgentBrowserSessionPort {
             throw new IllegalStateException("Kernel response did not include a browser name");
         }
         return browser.withName(browserName);
-    }
-
-    private boolean sameMapping(AiAgentBrowserSession row, BrowserSnapshot browser) {
-        return Objects.equals(row.getAgentSessionId(), browser.sessionId())
-                && Objects.equals(row.getAgentBrowserName(), browser.name());
-    }
-
-    private void persistMapping(String userId, BrowserSnapshot browser) {
-        AiAgentBrowserSession mappedByName = sessionDao.queryByAgentBrowserName(browser.name());
-        if (mappedByName != null && !userId.equals(mappedByName.getOwnerKey())) {
-            throw new IllegalStateException("Agent browser name is mapped to another userId");
-        }
-
-        LocalDateTime now = LocalDateTime.now();
-        AiAgentBrowserSession row = new AiAgentBrowserSession();
-        row.setOwnerKey(userId);
-        row.setAgentSessionId(browser.sessionId());
-        row.setAgentBrowserName(browser.name());
-        row.setLastUsedAt(now);
-        row.setCreateTime(now);
-        row.setUpdateTime(now);
-
-        int updated = sessionDao.updateSession(row);
-        if (updated == 0) {
-            try {
-                sessionDao.insert(row);
-            } catch (RuntimeException insertFailure) {
-                // The user lock normally makes this unnecessary; the re-read keeps persistence idempotent if a
-                // database caller inserted the unique owner_key row before this insert completed.
-                AiAgentBrowserSession concurrentRow = sessionDao.queryByOwnerKey(userId);
-                if (concurrentRow == null) {
-                    throw insertFailure;
-                }
-                sessionDao.updateSession(row);
-            }
-        }
     }
 
     private BrowserSnapshot getBrowser(String idOrName, String fallbackName) {
@@ -369,16 +350,18 @@ public class AgentBrowserSessionAdapter implements AgentBrowserSessionPort {
         }
     }
 
+    /**
+     * 进程内按 owner 分片互斥，不再依赖 MySQL GET_LOCK：锁不再占用数据库连接，也不会被
+     * 跨在 Kernel HTTP 调用上。跨实例场景下互斥失效，退化为可能重复创建，由 Kernel 侧
+     * 稳定浏览器名（重复创建返回 409 后按名回收）与 owner_key 唯一键兜底。
+     */
     private <T> T withUserLock(String userId, Supplier<T> action) {
-        String lockName = userLockName(userId);
-        Integer lockResult = sessionDao.getLock(lockName, LOCK_TIMEOUT_SECONDS);
-        if (!Integer.valueOf(1).equals(lockResult)) {
-            throw new IllegalStateException("Could not acquire Agent browser user lock");
-        }
+        ReentrantLock lock = userLocks[Math.floorMod(userId.hashCode(), userLocks.length)];
+        lock.lock();
         try {
             return action.get();
         } finally {
-            sessionDao.releaseLock(lockName);
+            lock.unlock();
         }
     }
 
@@ -418,10 +401,6 @@ public class AgentBrowserSessionAdapter implements AgentBrowserSessionPort {
             throw new IllegalStateException("Agent browser name is invalid");
         }
         return name;
-    }
-
-    private String userLockName(String userId) {
-        return "agent-browser-owner-" + sha256Hex(userId).substring(0, BROWSER_NAME_HASH_LENGTH);
     }
 
     private String sha256Hex(String value) {

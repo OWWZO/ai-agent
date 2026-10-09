@@ -3,11 +3,10 @@ package org.wwz.ai.infrastructure.dataquery.provider.jdbc;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.wwz.ai.domain.agent.reactor.data.QueryResult;
-import org.wwz.ai.domain.agent.reactor.data.exception.JdbcBizException;
+import org.wwz.ai.domain.agent.rag.model.query.SqlExecutionResult;
 import org.wwz.ai.infrastructure.dataquery.jdbc.connection.ConnectionWrapper;
 import org.wwz.ai.infrastructure.dataquery.jdbc.connection.JdbcConnectionFactory;
-import org.wwz.ai.domain.agent.reactor.data.provider.DataProvider;
+import org.wwz.ai.infrastructure.dataquery.jdbc.JdbcBizException;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -21,7 +20,7 @@ import static java.sql.Types.*;
  * JDBC 查询结果适配器。
  *
  * <p>该类负责取得连接、按方言创建查询语句、读取 ResultSet 并物化为领域
- * {@link QueryResult}；SQL 生成和连接池生命周期分别由请求对象及连接门面负责。结果
+ * {@link SqlExecutionResult}；SQL 生成和连接池生命周期分别由请求对象及连接门面负责。结果
  * 中同时保留最终 SQL、连接耗时、列信息和数据行，供问数上层展示和诊断。</p>
  */
 @Service
@@ -59,9 +58,9 @@ public class JdbcDataProvider implements DataProvider<JdbcQueryRequest> {
     }
 
     @Override
-    public QueryResult queryData(JdbcQueryRequest request) throws SQLException {
+    public SqlExecutionResult queryData(JdbcQueryRequest request) throws SQLException {
         // 查询结果同时承载执行 SQL、连接耗时和数据行，供上层展示结果并定位慢查询。
-        QueryResult queryResult = new QueryResult();
+        SqlExecutionResult queryResult = new SqlExecutionResult();
         long queryStartTime = System.currentTimeMillis();
         queryResult.setQueryStartTime(queryStartTime);
         try (ConnectionWrapper wrapper = JdbcConnectionFactory.getConnection(request.getJdbcConnectionConfig())) {

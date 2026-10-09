@@ -4,7 +4,7 @@ package org.wwz.ai.infrastructure.dataquery.jdbc.connection;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import lombok.extern.slf4j.Slf4j;
-import org.wwz.ai.domain.agent.reactor.data.exception.JdbcBizException;
+import org.wwz.ai.infrastructure.dataquery.jdbc.JdbcBizException;
 import org.wwz.ai.infrastructure.dataquery.jdbc.JdbcConnectionConfig;
 import org.wwz.ai.infrastructure.dataquery.jdbc.catalog.JdbcCatalog;
 import org.wwz.ai.infrastructure.dataquery.jdbc.catalog.JdbcCatalogLoader;

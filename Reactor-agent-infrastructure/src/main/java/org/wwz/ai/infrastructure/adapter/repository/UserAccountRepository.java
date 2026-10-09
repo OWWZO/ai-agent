@@ -1,8 +1,10 @@
 package org.wwz.ai.infrastructure.adapter.repository;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Repository;
 import org.wwz.ai.domain.auth.entity.UserAccount;
+import org.wwz.ai.domain.auth.exception.LoginNameAlreadyExistsException;
 import org.wwz.ai.domain.auth.repository.IUserAccountRepository;
 import org.wwz.ai.infrastructure.dao.IUserAccountDao;
 import org.wwz.ai.infrastructure.dao.po.UserAccountPO;
@@ -46,7 +48,11 @@ public class UserAccountRepository implements IUserAccountRepository {
             account.setUpdateTime(now);
         }
         UserAccountPO po = toPO(account);
-        userAccountDao.insert(po);
+        try {
+            userAccountDao.insert(po);
+        } catch (DataIntegrityViolationException e) {
+            throw new LoginNameAlreadyExistsException();
+        }
         return toDomain(po);
     }
 

@@ -2,8 +2,8 @@ package org.wwz.ai.infrastructure.dataquery.jdbc.catalog;
 
 
 import lombok.extern.slf4j.Slf4j;
-import org.wwz.ai.domain.agent.reactor.data.exception.CatalogException;
-import org.wwz.ai.domain.agent.reactor.data.exception.JdbcBizException;
+import org.wwz.ai.infrastructure.dataquery.jdbc.JdbcBizException;
+import org.wwz.ai.infrastructure.dataquery.jdbc.catalog.CatalogException;
 import org.wwz.ai.infrastructure.dataquery.jdbc.dialect.DialectEnum;
 
 import java.util.LinkedList;

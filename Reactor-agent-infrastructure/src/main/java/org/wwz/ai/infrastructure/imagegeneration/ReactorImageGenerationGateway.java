@@ -1,4 +1,4 @@
-package org.wwz.ai.infrastructure.gateway;
+package org.wwz.ai.infrastructure.imagegeneration;
 
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.OkHttpClient;
@@ -6,12 +6,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.reactor.gateway.IReactorImageGenerationGateway;
-import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationGatewayFile;
-import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationGatewayRequest;
-import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationGatewayResponse;
+import org.wwz.ai.domain.agent.image.port.IReactorImageGenerationGateway;
+import org.wwz.ai.domain.agent.image.model.ImageGenerationGatewayFile;
+import org.wwz.ai.domain.agent.image.model.ImageGenerationGatewayRequest;
+import org.wwz.ai.domain.agent.image.model.ImageGenerationGatewayResponse;
+import org.wwz.ai.infrastructure.gateway.ReactorFileGateway;
 import org.wwz.ai.infrastructure.gateway.dto.ConversationUploadFileDTO;
-import org.wwz.ai.infrastructure.imagegeneration.ImageGenerationClient;
 
 import javax.annotation.Resource;
 import java.util.ArrayList;

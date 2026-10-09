@@ -2,7 +2,7 @@ package org.wwz.ai.infrastructure.dataquery.jdbc.dialect;
 
 
 import lombok.extern.slf4j.Slf4j;
-import org.wwz.ai.domain.agent.reactor.data.exception.JdbcBizException;
+import org.wwz.ai.infrastructure.dataquery.jdbc.JdbcBizException;
 
 import java.util.LinkedList;
 import java.util.List;

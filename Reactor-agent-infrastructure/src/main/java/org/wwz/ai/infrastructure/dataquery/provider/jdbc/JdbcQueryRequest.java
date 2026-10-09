@@ -3,10 +3,9 @@ package org.wwz.ai.infrastructure.dataquery.provider.jdbc;
 
 import lombok.Data;
 import org.wwz.ai.infrastructure.dataquery.jdbc.JdbcConnectionConfig;
-import org.wwz.ai.domain.agent.reactor.data.provider.DataQueryRequest;
 
 @Data
-public class JdbcQueryRequest implements DataQueryRequest {
+public class JdbcQueryRequest {
 
     private JdbcConnectionConfig jdbcConnectionConfig;
     private String sql;
@@ -15,4 +14,3 @@ public class JdbcQueryRequest implements DataQueryRequest {
     private int pageIndex;
     private int pageSize;
 }
-
