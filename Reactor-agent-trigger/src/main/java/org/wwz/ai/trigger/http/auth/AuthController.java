@@ -19,8 +19,10 @@ import org.wwz.ai.api.dto.AuthLoginRequestDTO;
 import org.wwz.ai.api.dto.AuthRegisterRequestDTO;
 import org.wwz.ai.api.dto.AuthTokenResponseDTO;
 import org.wwz.ai.api.response.Response;
-import org.wwz.ai.application.auth.AuthApplicationService;
+import org.wwz.ai.application.auth.IAuthApplicationService;
 import org.wwz.ai.application.auth.JwtTokenService;
+import org.wwz.ai.application.auth.result.IssuedAuthToken;
+import org.wwz.ai.trigger.http.auth.mapper.AuthHttpMapper;
 import org.wwz.ai.types.enums.ResponseCode;
 
 import java.time.Duration;
@@ -34,14 +36,17 @@ public class AuthController {
 
     public static final String REFRESH_COOKIE_NAME = "reactor_refresh_token";
 
-    private final AuthApplicationService authApplicationService;
+    private final IAuthApplicationService authApplicationService;
+    private final AuthHttpMapper authHttpMapper;
     private final boolean secureCookie;
     private final String sameSite;
 
-    public AuthController(AuthApplicationService authApplicationService,
+    public AuthController(IAuthApplicationService authApplicationService,
+                          AuthHttpMapper authHttpMapper,
                           @Value("${auth.refresh-cookie.secure:false}") boolean secureCookie,
                           @Value("${auth.refresh-cookie.same-site:Lax}") String sameSite) {
         this.authApplicationService = authApplicationService;
+        this.authHttpMapper = authHttpMapper;
         this.secureCookie = secureCookie;
         this.sameSite = sameSite;
     }
@@ -49,25 +54,29 @@ public class AuthController {
     @PostMapping("/register")
     public ResponseEntity<Response<AuthTokenResponseDTO>> register(
             @RequestBody(required = false) AuthRegisterRequestDTO request) {
-        return withRefreshCookie(authApplicationService.registerWithRefreshToken(request));
+        IssuedAuthToken result = authApplicationService.register(authHttpMapper.toRegisterCommand(request));
+        return withRefreshCookie(authHttpMapper.toTokenResponse(result.result()), result.refreshToken());
     }
 
     @PostMapping("/login")
     public ResponseEntity<Response<AuthTokenResponseDTO>> login(
             @RequestBody(required = false) AuthLoginRequestDTO request) {
-        return withRefreshCookie(authApplicationService.loginWithRefreshToken(request));
+        IssuedAuthToken result = authApplicationService.login(authHttpMapper.toLoginCommand(request));
+        return withRefreshCookie(authHttpMapper.toTokenResponse(result.result()), result.refreshToken());
     }
 
     @PostMapping("/refresh")
     public ResponseEntity<Response<AuthTokenResponseDTO>> refresh(
             @CookieValue(value = REFRESH_COOKIE_NAME, required = false) String refreshToken) {
-        return withRefreshCookie(authApplicationService.refreshWithRefreshToken(refreshToken));
+        IssuedAuthToken result = authApplicationService.refresh(authHttpMapper.toRefreshCommand(refreshToken));
+        return withRefreshCookie(authHttpMapper.toTokenResponse(result.result()), result.refreshToken());
     }
 
     @PostMapping("/logout")
     public ResponseEntity<Response<Boolean>> logout(
             @CookieValue(value = REFRESH_COOKIE_NAME, required = false) String refreshToken) {
-        return withClearedRefreshCookie(authApplicationService.logout(refreshToken));
+        return withClearedRefreshCookie(authHttpMapper.toBooleanResponse(
+                authApplicationService.logout(authHttpMapper.toLogoutCommand(refreshToken))));
     }
 
     @PostMapping("/logout-all")
@@ -76,7 +85,8 @@ public class AuthController {
         if (principal == null) {
             return unauthorized();
         }
-        return withClearedRefreshCookie(authApplicationService.logoutAll(principal.userId()));
+        return withClearedRefreshCookie(authHttpMapper.toBooleanResponse(
+                authApplicationService.logoutAll(authHttpMapper.toLogoutAllCommand(principal.userId()))));
     }
 
     @GetMapping("/me")
@@ -85,7 +95,8 @@ public class AuthController {
         if (principal == null) {
             return unauthorized();
         }
-        return response(authApplicationService.me(principal.userId()));
+        return response(authHttpMapper.toAccountResponse(
+                authApplicationService.me(authHttpMapper.toMeCommand(principal.userId()))));
     }
 
     @PutMapping("/password")
@@ -96,10 +107,9 @@ public class AuthController {
         if (principal == null) {
             return unauthorized();
         }
-        return response(authApplicationService.changePassword(
-                principal.userId(),
-                String.valueOf(principal.sessionId()),
-                body));
+        return response(authHttpMapper.toBooleanResponse(authApplicationService.changePassword(
+                authHttpMapper.toChangePasswordCommand(
+                        principal.userId(), String.valueOf(principal.sessionId()), body))));
     }
 
     private JwtTokenService.AuthenticatedAccount principal(HttpServletRequest request) {
@@ -108,13 +118,14 @@ public class AuthController {
     }
 
     private ResponseEntity<Response<AuthTokenResponseDTO>> withRefreshCookie(
-            AuthApplicationService.IssuedAuthToken result) {
-        ResponseEntity.BodyBuilder builder = statusFor(result.response());
-        if (isSuccess(result.response()) && result.refreshToken() != null) {
+            Response<AuthTokenResponseDTO> result,
+            String refreshToken) {
+        ResponseEntity.BodyBuilder builder = statusFor(result);
+        if (isSuccess(result) && refreshToken != null) {
             builder.header(HttpHeaders.SET_COOKIE,
-                    refreshCookie(result.refreshToken(), Duration.ofDays(AuthApplicationService.REFRESH_SLIDING_DAYS)).toString());
+                    refreshCookie(refreshToken, Duration.ofDays(IAuthApplicationService.REFRESH_SLIDING_DAYS)).toString());
         }
-        return builder.body(result.response());
+        return builder.body(result);
     }
 
     private ResponseEntity<Response<Boolean>> withClearedRefreshCookie(Response<Boolean> result) {

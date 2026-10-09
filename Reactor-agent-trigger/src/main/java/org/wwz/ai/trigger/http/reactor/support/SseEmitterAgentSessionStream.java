@@ -2,7 +2,8 @@ package org.wwz.ai.trigger.http.reactor.support;
 
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
-import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
+import org.wwz.ai.application.agent.stream.AgentSessionStreamFrame;
+import org.wwz.ai.trigger.http.agent.mapper.AgentStreamResponseMapper;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -13,6 +14,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 触发层负责把 HTTP 协议细节封装为应用层可消费的流端口。
  */
 public class SseEmitterAgentSessionStream implements AgentSessionStream {
+
+    private static final AgentStreamResponseMapper RESPONSE_MAPPER = new AgentStreamResponseMapper();
 
     private final SseEmitter emitter;
     private final AtomicBoolean closed = new AtomicBoolean(false);
@@ -120,7 +123,7 @@ public class SseEmitterAgentSessionStream implements AgentSessionStream {
 
     public static SseEmitter.SseEventBuilder toSseEvent(Object payload) {
         SseEmitter.SseEventBuilder builder = SseEmitter.event();
-        if (payload instanceof GptProcessResult result) {
+        if (payload instanceof AgentSessionStreamFrame result) {
             if (result.getEventSeq() > 0) {
                 builder.id(Long.toString(result.getEventSeq()));
             }
@@ -128,7 +131,10 @@ public class SseEmitterAgentSessionStream implements AgentSessionStream {
                 builder.name(result.getPackageType());
             }
         }
-        return builder.data(payload);
+        Object response = payload instanceof AgentSessionStreamFrame frame
+                ? RESPONSE_MAPPER.toResponse(frame)
+                : payload;
+        return builder.data(response);
     }
 
     /**

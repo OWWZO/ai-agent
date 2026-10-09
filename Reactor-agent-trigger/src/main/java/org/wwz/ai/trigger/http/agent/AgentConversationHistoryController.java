@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.wwz.ai.api.response.Response;
 import org.wwz.ai.application.agent.authorization.ConversationSessionAuthorizationService;
+import org.wwz.ai.application.agent.stream.AgentStreamFrameMapper;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.ledger.model.ArtifactView;
 import org.wwz.ai.domain.agent.ledger.model.ConversationHistoryPage;
@@ -20,12 +21,15 @@ import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerQueryService;
 import org.wwz.ai.domain.agent.ledger.replay.ArtifactRelativePath;
 import org.wwz.ai.domain.agent.ledger.replay.ConversationHistoryReplayService;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamResult;
 import org.wwz.ai.trigger.http.agent.vo.ArtifactReferenceRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationHistoryPageRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationRunReplayRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationRunSummaryRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationSessionPageRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationSessionRespVO;
+import org.wwz.ai.trigger.http.agent.mapper.AgentStreamResponseMapper;
+import org.wwz.ai.trigger.http.agent.vo.AgentStreamResponseVO;
 import org.wwz.ai.types.agent.user.UserRequestContext;
 import org.wwz.ai.types.enums.ResponseCode;
 
@@ -42,6 +46,12 @@ public class AgentConversationHistoryController {
 
     @Resource
     private ExecutionLedgerQueryService executionLedgerQueryService;
+
+    @Resource
+    private AgentStreamFrameMapper agentStreamFrameMapper = new AgentStreamFrameMapper();
+
+    @Resource
+    private AgentStreamResponseMapper agentStreamResponseMapper = new AgentStreamResponseMapper();
 
     @Resource
     private ConversationHistoryReplayService conversationHistoryReplayService;
@@ -252,8 +262,18 @@ public class AgentConversationHistoryController {
                 .finishedAt(run.getFinishedAt())
                 .durationMs(run.getDurationMs())
                 .contextUsage(replay.getContextUsage())
-                .replayFrames(replay.getReplayFrames() == null ? List.of() : replay.getReplayFrames())
+                .replayFrames(toResponseFrames(replay.getReplayFrames()))
                 .build();
+    }
+
+    private List<AgentStreamResponseVO> toResponseFrames(List<AgentStreamResult> frames) {
+        if (frames == null) {
+            return List.of();
+        }
+        return frames.stream()
+                .map(agentStreamFrameMapper::toFrame)
+                .map(agentStreamResponseMapper::toResponse)
+                .collect(Collectors.toList());
     }
 
     private ArtifactReferenceRespVO toArtifactReferenceRespVO(ArtifactView artifact) {

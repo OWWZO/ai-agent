@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.wwz.ai.api.response.Response;
 import org.wwz.ai.application.agent.browser.BrowserPairingView;
 import org.wwz.ai.application.agent.browser.BrowserRelayApplicationService;
-import org.wwz.ai.domain.agent.adapter.port.BrowserRelayStatus;
+import org.wwz.ai.domain.agent.browser.model.BrowserConnectionStatus;
 import org.wwz.ai.types.agent.config.BrowserRelayProperties;
 import org.wwz.ai.types.agent.user.UserRequestContext;
 import org.wwz.ai.types.enums.ResponseCode;
@@ -62,9 +62,9 @@ public class BrowserPairingController {
     }
 
     @GetMapping("/status")
-    public Response<BrowserRelayStatus> status() {
-        BrowserRelayStatus status = browserRelayApplicationService.status(UserRequestContext.requireUserId());
-        return Response.<BrowserRelayStatus>builder()
+    public Response<BrowserConnectionStatus> status() {
+        BrowserConnectionStatus status = browserRelayApplicationService.status(UserRequestContext.requireUserId());
+        return Response.<BrowserConnectionStatus>builder()
                 .code(ResponseCode.SUCCESS.getCode())
                 .info(ResponseCode.SUCCESS.getInfo())
                 .data(status)

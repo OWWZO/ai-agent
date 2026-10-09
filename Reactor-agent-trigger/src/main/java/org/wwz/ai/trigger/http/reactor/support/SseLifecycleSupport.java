@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
+import org.wwz.ai.application.agent.stream.AgentSessionStreamFrame;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -33,7 +34,7 @@ public final class SseLifecycleSupport {
     }
 
     /**
-     * 向浏览器主聊天路径发送结构化心跳（如 GptProcessResult），避免前端 JSON.parse 失败。
+     * 向浏览器主聊天路径发送结构化心跳，避免前端 JSON.parse 失败。
      * 心跳必须走 {@code sender}，与业务帧串行化，禁止直接 {@code emitter.send}。
      */
     public static ScheduledFuture<?> startHeartbeat(TaskScheduler scheduler,
@@ -42,7 +43,7 @@ public final class SseLifecycleSupport {
                                                     String requestId,
                                                     long heartbeatIntervalMillis,
                                                     Logger log,
-                                                    Object heartbeatPayload) {
+                                                     AgentSessionStreamFrame heartbeatPayload) {
         // 心跳只是连接保活，不参与 Agent 业务；客户端断开或发送失败时必须关闭 emitter 让调度资源回收。
         return scheduler.scheduleAtFixedRate(() -> {
             try {

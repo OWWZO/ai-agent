@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
-import org.wwz.ai.application.auth.AuthApplicationService;
+import org.wwz.ai.application.auth.IAuthApplicationService;
 import org.wwz.ai.trigger.http.auth.AuthenticationFilter;
 import org.wwz.ai.types.agent.config.AgentExecutorProperties;
 
@@ -55,7 +55,7 @@ public class BaseFilterConfig {
 
 	@Bean
     public FilterRegistrationBean<AuthenticationFilter> authenticationFilter(
-            AuthApplicationService authApplicationService,
+            IAuthApplicationService authApplicationService,
             ObjectMapper objectMapper) {
         return this.creatAllFilter(
                 new AuthenticationFilter(authApplicationService, objectMapper),

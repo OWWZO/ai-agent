@@ -8,7 +8,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.wwz.ai.api.response.Response;
-import org.wwz.ai.application.auth.AuthApplicationService;
+import org.wwz.ai.application.auth.IAuthApplicationService;
 import org.wwz.ai.application.auth.JwtTokenService;
 import org.wwz.ai.types.agent.user.UserRequestContext;
 import org.wwz.ai.types.enums.ResponseCode;
@@ -24,10 +24,10 @@ public final class AuthenticationFilter extends OncePerRequestFilter {
 
     public static final String AUTHENTICATION_ATTRIBUTE = AuthenticationFilter.class.getName() + ".principal";
 
-    private final AuthApplicationService authApplicationService;
+    private final IAuthApplicationService authApplicationService;
     private final ObjectMapper objectMapper;
 
-    public AuthenticationFilter(AuthApplicationService authApplicationService, ObjectMapper objectMapper) {
+    public AuthenticationFilter(IAuthApplicationService authApplicationService, ObjectMapper objectMapper) {
         this.authApplicationService = authApplicationService;
         this.objectMapper = objectMapper;
     }

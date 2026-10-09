@@ -1,4 +1,4 @@
-package org.wwz.ai.trigger.http.agent.vo;
+package org.wwz.ai.trigger.http.agent.image.vo;
 
 import lombok.Data;
 

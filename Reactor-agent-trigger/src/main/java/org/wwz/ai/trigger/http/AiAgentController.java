@@ -10,8 +10,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.wwz.ai.api.response.Response;
 import org.wwz.ai.application.agent.query.AgentQuerySubmitResult;
+import org.wwz.ai.application.agent.query.GptQueryCommand;
 import org.wwz.ai.application.agent.query.IGptQueryApplicationService;
-import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
+import org.wwz.ai.trigger.http.agent.mapper.GptQueryRequestMapper;
+import org.wwz.ai.trigger.http.agent.vo.GptQueryRequestVO;
 import org.wwz.ai.types.agent.exception.AgentConcurrentRunException;
 import org.wwz.ai.types.agent.exception.AgentExecutorBusyException;
 import org.wwz.ai.types.enums.ResponseCode;
@@ -31,6 +33,9 @@ public class AiAgentController {
     @Resource
     private IGptQueryApplicationService gptQueryApplicationService;
 
+    @Resource
+    private GptQueryRequestMapper gptQueryRequestMapper;
+
     @RequestMapping(value = "/web/health", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public ResponseEntity<String> health() {
         return ResponseEntity.ok("ok");
@@ -41,10 +46,11 @@ public class AiAgentController {
      * 已有进行中的任务返回 409，不创建 SSE。
      */
     @RequestMapping(value = "/web/api/v1/gpt/queryAgentStreamIncr", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Response<Map<String, Object>>> queryAgentStreamIncr(@RequestBody GptQueryReq params) {
+    public ResponseEntity<Response<Map<String, Object>>> queryAgentStreamIncr(@RequestBody GptQueryRequestVO params) {
         String requestId = Objects.toString(params == null ? null : params.getRequestId(), "legacy-gpt-query");
         try {
-            AgentQuerySubmitResult submitted = gptQueryApplicationService.submitAgentQuery(params);
+            GptQueryCommand command = gptQueryRequestMapper.toCommand(params);
+            AgentQuerySubmitResult submitted = gptQueryApplicationService.submitAgentQuery(command);
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("accepted", submitted.isAccepted());
             data.put("sessionId", submitted.getSessionId());

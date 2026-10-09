@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.wwz.ai.api.response.Response;
 import org.wwz.ai.application.agent.featured.FeaturedConversationPublicQueryApplicationService;
+import org.wwz.ai.application.agent.stream.AgentStreamFrameMapper;
 import org.wwz.ai.domain.agent.ledger.model.ConversationHistoryDetail;
 import org.wwz.ai.domain.agent.ledger.model.ConversationHistoryPage;
 import org.wwz.ai.domain.agent.ledger.model.ConversationRunReplay;
@@ -16,11 +17,14 @@ import org.wwz.ai.domain.agent.ledger.model.FeaturedConversationCardView;
 import org.wwz.ai.domain.agent.ledger.model.FeaturedConversationPageResult;
 import org.wwz.ai.domain.agent.ledger.model.FeaturedConversationPublicDetail;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamResult;
+import org.wwz.ai.trigger.http.agent.mapper.AgentStreamResponseMapper;
 import org.wwz.ai.trigger.http.agent.vo.ConversationHistoryPageRespVO;
 import org.wwz.ai.trigger.http.agent.vo.FeaturedConversationCardRespVO;
 import org.wwz.ai.trigger.http.agent.vo.FeaturedConversationDetailRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationRunReplayRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationRunSummaryRespVO;
+import org.wwz.ai.trigger.http.agent.vo.AgentStreamResponseVO;
 import org.wwz.ai.trigger.http.agent.vo.PageRespVO;
 import org.wwz.ai.types.enums.ResponseCode;
 
@@ -37,6 +41,12 @@ public class AgentFeaturedConversationController {
 
     @Resource
     private FeaturedConversationPublicQueryApplicationService featuredConversationPublicQueryApplicationService;
+
+    @Resource
+    private AgentStreamFrameMapper agentStreamFrameMapper = new AgentStreamFrameMapper();
+
+    @Resource
+    private AgentStreamResponseMapper agentStreamResponseMapper = new AgentStreamResponseMapper();
 
     @GetMapping("/home")
     public Response<List<FeaturedConversationCardRespVO>> home(
@@ -244,8 +254,18 @@ public class AgentFeaturedConversationController {
                 .finishedAt(run.getFinishedAt())
                 .durationMs(run.getDurationMs())
                 .contextUsage(replay.getContextUsage())
-                .replayFrames(replay.getReplayFrames() == null ? List.of() : replay.getReplayFrames())
+                .replayFrames(toResponseFrames(replay.getReplayFrames()))
                 .build();
+    }
+
+    private List<AgentStreamResponseVO> toResponseFrames(List<AgentStreamResult> frames) {
+        if (frames == null) {
+            return List.of();
+        }
+        return frames.stream()
+                .map(agentStreamFrameMapper::toFrame)
+                .map(agentStreamResponseMapper::toResponse)
+                .collect(Collectors.toList());
     }
 
     /**

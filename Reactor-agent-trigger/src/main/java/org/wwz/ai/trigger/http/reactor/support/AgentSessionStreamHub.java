@@ -8,9 +8,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.application.agent.run.AgentRunFollowApplicationService;
 import org.wwz.ai.application.agent.run.FollowAttachResult;
-import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
+import org.wwz.ai.application.agent.stream.AgentStreamProjection;
+import org.wwz.ai.application.agent.stream.AgentSessionStreamFrame;
 import org.wwz.ai.application.agent.stream.AgentSessionEventBus;
-import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
 import org.wwz.ai.types.agent.config.AgentExecutorProperties;
 
@@ -53,7 +53,7 @@ public class AgentSessionStreamHub implements AgentSessionEventBus {
     private TaskScheduler heartbeatScheduler;
 
     @Override
-    public void publish(String sessionId, Object frame) {
+    public void publish(String sessionId, AgentSessionStreamFrame frame) {
         if (StringUtils.isBlank(sessionId) || frame == null) {
             return;
         }
@@ -103,7 +103,7 @@ public class AgentSessionStreamHub implements AgentSessionEventBus {
                     sessionId,
                     agentExecutorProperties.getHeartbeat().getIntervalMillis(),
                     log,
-                    AgentResponseProjectionStream.buildHeartbeat(sessionId)
+                    AgentStreamProjection.buildHeartbeat(sessionId)
             );
             SseLifecycleSupport.registerLifecycle(emitter, sessionId, heartbeatFuture, log);
             conn.attachHeartbeat(heartbeatFuture);
@@ -238,7 +238,7 @@ public class AgentSessionStreamHub implements AgentSessionEventBus {
         private final SseEmitterAgentSessionStream stream;
         private final String ownerKey;
         private final Object lock = new Object();
-        private final ArrayDeque<Object> queued = new ArrayDeque<>();
+        private final ArrayDeque<AgentSessionStreamFrame> queued = new ArrayDeque<>();
         private final AtomicBoolean closed = new AtomicBoolean(false);
         private final AtomicReference<ScheduledFuture<?>> parkedAttach = new AtomicReference<>();
         private boolean live;
@@ -270,7 +270,7 @@ public class AgentSessionStreamHub implements AgentSessionEventBus {
             }
         }
 
-        private void offer(Object frame) {
+        private void offer(AgentSessionStreamFrame frame) {
             synchronized (lock) {
                 if (closed.get()) {
                     return;
@@ -283,7 +283,7 @@ public class AgentSessionStreamHub implements AgentSessionEventBus {
             }
         }
 
-        private void sendDirect(Object frame) throws Exception {
+        private void sendDirect(AgentSessionStreamFrame frame) throws Exception {
             synchronized (lock) {
                 if (closed.get()) {
                     return;
@@ -296,7 +296,7 @@ public class AgentSessionStreamHub implements AgentSessionEventBus {
             synchronized (lock) {
                 live = true;
                 while (!queued.isEmpty()) {
-                    Object frame = queued.removeFirst();
+                    AgentSessionStreamFrame frame = queued.removeFirst();
                     if (frameSeq(frame) <= lastSeq) {
                         continue;
                     }
@@ -305,7 +305,7 @@ public class AgentSessionStreamHub implements AgentSessionEventBus {
             }
         }
 
-        private void sendLocked(Object frame) {
+        private void sendLocked(AgentSessionStreamFrame frame) {
             if (stream.isAborted()) {
                 close(false);
                 return;
@@ -349,8 +349,8 @@ public class AgentSessionStreamHub implements AgentSessionEventBus {
         }
     }
 
-    private static long frameSeq(Object frame) {
-        if (frame instanceof GptProcessResult result) {
+    private static long frameSeq(AgentSessionStreamFrame frame) {
+        if (frame instanceof AgentSessionStreamFrame result) {
             return result.getEventSeq();
         }
         return 0L;
