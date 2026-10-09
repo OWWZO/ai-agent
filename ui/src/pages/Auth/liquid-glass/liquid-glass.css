@@ -1,0 +1,124 @@
+/* Liquid Glass 登录页样式
+ * 来源：liquid-glass-login-page/app/globals.css（原样迁移）
+ * 关键约束：所有设计 token 限定在 .liquid-glass-scope 作用域内，
+ * 不写入全局 :root，避免污染项目既有的 Editorial Tech / chat-* / kimi-* 体系。
+ *
+ * 注意：项目中 tailwind.config.js 开启了 important: true，所有 Tailwind 工具类自带 !important。
+ * 因此对 Card / Button / Input 的"换皮"通过 JSX className 里的同组工具类（让 twMerge 替换 cva 基类）
+ * 来实现，而不是在这里写 !important 兜底 —— 这里的样式只负责 token 与动画工具类。
+ */
+
+.liquid-glass-scope {
+  /* ---- 源项目 :root token（amber 主色 + 玻璃质感），仅本作用域生效 ---- */
+  --background: oklch(0.98 0.02 85);
+  --foreground: oklch(0.35 0.02 220);
+  --card: oklch(1 0 0 / 0.7);
+  --card-foreground: oklch(0.35 0.02 220);
+  --popover: oklch(1 0 0 / 0.9);
+  --popover-foreground: oklch(0.35 0.02 220);
+  --primary: oklch(0.65 0.15 45);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.75 0.12 50);
+  --secondary-foreground: oklch(0.35 0.02 220);
+  --muted: oklch(0.98 0.02 85);
+  --muted-foreground: oklch(0.35 0.02 220);
+  --accent: oklch(0.75 0.12 50);
+  --accent-foreground: oklch(1 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.9 0.01 85);
+  --input: oklch(1 0 0);
+  --ring: oklch(0.65 0.15 45 / 0.5);
+
+  --radius: 1rem;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* 源页面字体为 next/font/google 的 Inter；
+     此处复用项目已打包的 @fontsource-variable/inter，避免运行时网络请求。 */
+  --font-inter: "Inter Variable", "Inter", var(--font-ui);
+  --font-sans: var(--font-inter);
+}
+
+/* ---- 源项目 @layer utilities（原样迁移，作用域限定） ---- */
+
+.liquid-glass-scope .glass-effect {
+  backdrop-filter: blur(25px) saturate(180%);
+  -webkit-backdrop-filter: blur(25px) saturate(180%);
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.liquid-glass-scope .gradient-bg {
+  background-image: url("/images/gradient-background.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  position: relative;
+}
+
+.liquid-glass-scope .gradient-bg::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.05);
+  pointer-events: none;
+}
+
+.liquid-glass-scope .hover-lift {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.liquid-glass-scope .hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+.liquid-glass-scope .focus-glow:focus {
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.3);
+  outline: none;
+}
+
+.liquid-glass-scope .ripple-effect {
+  position: relative;
+  overflow: hidden;
+}
+
+.liquid-glass-scope .ripple-effect::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transform: translate(-50%, -50%);
+  transition:
+    width 0.6s,
+    height 0.6s;
+}
+
+.liquid-glass-scope .ripple-effect:active::before {
+  width: 300px;
+  height: 300px;
+}
+
+/* 浮空玻璃光斑（无 Tailwind 工具类竞争，常规优先级即可） */
+.liquid-glass-scope .liquid-glass-orb {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  box-shadow:
+    0 8px 32px rgba(255, 255, 255, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
