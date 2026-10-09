@@ -105,9 +105,10 @@ Thumbs.db
 /Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/service/execute/auto1/step/
 /.playwright-mcp/
 /.codegraph/
-/.codegraph/
-/.codegraph/
+/.zread/
+/.pytest_cache/
+/.ruff_cache/
+/.workbuddy-ai/
 /plans/
 /browser-extension/
-/adapter-host/
 /adapter-host/
