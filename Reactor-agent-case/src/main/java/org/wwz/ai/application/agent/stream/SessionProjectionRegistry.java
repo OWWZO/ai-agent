@@ -15,28 +15,28 @@ import java.util.concurrent.CopyOnWriteArrayList;
 @Component
 public class SessionProjectionRegistry {
 
-    private final ConcurrentHashMap<String, CopyOnWriteArrayList<AgentResponseProjectionStream>> bySession =
+    private final ConcurrentHashMap<String, CopyOnWriteArrayList<AgentStreamProjection>> bySession =
             new ConcurrentHashMap<>();
 
-    public void register(String sessionId, AgentResponseProjectionStream stream) {
+    public void register(String sessionId, AgentStreamProjection stream) {
         if (StringUtils.isBlank(sessionId) || stream == null) {
             return;
         }
         String key = sessionId.trim();
         bySession.compute(key, (ignored, streams) -> {
-            CopyOnWriteArrayList<AgentResponseProjectionStream> current =
+            CopyOnWriteArrayList<AgentStreamProjection> current =
                     streams == null ? new CopyOnWriteArrayList<>() : streams;
             current.addIfAbsent(stream);
             return current;
         });
     }
 
-    public void unregister(String sessionId, AgentResponseProjectionStream stream) {
+    public void unregister(String sessionId, AgentStreamProjection stream) {
         unregister(sessionId, stream, () -> { });
     }
 
     public void unregister(String sessionId,
-                           AgentResponseProjectionStream stream,
+                           AgentStreamProjection stream,
                            Runnable onSessionIdle) {
         if (StringUtils.isBlank(sessionId) || stream == null) {
             return;
@@ -56,16 +56,16 @@ public class SessionProjectionRegistry {
         });
     }
 
-    public List<AgentResponseProjectionStream> listLive(String sessionId) {
+    public List<AgentStreamProjection> listLive(String sessionId) {
         if (StringUtils.isBlank(sessionId)) {
             return List.of();
         }
-        CopyOnWriteArrayList<AgentResponseProjectionStream> streams = bySession.get(sessionId.trim());
+        CopyOnWriteArrayList<AgentStreamProjection> streams = bySession.get(sessionId.trim());
         if (streams == null || streams.isEmpty()) {
             return List.of();
         }
-        List<AgentResponseProjectionStream> live = new ArrayList<>();
-        for (AgentResponseProjectionStream stream : streams) {
+        List<AgentStreamProjection> live = new ArrayList<>();
+        for (AgentStreamProjection stream : streams) {
             if (stream != null && !stream.isClosed()) {
                 live.add(stream);
             }

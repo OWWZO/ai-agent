@@ -6,5 +6,5 @@ package org.wwz.ai.application.agent.stream;
 @FunctionalInterface
 public interface StreamFrameConsumer {
 
-    void accept(Object frame) throws Exception;
+    void accept(AgentSessionStreamFrame frame) throws Exception;
 }

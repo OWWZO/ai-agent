@@ -1,12 +1,20 @@
 package org.wwz.ai.application.agent.browser;
 
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort;
-import org.wwz.ai.domain.agent.adapter.port.BrowserRelayStatus;
+import org.wwz.ai.domain.agent.adapter.port.BrowserRelaySocketPort;
+import org.wwz.ai.domain.agent.browser.model.BrowserCommand;
+import org.wwz.ai.domain.agent.browser.model.BrowserCommandResult;
+import org.wwz.ai.domain.agent.browser.model.BrowserConnectionStatus;
+import org.wwz.ai.domain.agent.browser.model.BrowserRelayConnection;
+import org.wwz.ai.domain.agent.browser.model.BrowserRelayInboundMessage;
+import org.wwz.ai.domain.agent.browser.policy.BrowserRelayCommandPolicy;
+import org.wwz.ai.domain.agent.browser.policy.BrowserRelayOwnershipPolicy;
 import org.wwz.ai.types.agent.config.BrowserRelayProperties;
 
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.HexFormat;
 import java.util.Iterator;
 import java.util.Map;
@@ -16,15 +24,24 @@ import java.util.concurrent.ConcurrentHashMap;
 public class BrowserRelayApplicationService {
 
     private final BrowserRelayProperties properties;
-    private final BrowserRelayPort browserRelayPort;
+    private final BrowserRelaySocketPort socketPort;
+    private final BrowserRelayCommandPolicy commandPolicy = new BrowserRelayCommandPolicy();
+    private final BrowserRelayOwnershipPolicy ownershipPolicy = new BrowserRelayOwnershipPolicy();
     private final ConcurrentHashMap<String, BrowserPairingRecord> byToken = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> tokenByCode = new ConcurrentHashMap<>();
     private final SecureRandom random = new SecureRandom();
 
+    @Autowired
     public BrowserRelayApplicationService(BrowserRelayProperties properties,
-                                          org.springframework.beans.factory.ObjectProvider<BrowserRelayPort> browserRelayPortProvider) {
+                                          org.springframework.beans.factory.ObjectProvider<BrowserRelaySocketPort> socketPortProvider) {
         this.properties = properties;
-        this.browserRelayPort = browserRelayPortProvider.getIfAvailable();
+        this.socketPort = socketPortProvider.getIfAvailable();
+    }
+
+    public BrowserRelayApplicationService(BrowserRelayProperties properties,
+                                          BrowserRelaySocketPort socketPort) {
+        this.properties = properties;
+        this.socketPort = socketPort;
     }
 
     public BrowserPairingView createPairing(String userId, String relayUrl) {
@@ -88,7 +105,7 @@ public class BrowserRelayApplicationService {
     }
 
     public void revokeUser(String userId) {
-        if (StringUtils.isBlank(userId) || browserRelayPort == null) {
+        if (StringUtils.isBlank(userId)) {
             return;
         }
         Iterator<Map.Entry<String, BrowserPairingRecord>> it = byToken.entrySet().iterator();
@@ -99,14 +116,74 @@ public class BrowserRelayApplicationService {
                 it.remove();
             }
         }
-        browserRelayPort.disconnect(userId);
+        if (socketPort != null) {
+            socketPort.disconnect(userId);
+        }
     }
 
-    public BrowserRelayStatus status(String userId) {
-        if (browserRelayPort == null || StringUtils.isBlank(userId)) {
-            return BrowserRelayStatus.builder().connected(false).build();
+    public void disconnect(String userId) {
+        if (socketPort != null && StringUtils.isNotBlank(userId)) {
+            socketPort.disconnect(userId);
         }
-        return browserRelayPort.status(userId);
+    }
+
+    public BrowserConnectionStatus status(String userId) {
+        if (socketPort == null || StringUtils.isBlank(userId)) {
+            return BrowserConnectionStatus.offline();
+        }
+        return socketPort.status(userId);
+    }
+
+    /**
+     * Application seam used by the WebSocket trigger after it adapts a
+     * WebSocketSession to a typed channel.
+     */
+    public void registerConnection(String userId, BrowserRelayConnection connection) {
+        if (socketPort == null || !ownershipPolicy.owns(userId, connection)) {
+            return;
+        }
+        socketPort.register(connection);
+    }
+
+    public void unregisterConnection(String userId, String connectionId) {
+        if (socketPort == null || StringUtils.isBlank(userId) || StringUtils.isBlank(connectionId)) {
+            return;
+        }
+        socketPort.unregister(userId, connectionId);
+    }
+
+    public void accept(BrowserRelayInboundMessage message) {
+        if (socketPort == null || !ownershipPolicy.hasIdentity(message)) {
+            return;
+        }
+        socketPort.accept(message);
+    }
+
+    /**
+     * Executes one typed browser command. Action and timeout policy are kept
+     * here so the HTTP and Agent-tool paths share the same semantics.
+     */
+    public BrowserCommandResult execute(BrowserCommand command) {
+        if (command == null || StringUtils.isBlank(command.userId()) || command.action() == null) {
+            return BrowserCommandResult.invalid(command == null ? null : command.rpcId(),
+                    "userId and action are required");
+        }
+        if (commandPolicy.isLeaseRelease(command)) {
+            return BrowserCommandResult.leaseReleased(command.rpcId());
+        }
+        if (socketPort == null || !socketPort.isOnline(command.userId())) {
+            return BrowserCommandResult.offline(command.rpcId());
+        }
+        BrowserCommandResult rejection = commandPolicy.rejection(command);
+        if (rejection != null) {
+            return rejection;
+        }
+        BrowserCommand normalized = commandPolicy.withEffectiveTimeout(
+                command,
+                Duration.ofSeconds(Math.max(1, properties.getRpcTimeoutSeconds())),
+                System.currentTimeMillis()
+        );
+        return socketPort.execute(normalized);
     }
 
     private void purgeExpired() {

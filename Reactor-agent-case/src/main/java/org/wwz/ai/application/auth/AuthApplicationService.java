@@ -1,18 +1,22 @@
 package org.wwz.ai.application.auth;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.wwz.ai.api.IAuthService;
-import org.wwz.ai.api.dto.AuthAccountResponseDTO;
-import org.wwz.ai.api.dto.AuthChangePasswordRequestDTO;
-import org.wwz.ai.api.dto.AuthLoginRequestDTO;
-import org.wwz.ai.api.dto.AuthRegisterRequestDTO;
-import org.wwz.ai.api.dto.AuthTokenResponseDTO;
-import org.wwz.ai.api.response.Response;
+import org.wwz.ai.application.auth.command.AuthChangePasswordCommand;
+import org.wwz.ai.application.auth.command.AuthLoginCommand;
+import org.wwz.ai.application.auth.command.AuthLogoutAllCommand;
+import org.wwz.ai.application.auth.command.AuthLogoutCommand;
+import org.wwz.ai.application.auth.command.AuthMeCommand;
+import org.wwz.ai.application.auth.command.AuthRefreshCommand;
+import org.wwz.ai.application.auth.command.AuthRegisterCommand;
+import org.wwz.ai.application.auth.result.AuthAccountResult;
+import org.wwz.ai.application.auth.result.AuthResult;
+import org.wwz.ai.application.auth.result.AuthTokenResult;
+import org.wwz.ai.application.auth.result.IssuedAuthToken;
 import org.wwz.ai.domain.auth.entity.UserAccount;
 import org.wwz.ai.domain.auth.entity.UserAuthSession;
+import org.wwz.ai.domain.auth.exception.LoginNameAlreadyExistsException;
 import org.wwz.ai.domain.auth.repository.IUserAccountRepository;
 import org.wwz.ai.domain.auth.repository.IUserAuthSessionRepository;
 import org.wwz.ai.types.enums.ResponseCode;
@@ -33,11 +37,11 @@ import java.util.UUID;
  */
 @Service
 @RequiredArgsConstructor
-public class AuthApplicationService implements IAuthService {
+public class AuthApplicationService implements IAuthApplicationService {
 
     public static final String DEFAULT_ROLE = "USER";
     public static final String ADMIN_ROLE = "ADMIN";
-    public static final long REFRESH_SLIDING_DAYS = 30;
+    public static final long REFRESH_SLIDING_DAYS = IAuthApplicationService.REFRESH_SLIDING_DAYS;
     public static final long REFRESH_ABSOLUTE_DAYS = UserAuthSession.ABSOLUTE_LIFETIME_DAYS;
 
     private static final String TOKEN_TYPE = "Bearer";
@@ -51,23 +55,14 @@ public class AuthApplicationService implements IAuthService {
 
     @Override
     @Transactional
-    public Response<AuthTokenResponseDTO> register(AuthRegisterRequestDTO request) {
-        return registerWithRefreshToken(request).response();
-    }
-
-    /**
-     * HTTP adapters use this result to put the raw refresh token in a cookie.
-     * It is intentionally separate from the JSON DTO.
-     */
-    @Transactional
-    public IssuedAuthToken registerWithRefreshToken(AuthRegisterRequestDTO request) {
-        if (request == null) {
+    public IssuedAuthToken register(AuthRegisterCommand command) {
+        if (command == null) {
             return tokenFailure(ResponseCode.ILLEGAL_PARAMETER, "Registration request is required");
         }
 
-        String loginName = normalizeLoginName(request.getLoginName());
-        String nickname = normalize(request.getNickname());
-        if (loginName == null || request.getPassword() == null || request.getPassword().isBlank()
+        String loginName = normalizeLoginName(command.loginName());
+        String nickname = normalize(command.nickname());
+        if (loginName == null || command.password() == null || command.password().isBlank()
                 || nickname == null) {
             return tokenFailure(ResponseCode.ILLEGAL_PARAMETER, "Login name, password and nickname are required");
         }
@@ -77,7 +72,7 @@ public class AuthApplicationService implements IAuthService {
 
         String passwordHash;
         try {
-            passwordHash = passwordPolicy.encode(request.getPassword());
+            passwordHash = passwordPolicy.encode(command.password());
         } catch (IllegalArgumentException e) {
             return tokenFailure(ResponseCode.ILLEGAL_PARAMETER, e.getMessage());
         }
@@ -100,30 +95,25 @@ public class AuthApplicationService implements IAuthService {
         try {
             UserAccount saved = accountRepository.save(account);
             return issueTokenPair(saved);
-        } catch (DataIntegrityViolationException e) {
+        } catch (LoginNameAlreadyExistsException e) {
             return tokenFailure(ResponseCode.ILLEGAL_PARAMETER, "Login name already exists");
         }
     }
 
     @Override
     @Transactional
-    public Response<AuthTokenResponseDTO> login(AuthLoginRequestDTO request) {
-        return loginWithRefreshToken(request).response();
-    }
-
-    @Transactional
-    public IssuedAuthToken loginWithRefreshToken(AuthLoginRequestDTO request) {
-        if (request == null) {
+    public IssuedAuthToken login(AuthLoginCommand command) {
+        if (command == null) {
             return tokenFailure(ResponseCode.LOGIN_FAILED, "Invalid credentials");
         }
 
         String loginName = normalizeLoginName(
-                request.getLoginName() == null ? request.getAccount() : request.getLoginName()
+                command.loginName() == null ? command.account() : command.loginName()
         );
         UserAccount account = loginName == null ? null : accountRepository.findByLoginName(loginName);
         if (account == null
                 || !account.isActive()
-                || !passwordPolicy.matches(request.getPassword(), account.getPasswordHash())) {
+                || !passwordPolicy.matches(command.password(), account.getPasswordHash())) {
             return tokenFailure(ResponseCode.LOGIN_FAILED, "Invalid credentials");
         }
 
@@ -135,12 +125,8 @@ public class AuthApplicationService implements IAuthService {
 
     @Override
     @Transactional
-    public Response<AuthTokenResponseDTO> refresh(String refreshToken) {
-        return refreshWithRefreshToken(refreshToken).response();
-    }
-
-    @Transactional
-    public IssuedAuthToken refreshWithRefreshToken(String refreshToken) {
+    public IssuedAuthToken refresh(AuthRefreshCommand command) {
+        String refreshToken = command == null ? null : command.refreshToken();
         if (refreshToken == null || refreshToken.isBlank()) {
             return tokenFailure(ResponseCode.LOGIN_FAILED, "Invalid refresh token");
         }
@@ -169,17 +155,17 @@ public class AuthApplicationService implements IAuthService {
         }
 
         JwtTokenService.IssuedAccessToken accessToken = jwtTokenService.issue(account, session.getSessionId());
-        return success(AuthTokenResponseDTO.builder()
-                .tokenType(TOKEN_TYPE)
-                .accessToken(accessToken.value())
-                .expiresIn(accessToken.expiresIn())
-                .user(toAccountResponse(account))
-                .build(), nextRefreshToken);
+        return success(new AuthTokenResult(
+                TOKEN_TYPE,
+                accessToken.value(),
+                accessToken.expiresIn(),
+                toAccountResult(account)), nextRefreshToken);
     }
 
     @Override
     @Transactional
-    public Response<Boolean> logout(String refreshToken) {
+    public AuthResult<Boolean> logout(AuthLogoutCommand command) {
+        String refreshToken = command == null ? null : command.refreshToken();
         if (refreshToken != null && !refreshToken.isBlank()) {
             authSessionRepository.revokeByRefreshTokenHash(hashRefreshToken(refreshToken), now());
         }
@@ -188,8 +174,8 @@ public class AuthApplicationService implements IAuthService {
 
     @Override
     @Transactional
-    public Response<Boolean> logoutAll(String userId) {
-        UserAccount account = enabledAccount(userId);
+    public AuthResult<Boolean> logoutAll(AuthLogoutAllCommand command) {
+        UserAccount account = enabledAccount(command == null ? null : command.userId());
         if (account == null) {
             return failure(ResponseCode.LOGIN_FAILED, "Authentication is required");
         }
@@ -199,28 +185,26 @@ public class AuthApplicationService implements IAuthService {
 
     @Override
     @Transactional(readOnly = true)
-    public Response<AuthAccountResponseDTO> me(String userId) {
-        UserAccount account = enabledAccount(userId);
+    public AuthResult<AuthAccountResult> me(AuthMeCommand command) {
+        UserAccount account = enabledAccount(command == null ? null : command.userId());
         if (account == null) {
             return failure(ResponseCode.LOGIN_FAILED, "Authentication is required");
         }
-        return success(toAccountResponse(account));
+        return success(toAccountResult(account));
     }
 
     @Override
     @Transactional
-    public Response<Boolean> changePassword(String userId,
-                                             String currentSessionId,
-                                             AuthChangePasswordRequestDTO request) {
-        UserAccount account = enabledAccount(userId);
-        if (account == null || request == null
-                || !passwordPolicy.matches(request.getOldPassword(), account.getPasswordHash())) {
+    public AuthResult<Boolean> changePassword(AuthChangePasswordCommand command) {
+        UserAccount account = enabledAccount(command == null ? null : command.userId());
+        if (account == null || command == null
+                || !passwordPolicy.matches(command.oldPassword(), account.getPasswordHash())) {
             return failure(ResponseCode.LOGIN_FAILED, "Current password is incorrect");
         }
 
         String newPasswordHash;
         try {
-            newPasswordHash = passwordPolicy.encode(request.getNewPassword());
+            newPasswordHash = passwordPolicy.encode(command.newPassword());
         } catch (IllegalArgumentException e) {
             return failure(ResponseCode.ILLEGAL_PARAMETER, e.getMessage());
         }
@@ -228,7 +212,7 @@ public class AuthApplicationService implements IAuthService {
             return failure(ResponseCode.UN_ERROR, "Password update failed");
         }
 
-        String retainedSessionId = normalize(currentSessionId);
+        String retainedSessionId = normalize(command.currentSessionId());
         if (retainedSessionId != null) {
             UserAuthSession currentSession = authSessionRepository.findBySessionId(retainedSessionId);
             if (currentSession == null || !currentSession.belongsTo(account.getUserId())) {
@@ -279,12 +263,11 @@ public class AuthApplicationService implements IAuthService {
                 .build());
 
         JwtTokenService.IssuedAccessToken accessToken = jwtTokenService.issue(account, session.getSessionId());
-        return success(AuthTokenResponseDTO.builder()
-                .tokenType(TOKEN_TYPE)
-                .accessToken(accessToken.value())
-                .expiresIn(accessToken.expiresIn())
-                .user(toAccountResponse(account))
-                .build(), refreshToken);
+        return success(new AuthTokenResult(
+                TOKEN_TYPE,
+                accessToken.value(),
+                accessToken.expiresIn(),
+                toAccountResult(account)), refreshToken);
     }
 
     private UserAccount enabledAccount(String userId) {
@@ -296,14 +279,12 @@ public class AuthApplicationService implements IAuthService {
         return account != null && account.isActive() ? account : null;
     }
 
-    private AuthAccountResponseDTO toAccountResponse(UserAccount account) {
-        return AuthAccountResponseDTO.builder()
-                .userId(account.getUserId())
-                .account(account.getLoginName())
-                .loginName(account.getLoginName())
-                .nickname(account.getNickname())
-                .role(account.getRole())
-                .build();
+    private AuthAccountResult toAccountResult(UserAccount account) {
+        return new AuthAccountResult(
+                account.getUserId(),
+                account.getLoginName(),
+                account.getNickname(),
+                account.getRole());
     }
 
     private LocalDateTime now() {
@@ -344,33 +325,18 @@ public class AuthApplicationService implements IAuthService {
     }
 
     private IssuedAuthToken tokenFailure(ResponseCode code, String info) {
-        return new IssuedAuthToken(failureResponse(code, info), null);
+        return new IssuedAuthToken(failure(code, info), null);
     }
 
-    private <T> Response<T> success(T data) {
-        return Response.<T>builder()
-                .code(ResponseCode.SUCCESS.getCode())
-                .info(ResponseCode.SUCCESS.getInfo())
-                .data(data)
-                .build();
+    private <T> AuthResult<T> success(T data) {
+        return AuthResult.success(data);
     }
 
-    private IssuedAuthToken success(AuthTokenResponseDTO data, String refreshToken) {
+    private IssuedAuthToken success(AuthTokenResult data, String refreshToken) {
         return new IssuedAuthToken(success(data), refreshToken);
     }
 
-    private <T> Response<T> failure(ResponseCode code, String info) {
-        return failureResponse(code, info);
-    }
-
-    private <T> Response<T> failureResponse(ResponseCode code, String info) {
-        return Response.<T>builder()
-                .code(code.getCode())
-                .info(info == null || info.isBlank() ? code.getInfo() : info)
-                .data(null)
-                .build();
-    }
-
-    public record IssuedAuthToken(Response<AuthTokenResponseDTO> response, String refreshToken) {
+    private <T> AuthResult<T> failure(ResponseCode code, String info) {
+        return AuthResult.failure(code, info);
     }
 }

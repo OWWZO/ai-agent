@@ -8,7 +8,7 @@ import org.wwz.ai.application.agent.execute.IExecuteStrategy;
 import org.wwz.ai.application.agent.stream.AgentSessionPrinter;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
 import org.wwz.ai.domain.agent.memory.SessionContextMemoryService;
 import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
@@ -54,10 +54,10 @@ public class PlanSolveAgentExecuteStrategy implements IExecuteStrategy {
     private IPlanApprovalRepository planApprovalRepository;
 
     @Override
-    public void execute(AgentRequest request, AgentSessionStream stream) throws Exception {
+    public void execute(AgentExecutionCommand request, AgentSessionStream stream) throws Exception {
         // PlanSolve 与 ReAct 共用跨轮记忆 hydrate，但执行工厂负责规划、执行两阶段的具体编排。
         enrichWorkingMemory(request);
-        StrategyHandler<AgentRequest, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext, String> executeHandler
+        StrategyHandler<AgentExecutionCommand, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext, String> executeHandler
                 = defaultPlanSolveAgentExecuteStrategyFactory.armoryStrategyHandler();
         DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext =
                 DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext.builder()
@@ -105,7 +105,7 @@ public class PlanSolveAgentExecuteStrategy implements IExecuteStrategy {
         }
     }
 
-    private void enrichWorkingMemory(AgentRequest request) {
+    private void enrichWorkingMemory(AgentExecutionCommand request) {
         if (request == null) {
             return;
         }

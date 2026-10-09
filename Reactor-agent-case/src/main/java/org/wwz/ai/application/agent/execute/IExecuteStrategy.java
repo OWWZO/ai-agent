@@ -1,7 +1,7 @@
 package org.wwz.ai.application.agent.execute;
 
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 
 /**
  * 应用层执行策略接口。
@@ -9,5 +9,5 @@ import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
  */
 public interface IExecuteStrategy {
 
-    void execute(AgentRequest request, AgentSessionStream stream) throws Exception;
+    void execute(AgentExecutionCommand request, AgentSessionStream stream) throws Exception;
 }

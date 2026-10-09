@@ -1,38 +1,36 @@
 package org.wwz.ai.application.agent.dataquery;
 
+import org.wwz.ai.application.agent.dataquery.command.ColumnSchemaRecallCommand;
+import org.wwz.ai.application.agent.dataquery.command.ColumnValueRecallCommand;
+import org.wwz.ai.application.agent.dataquery.command.DataAgentChatCommand;
+import org.wwz.ai.application.agent.dataquery.command.DataQueryCommand;
+import org.wwz.ai.application.agent.dataquery.result.DataQueryModelResult;
+import org.wwz.ai.application.agent.dataquery.result.DataQueryResult;
+import org.wwz.ai.application.agent.dataquery.result.Nl2SqlQueryResult;
+import org.wwz.ai.application.agent.dataquery.result.SqlQueryResult;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
-import org.wwz.ai.domain.agent.reactor.data.QueryResult;
-import org.wwz.ai.domain.agent.reactor.data.dto.ChatQueryData;
-import org.wwz.ai.domain.agent.reactor.data.dto.ColumnEsRecallReq;
-import org.wwz.ai.domain.agent.reactor.data.dto.ColumnVectorRecallReq;
-import org.wwz.ai.domain.agent.reactor.data.dto.NL2SQLReq;
-import org.wwz.ai.domain.agent.reactor.model.req.DataAgentChatReq;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
-/**
- * 数据问答应用服务接口。
- * 为 dataagent 入口提供唯一 case seam，不允许入口层继续回流到已删除的 DataAgent bridge。
- */
+/** Application seam for Data Query use cases. */
 public interface IDataAgentApplicationService {
+    Nl2SqlQueryResult queryAllSchema();
 
-    NL2SQLReq queryAllSchemaNl2SqlReq();
+    List<Map<String, Object>> vectorRecall(ColumnSchemaRecallCommand command);
 
-    List<Map<String, Object>> vectorRecall(ColumnVectorRecallReq req);
+    List<Map<String, Object>> esRecall(ColumnValueRecallCommand command) throws IOException;
 
-    List<Map<String, Object>> esRecall(ColumnEsRecallReq req) throws IOException;
+    void chatQuery(DataAgentChatCommand command, AgentSessionStream stream) throws Exception;
 
-    void chatQuery(DataAgentChatReq req, AgentSessionStream stream) throws Exception;
+    List<DataQueryResult> apiChatQuery(DataAgentChatCommand command);
 
-    List<ChatQueryData> apiChatQuery(DataAgentChatReq req);
+    SqlQueryResult testQuery(DataQueryCommand command);
 
-    Object testQuery(DataAgentChatReq req) throws Exception;
+    Nl2SqlQueryResult buildNl2SqlQuery(DataQueryCommand command) throws Exception;
 
-    NL2SQLReq getNl2SqlReq(String query) throws Exception;
+    List<DataQueryModelResult> queryAllModelsWithSchema();
 
-    List<?> queryAllModelsWithSchema();
-
-    QueryResult previewData(String modelCode) throws Exception;
+    SqlQueryResult previewData(String modelCode) throws Exception;
 }

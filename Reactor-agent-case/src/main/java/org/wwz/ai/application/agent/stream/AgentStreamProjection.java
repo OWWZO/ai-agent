@@ -2,13 +2,13 @@ package org.wwz.ai.application.agent.stream;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
-import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
-import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamAccumulator;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamEvent;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamResult;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.enums.ResponseTypeEnum;
-import org.wwz.ai.domain.agent.runtime.handler.AgentResponseHandler;
+import org.wwz.ai.domain.agent.runtime.handler.AgentStreamEventHandler;
 
 import java.util.ArrayList;
 import java.util.ArrayDeque;
@@ -21,13 +21,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 将执行内核的 {@link AgentResponse} 投影为浏览器侧 {@link GptProcessResult}。
+ * 将执行内核的 {@link AgentStreamEvent} 投影为 Case {@link AgentSessionStreamFrame}。
  * 应用层直接调度时使用，替代旧的 HTTP loopback 再解析路径。
  * <p>投影只赋序、缓冲并发布到 {@link AgentSessionEventBus}。HTTP 观察连接由 Hub 订阅。
  * HITL resume 等仍可挂本地 downstream。断流窗口内的帧按 {@code lastEventSeq} 回放。</p>
  */
 @Slf4j
-public class AgentResponseProjectionStream implements AgentSessionStream {
+public class AgentStreamProjection implements AgentSessionStream {
 
     /** 断流窗口内保留的最近投影帧数（含 tool/结果，不含心跳）。 */
     static final int REPLAY_BUFFER_SIZE = 512;
@@ -36,38 +36,39 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
     private final AgentSessionEventBus eventBus;
     private final SessionEventClock eventClock;
     private SessionProjectionRegistry projectionRegistry;
-    private final AgentRequest request;
-    private final Map<AgentType, AgentResponseHandler> handlerMap;
-    private final List<AgentResponse> agentRespList = new ArrayList<>();
-    private final EventResult eventResult = new EventResult();
+    private final AgentExecutionCommand request;
+    private final Map<AgentType, AgentStreamEventHandler> handlerMap;
+    private final List<AgentStreamEvent> agentRespList = new ArrayList<>();
+    private final AgentStreamAccumulator eventResult = new AgentStreamAccumulator();
     private final List<Runnable> abortHandlers = new CopyOnWriteArrayList<>();
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final AtomicLong eventSequence = new AtomicLong();
     private final long startTime = System.currentTimeMillis();
-    private final Deque<GptProcessResult> replayBuffer = new ArrayDeque<>();
+    private final Deque<AgentSessionStreamFrame> replayBuffer = new ArrayDeque<>();
     private final Object bufferLock = new Object();
+    private final AgentStreamFrameMapper frameMapper = new AgentStreamFrameMapper();
     /**
-     * 主/子 Agent 并行工具会同时 printer.send。EventResult / agentRespList 不是线程安全的，
+     * 主/子 Agent 并行工具会同时 printer.send。Accumulator / agentRespList 不是线程安全的，
      * 投影必须单写，否则 taskId、orderMapping、resultMap 会错配到前端。
      */
     private final Object projectionLock = new Object();
 
-    public AgentResponseProjectionStream(AgentSessionStream downstream,
-                                         AgentRequest request,
-                                         Map<AgentType, AgentResponseHandler> handlerMap) {
+    public AgentStreamProjection(AgentSessionStream downstream,
+                                          AgentExecutionCommand request,
+                                         Map<AgentType, AgentStreamEventHandler> handlerMap) {
         this(downstream, request, handlerMap, null);
     }
 
-    public AgentResponseProjectionStream(AgentSessionStream downstream,
-                                         AgentRequest request,
-                                         Map<AgentType, AgentResponseHandler> handlerMap,
+    public AgentStreamProjection(AgentSessionStream downstream,
+                                          AgentExecutionCommand request,
+                                         Map<AgentType, AgentStreamEventHandler> handlerMap,
                                          AgentSessionEventBus eventBus) {
         this(downstream, request, handlerMap, eventBus, null);
     }
 
-    public AgentResponseProjectionStream(AgentSessionStream downstream,
-                                         AgentRequest request,
-                                         Map<AgentType, AgentResponseHandler> handlerMap,
+    public AgentStreamProjection(AgentSessionStream downstream,
+                                          AgentExecutionCommand request,
+                                         Map<AgentType, AgentStreamEventHandler> handlerMap,
                                          AgentSessionEventBus eventBus,
                                          SessionEventClock eventClock) {
         this.request = request;
@@ -79,7 +80,7 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         }
     }
 
-    public AgentResponseProjectionStream bindRegistry(SessionProjectionRegistry registry) {
+    public AgentStreamProjection bindRegistry(SessionProjectionRegistry registry) {
         this.projectionRegistry = registry;
         if (registry != null && request != null && StringUtils.isNotBlank(request.getSessionId())) {
             registry.register(request.getSessionId(), this);
@@ -124,11 +125,19 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
 
     @Override
     public void send(Object payload) throws Exception {
-        if (closed.get()) {
+        if (payload instanceof AgentStreamEvent event) {
+            sendRuntimeEvent(event);
             return;
         }
-        if (!(payload instanceof AgentResponse agentResponse)) {
-            forwardIfLive(payload);
+        if (payload instanceof AgentSessionStreamFrame frame) {
+            forwardIfLive(frame);
+            return;
+        }
+    }
+
+    @Override
+    public void sendRuntimeEvent(AgentStreamEvent agentResponse) throws Exception {
+        if (closed.get()) {
             return;
         }
 
@@ -137,11 +146,11 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
                 return;
             }
             AgentType agentType = AgentType.fromCode(request.getAgentType());
-            AgentResponseHandler handler = handlerMap.get(agentType);
+            AgentStreamEventHandler handler = handlerMap.get(agentType);
             if (handler == null) {
-                log.error("{} no AgentResponseHandler found for agentType: {}",
+                log.error("{} no AgentStreamEventHandler found for agentType: {}",
                         request.getRequestId(), agentType);
-                GptProcessResult failed = buildDefaultResult(request, "unsupported agentType: " + agentType);
+                AgentSessionStreamFrame failed = buildDefaultResult(request, "unsupported agentType: " + agentType);
                 assignSeq(failed);
                 offerReplayBuffer(failed);
                 forwardIfLive(failed);
@@ -149,14 +158,15 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
             }
 
             // 断流期间仍推进投影状态，避免 rebind 后状态机落后。
-            GptProcessResult result = handler.handle(request, agentResponse, agentRespList, eventResult);
-            assignSeq(result);
-            offerReplayBuffer(result);
-            forwardIfLive(result);
+            AgentStreamResult result = handler.handle(request, agentResponse, agentRespList, eventResult);
+            AgentSessionStreamFrame frame = frameMapper.toFrame(result);
+            assignSeq(frame);
+            offerReplayBuffer(frame);
+            forwardIfLive(frame);
             // 根 result 的 finished 只表示业务终态（前端收口 loading），不在此关传输层。
             // 关流留给：1) GptQuery / HITL resume 在 finishRun、markAnswered 之后的显式 complete；
             // 2) 后台空闲时的 stream_settle。避免 SSE 在 ledger/approval 落库前被掐断。
-            if (result.isFinished() && isStreamSettle(agentResponse)) {
+            if (frame != null && frame.isFinished() && isStreamSettle(agentResponse)) {
                 log.info("{} task total cost time:{}ms",
                         request.getRequestId(), System.currentTimeMillis() - startTime);
                 complete();
@@ -164,7 +174,7 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         }
     }
 
-    private static boolean isStreamSettle(AgentResponse agentResponse) {
+    private static boolean isStreamSettle(AgentStreamEvent agentResponse) {
         return agentResponse != null && "stream_settle".equals(agentResponse.getMessageType());
     }
 
@@ -187,7 +197,7 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         if (!closed.compareAndSet(false, true)) {
             return;
         }
-        GptProcessResult failed = buildDefaultResult(
+        AgentSessionStreamFrame failed = buildDefaultResult(
                 request, throwable == null ? "执行失败" : throwable.getMessage());
         assignSeq(failed);
         offerReplayBuffer(failed);
@@ -225,13 +235,13 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         return liveObservers().isEmpty();
     }
 
-    public List<GptProcessResult> replayAfter(long lastEventSeq) {
-        List<GptProcessResult> snapshot;
+    public List<AgentSessionStreamFrame> replayAfter(long lastEventSeq) {
+        List<AgentSessionStreamFrame> snapshot;
         synchronized (bufferLock) {
             snapshot = new ArrayList<>(replayBuffer);
         }
-        List<GptProcessResult> frames = new ArrayList<>();
-        for (GptProcessResult frame : snapshot) {
+        List<AgentSessionStreamFrame> frames = new ArrayList<>();
+        for (AgentSessionStreamFrame frame : snapshot) {
             if (frame.getEventSeq() <= lastEventSeq) {
                 continue;
             }
@@ -240,63 +250,63 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         return frames;
     }
 
-    public static GptProcessResult buildHeartbeat(String requestId) {
-        GptProcessResult result = new GptProcessResult();
-        result.setFinished(false);
-        result.setStatus("success");
-        result.setResponseType(ResponseTypeEnum.text.name());
-        result.setResponse("");
-        result.setResponseAll("");
-        result.setUseTimes(0);
-        result.setUseTokens(0);
-        result.setReqId(requestId);
-        result.setPackageType("heartbeat");
-        result.setEncrypted(false);
-        return result;
+    public static AgentSessionStreamFrame buildHeartbeat(String requestId) {
+        return AgentSessionStreamFrame.builder()
+                .finished(false)
+                .status("success")
+                .responseType(ResponseTypeEnum.text.name())
+                .response("")
+                .responseAll("")
+                .useTimes(0)
+                .useTokens(0)
+                .reqId(requestId)
+                .packageType("heartbeat")
+                .encrypted(false)
+                .build();
     }
 
     /**
      * 续流时若 run 已不在进程内且 ledger 终态，向前端推终态空包。
      */
-    public static GptProcessResult buildFollowIdle(String requestId) {
-        GptProcessResult result = new GptProcessResult();
-        result.setFinished(true);
-        result.setStatus("success");
-        result.setResponseType(ResponseTypeEnum.text.name());
-        result.setResponse("");
-        result.setResponseAll("");
-        result.setUseTimes(0);
-        result.setUseTokens(0);
-        result.setReqId(requestId);
-        result.setPackageType("follow_idle");
-        result.setEncrypted(false);
-        return result;
+    public static AgentSessionStreamFrame buildFollowIdle(String requestId) {
+        return AgentSessionStreamFrame.builder()
+                .finished(true)
+                .status("success")
+                .responseType(ResponseTypeEnum.text.name())
+                .response("")
+                .responseAll("")
+                .useTimes(0)
+                .useTokens(0)
+                .reqId(requestId)
+                .packageType("follow_idle")
+                .encrypted(false)
+                .build();
     }
 
     /**
      * registry 暂无但 ledger 仍 RUNNING：提示前端继续退避重连，不要当任务结束。
      */
-    public static GptProcessResult buildFollowPending(String requestId) {
+    public static AgentSessionStreamFrame buildFollowPending(String requestId) {
         return buildFollowPending(requestId, null);
     }
 
-    public static GptProcessResult buildFollowPending(String requestId, Long retryMs) {
-        GptProcessResult result = new GptProcessResult();
-        result.setFinished(false);
-        result.setStatus("success");
-        result.setResponseType(ResponseTypeEnum.text.name());
-        result.setResponse("");
-        result.setResponseAll("");
-        result.setUseTimes(0);
-        result.setUseTokens(0);
-        result.setReqId(requestId);
-        result.setPackageType("follow_pending");
-        result.setEncrypted(false);
-        result.setRetryMs(retryMs);
-        return result;
+    public static AgentSessionStreamFrame buildFollowPending(String requestId, Long retryMs) {
+        return AgentSessionStreamFrame.builder()
+                .finished(false)
+                .status("success")
+                .responseType(ResponseTypeEnum.text.name())
+                .response("")
+                .responseAll("")
+                .useTimes(0)
+                .useTokens(0)
+                .reqId(requestId)
+                .packageType("follow_pending")
+                .encrypted(false)
+                .retryMs(retryMs)
+                .build();
     }
 
-    private void forwardIfLive(Object payload) {
+    private void forwardIfLive(AgentSessionStreamFrame payload) {
         if (eventBus != null && request != null && StringUtils.isNotBlank(request.getSessionId())) {
             eventBus.publish(request.getSessionId(), payload);
         }
@@ -310,7 +320,7 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         }
     }
 
-    private void assignSeq(GptProcessResult result) {
+    private void assignSeq(AgentSessionStreamFrame result) {
         if (result == null) {
             return;
         }
@@ -336,12 +346,12 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
 
     private long lastBufferedSeq() {
         synchronized (bufferLock) {
-            GptProcessResult last = replayBuffer.peekLast();
+            AgentSessionStreamFrame last = replayBuffer.peekLast();
             return last == null ? 0L : last.getEventSeq();
         }
     }
 
-    private static boolean isDurable(GptProcessResult result) {
+    private static boolean isDurable(AgentSessionStreamFrame result) {
         if (result.isFinished()) {
             return true;
         }
@@ -352,7 +362,7 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
                 || "follow_idle".equals(packageType);
     }
 
-    private void offerReplayBuffer(GptProcessResult result) {
+    private void offerReplayBuffer(AgentSessionStreamFrame result) {
         if (result == null || "heartbeat".equals(result.getPackageType())) {
             return;
         }
@@ -365,7 +375,7 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
     }
 
     private void replayBufferedFrames(AgentSessionStream next, long lastEventSeq, boolean allowClosed) {
-        List<GptProcessResult> snapshot;
+        List<AgentSessionStreamFrame> snapshot;
         synchronized (bufferLock) {
             snapshot = new ArrayList<>(replayBuffer);
         }
@@ -374,7 +384,7 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         }
         log.info("{} replay {} buffered frames after rebind",
                 request == null ? "-" : request.getRequestId(), snapshot.size());
-        for (GptProcessResult frame : snapshot) {
+        for (AgentSessionStreamFrame frame : snapshot) {
             if (frame.getEventSeq() > 0 && frame.getEventSeq() <= lastEventSeq) {
                 continue;
             }
@@ -439,13 +449,15 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         });
     }
 
-    private static GptProcessResult buildDefaultResult(AgentRequest request, String errMsg) {
-        GptProcessResult result = new GptProcessResult();
-        result.setResultMap(new HashMap<>());
-        result.setStatus("failed");
-        result.setFinished(true);
-        result.setErrorMsg(errMsg);
-        return result;
+    private static AgentSessionStreamFrame buildDefaultResult(AgentExecutionCommand request, String errMsg) {
+        return AgentSessionStreamFrame.builder()
+                .resultMap(new HashMap<>())
+                .status("failed")
+                .finished(true)
+                .errorMsg(errMsg)
+                .reqId(request == null ? null : request.getRequestId())
+                .traceId(request == null ? null : request.getRequestId())
+                .build();
     }
 
     private static final class ObserverSink {

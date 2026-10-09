@@ -9,13 +9,13 @@ import org.wwz.ai.application.agent.dispatch.IAgentDispatchService;
 import org.wwz.ai.application.agent.query.AgentQuerySubmitResult;
 import org.wwz.ai.application.agent.query.GptQueryApplicationService;
 import org.wwz.ai.application.agent.run.AgentRunLaunchGate;
-import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
+import org.wwz.ai.application.agent.stream.AgentStreamProjection;
 import org.wwz.ai.application.agent.stream.AgentSessionEventBus;
 import org.wwz.ai.application.agent.stream.SessionEventClock;
 import org.wwz.ai.application.agent.stream.SessionProjectionRegistry;
 import org.wwz.ai.application.agent.authorization.ConversationSessionAuthorizationService;
 import org.wwz.ai.application.agent.authorization.SessionOwnershipDeniedException;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.askuser.UserQuestionResumeContext;
 import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.runtime.desktopcontrol.DesktopControlObservationSupport;
@@ -25,7 +25,7 @@ import org.wwz.ai.domain.agent.runtime.desktopcontrol.IDesktopControlRepository;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
-import org.wwz.ai.domain.agent.runtime.handler.AgentResponseHandler;
+import org.wwz.ai.domain.agent.runtime.handler.AgentStreamEventHandler;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
 import org.wwz.ai.types.agent.exception.AgentConcurrentRunException;
 import org.wwz.ai.types.agent.exception.AgentExecutorBusyException;
@@ -52,7 +52,7 @@ public class DesktopControlResumeApplicationService {
     private final SessionProjectionRegistry sessionProjectionRegistry;
 
     @Resource
-    private Map<AgentType, AgentResponseHandler> handlerMap;
+    private Map<AgentType, AgentStreamEventHandler> handlerMap;
 
     @Resource
     @Qualifier(AgentExecutorNames.DISPATCH_EXECUTOR)
@@ -99,7 +99,7 @@ public class DesktopControlResumeApplicationService {
                     "claim 失败或续跑已被认领", record.getResumeRequestId(), record.getSessionId());
         }
 
-        AgentRequest agentRequest = buildContinuationRequest(record, userId);
+        AgentExecutionCommand agentRequest = buildContinuationRequest(record, userId);
         try {
             activeAgentRunRegistry.begin(
                     agentRequest.getRequestId(), agentRequest.getSessionId(), userId);
@@ -108,8 +108,8 @@ public class DesktopControlResumeApplicationService {
             throw e;
         }
 
-        AgentResponseProjectionStream projectingStream =
-                new AgentResponseProjectionStream(null, agentRequest, handlerMap, agentSessionEventBus, sessionEventClock)
+        AgentStreamProjection projectingStream =
+                new AgentStreamProjection(null, agentRequest, handlerMap, agentSessionEventBus, sessionEventClock)
                         .bindRegistry(sessionProjectionRegistry);
         agentRunLaunchGate.defer(agentRequest.getRequestId(), agentRequest.getSessionId(), () -> {
             try {
@@ -134,8 +134,8 @@ public class DesktopControlResumeApplicationService {
     }
 
     private void dispatchContinuation(DesktopControlRecord record,
-                                      AgentRequest agentRequest,
-                                      AgentResponseProjectionStream projectingStream) {
+                                      AgentExecutionCommand agentRequest,
+                                      AgentStreamProjection projectingStream) {
         try {
             agentDispatchService.dispatch(agentRequest, projectingStream);
             desktopControlRepository.markCompleted(record.getControlId());
@@ -155,10 +155,10 @@ public class DesktopControlResumeApplicationService {
         }
     }
 
-    private AgentRequest buildContinuationRequest(DesktopControlRecord record, String userId) {
+    private AgentExecutionCommand buildContinuationRequest(DesktopControlRecord record, String userId) {
         UserQuestionResumeContext resumeContext = UserQuestionResumeContext.fromJson(record.getResumeContextJson());
         Integer agentType = resumeContext.getAgentType();
-        return AgentRequest.builder()
+        return AgentExecutionCommand.builder()
                 .requestId(record.getResumeRequestId())
                 .sessionId(record.getSessionId())
                 .userId(userId)

@@ -7,12 +7,14 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamEvent;
+import org.wwz.ai.domain.agent.runtime.stream.PlanStreamPayload;
+import org.wwz.ai.domain.agent.runtime.stream.ToolResultStreamPayload;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentPrinter;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
-import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -21,24 +23,24 @@ import java.util.Objects;
 
 /**
  * 基于应用层输出端口的 Printer 适配器。
- * 统一复用既有 AgentResponse 协议，避免领域层直接依赖 SSE 实现。
+ * 将 Domain runtime event 映射到 Case 流端口，避免领域层直接依赖 SSE 实现。
  */
 @Slf4j
 @Setter
 public class AgentSessionPrinter implements Printer {
 
     private final AgentSessionStream stream;
-    private final AgentRequest request;
+    private final AgentExecutionCommand request;
     private Integer agentType;
 
-    public AgentSessionPrinter(AgentSessionStream stream, AgentRequest request, Integer agentType) {
+    public AgentSessionPrinter(AgentSessionStream stream, AgentExecutionCommand request, Integer agentType) {
         this.stream = stream;
         this.request = request;
         this.agentType = agentType;
     }
 
     /**
-     * 挂一条新的浏览器观察流。主聊天路径 stream 为 {@link AgentResponseProjectionStream}，
+     * 挂一条新的浏览器观察流。主聊天路径 stream 为 {@link AgentStreamProjection}，
      * 可同时挂 POST 发消息连接和 GET 续接/旁观；返回应写回 ActiveAgentRunRegistry 的根流。
      *
      * @return 根观察流；无法续绑时返回 null
@@ -51,7 +53,7 @@ public class AgentSessionPrinter implements Printer {
         if (observer == null || stream == null) {
             return null;
         }
-        if (stream instanceof AgentResponseProjectionStream projection) {
+        if (stream instanceof AgentStreamProjection projection) {
             projection.rebindDownstream(observer, lastEventSeq);
             return stream;
         }
@@ -77,7 +79,7 @@ public class AgentSessionPrinter implements Printer {
                      String digitalEmployee,
                      Boolean isFinal) {
         try {
-            // Printer 是领域事件到 AgentResponse/SSE 的协议适配边界：先建立公共元数据，
+            // Printer 是领域事件到 Case stream/SSE 的协议适配边界：先建立公共元数据，
             // 再按 messageType 填充专属字段，最后一次性发送，避免领域层依赖传输细节。
             if (Objects.isNull(messageId)) {
                 messageId = StringUtil.getUUID();
@@ -124,7 +126,7 @@ public class AgentSessionPrinter implements Printer {
             Map<String, Object> resultMap = new HashMap<>();
             resultMap.put("agentType", agentType);
 
-            AgentResponse response = AgentResponse.builder()
+            AgentStreamEvent response = AgentStreamEvent.builder()
                     .requestId(request.getRequestId())
                     .messageId(messageId)
                     .messageType(messageType)
@@ -175,12 +177,12 @@ public class AgentSessionPrinter implements Printer {
                     response.setPlanThought((String) message);
                     break;
                 case "plan":
-                    AgentResponse.Plan plan = new AgentResponse.Plan();
+                    PlanStreamPayload plan = new PlanStreamPayload();
                     BeanUtils.copyProperties(message, plan);
-                    response.setPlan(AgentResponse.formatSteps(plan));
+                    response.setPlan(PlanStreamPayload.formatSteps(plan));
                     break;
                 case "tool_result":
-                    response.setToolResult((AgentResponse.ToolResult) message);
+                    response.setToolResult((ToolResultStreamPayload) message);
                     break;
                 case "tool_call":
                 case "tool_call_delta":
@@ -269,7 +271,7 @@ public class AgentSessionPrinter implements Printer {
                     break;
             }
 
-            stream.send(response);
+            stream.sendRuntimeEvent(response);
         } catch (Exception e) {
             log.error("stream send error", e);
         }

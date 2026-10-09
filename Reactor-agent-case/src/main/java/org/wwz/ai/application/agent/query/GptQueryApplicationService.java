@@ -9,18 +9,17 @@ import org.wwz.ai.application.agent.askuser.AskUserQuestionApplicationService;
 import org.wwz.ai.application.agent.planmode.PlanApprovalApplicationService;
 import org.wwz.ai.application.agent.dispatch.IAgentDispatchService;
 import org.wwz.ai.application.agent.run.AgentRunLaunchGate;
-import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
+import org.wwz.ai.application.agent.stream.AgentStreamProjection;
 import org.wwz.ai.application.agent.stream.AgentSessionEventBus;
 import org.wwz.ai.application.agent.stream.SessionEventClock;
 import org.wwz.ai.application.agent.stream.SessionProjectionRegistry;
 import org.wwz.ai.application.agent.authorization.ConversationSessionAuthorizationService;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
-import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
-import org.wwz.ai.domain.agent.runtime.GptQueryAgentRequestFactory;
+import org.wwz.ai.application.agent.query.mapper.AgentExecutionCommandMapper;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
-import org.wwz.ai.domain.agent.runtime.handler.AgentResponseHandler;
+import org.wwz.ai.domain.agent.runtime.handler.AgentStreamEventHandler;
 import org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
@@ -40,7 +39,7 @@ import java.util.concurrent.Executor;
 public class GptQueryApplicationService implements IGptQueryApplicationService {
 
     @Resource
-    private GptQueryAgentRequestFactory gptQueryAgentRequestFactory;
+    private AgentExecutionCommandMapper agentExecutionCommandMapper;
 
     @Resource
     private LlmModelCatalog llmModelCatalog;
@@ -58,7 +57,7 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
     private PlanApprovalApplicationService planApprovalApplicationService;
 
     @Resource
-    private Map<AgentType, AgentResponseHandler> handlerMap;
+    private Map<AgentType, AgentStreamEventHandler> handlerMap;
 
     @Resource
     @Qualifier(AgentExecutorNames.DISPATCH_EXECUTOR)
@@ -80,9 +79,9 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
     private SessionProjectionRegistry sessionProjectionRegistry;
 
     @Override
-    public AgentQuerySubmitResult submitAgentQuery(GptQueryReq params) {
-        gptQueryAgentRequestFactory.normalize(params);
-        AgentRequest agentRequest = gptQueryAgentRequestFactory.build(params);
+    public AgentQuerySubmitResult submitAgentQuery(GptQueryCommand params) {
+        AgentExecutionCommand agentRequest = agentExecutionCommandMapper.toExecutionCommand(
+                params, UserRequestContext.currentUserId());
         validateRequestedModel(agentRequest);
         log.info("{} start handle Agent request: {}", params.getRequestId(), JSON.toJSONString(agentRequest));
 
@@ -111,8 +110,8 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
                 agentRequest.getSessionId(),
                 userId);
 
-        AgentResponseProjectionStream projectingStream =
-                new AgentResponseProjectionStream(null, agentRequest, handlerMap, agentSessionEventBus, sessionEventClock)
+        AgentStreamProjection projectingStream =
+                new AgentStreamProjection(null, agentRequest, handlerMap, agentSessionEventBus, sessionEventClock)
                         .bindRegistry(sessionProjectionRegistry);
         agentRunLaunchGate.defer(agentRequest.getRequestId(), agentRequest.getSessionId(), () -> {
             try {
@@ -136,7 +135,7 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
      * 显式模型必须来自登录用户可见目录；空值/default 继续交给运行时选择默认模型。
      * <p>该校验必须发生在 begin 前，避免非法模型生成无法执行的 run。</p>
      */
-    private void validateRequestedModel(AgentRequest agentRequest) {
+    private void validateRequestedModel(AgentExecutionCommand agentRequest) {
         String model = agentRequest == null ? null : StringUtils.trimToNull(agentRequest.getModel());
         if (model == null || LlmModelCatalog.DEFAULT_MODEL.equalsIgnoreCase(model)) {
             return;
@@ -146,9 +145,9 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
         }
     }
 
-    private void dispatchOnExecutor(GptQueryReq params,
-                                    AgentRequest agentRequest,
-                                    AgentResponseProjectionStream projectingStream) {
+    private void dispatchOnExecutor(GptQueryCommand params,
+                                    AgentExecutionCommand agentRequest,
+                                    AgentStreamProjection projectingStream) {
         try {
             agentDispatchService.dispatch(agentRequest, projectingStream);
             completeProjectionUnlessBackgroundRunning(agentRequest, projectingStream, activeAgentRunRegistry);
@@ -170,7 +169,7 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
         }
     }
 
-    private String resolveUserId(AgentRequest request) {
+    private String resolveUserId(AgentExecutionCommand request) {
         String contextUserId = UserRequestContext.currentUserId();
         String userId = StringUtils.defaultIfBlank(contextUserId, request == null ? null : request.getUserId());
         if (StringUtils.isBlank(userId)) {
@@ -179,13 +178,13 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
         return userId;
     }
 
-    public static void completeProjectionUnlessBackgroundRunning(AgentRequest agentRequest,
-                                                                 AgentResponseProjectionStream projectingStream) {
+    public static void completeProjectionUnlessBackgroundRunning(AgentExecutionCommand agentRequest,
+                                                                 AgentStreamProjection projectingStream) {
         completeProjectionUnlessBackgroundRunning(agentRequest, projectingStream, null);
     }
 
-    public static void completeProjectionUnlessBackgroundRunning(AgentRequest agentRequest,
-                                                                 AgentResponseProjectionStream projectingStream,
+    public static void completeProjectionUnlessBackgroundRunning(AgentExecutionCommand agentRequest,
+                                                                 AgentStreamProjection projectingStream,
                                                                  ActiveAgentRunRegistry runRegistry) {
         if (shouldDeferProjectionComplete(agentRequest)) {
             log.info("{} defer projection complete: background tasks still running sessionId={}",
@@ -200,7 +199,7 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
         endOccupancy(agentRequest, runRegistry);
     }
 
-    public static boolean shouldDeferProjectionComplete(AgentRequest agentRequest) {
+    public static boolean shouldDeferProjectionComplete(AgentExecutionCommand agentRequest) {
         if (agentRequest == null) {
             return false;
         }
@@ -211,11 +210,11 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
     /**
      * 父循环结束后立即释放占用槽，即使后台子 Agent 还在跑。
      */
-    public static void endRunUnlessBackground(AgentRequest agentRequest, ActiveAgentRunRegistry runRegistry) {
+    public static void endRunUnlessBackground(AgentExecutionCommand agentRequest, ActiveAgentRunRegistry runRegistry) {
         endOccupancy(agentRequest, runRegistry);
     }
 
-    public static void endOccupancy(AgentRequest agentRequest, ActiveAgentRunRegistry runRegistry) {
+    public static void endOccupancy(AgentExecutionCommand agentRequest, ActiveAgentRunRegistry runRegistry) {
         if (runRegistry == null || agentRequest == null || StringUtils.isBlank(agentRequest.getRequestId())) {
             return;
         }

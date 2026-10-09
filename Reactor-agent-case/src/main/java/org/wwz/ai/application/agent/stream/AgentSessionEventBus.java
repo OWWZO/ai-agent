@@ -5,7 +5,7 @@ package org.wwz.ai.application.agent.stream;
  */
 public interface AgentSessionEventBus {
 
-    void publish(String sessionId, Object frame);
+    void publish(String sessionId, AgentSessionStreamFrame frame);
 
     default void completeSession(String sessionId) {
     }

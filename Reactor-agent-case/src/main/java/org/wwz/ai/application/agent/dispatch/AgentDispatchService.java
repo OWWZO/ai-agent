@@ -4,10 +4,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.application.agent.execute.IExecuteStrategy;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
-import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
+import org.wwz.ai.application.agent.stream.AgentStreamFrameMapper;
+import org.wwz.ai.domain.agent.runtime.stream.AgentStreamResult;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.enums.ResponseTypeEnum;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.types.agent.exception.AgentConcurrentRunException;
 import org.wwz.ai.types.exception.BizException;
 
@@ -26,8 +27,11 @@ public class AgentDispatchService implements IAgentDispatchService {
     @Resource
     private Map<String, IExecuteStrategy> executeStrategyMap;
 
+    @Resource
+    private AgentStreamFrameMapper agentStreamFrameMapper;
+
     @Override
-    public void dispatch(AgentRequest request, AgentSessionStream stream) throws Exception {
+    public void dispatch(AgentExecutionCommand request, AgentSessionStream stream) throws Exception {
         String strategy = null;
 
         // agentType 只负责选择应用策略，具体执行和输出协议分别交给 strategy 与 stream，避免调度器承载业务逻辑。
@@ -59,24 +63,24 @@ public class AgentDispatchService implements IAgentDispatchService {
                     e.getActiveRequestId(),
                     e.getActiveSessionId());
             if (stream != null && !stream.isAborted()) {
-                stream.send(buildConcurrentRejectResult(request, e));
+                stream.sendFrame(agentStreamFrameMapper.toFrame(buildConcurrentRejectResult(request, e)));
                 stream.complete();
             }
         }
     }
 
-    static GptProcessResult buildConcurrentRejectResult(AgentRequest request, AgentConcurrentRunException e) {
-        GptProcessResult result = new GptProcessResult();
-        result.setFinished(true);
+    static AgentStreamResult buildConcurrentRejectResult(AgentExecutionCommand request, AgentConcurrentRunException e) {
+        AgentStreamResult result = new AgentStreamResult();
+        result.setComplete(true);
         result.setStatus("failed");
-        result.setPackageType("result");
-        result.setResponseType(ResponseTypeEnum.text.name());
-            result.setErrorMsg(e != null && e.getMessage() != null
+        result.setFrameType("result");
+        result.setContentType(ResponseTypeEnum.text.name());
+        result.setErrorMessage(e != null && e.getMessage() != null
                 ? e.getMessage()
                 : "已有任务在进行中，请等待完成或先停止后再试");
-        result.setResponse("");
-        result.setResponseAll("");
-        result.setReqId(request == null ? null : request.getRequestId());
+        result.setContentDelta("");
+        result.setContent("");
+        result.setRequestId(request == null ? null : request.getRequestId());
         result.setTraceId(request == null ? null : request.getRequestId());
         result.setEncrypted(false);
         Map<String, Object> resultMap = new HashMap<>();
@@ -88,7 +92,7 @@ public class AgentDispatchService implements IAgentDispatchService {
                 resultMap.put("activeSessionId", e.getActiveSessionId());
             }
         }
-        result.setResultMap(resultMap);
+        result.setEventData(resultMap);
         return result;
     }
 }

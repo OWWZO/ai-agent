@@ -9,7 +9,7 @@ import org.wwz.ai.application.agent.execute.IExecuteStrategy;
 import org.wwz.ai.application.agent.stream.AgentSessionPrinter;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
 import org.wwz.ai.domain.agent.memory.SessionContextMemoryService;
 import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
@@ -55,15 +55,15 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
     private IPlanApprovalRepository planApprovalRepository;
 
     @Override
-    public void execute(AgentRequest request, AgentSessionStream stream) throws Exception {
+    public void execute(AgentExecutionCommand request, AgentSessionStream stream) throws Exception {
         // 先 hydrate 跨轮工作记忆，再进入 Agent 内核；记忆加载失败不应改变 case 的执行边界。
         enrichWorkingMemory(request);
         doExecute(request, stream);
     }
 
-    private void doExecute(AgentRequest request, AgentSessionStream stream) throws Exception {
+    private void doExecute(AgentExecutionCommand request, AgentSessionStream stream) throws Exception {
         // 动态上下文承载协议无关 Printer，执行工厂负责创建真正的 AgentContext 和 ReAct 节点。
-        StrategyHandler<AgentRequest, DefaultReactAgentExecuteStrategyFactory.DynamicContext, String> executeHandler
+        StrategyHandler<AgentExecutionCommand, DefaultReactAgentExecuteStrategyFactory.DynamicContext, String> executeHandler
                 = defaultReactAgentExecuteStrategyFactory.armoryStrategyHandler();
 
         DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext =
@@ -113,7 +113,7 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
         }
     }
 
-    private void enrichWorkingMemory(AgentRequest request) {
+    private void enrichWorkingMemory(AgentExecutionCommand request) {
         if (request == null) {
             return;
         }

@@ -4,12 +4,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
-import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
+import org.wwz.ai.application.agent.stream.AgentStreamProjection;
+import org.wwz.ai.application.agent.stream.AgentSessionStreamFrame;
 import org.wwz.ai.application.agent.stream.AgentSessionPrinter;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
 import org.wwz.ai.application.agent.stream.SessionProjectionRegistry;
 import org.wwz.ai.application.agent.stream.StreamFrameConsumer;
-import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
 import org.wwz.ai.application.agent.authorization.ConversationSessionAuthorizationService;
 import org.wwz.ai.application.agent.authorization.SessionOwnershipDeniedException;
 import org.wwz.ai.domain.agent.ledger.IExecutionLedgerReadRepository;
@@ -68,7 +68,7 @@ public class AgentRunFollowApplicationService {
             return FollowAttachResult.IDLE;
         }
         agentRunLaunchGate.launchBySession(sessionId);
-        List<AgentResponseProjectionStream> live = sessionProjectionRegistry == null
+        List<AgentStreamProjection> live = sessionProjectionRegistry == null
                 ? List.of()
                 : sessionProjectionRegistry.listLive(sessionId);
         if (!live.isEmpty()) {
@@ -97,7 +97,7 @@ public class AgentRunFollowApplicationService {
         }
 
         AgentSessionStream root = sessionPrinter.getStream();
-        if (root instanceof AgentResponseProjectionStream projection) {
+        if (root instanceof AgentStreamProjection projection) {
             if (replay != null) {
                 for (var frame : projection.replayAfter(lastEventSeq)) {
                     try {
@@ -122,16 +122,16 @@ public class AgentRunFollowApplicationService {
     private boolean replayLiveProjections(String sessionId,
                                           long lastEventSeq,
                                           StreamFrameConsumer replay,
-                                          List<AgentResponseProjectionStream> live) {
+                                          List<AgentStreamProjection> live) {
         if (replay == null) {
             return true;
         }
-        List<GptProcessResult> frames = new ArrayList<>();
-        for (AgentResponseProjectionStream projection : live) {
+        List<AgentSessionStreamFrame> frames = new ArrayList<>();
+        for (AgentStreamProjection projection : live) {
             frames.addAll(projection.replayAfter(lastEventSeq));
         }
-        frames.sort(Comparator.comparingLong(GptProcessResult::getEventSeq));
-        for (GptProcessResult frame : frames) {
+        frames.sort(Comparator.comparingLong(AgentSessionStreamFrame::getEventSeq));
+        for (AgentSessionStreamFrame frame : frames) {
             try {
                 replay.accept(frame);
             } catch (Exception e) {
@@ -151,7 +151,7 @@ public class AgentRunFollowApplicationService {
             return;
         }
         try {
-            observer.send(AgentResponseProjectionStream.buildFollowPending(requestId, retryMs));
+            observer.sendFrame(AgentStreamProjection.buildFollowPending(requestId, retryMs));
         } catch (Exception e) {
             log.debug("send follow_pending failed requestId={}", requestId, e);
         }
@@ -167,7 +167,7 @@ public class AgentRunFollowApplicationService {
             return;
         }
         try {
-            observer.send(AgentResponseProjectionStream.buildFollowIdle(requestId));
+            observer.sendFrame(AgentStreamProjection.buildFollowIdle(requestId));
         } catch (Exception e) {
             log.debug("send follow_idle failed requestId={}", requestId, e);
         }
