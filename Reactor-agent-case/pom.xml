@@ -13,6 +13,26 @@
     <artifactId>Reactor-agent-case</artifactId>
 
     <dependencies>
+        <!--
+          logback 必须声明在最前，不要调整顺序、不要删除。
+
+          cn.bugstack.wrench:xfg-wrench-starter-design-framework:3.0.0（经 Reactor-agent-domain 传递引入）
+          是 fat jar，内含 578 个旧版 ch.qos.logback.** 类。若它排在 logback-classic 之前，
+          JVM 会加载其内嵌的旧签名 ch.qos.logback.classic.spi.Configurator
+          （abstract void configure(LoggerContext)），与 spring-boot 3.4.3 的
+          RootLogLevelConfigurator（ExecutionStatus configure(LoggerContext)）不匹配，
+          首次初始化日志即抛 AbstractMethodError。详见
+          docs/plans/skill-loader-frontmatter-upgrade-plan.md 12.11。
+        -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-core</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-context</artifactId>

@@ -79,7 +79,36 @@
             <artifactId>snakeyaml</artifactId>
         </dependency>
 
-        <!-- 扳手工程，通用设计模式框架 -->
+        <!--
+          logback 必须声明在 xfg-wrench 之前，不要调整顺序、不要删除。
+
+          cn.bugstack.wrench:xfg-wrench-starter-design-framework:3.0.0 是 fat jar，内部打包了
+          578 个 ch.qos.logback.** 类和 44 个 org.slf4j.** 类（1.2.x / 1.7.x 时代的版本）。
+          若它排在 logback-classic 之前进入 classpath，JVM 会优先加载它内嵌的
+          ch.qos.logback.classic.spi.Configurator（旧签名 abstract void configure(LoggerContext)），
+          而 spring-boot 3.4.3 的 RootLogLevelConfigurator 是按新签名
+          （ExecutionStatus configure(LoggerContext)）编译的，两者对不上，首次初始化日志即抛：
+
+            AbstractMethodError: Receiver class org.springframework.boot.logging.logback.RootLogLevelConfigurator
+            does not define or inherit an implementation of the resolved method
+            'abstract void configure(ch.qos.logback.classic.LoggerContext)' of interface
+            ch.qos.logback.classic.spi.Configurator
+
+          本模块原先只有 Reactor-agent-types（声明在最后）传递引入 logback-classic，
+          导致 xfg-wrench 排在前面。显式前置声明后，真正的 logback
+          （版本由 spring-boot-starter-parent 3.4.3 管理，当前 1.5.16）稳定压过 fat jar。
+          详见 docs/plans/skill-loader-frontmatter-upgrade-plan.md 12.11。
+        -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-core</artifactId>
+        </dependency>
+
+        <!-- 扳手工程，通用设计模式框架（fat jar，内含旧版 logback，见上方说明） -->
         <dependency>
             <groupId>cn.bugstack.wrench</groupId>
             <artifactId>xfg-wrench-starter-design-framework</artifactId>
