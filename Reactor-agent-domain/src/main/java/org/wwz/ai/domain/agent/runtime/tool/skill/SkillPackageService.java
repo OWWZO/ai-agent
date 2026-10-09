@@ -7,8 +7,10 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,6 +26,9 @@ public class SkillPackageService {
 
     private final SkillRuntimeOptions skillRuntimeOptions;
     private final SkillRegistry skillRegistry;
+
+    /** 静态威胁扫描器（无状态，直接 new；加初始化器后不进入 @RequiredArgsConstructor）。 */
+    private final SkillThreatScanner threatScanner = new SkillThreatScanner();
 
     public SkillPackageParser.ParsedSkillPackage previewZip(byte[] zipBytes) {
         return SkillPackageParser.parse(zipBytes);
@@ -45,6 +50,11 @@ public class SkillPackageService {
      * 上传 zip 安装；replace=true 时覆盖同名目录。
      */
     public Map<String, Object> installZip(byte[] zipBytes, String originalFilename, boolean replace) {
+        return installZip(zipBytes, originalFilename, replace, SkillTrustLevel.UPLOAD);
+    }
+
+    private Map<String, Object> installZip(byte[] zipBytes, String originalFilename, boolean replace,
+                                           SkillTrustLevel trustLevel) {
         SkillPackageParser.ParsedSkillPackage parsed = SkillPackageParser.parse(zipBytes);
         if (skillRegistry.findSkill(parsed.name()).isPresent() && !replace) {
             throw new SkillLoadException("技能「" + parsed.name() + "」已存在；若要覆盖请传 replace=true");
@@ -55,6 +65,7 @@ public class SkillPackageService {
         if (!skillDir.startsWith(root.toAbsolutePath().normalize())) {
             throw new SkillLoadException("非法技能目录");
         }
+        SkillThreatScanner.Report report = SkillThreatScanner.Report.empty();
         try {
             if (Files.exists(skillDir) && replace) {
                 deleteRecursive(skillDir);
@@ -68,25 +79,32 @@ public class SkillPackageService {
                 Files.createDirectories(target.getParent());
                 Files.write(target, e.getValue());
             }
-            // 保证 SKILL.md 正文与解析结果一致（frontmatter 规范化）
-            writeSkillMd(skillDir, parsed.name(), parsed.description(), parsed.content());
+            // 保证 SKILL.md 正文与解析结果一致（frontmatter 规范化，保留其余字段）
+            writeSkillMd(skillDir, parsed.name(), parsed.description(), parsed.content(), parsed.frontMatter());
+            report = scanDirectoryAndEnforce(skillDir, trustLevel, parsed.name());
         } catch (IOException e) {
             throw new SkillLoadException("写入技能目录失败：" + e.getMessage(), e);
         }
         skillRegistry.refresh();
         log.info("skill installed from zip name={} file={} replace={}", parsed.name(), originalFilename, replace);
-        return skillRow(parsed.name());
+        return withWarnings(skillRow(parsed.name()), report);
     }
 
     /**
      * 粘贴 SKILL.md 正文创建/覆盖。
      */
     public Map<String, Object> installFromMarkdown(String name, String description, String rawContent, boolean replace) {
+        return installFromMarkdown(name, description, rawContent, replace, SkillTrustLevel.UPLOAD);
+    }
+
+    private Map<String, Object> installFromMarkdown(String name, String description, String rawContent,
+                                                    boolean replace, SkillTrustLevel trustLevel) {
         SkillPackageParser.FrontmatterSplit front = SkillPackageParser.splitFrontmatter(
                 StringUtils.defaultString(rawContent));
         String resolvedName = SkillPackageParser.sanitizeSkillName(
-                StringUtils.defaultIfBlank(name, front.fields().get("name")));
-        String resolvedDesc = StringUtils.defaultIfBlank(description, front.fields().get("description"));
+                StringUtils.defaultIfBlank(name, SkillPackageParser.asText(front.fields().get("name"))));
+        String resolvedDesc = StringUtils.defaultIfBlank(
+                description, SkillPackageParser.asText(front.fields().get("description")));
         String body = front.body();
         if (StringUtils.isBlank(body)) {
             throw new SkillLoadException("SKILL.md 正文不能为空");
@@ -94,22 +112,25 @@ public class SkillPackageService {
         if (skillRegistry.findSkill(resolvedName).isPresent() && !replace) {
             throw new SkillLoadException("技能「" + resolvedName + "」已存在；若要覆盖请传 replace=true");
         }
+        // 先扫文本再落盘，避免写入后被拒绝还要清理
+        SkillThreatScanner.Report report =
+                scanTextAndEnforce(StringUtils.defaultString(rawContent), trustLevel, resolvedName);
         Path root = requireWritableRoot();
         Path skillDir = root.resolve(resolvedName).toAbsolutePath().normalize();
         try {
             if (Files.exists(skillDir) && replace) {
                 // 仅覆盖 SKILL.md，保留 scripts/references
-                writeSkillMd(skillDir, resolvedName, resolvedDesc, body);
+                writeSkillMd(skillDir, resolvedName, resolvedDesc, body, front.fields());
             } else {
                 Files.createDirectories(skillDir);
-                writeSkillMd(skillDir, resolvedName, resolvedDesc, body);
+                writeSkillMd(skillDir, resolvedName, resolvedDesc, body, front.fields());
             }
         } catch (IOException e) {
             throw new SkillLoadException("写入技能失败：" + e.getMessage(), e);
         }
         skillRegistry.refresh();
         log.info("skill installed from markdown name={}", resolvedName);
-        return skillRow(resolvedName);
+        return withWarnings(skillRow(resolvedName), report);
     }
 
     /**
@@ -128,11 +149,11 @@ public class SkillPackageService {
                 // 可能是单文件 SKILL.md
                 String text = new String(bytes, StandardCharsets.UTF_8);
                 if (text.contains("---") || text.contains("#")) {
-                    return installFromMarkdown(null, null, text, replace);
+                    return installFromMarkdown(null, null, text, replace, SkillTrustLevel.URL);
                 }
                 throw new SkillLoadException("URL 内容不是 zip 也不是 SKILL.md 文本");
             }
-            return installZip(bytes, url.substring(url.lastIndexOf('/') + 1), replace);
+            return installZip(bytes, url.substring(url.lastIndexOf('/') + 1), replace, SkillTrustLevel.URL);
         } catch (SkillLoadException e) {
             throw e;
         } catch (Exception e) {
@@ -268,13 +289,65 @@ public class SkillPackageService {
             if (!Files.isDirectory(skillDir)) {
                 Files.createDirectories(skillDir);
                 writeSkillMd(skillDir, name, "agent-authored skill",
-                        "（由 agent 自动创建骨架；请用 workspace_write/edit 补全手册）\n");
+                        "（由 agent 自动创建骨架；请用 workspace_write/edit 补全手册）\n",
+                        Map.of());
                 skillRegistry.refresh();
             }
         } catch (IOException e) {
             throw new SkillLoadException("创建技能目录失败：" + e.getMessage(), e);
         }
         return skillDir;
+    }
+
+    /**
+     * 对已落盘的 skill 目录做静态威胁扫描，并按来源信任等级决定是否拒绝。
+     * BLOCK 时先清理目录再抛异常，避免留下半安装的 skill。
+     */
+    private SkillThreatScanner.Report scanDirectoryAndEnforce(Path skillDir, SkillTrustLevel trustLevel, String name) {
+        if (!skillRuntimeOptions.isThreatScanEnabled()) {
+            return SkillThreatScanner.Report.empty();
+        }
+        SkillThreatScanner.Report report = threatScanner.scan(skillDir);
+        if (report.clean()) {
+            return report;
+        }
+        if (SkillInstallPolicy.decide(trustLevel, report) == SkillInstallPolicy.Decision.BLOCK) {
+            try {
+                deleteRecursive(skillDir);
+            } catch (IOException e) {
+                log.warn("failed to clean rejected skill dir {}: {}", skillDir, e.getMessage());
+            }
+            throw new SkillLoadException("技能「" + name + "」包含高风险内容，已拒绝安装："
+                    + String.join("；", report.descriptions()));
+        }
+        log.warn("skill {} threat scan warnings: {}", name, report.descriptions());
+        return report;
+    }
+
+    /**
+     * 粘贴 markdown 场景：落盘前先扫文本。
+     */
+    private SkillThreatScanner.Report scanTextAndEnforce(String rawContent, SkillTrustLevel trustLevel, String name) {
+        if (!skillRuntimeOptions.isThreatScanEnabled()) {
+            return SkillThreatScanner.Report.empty();
+        }
+        SkillThreatScanner.Report report = threatScanner.scanText(rawContent, "SKILL.md");
+        if (report.clean()) {
+            return report;
+        }
+        if (SkillInstallPolicy.decide(trustLevel, report) == SkillInstallPolicy.Decision.BLOCK) {
+            throw new SkillLoadException("技能「" + name + "」包含高风险内容，已拒绝安装："
+                    + String.join("；", report.descriptions()));
+        }
+        log.warn("skill {} threat scan warnings: {}", name, report.descriptions());
+        return report;
+    }
+
+    private Map<String, Object> withWarnings(Map<String, Object> row, SkillThreatScanner.Report report) {
+        if (row != null && report != null && !report.clean()) {
+            row.put("warnings", report.descriptions());
+        }
+        return row;
     }
 
     private static String normalizeRelativePath(String relativePath) {
@@ -310,21 +383,68 @@ public class SkillPackageService {
         try {
             Files.createDirectories(root);
         } catch (IOException e) {
-            throw new SkillLoadException("无法创建 skill 根目录：" + root, e);
+            throw new SkillLoadException("无法创建技能根目录：" + root, e);
         }
         return root;
     }
 
-    private void writeSkillMd(Path skillDir, String name, String description, String body) throws IOException {
-        StringBuilder sb = new StringBuilder();
-        sb.append("---\n");
-        sb.append("name: ").append(name).append("\n");
+    /**
+     * 写回 SKILL.md。
+     * <p>
+     * 字段顺序固定为 {@code name} → {@code description} → 其余保留字段。序列化交给
+     * {@link SkillFrontMatterWriter}，由 YAML dumper 负责加引号与转义——<b>禁止字符串拼接</b>：
+     * 含 {@code ": "} 的值若裸写，后续 snakeyaml 解析会报
+     * {@code mapping values are not allowed here}。
+     * <p>
+     * 写入走同目录临时文件 + 原子移动，避免出现半截文件。
+     */
+    private void writeSkillMd(Path skillDir, String name, String description, String body,
+                              Map<String, Object> preservedFields) throws IOException {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("name", name);
         if (StringUtils.isNotBlank(description)) {
-            sb.append("description: ").append(description.replace("\n", " ")).append("\n");
+            fields.put("description", flatten(description));
         }
-        sb.append("---\n\n");
-        sb.append(body.strip()).append("\n");
-        Files.writeString(skillDir.resolve(SkillPackageParser.SKILL_FILE), sb.toString(), StandardCharsets.UTF_8);
+        if (preservedFields != null) {
+            for (Map.Entry<String, Object> entry : preservedFields.entrySet()) {
+                String key = entry.getKey();
+                if (key == null || key.isBlank()
+                        || "name".equals(key) || "description".equals(key)
+                        || entry.getValue() == null) {
+                    continue;
+                }
+                fields.put(key, entry.getValue());
+            }
+        }
+
+        SkillFrontMatterValidator.Result validation = SkillFrontMatterValidator.validate(fields);
+        for (String warning : validation.warnings()) {
+            log.warn("skill {} frontmatter: {}", name, warning);
+        }
+        if (validation.hasErrors()) {
+            throw new SkillLoadException("技能 frontmatter 非法：" + String.join("；", validation.errors()));
+        }
+
+        String content = SkillFrontMatterWriter.renderDocument(fields, body);
+        Path target = skillDir.resolve(SkillPackageParser.SKILL_FILE);
+        Path temp = Files.createTempFile(skillDir, ".SKILL-", ".tmp");
+        try {
+            Files.writeString(temp, content, StandardCharsets.UTF_8);
+            try {
+                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(temp);
+        }
+    }
+
+    /**
+     * 把多行描述压成单行：YAML 单行标量更易读，也避免写回时引入块标量。
+     */
+    private static String flatten(String text) {
+        return text == null ? null : text.replaceAll("\\s*\\R\\s*", " ").trim();
     }
 
     private static void deleteRecursive(Path path) throws IOException {

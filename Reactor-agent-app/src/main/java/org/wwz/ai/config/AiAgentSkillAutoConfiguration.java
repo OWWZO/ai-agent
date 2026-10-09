@@ -5,6 +5,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeOptions;
+import org.wwz.ai.domain.agent.runtime.tool.skill.SkillScanRules;
 
 /**
  * Skill 自动装配配置
@@ -39,6 +40,23 @@ public class AiAgentSkillAutoConfiguration {
                 .bashTimeoutSec(properties.getBashTimeoutSec())
                 .bashMaxTimeoutSec(properties.getBashMaxTimeoutSec())
                 .bashOutputMaxChars(properties.getBashOutputMaxChars())
+                .recursiveScan(properties.isRecursiveScan())
+                .maxScanDepth(properties.getMaxScanDepth())
+                .excludedDirs(resolveExcludedDirs(properties.getExcludedDirs()))
+                .scanCacheTtlSeconds(properties.getScanCacheTtlSeconds())
+                .threatScanEnabled(properties.isThreatScanEnabled())
+                .promptIndexMaxChars(properties.getPromptIndexMaxChars())
+                .promptIndexDescriptionChars(properties.getPromptIndexDescriptionChars())
                 .build();
+    }
+
+    /**
+     * 配置未指定 excludedDirs 时回落到内置默认集，避免用户漏配导致 .git / node_modules 被当成 skill 扫描。
+     */
+    private java.util.Set<String> resolveExcludedDirs(java.util.Set<String> configured) {
+        if (configured == null || configured.isEmpty()) {
+            return SkillScanRules.defaultExcludedDirs();
+        }
+        return new java.util.LinkedHashSet<>(configured);
     }
 }

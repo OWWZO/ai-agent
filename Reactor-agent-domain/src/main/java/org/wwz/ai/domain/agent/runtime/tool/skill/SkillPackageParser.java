@@ -7,8 +7,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -26,8 +24,6 @@ public final class SkillPackageParser {
     private static final int MAX_ENTRIES = 500;
     private static final long MAX_INFLATED_BYTES = MAX_PACKAGE_BYTES;
     private static final int MAX_SKILL_MD_BYTES = 1024 * 1024;
-    private static final Pattern FRONT_MATTER =
-            Pattern.compile("^---\\s*\\R(.*?)\\R---\\s*\\R?(.*)$", Pattern.DOTALL);
 
     private SkillPackageParser() {
     }
@@ -36,11 +32,19 @@ public final class SkillPackageParser {
             String name,
             String description,
             String content,
-            List<String> extraFiles
+            List<String> extraFiles,
+            Map<String, Object> frontMatter
     ) {
+        public ParsedSkillPackage {
+            frontMatter = frontMatter == null ? new LinkedHashMap<>() : frontMatter;
+        }
     }
 
-    public record FrontmatterSplit(Map<String, String> fields, String body) {
+    public record FrontmatterSplit(Map<String, Object> fields, String body) {
+        public FrontmatterSplit {
+            fields = fields == null ? new LinkedHashMap<>() : fields;
+            body = body == null ? "" : body;
+        }
     }
 
     public static ParsedSkillPackage parse(byte[] zip) {
@@ -94,7 +98,7 @@ public final class SkillPackageParser {
                     "技能包里没有 " + SKILL_FILE + "（支持根目录或一层目录如 my-skill/" + SKILL_FILE + "）");
         }
         FrontmatterSplit front = splitFrontmatter(skillMd);
-        String name = firstNonBlank(front.fields().get("name"), blankToNull(skillDir));
+        String name = firstNonBlank(asText(front.fields().get("name")), blankToNull(skillDir));
         if (name == null || name.isBlank()) {
             throw new SkillLoadException(
                     "取不到技能名：请在 " + SKILL_FILE + " frontmatter 写 name:，或放进以技能名命名的目录");
@@ -103,13 +107,18 @@ public final class SkillPackageParser {
         if (front.body().isBlank()) {
             throw new SkillLoadException(SKILL_FILE + " 除 frontmatter 外没有正文");
         }
-        String description = front.fields().getOrDefault("description", "").trim();
+        String description = asText(front.fields().get("description"));
         String prefix = (skillDir == null || skillDir.isBlank()) ? "" : skillDir + "/";
         List<String> extraDisplay = extras.stream()
                 .map(p -> p.startsWith(prefix) ? p.substring(prefix.length()) : p)
                 .sorted()
                 .toList();
-        return new ParsedSkillPackage(name, description.isBlank() ? null : description, front.body(), extraDisplay);
+        return new ParsedSkillPackage(
+                name,
+                description,
+                front.body(),
+                extraDisplay,
+                front.fields());
     }
 
     /**
@@ -186,32 +195,30 @@ public final class SkillPackageParser {
         return output.toByteArray();
     }
 
+    /**
+     * 切分 frontmatter 与正文。
+     * <p>
+     * 解析统一委托 {@link SkillFrontMatterParser}。旧实现按行 {@code indexOf(':')} 切分并剥掉
+     * 值的外层引号，导致写回时生成非法 YAML（{@code mapping values are not allowed here}），
+     * 该实现已删除，请勿恢复。
+     */
     public static FrontmatterSplit splitFrontmatter(String markdown) {
         if (markdown == null || markdown.isBlank()) {
-            return new FrontmatterSplit(Map.of(), "");
+            return new FrontmatterSplit(new LinkedHashMap<>(), "");
         }
-        Matcher m = FRONT_MATTER.matcher(markdown);
-        if (!m.matches()) {
-            return new FrontmatterSplit(new LinkedHashMap<>(), markdown.strip());
+        SkillFrontMatter frontMatter = SkillFrontMatterParser.parse(markdown);
+        return new FrontmatterSplit(frontMatter.fields(), frontMatter.body());
+    }
+
+    /**
+     * 把 frontmatter 字段值安全转成字符串；null 或空白返回 null。
+     */
+    public static String asText(Object value) {
+        if (value == null) {
+            return null;
         }
-        Map<String, String> fields = new LinkedHashMap<>();
-        String block = m.group(1) == null ? "" : m.group(1);
-        for (String line : block.split("\\R")) {
-            int i = line.indexOf(':');
-            if (i <= 0) {
-                continue;
-            }
-            String k = line.substring(0, i).trim();
-            String v = line.substring(i + 1).trim();
-            if (v.startsWith("\"") && v.endsWith("\"") && v.length() >= 2) {
-                v = v.substring(1, v.length() - 1);
-            }
-            if (!k.isBlank()) {
-                fields.put(k, v);
-            }
-        }
-        String body = m.group(2) == null ? "" : m.group(2).strip();
-        return new FrontmatterSplit(fields, body);
+        String text = String.valueOf(value).trim();
+        return text.isEmpty() ? null : text;
     }
 
     public static String sanitizeSkillName(String name) {

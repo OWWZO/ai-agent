@@ -1,7 +1,7 @@
 package org.wwz.ai.domain.agent.runtime.tool.skill;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -12,17 +12,16 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * 解析 skill 目录中的 SKILL.md 文件。
+ * <p>
+ * frontmatter 解析统一委托 {@link SkillFrontMatterParser}，本类不再维护自己的正则与 YAML 逻辑。
+ * 保留无参构造函数，便于测试直接 {@code new SkillMarkdownParser()}。
  */
+@Slf4j
 @Component
 public class SkillMarkdownParser {
-
-    private static final Pattern FRONT_MATTER_PATTERN =
-            Pattern.compile("^---\\s*\\R(.*?)\\R---\\s*\\R?(.*)$", Pattern.DOTALL);
 
     public SkillDefinition parse(Path skillDirectory) {
         Path normalizedSkillDirectory = skillDirectory.toAbsolutePath().normalize();
@@ -94,35 +93,14 @@ public class SkillMarkdownParser {
             throw new SkillLoadException("SKILL.md is empty: " + skillMarkdownPath);
         }
 
-        Matcher matcher = FRONT_MATTER_PATTERN.matcher(markdown);
-        if (!matcher.matches()) {
-            // 没有 front matter 时仍允许正文进入解析流程，必填字段由注册阶段给出明确错误。
-            return new ParsedMarkdown(new LinkedHashMap<>(), markdown.strip());
-        }
-
-        String frontMatterBlock = matcher.group(1);
-        String content = matcher.group(2) == null ? "" : matcher.group(2).strip();
-        return new ParsedMarkdown(parseFrontMatter(frontMatterBlock, skillMarkdownPath), content);
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> parseFrontMatter(String frontMatterBlock, Path skillMarkdownPath) {
-        Object parsed = new Yaml().load(frontMatterBlock);
-        if (parsed == null) {
-            return new LinkedHashMap<>();
-        }
-        if (!(parsed instanceof Map<?, ?> parsedMap)) {
-            throw new SkillLoadException("front matter must be a yaml map: " + skillMarkdownPath);
-        }
-
-        Map<String, Object> frontMatter = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> entry : parsedMap.entrySet()) {
-            if (entry.getKey() == null) {
-                continue;
+        SkillFrontMatter frontMatter = SkillFrontMatterParser.parse(markdown);
+        if (!frontMatter.warnings().isEmpty()) {
+            for (String warning : frontMatter.warnings()) {
+                log.warn("{}: {}", skillMarkdownPath, warning);
             }
-            frontMatter.put(String.valueOf(entry.getKey()), entry.getValue());
         }
-        return frontMatter;
+        // 没有 front matter 时仍允许正文进入解析流程，必填字段由注册阶段给出明确错误。
+        return new ParsedMarkdown(frontMatter.fields(), frontMatter.body().strip());
     }
 
     private String readRequiredField(Map<String, Object> frontMatter, String fieldName, Path skillMarkdownPath) {
@@ -203,5 +181,8 @@ public class SkillMarkdownParser {
     }
 
     private record ParsedMarkdown(Map<String, Object> frontMatter, String content) {
+        private ParsedMarkdown {
+            frontMatter = frontMatter == null ? new LinkedHashMap<>() : frontMatter;
+        }
     }
 }

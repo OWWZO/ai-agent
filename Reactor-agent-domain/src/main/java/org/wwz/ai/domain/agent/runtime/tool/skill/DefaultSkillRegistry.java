@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -45,15 +46,37 @@ public class DefaultSkillRegistry implements SkillRegistry, SkillCatalog {
     private volatile List<SkillDescriptor> descriptors = Collections.emptyList();
     private volatile List<Path> skillRootDirectories = Collections.emptyList();
     private final AtomicLong catalogVersion = new AtomicLong(0);
+    private volatile String lastScanSignature;
+    private volatile long lastRefreshAtMillis;
 
+    /**
+     * 强制全量重扫（管理端 reload / 安装后刷新走这里）。
+     */
     @Override
     public synchronized void refresh() {
+        refreshInternal(false);
+    }
+
+    /**
+     * 带 TTL + 目录签名缓存的刷新；命中缓存时直接返回，不重扫。
+     */
+    @Override
+    public synchronized void refreshIfStale() {
+        refreshInternal(true);
+    }
+
+    private void refreshInternal(boolean respectCache) {
         List<Path> resolvedRootDirectories = resolveRootDirectories();
         this.skillRootDirectories = Collections.unmodifiableList(resolvedRootDirectories);
 
         if (!skillRuntimeOptions.isEnabled()) {
             replaceSnapshot(List.of(), Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap());
             log.info("skill registry disabled, skip loading skills");
+            return;
+        }
+
+        if (respectCache && isCacheHit(resolvedRootDirectories)) {
+            log.debug("skill catalog cache hit, version={}", catalogVersion.get());
             return;
         }
 
@@ -70,8 +93,66 @@ public class DefaultSkillRegistry implements SkillRegistry, SkillCatalog {
             uniqueNameIndex.putIfAbsent(descriptor.getName(), descriptor);
         }
         replaceSnapshot(loaded, idIndex, nameIndex, uniqueNameIndex);
+        updateCache(resolvedRootDirectories);
         log.info("skill catalog refreshed, version={}, roots={}, skills={}",
                 catalogVersion.get(), skillRootDirectories, uniqueNameIndex.keySet());
+    }
+
+    // ── 扫描缓存 ─────────────────────────────────────────────────────────
+
+    private boolean isCacheHit(List<Path> rootDirectories) {
+        int ttlSeconds = skillRuntimeOptions.getScanCacheTtlSeconds();
+        if (ttlSeconds <= 0 || lastScanSignature == null) {
+            return false;
+        }
+        long ageMillis = System.currentTimeMillis() - lastRefreshAtMillis;
+        if (ageMillis < 0 || ageMillis > ttlSeconds * 1000L) {
+            return false;
+        }
+        return lastScanSignature.equals(computeScanSignature(rootDirectories));
+    }
+
+    private void updateCache(List<Path> rootDirectories) {
+        this.lastScanSignature = computeScanSignature(rootDirectories);
+        this.lastRefreshAtMillis = System.currentTimeMillis();
+    }
+
+    private String computeScanSignature(List<Path> rootDirectories) {
+        StringBuilder signature = new StringBuilder();
+        int maxDepth = Math.max(1, skillRuntimeOptions.getMaxScanDepth());
+        for (Path rootDirectory : rootDirectories) {
+            appendScanSignature(rootDirectory, signature, 1, maxDepth);
+        }
+        return Integer.toHexString(signature.toString().hashCode());
+    }
+
+    private void appendScanSignature(Path directory, StringBuilder signature, int depth, int maxDepth) {
+        try {
+            signature.append(Files.getLastModifiedTime(directory).toMillis()).append('|');
+            List<Path> children;
+            try (var stream = Files.list(directory)) {
+                children = stream.sorted(Comparator.comparing(Path::toString)).toList();
+            }
+            signature.append(children.size()).append('|');
+            if (!skillRuntimeOptions.isRecursiveScan() || depth >= maxDepth) {
+                return;
+            }
+            for (Path child : children) {
+                if (!Files.isDirectory(child) || isExcludedDirectory(child)) {
+                    continue;
+                }
+                Path skillMarkdown = child.resolve("SKILL.md");
+                if (Files.isRegularFile(skillMarkdown)) {
+                    signature.append(child.getFileName()).append(':')
+                            .append(Files.getLastModifiedTime(skillMarkdown).toMillis()).append(':')
+                            .append(Files.size(skillMarkdown)).append('|');
+                } else {
+                    appendScanSignature(child, signature, depth + 1, maxDepth);
+                }
+            }
+        } catch (IOException e) {
+            signature.append("err:").append(e.getClass().getSimpleName()).append('|');
+        }
     }
 
     @Override
@@ -256,16 +337,75 @@ public class DefaultSkillRegistry implements SkillRegistry, SkillCatalog {
         }
     }
 
+    /**
+     * 定位 skill 目录。
+     * <p>
+     * {@code recursiveScan=false}（默认）时只扫一层，与历史行为一致；
+     * 开启后支持 {@code category/name/SKILL.md}，并剪枝忽略目录与 support 目录。
+     */
     private List<Path> findSkillDirectories(Path rootDirectory) {
-        try (var pathStream = Files.list(rootDirectory)) {
-            return pathStream
+        if (!skillRuntimeOptions.isRecursiveScan()) {
+            try (var pathStream = Files.list(rootDirectory)) {
+                return pathStream
+                        .filter(Files::isDirectory)
+                        .filter(path -> Files.isRegularFile(path.resolve("SKILL.md")))
+                        .sorted(Comparator.comparing(path -> path.toAbsolutePath().normalize().toString()))
+                        .toList();
+            } catch (IOException e) {
+                throw new SkillLoadException("failed to scan skill root directory: " + rootDirectory, e);
+            }
+        }
+
+        List<Path> collected = new ArrayList<>();
+        collectSkillDirectories(
+                rootDirectory.toAbsolutePath().normalize(),
+                1,
+                Math.max(1, skillRuntimeOptions.getMaxScanDepth()),
+                collected);
+        collected.sort(Comparator.comparing(path -> path.toAbsolutePath().normalize().toString()));
+        return collected;
+    }
+
+    private void collectSkillDirectories(Path directory, int depth, int maxDepth, List<Path> collected) {
+        if (depth > maxDepth) {
+            return;
+        }
+        List<Path> children;
+        try (var stream = Files.list(directory)) {
+            children = stream
                     .filter(Files::isDirectory)
-                    .filter(path -> Files.isRegularFile(path.resolve("SKILL.md")))
                     .sorted(Comparator.comparing(path -> path.toAbsolutePath().normalize().toString()))
                     .toList();
         } catch (IOException e) {
-            throw new SkillLoadException("failed to scan skill root directory: " + rootDirectory, e);
+            log.warn("skip unreadable skill directory {}: {}", directory, e.getMessage());
+            return;
         }
+
+        boolean parentIsSkillRoot = Files.isRegularFile(directory.resolve("SKILL.md"));
+        for (Path child : children) {
+            String name = child.getFileName().toString();
+            if (isExcludedDirectory(child)) {
+                continue;
+            }
+            // 已确认是 skill 根目录时，references/templates/... 只是渐进披露数据，不再向下找 skill
+            if (parentIsSkillRoot && SkillScanRules.isSupportDir(name)) {
+                continue;
+            }
+            if (Files.isRegularFile(child.resolve("SKILL.md"))) {
+                collected.add(child);
+                // 已确认是 skill，不再深入其子目录
+                continue;
+            }
+            collectSkillDirectories(child, depth + 1, maxDepth, collected);
+        }
+    }
+
+    private boolean isExcludedDirectory(Path directory) {
+        Set<String> excluded = skillRuntimeOptions.getExcludedDirs();
+        if (excluded == null || excluded.isEmpty()) {
+            excluded = SkillScanRules.EXCLUDED_DIRS;
+        }
+        return excluded.contains(directory.getFileName().toString());
     }
 
     private List<SkillFileDescriptor> scanLinkedFiles(Path skillDirectory) {
