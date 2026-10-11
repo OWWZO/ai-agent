@@ -23,7 +23,7 @@ type SubAgentToolCallProps = {
   changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
   changePlan?: () => void;
   onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
-  onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem, fileIndex?: number) => void;
 };
 
 /**

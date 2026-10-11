@@ -22,7 +22,7 @@ type AgentDetailPanelProps = {
   sessionArtifactFiles?: CHAT.TFile[];
   changePlan?: () => void;
   onOpenThinking?: (text: string) => void;
-  onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem, fileIndex?: number) => void;
   onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
   onOpenWorkspaceFiles?: () => void;
 };
@@ -64,8 +64,8 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
     [changeActiveChat, chat]
   );
   const handleOpenToolDiff = useCallback(
-    (task: CHAT.Task) => {
-      onOpenToolDiff?.(task, chat);
+    (task: CHAT.Task, _chat?: CHAT.ChatItem, fileIndex?: number) => {
+      onOpenToolDiff?.(task, chat, fileIndex);
     },
     [onOpenToolDiff, chat]
   );

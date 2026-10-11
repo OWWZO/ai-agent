@@ -98,6 +98,122 @@ export function extractEditPath(arg: string): string | undefined {
   return undefined;
 }
 
+/** 多文件 edit 的单个文件摘要（对齐 ZCode `rawFileSummaries[number]`）。 */
+export type EditFileSummary = {
+  path: string;
+  fileName: string;
+  patch?: string;
+  added: number;
+  removed: number;
+};
+
+/**
+ * 把 edit / multi_edit / write 的入参拆成「一个文件一个摘要」。
+ *
+ * ZCode 的多文件 edit（`rawFileSummaries`）在 Reactor 侧没有对应后端字段，
+ * 兼容三种常见的入参形态：
+ * 1. `{ files: [{ path, old_string, new_string }, ...] }`
+ * 2. `{ edits: [{ file_path, old_string, new_string }, ...] }`
+ * 3. 单文件 `{ path, old_string, new_string }` → 长度 1 的数组
+ *
+ * `write` 也产出摘要（只有 path + 新增行数，没有 patch）—— 否则 `EditToolCall` 拿不到
+ * `singlePath`，文件名 chip 根本不渲染，写入工具就没有「点开右侧」的入口。
+ *
+ * 返回空数组表示「拿不到逐文件信息」（例如 `replace_all`），调用方应降级。
+ */
+export function extractEditFileSummaries(
+  name: string,
+  arg: string
+): EditFileSummary[] {
+  const key = normalizeToolName(name);
+  if (key !== "edit" && key !== "multi_edit" && key !== "write") return [];
+  const d = parseArg(arg);
+  if (!d) return [];
+
+  // write：单文件、无 diff，只有「写入了多少行」。
+  if (key === "write") {
+    const path =
+      (typeof d.path === "string" && d.path) ||
+      (typeof d.file_path === "string" && d.file_path) ||
+      (typeof d.filePath === "string" && d.filePath) ||
+      "";
+    if (!path) return [];
+    const stats = editDiffStats(key, arg);
+    return [
+      {
+        path,
+        fileName: path.split(/[\\/]/).filter(Boolean).pop() || path,
+        patch: undefined,
+        added: stats?.added ?? 0,
+        removed: stats?.removed ?? 0,
+      },
+    ];
+  }
+
+  const listRaw = Array.isArray(d.files)
+    ? d.files
+    : Array.isArray(d.edits)
+      ? d.edits
+      : Array.isArray(d.changes)
+        ? d.changes
+        : null;
+
+  const entries: Record<string, unknown>[] = listRaw
+    ? listRaw.filter(
+      (item): item is Record<string, unknown> =>
+        Boolean(item) && typeof item === "object" && !Array.isArray(item)
+    )
+    : [d];
+
+  const out: EditFileSummary[] = [];
+  for (const entry of entries) {
+    const path =
+      (typeof entry.path === "string" && entry.path) ||
+      (typeof entry.file_path === "string" && entry.file_path) ||
+      (typeof entry.filePath === "string" && entry.filePath) ||
+      "";
+    if (!path) continue;
+    const patch = buildEditDiffCode({
+      name: key,
+      arg: JSON.stringify(entry),
+    });
+    let added = 0;
+    let removed = 0;
+    if (patch) {
+      for (const line of patch.split("\n")) {
+        if (line.startsWith("+++") || line.startsWith("---")) continue;
+        if (line.startsWith("+")) added += 1;
+        else if (line.startsWith("-")) removed += 1;
+      }
+    }
+    out.push({
+      path,
+      fileName: path.split(/[\\/]/).filter(Boolean).pop() || path,
+      patch: patch || undefined,
+      added,
+      removed,
+    });
+  }
+  return out;
+}
+
+/** 多文件 edit 的总变更量（对齐 ZCode `totalChangeStat`）。 */
+export function summarizeEditFiles(files: EditFileSummary[]): {
+  added: number;
+  removed: number;
+} {
+  return files.reduce(
+    (acc, file) => ({
+      added: acc.added + file.added,
+      removed: acc.removed + file.removed,
+    }),
+    {
+      added: 0,
+      removed: 0,
+    }
+  );
+}
+
 export function prefersToolDiffPanel(name: string): boolean {
   const key = normalizeToolName(name);
   return key === "edit" || key === "multi_edit" || key === "write";
@@ -145,7 +261,18 @@ export function editDiffStats(
 
 export function formatEditDiffChip(name: string, arg: string): string {
   const stats = editDiffStats(name, arg);
-  if (!stats) return "";
+  return stats ? formatDiffStats(stats) : "";
+}
+
+/**
+ * `+A −B` 的唯一格式化入口。
+ * 调用方若已经拿到 `editDiffStats` 结果（例如要额外渲染翻页数字），走这里复用，
+ * 不要再自己拼一遍字符串——历史上后缀/符号在不同文件各写一份，出过 `-` 与 `−` 混用。
+ */
+export function formatDiffStats(stats: {
+  added: number;
+  removed: number;
+}): string {
   if (!stats.added && !stats.removed) return "";
   return `+${stats.added} −${stats.removed}`;
 }

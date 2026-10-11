@@ -63,7 +63,7 @@ type ToolItemProps = {
   changePlan?: () => void;
   changeActiveChat: CHAT.OpenTaskHandler;
   changeFile?: CHAT.OpenFileHandler;
-  onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem, fileIndex?: number) => void;
   onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
 };
 
@@ -381,7 +381,7 @@ const SubAgentTimelineCard: FC<{
   changeActiveChat: CHAT.OpenTaskHandler;
   changeFile?: CHAT.OpenFileHandler;
   changePlan?: () => void;
-  onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem, fileIndex?: number) => void;
   onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
 }> = memo(({
   tool,

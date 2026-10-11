@@ -1,7 +1,9 @@
 import {
   useCallback,
   useRef,
+  type KeyboardEvent,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { CheckIcon, ChevronDownIcon, ChevronRightIcon, XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -14,8 +16,18 @@ type ToolRowProps = {
   icon?: ReactNode;
   name: string;
   arg?: string;
+  /**
+   * arg 的富节点形态（对齐 ZCode `renderFileChip`）：文件名 chip 要能点击打开右侧预览，
+   * 纯字符串塞不进 button。给了 argNode 就优先渲染它，arg 字符串退为兜底。
+   */
+  argNode?: ReactNode;
   time?: string;
   chip?: string;
+  /**
+   * chip 的富节点形态（对齐 ZCode）：`+A −B` 这类计数需要逐字符翻页动画，
+   * 纯字符串塞不进 FlipMetricValue。给了 chipNode 就优先渲染它，chip 字符串退为兜底。
+   */
+  chipNode?: ReactNode;
   open?: boolean;
   expandable?: boolean;
   stacked?: boolean;
@@ -31,8 +43,10 @@ export function ToolRow({
   icon,
   name,
   arg = "",
+  argNode,
   time = "",
   chip = "",
+  chipNode,
   open = false,
   expandable = false,
   stacked = false,
@@ -43,6 +57,12 @@ export function ToolRow({
   onOpenWorkspace,
 }: ToolRowProps) {
   const headRef = useRef<HTMLButtonElement | null>(null);
+  /**
+   * argNode 里可能嵌套可点击的 button（文件名 chip）。
+   * HTML 不允许 button 套 button，因此有 argNode 时行头退化成一个 div + role="button"，
+   * 键盘可达性由内部 chip 自己承担；无 argNode 时保持原生的 <button>。
+   */
+  const headInteractive = !argNode;
 
   const pinScroll = useCallback(() => {
     const el = headRef.current;
@@ -87,6 +107,8 @@ export function ToolRow({
         "kimi-tool-row",
         open && "is-open",
         stacked && "is-stacked",
+        // 运行态：类别标签走 ZCode 的扫光渐变（见 global.css .kimi-tool-row.is-running）
+        status === "running" && "is-running",
         status === "error" && "is-error",
         stackPosition === "first" && "is-stack-first",
         stackPosition === "middle" && "is-stack-middle",
@@ -94,44 +116,56 @@ export function ToolRow({
       )}
     >
       <div className="kimi-tool-row-head">
-        <button
-          ref={headRef}
-          type="button"
-          className="kimi-tool-row-head-main"
-          onClick={handleHeadClick}
-        >
-          {icon ? <span className="kimi-tool-row-glyph">{icon}</span> : null}
-          <span className="kimi-tool-row-text">
-            <span className="kimi-tool-row-name">{name}</span>
-            {arg ? (
-              <span className="kimi-tool-row-arg" title={arg}>
-                {arg}
-              </span>
-            ) : null}
-          </span>
-          <span className="kimi-tool-row-trailing">
-            <span
-              className={cn(
-                "kimi-tool-row-status",
-                status === "ok" && "is-ok",
-                status === "error" && "is-error"
-              )}
-              role="status"
-              aria-label={status}
-            >
-              {status === "ok" ? (
-                <CheckIcon className="size-3.5" />
-              ) : status === "error" ? (
-                <XIcon className="size-3.5" />
-              ) : (
-                <StatusDot status={status} />
-              )}
-            </span>
-            {chip ? <span className="kimi-tool-row-chip">{chip}</span> : null}
-            {trailing}
-            {time ? <span className="kimi-tool-row-time">{time}</span> : null}
-          </span>
-        </button>
+        {headInteractive ? (
+          <button
+            ref={headRef}
+            type="button"
+            className="kimi-tool-row-head-main"
+            onClick={handleHeadClick}
+          >
+            <ToolRowHeadContent
+              icon={icon}
+              name={name}
+              arg={arg}
+              argNode={argNode}
+              status={status}
+              chip={chip}
+              chipNode={chipNode}
+              trailing={trailing}
+              time={time}
+            />
+          </button>
+        ) : (
+          <div
+            ref={headRef as unknown as RefObject<HTMLDivElement>}
+            role={onOpenWorkspace ? "button" : undefined}
+            tabIndex={onOpenWorkspace ? 0 : undefined}
+            className="kimi-tool-row-head-main"
+            onClick={handleHeadClick}
+            onKeyDown={
+              onOpenWorkspace
+                ? (event: KeyboardEvent<HTMLDivElement>) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    handleHeadClick();
+                  }
+                }
+                : undefined
+            }
+          >
+            <ToolRowHeadContent
+              icon={icon}
+              name={name}
+              arg={arg}
+              argNode={argNode}
+              status={status}
+              chip={chip}
+              chipNode={chipNode}
+              trailing={trailing}
+              time={time}
+            />
+          </div>
+        )}
         {expandable ? (
           <button
             type="button"
@@ -155,5 +189,60 @@ export function ToolRow({
         <div className="kimi-tool-row-body-pad">{children}</div>
       </div>
     </div>
+  );
+}
+
+/** 行头内容：icon / 名称 / arg（富节点优先）/ 状态 / chip / 尾部。 */
+function ToolRowHeadContent({
+  icon,
+  name,
+  arg,
+  argNode,
+  status,
+  chip,
+  chipNode,
+  trailing,
+  time,
+}: {
+  icon?: ReactNode;
+  name: string;
+  arg: string;
+  argNode?: ReactNode;
+  status: ToolRowProps["status"];
+  chip: string;
+  chipNode?: ReactNode;
+  trailing?: ReactNode;
+  time: string;
+}) {
+  return (
+    <>
+      {icon ? <span className="kimi-tool-row-glyph">{icon}</span> : null}
+      <span className="kimi-tool-row-text">
+        <span className="kimi-tool-row-name">{name}</span>
+        {argNode ?? (arg ? <span className="kimi-tool-row-arg" title={arg}>{arg}</span> : null)}
+      </span>
+      <span className="kimi-tool-row-trailing">
+        <span
+          className={cn(
+            "kimi-tool-row-status",
+            status === "ok" && "is-ok",
+            status === "error" && "is-error"
+          )}
+          role="status"
+          aria-label={status}
+        >
+          {status === "ok" ? (
+            <CheckIcon className="size-3.5" />
+          ) : status === "error" ? (
+            <XIcon className="size-3.5" />
+          ) : (
+            <StatusDot status={status} />
+          )}
+        </span>
+        {chipNode ?? (chip ? <span className="kimi-tool-row-chip">{chip}</span> : null)}
+        {trailing}
+        {time ? <span className="kimi-tool-row-time">{time}</span> : null}
+      </span>
+    </>
   );
 }

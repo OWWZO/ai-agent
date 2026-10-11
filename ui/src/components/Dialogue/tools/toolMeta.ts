@@ -7,8 +7,12 @@ const NAME_ALIASES: Record<string, string> = {
   shell: "bash",
   run: "bash",
   exec: "bash",
+  execute: "bash",
   execute_command: "bash",
   code_interpreter: "bash",
+  // Reactor-agent 的代码执行工具注册名是 code_execution（Python 解释器），
+  // 与 code_interpreter 同义，一并按 execute 卡渲染。
+  code_execution: "bash",
   ripgrep: "grep",
   rg: "grep",
   find: "glob",
@@ -35,6 +39,26 @@ const NAME_ALIASES: Record<string, string> = {
   write_file: "write",
   edit_file: "edit",
   file_edit: "edit",
+  /**
+   * Reactor-agent 后端（`runtime/tool/workspace/Workspace*Tool.java`）注册的是
+   * `workspace_*` 前缀名，不是 Claude 风格的裸名。缺了这几条别名，
+   * `workspace_read` / `workspace_write` / `workspace_edit` 会一路落到 generic，
+   * 表现为「工具卡没有文件名 chip、点了不开右侧」。
+   *
+   * 入参字段已核对与裸名渲染器一致：
+   * read→`path`/`start_line`/`line_count`，write→`path`/`content`，
+   * edit→`path`/`old_string`/`new_string`，glob/grep→`path`/`pattern`，list→`path`。
+   *
+   * 注意：**不要**给 `deep_search` 加 → `search` 的别名 —— `ActionPanel/useMsgTypes.ts`
+   * 用 `toolName === "search"` 判定「结果列表」渲染，deep_search 产出的是报告文件，
+   * 别名过去会让它误入列表渲染。
+   */
+  workspace_read: "read",
+  workspace_write: "write",
+  workspace_edit: "edit",
+  workspace_glob: "glob",
+  workspace_grep: "grep",
+  workspace_list: "ls",
 };
 
 const TOOL_LABELS: Record<string, string> = {
@@ -116,7 +140,7 @@ function urlHost(url: string): string {
   }
 }
 
-function filePath(d: Record<string, unknown>): string | undefined {
+export function filePath(d: Record<string, unknown>): string | undefined {
   return (
     str(d.path) ??
     str(d.file_path) ??
@@ -129,6 +153,60 @@ function filePath(d: Record<string, unknown>): string | undefined {
     str(d.displayName) ??
     str(d.name)
   );
+}
+
+/**
+ * 从工具入参里抽「真实文件路径」。
+ * 与 `toolSummary` 的区别：这里只认路径字段，不拼 offset/limit 之类的行号后缀，
+ * 供右侧预览定位文件用。
+ */
+export function extractToolFilePath(arg: string): string | undefined {
+  const d = parseArg(arg);
+  if (!d) return undefined;
+  return filePath(d);
+}
+
+/**
+ * 抽「要执行的命令」全文（不截断），供 execute 卡展开区的 `$ 命令` 行使用。
+ *
+ * 与 `toolSummary` 的区别：summary 会 clip 到 72 字符用于摘要行，这里要完整命令，
+ * 且要认 ZCode 的几种入参形态（字符串命令 / `["bash","-lc","<cmd>"]` 数组 / 对象字段）。
+ */
+export function extractExecuteCommand(arg: string): string {
+  const raw = (arg ?? "").trim();
+  if (!raw) return "";
+
+  // 数组形态：`["bash", "-lc", "<cmd>"]` —— 取 -lc 之后那一段。
+  if (raw.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) {
+        const parts = parsed.map((item: string) => item.trim()).filter(Boolean);
+        const lcIndex = parts.indexOf("-lc");
+        if (lcIndex >= 0 && parts[lcIndex + 1]) return parts[lcIndex + 1];
+        return parts.join(" ");
+      }
+    } catch {
+      // 落到下面按对象 / 原文处理
+    }
+  }
+
+  const d = parseArg(raw);
+  if (d) {
+    // source 是 Reactor-agent `code_execution` 的代码字段名。
+    const cmd =
+      str(d.command) ??
+      str(d.cmd) ??
+      str(d.script) ??
+      str(d.code) ??
+      str(d.source) ??
+      str(d.input);
+    if (cmd) return cmd;
+  }
+
+  // 纯字符串命令：剥掉 `bash -lc ` 之类的包装前缀。
+  const shellMatch = raw.match(/^(?:\/bin\/)?(?:zsh|bash|sh)\s+-lc\s+([\s\S]+)$/i);
+  return (shellMatch ? shellMatch[1] : raw).replace(/^·\s*/, "").trim();
 }
 
 export function toolSummary(name: string, arg: string, full = false): string {
@@ -146,7 +224,8 @@ export function toolSummary(name: string, arg: string, full = false): string {
         if (!path) return fallback();
         const start =
           num(d.offset) ?? num(d.line_start) ?? num(d.start_line);
-        const len = num(d.limit) ?? num(d.length);
+        // line_count 是 Reactor-agent `workspace_read` 的读行数字段名。
+        const len = num(d.limit) ?? num(d.length) ?? num(d.line_count);
         const end =
           num(d.line_end) ??
           num(d.end_line) ??
@@ -174,7 +253,13 @@ export function toolSummary(name: string, arg: string, full = false): string {
         return path ? c(path) : fallback();
       }
       case "bash": {
-        const cmd = str(d.command) ?? str(d.cmd) ?? str(d.script) ?? str(d.code);
+        // source 是 Reactor-agent `code_execution`（Python 解释器）的代码字段名。
+        const cmd =
+          str(d.command) ??
+          str(d.cmd) ??
+          str(d.script) ??
+          str(d.code) ??
+          str(d.source);
         return cmd ? c(cmd, BASH_MAX) : fallback();
       }
       case "grep":

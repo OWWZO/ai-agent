@@ -18,6 +18,7 @@ import { ToolRow, type ToolRowStackPosition } from "./ToolRow";
 import { ToolOutputBlock } from "./ToolOutputBlock";
 import { ToolArgStreamPreview } from "./ToolArgStreamPreview";
 import {
+  extractExecuteCommand,
   normalizeToolName,
   toolChip,
   toolLabel,
@@ -37,6 +38,9 @@ import {
   shouldShowToolArgStream,
 } from "./toolStreamPreview";
 import { ToolJsonBlock, parseToolJson } from "./ToolJsonBlock";
+import { editDiffStats } from "./toolDiff";
+import { ToolDiffCount } from "./ToolDiffCount";
+import { ExecuteOutput } from "./ExecuteOutput";
 
 function toolGlyph(name: string): ReactNode {
   const key = normalizeToolName(name);
@@ -84,7 +88,7 @@ type GenericToolCallProps = {
   changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
   changeFile?: CHAT.OpenFileHandler;
   changePlan?: () => void;
-  onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem, fileIndex?: number) => void;
   onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
 };
 
@@ -133,11 +137,41 @@ export const GenericToolCall = memo(function GenericToolCall({
       status,
     });
 
+  // 变更计数走翻页节点（对齐 ZCode）。Edit/Write 正常由 EditToolCall 接管，
+  // 这里只是让 registry 分流变化时同一份 diff 语义不会退化成静态字符串。
+  const diffStats = showArgStream ? null : editDiffStats(name, arg);
+  const chipNode = diffStats ? (
+    <ToolDiffCount added={diffStats.added} removed={diffStats.removed} />
+  ) : undefined;
+
   const isRunningBash =
     status === "running" && normalizeToolName(name) === "bash";
   const hasOutput = output.length > 0;
+  /** execute/bash 卡：展开区走 `$ 命令` + 吸底输出（对齐 ZCode execute.tsx）。 */
+  const isExecute = normalizeToolName(name) === "bash";
+  const executeCommand = isExecute ? extractExecuteCommand(arg) : "";
+
+  /**
+   * fallback（对齐 ZCode `renderers/fallback.tsx`）：既没有结构化入参可预览、
+   * 也没有任何输出时，展开区会完全空白 —— 那种情况退化为整块原始 JSON，
+   * 至少让用户能自查工具到底带了什么字段。
+   */
+  const showRawFallback = !inputJson && !summaryFull && !hasOutput && !isExecute;
+  const rawFallback = showRawFallback
+    ? {
+      input: arg,
+      resultMap: tool.resultMap
+    }
+    : null;
+
   const canExpand =
-    hasOutput || isRunningBash || Boolean(summaryFull) || Boolean(inputJson) || showArgStream;
+    hasOutput ||
+    isRunningBash ||
+    Boolean(summaryFull) ||
+    Boolean(inputJson) ||
+    showRawFallback ||
+    showArgStream;
+
   const [open, setOpen] = useState(
     () => Boolean(defaultExpanded) || showArgStream
   );
@@ -198,6 +232,7 @@ export const GenericToolCall = memo(function GenericToolCall({
       arg={!open ? summary : ""}
       time={normalizeToolName(name) !== "bash" ? timing : ""}
       chip={chip}
+      chipNode={chipNode}
       open={open}
       expandable={expandable}
       stacked={stacked}
@@ -219,25 +254,61 @@ export const GenericToolCall = memo(function GenericToolCall({
           : undefined
       }
     >
-      {summaryFull || inputJson ? (
-        <div className="kimi-tool-row-summary">
-          <div className="mb-1 text-ui-xs uppercase tracking-wide text-[var(--color-text-faint)]">
-            参数
-          </div>
-          {inputJson ? <ToolJsonBlock data={inputJson} /> : summaryFull}
+      {isExecute ? (
+        // execute：展开区 = 等宽完整命令 + 吸底输出。
+        // 命令用 `$` 前缀保持终端观感；输出交给 ExecuteOutput 做程序吸底 / 上滚冻结。
+        <div className="kimi-tool-execute">
+          {executeCommand ? (
+            <div className="kimi-tool-execute-command">
+              <span className="kimi-tool-execute-prompt">$</span>
+              <pre className="kimi-tool-execute-script">{executeCommand}</pre>
+            </div>
+          ) : null}
+          {output.length > 0 || isRunningBash ? (
+            <ExecuteOutput
+              text={output.join("\n")}
+              running={isRunningBash}
+              className={status === "error" ? "is-error" : undefined}
+            />
+          ) : (
+            <div className="kimi-tool-output">
+              <div className="kimi-tool-output-empty">
+                {status === "error" ? "工具执行失败" : "暂无输出"}
+              </div>
+            </div>
+          )}
         </div>
-      ) : null}
-      <ToolOutputBlock
-        lines={output}
-        tone={status === "error" ? "error" : "default"}
-        emptyText={
-          status === "error"
-            ? "工具执行失败"
-            : status === "running"
-              ? "等待输出…"
-              : "暂无输出"
-        }
-      />
+      ) : (
+        <>
+          {summaryFull || inputJson ? (
+            <div className="kimi-tool-row-summary">
+              <div className="mb-1 text-ui-xs uppercase tracking-wide text-[var(--color-text-faint)]">
+                参数
+              </div>
+              {inputJson ? <ToolJsonBlock data={inputJson} /> : summaryFull}
+            </div>
+          ) : null}
+          {rawFallback ? (
+            <div className="kimi-tool-row-summary">
+              <div className="mb-1 text-ui-xs uppercase tracking-wide text-[var(--color-text-faint)]">
+                原始数据
+              </div>
+              <ToolJsonBlock data={rawFallback} />
+            </div>
+          ) : null}
+          <ToolOutputBlock
+            lines={output}
+            tone={status === "error" ? "error" : "default"}
+            emptyText={
+              status === "error"
+                ? "工具执行失败"
+                : status === "running"
+                  ? "等待输出…"
+                  : "暂无输出"
+            }
+          />
+        </>
+      )}
     </ToolRow>
   );
 });

@@ -45,7 +45,7 @@ type Props = {
   thinkingPanelOpen?: boolean;
   onOpenThinking?: (text: string) => void;
   onSyncThinking?: (text: string) => void;
-  onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem, fileIndex?: number) => void;
   onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
   onOpenWorkspaceFiles?: () => void;
   onRequestReplay?: ReplayRequestHandler;

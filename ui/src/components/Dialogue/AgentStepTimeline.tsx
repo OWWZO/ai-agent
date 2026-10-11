@@ -58,7 +58,7 @@ type AgentStepTimelineProps = {
   changePlan?: () => void;
   changeFile?: CHAT.OpenFileHandler;
   onOpenThinking?: (text: string) => void;
-  onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem, fileIndex?: number) => void;
   onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
 };
 
@@ -235,7 +235,7 @@ type StepRowContext = {
   changePlan?: () => void;
   changeFile?: CHAT.OpenFileHandler;
   onOpenThinking?: (text: string) => void;
-  onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem, fileIndex?: number) => void;
   onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
 };
 

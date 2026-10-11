@@ -21,7 +21,7 @@ const BODY_KEYS_BY_TOOL: Record<string, string[]> = {
   write: ["content", "contents", "text", "body", "code", "html", "markdown"],
   edit: ["new_string", "newString", "replacement", "content", "text"],
   multi_edit: ["new_string", "newString", "replacement", "content", "text"],
-  bash: ["command", "cmd", "script", "code"],
+  bash: ["command", "cmd", "script", "code", "source"],
   code_execute: ["code", "script", "command", "source"],
   code_execution: ["code", "script", "command", "source"],
   code_interpreter: ["code", "script", "command", "source"],

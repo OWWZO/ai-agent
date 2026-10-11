@@ -8,7 +8,16 @@ export {
   aggregateToolStatuses,
   resolveStackPosition,
 } from "./GenericToolCall";
-export { EditToolCall } from "./EditToolCall";
+export { EditToolCall, type ToolPreviewRequest } from "./EditToolCall";
+export { ReadToolCall } from "./ReadToolCall";
+export { McpToolCall } from "./McpToolCall";
+export {
+  isMcpToolName,
+  parseMcpToolName,
+  type McpToolIdentity,
+} from "./mcpToolName";
+export { ExecuteOutput } from "./ExecuteOutput";
+export { ToolFileChip } from "./ToolFileChip";
 export { SubAgentToolCall } from "./SubAgentToolCall";
 export { AskUserToolCall } from "./AskUserToolCall";
 export {
@@ -29,13 +38,18 @@ export {
   toolChip,
   toolLabel,
   toolSummary,
+  extractToolFilePath,
+  extractExecuteCommand,
 } from "./toolMeta";
 export {
   buildEditDiffCode,
   editDiffStats,
+  extractEditFileSummaries,
   extractEditPath,
   formatEditDiffChip,
   prefersToolDiffPanel,
+  summarizeEditFiles,
+  type EditFileSummary,
 } from "./toolDiff";
 export {
   formatDurationLabel,
@@ -52,3 +66,7 @@ export {
   resolveToolStreamPreview,
 } from "./toolStreamPreview";
 export { ToolArgStreamPreview } from "./ToolArgStreamPreview";
+export {
+  buildToolPreviewSource,
+  type ToolPreviewSource,
+} from "./toolPreviewSource";
