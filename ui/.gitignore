@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# 临时备份目录（清理后可删除以下两行）
+node_modules.npm-backup
+dist-verify
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
