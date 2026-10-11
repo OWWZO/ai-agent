@@ -24,6 +24,8 @@ type WorkspaceFileTreeProps = {
   depth?: number;
 };
 
+// ZCode WorkspaceFileTreeRowView.tsx:270 —— 行内图标槽统一 size-4、走三级前景。
+// 类型色改走语义 token（DESIGN.md 禁 Tailwind 调色板色），保留"颜色即类型"的识别性。
 const getFileIcon = (type: string) => {
   const ext = (type || "").toLowerCase();
   switch (ext) {
@@ -34,11 +36,11 @@ const getFileIcon = (type: string) => {
     case "webp":
     case "svg":
     case "bmp":
-      return <ImageIcon className="h-4 w-4 text-[var(--chat-text-muted)]" />;
+      return <ImageIcon className="size-4 text-foreground-subtle" />;
     case "csv":
     case "xlsx":
     case "xls":
-      return <FileSpreadsheet className="h-4 w-4 text-emerald-500" />;
+      return <FileSpreadsheet className="size-4 text-success" />;
     case "html":
     case "htm":
     case "code":
@@ -49,19 +51,32 @@ const getFileIcon = (type: string) => {
     case "py":
     case "java":
     case "css":
-      return <FileCode className="h-4 w-4 text-blue-500" />;
+      return <FileCode className="size-4 text-brand" />;
     case "pdf":
-      return <FileText className="h-4 w-4 text-red-500" />;
+      return <FileText className="size-4 text-destructive" />;
     case "doc":
     case "docx":
     case "md":
     case "markdown":
     case "txt":
-      return <FileText className="h-4 w-4 text-gray-500" />;
+      return <FileText className="size-4 text-foreground-subtle" />;
     default:
-      return <FileIcon className="h-4 w-4 text-gray-400" />;
+      return <FileIcon className="size-4 text-foreground-subtlest" />;
   }
 };
+
+/**
+ * ZCode WorkspaceFileTreeRowView.tsx:218-224 —— 文件树行的唯一真源。
+ * h-7 / rounded-lg / border / hover:bg-surface-hover；选中态只换描边色，
+ * 不铺实心底色（`border-input-border-focused`）。
+ */
+const treeRowClass = (active: boolean) =>
+  classNames(
+    "group/file-tree-row relative flex h-7 w-full min-w-0 items-center gap-1.5 rounded-lg border pr-2 py-1 text-left text-ui-base text-foreground outline-none transition-colors",
+    active
+      ? "border-input-border-focused hover:bg-surface-hover"
+      : "border-transparent hover:bg-surface-hover"
+  );
 
 const TreeNode = memo(function TreeNode({
   node,
@@ -82,24 +97,21 @@ const TreeNode = memo(function TreeNode({
         <button
           type="button"
           onClick={() => setExpanded((prev) => !prev)}
-          className="flex w-full items-center gap-2.5 rounded-[14px] bg-black/[0.035] px-3 py-2.5 text-left transition-colors hover:bg-black/[0.055]"
+          className={treeRowClass(false)}
           style={{ marginLeft: depth * 12 }}
+          title={`${node.name} · ${formatWorkspaceBytes(node.size)}`}
         >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/80">
-            <Folder className="h-4 w-4 text-[#8b8b90]" />
+          <span className="flex size-4 shrink-0 items-center justify-center text-foreground-subtle">
+            <Folder className="size-4" />
           </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13px] font-medium text-[var(--chat-text)]">
-              {node.name}
-            </span>
-            <span className="block text-[11px] text-[var(--chat-text-muted)]">
-              {formatWorkspaceBytes(node.size)}
-            </span>
+          <span className="min-w-0 flex-1 truncate">{node.name}</span>
+          <span className="shrink-0 text-ui-xs tabular-nums text-foreground-subtlest">
+            {formatWorkspaceBytes(node.size)}
           </span>
           {expanded ? (
-            <ChevronDown className="h-4 w-4 shrink-0 text-[var(--chat-text-muted)]" />
+            <ChevronDown className="size-3 shrink-0 text-foreground-subtlest" />
           ) : (
-            <ChevronRight className="h-4 w-4 shrink-0 text-[var(--chat-text-muted)]" />
+            <ChevronRight className="size-3 shrink-0 text-foreground-subtlest" />
           )}
         </button>
         {expanded ? (
@@ -125,25 +137,27 @@ const TreeNode = memo(function TreeNode({
     <button
       type="button"
       onClick={() => onSelectFile?.(node.file)}
-      className={classNames(
-        "flex w-full items-center gap-2.5 rounded-[14px] px-3 py-2.5 text-left transition-colors",
-        active
-          ? "bg-black/[0.08] text-[var(--chat-text)]"
-          : "text-[var(--chat-text)] hover:bg-black/[0.04]"
-      )}
+      className={treeRowClass(active)}
       style={{ marginLeft: depth * 12 }}
+      title={
+        node.file.missing
+          ? node.file.missingReason || "内容不可读取"
+          : `${node.name} · ${formatWorkspaceBytes(node.size)}`
+      }
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/70">
+      <span className="flex size-4 shrink-0 items-center justify-center">
         {getFileIcon(node.file.type)}
       </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-medium">{node.name}</span>
-        <span className="block text-[11px] text-[var(--chat-text-muted)]">
-          {node.file.missing
-            ? node.file.missingReason || "内容不可读取"
-            : formatWorkspaceBytes(node.size)}
+      <span className="min-w-0 flex-1 truncate">{node.name}</span>
+      {node.file.missing ? (
+        <span className="max-w-24 shrink-0 truncate text-ui-xs text-destructive">
+          {node.file.missingReason || "不可读取"}
         </span>
-      </span>
+      ) : (
+        <span className="shrink-0 text-ui-xs tabular-nums text-foreground-subtlest">
+          {formatWorkspaceBytes(node.size)}
+        </span>
+      )}
     </button>
   );
 });
@@ -154,13 +168,13 @@ const WorkspaceFileTree = memo(function WorkspaceFileTree(
   const { nodes, selectedFileKey, onSelectFile, depth = 0 } = props;
   if (!nodes.length) {
     return (
-      <div className="px-2.5 py-8 text-center text-[12px] text-[var(--chat-text-muted)]">
+      <div className="px-2 py-8 text-center text-ui-sm text-foreground-subtle">
         当前会话暂无文件
       </div>
     );
   }
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-0.5">
       {nodes.map((node) => (
         <TreeNode
           key={node.path}
