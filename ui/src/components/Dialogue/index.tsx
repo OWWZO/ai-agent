@@ -24,6 +24,8 @@ import {
 } from "@/components/genui/genUiLocalTreeStore";
 import ConclusionSection from "./ConclusionSection";
 import ReplayDisclosure, { type ReplayRequestHandler } from "./ReplayDisclosure";
+import { UserPromptContexts } from "./UserPromptContexts";
+import { parseComposerPromptContexts } from "@/lib/promptContexts";
 
 type Props = {
   chat: CHAT.ChatItem;
@@ -66,6 +68,12 @@ const DialogueComponent: FC<Props> = (props) => {
   } = props;
   const isPlanSolveMessage = isPlanSolveConversation(chat.agentType, deepThink);
   const isReactType = !isPlanSolveMessage;
+  // 用户消息正文里可能拼着上下文尾块（# Code comments: / # Web page elements: / # userselect:）。
+  // 正文只渲染剥离后的部分，尾块在这里还原成卡片，避免原始 markdown 糊在气泡里。
+  const userPromptContexts = useMemo(
+    () => parseComposerPromptContexts(chat.query || ""),
+    [chat.query]
+  );
   const timelineChat = useMemo(() => {
     const hasTimelineChildren = (chat.tasks || []).some((group) =>
       (group || []).some((container) => (container.children || []).length > 0)
@@ -231,12 +239,16 @@ const DialogueComponent: FC<Props> = (props) => {
 
       {/* 用户消息 */}
       {chat.query ? (
-        <div className="user-message-enter mt-5 ml-auto flex w-full max-w-[78%] flex-col items-end gap-1">
+        <div
+          className="user-message-enter mt-5 ml-auto flex w-full max-w-[78%] flex-col items-end gap-1"
+          data-user-message-anchor
+        >
           <Message from="user" className="max-w-full">
             <MessageContent>
-              {chat.query}
+              {userPromptContexts.visibleContent}
             </MessageContent>
           </Message>
+          <UserPromptContexts contexts={userPromptContexts} />
           {onUndo && !chat.loading ? (
             <MessageToolbar onUndo={onUndo} />
           ) : null}

@@ -54,6 +54,9 @@ import BrowserRelayChip from "./BrowserRelayChip";
 import AgentBrowserChip from "./AgentBrowserChip";
 import { buildSubmitPayload } from "./inputMode";
 import { useAttachmentUploads } from "./useAttachmentUploads";
+import PromptContextChips from "./PromptContextChips";
+import { useComposerPromptContexts } from "@/hooks/useComposerPromptContexts";
+import { serializeComposerPromptContexts } from "@/lib/promptContexts";
 
 type Props = {
   sessionId: string;
@@ -125,24 +128,26 @@ const getModeKey = (_productType?: string, deepThink = false): InputModeKey => {
   return deepThink ? "research" : "think";
 };
 
+/* ZCode 菜单规范：shell rounded-lg + border-popover-border + shadow-md，
+   item 用 rounded-md、hover 用 bg-menu-hover。 */
 const menuContentClassName =
-  "rounded-[18px] border border-black/[0.04] bg-white p-1 shadow-[0_12px_40px_-16px_rgba(15,23,42,0.28)]";
+  "rounded-lg border border-popover-border bg-popover p-1 shadow-md";
 
 const menuTitleClassName =
-  "px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-[#86868b]";
+  "px-2.5 pb-1 pt-1.5 text-ui-xs font-medium text-foreground-subtlest";
 
 const menuItemClassName = (active: boolean) =>
   cn(
-    "flex w-full items-center gap-2 rounded-[12px] px-2 py-2 text-left transition-colors",
-    active ? "bg-[#f5f5f7]" : "hover:bg-[#f5f5f7]/80"
+    "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
+    active ? "bg-menu-hover" : "hover:bg-menu-hover"
   );
 
 const toolBtnClassName = (active?: boolean, disabled?: boolean) =>
   cn(
-    "reactor-composer-tool inline-flex h-8 max-w-full items-center gap-1 rounded-md px-2 text-[13px] font-medium tracking-[-0.01em] transition-colors",
-    "text-[#6b6b70] hover:bg-black/[0.04] hover:text-[#1d1d1f]",
-    active && "text-[#1d1d1f]",
-    disabled && "cursor-not-allowed opacity-45 hover:bg-transparent hover:text-[#6b6b70]"
+    "reactor-composer-tool inline-flex h-8 max-w-full items-center gap-1 rounded-md px-2 text-ui-base font-medium transition-colors",
+    "text-foreground-subtle hover:bg-hover hover:text-foreground",
+    active && "text-foreground",
+    disabled && "cursor-not-allowed opacity-45 hover:bg-transparent hover:text-foreground-subtle"
   );
 
 const GeneralInput: ReactorType.FC<Props> = (props) => {
@@ -193,6 +198,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     retryAttachmentUpload,
     addAttachmentUploads,
   } = useAttachmentUploads(sessionId);
+  const promptContexts = useComposerPromptContexts(sessionId);
 
   const currentMode = getModeKey(product?.type, deepThink);
   const isDataAgent = product?.type === "dataAgent";
@@ -386,11 +392,16 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     const trimmed = text.trim().slice(0, MAX_QUERY_CHARS);
     if (!trimmed || disabled || hasUploadingAttachment || hasFailedAttachment) return;
 
+    // 预览区上下文（代码评论 / 网页元素 / 选段）拼成 prompt 尾块。
+    // **尾块不参与正文的 8000 截断** —— 正文先截断，再拼接（与 ZCode 一致）。
+    const messageWithContexts = serializeComposerPromptContexts(trimmed, promptContexts.contexts);
+
     if (busy && onInject) {
-      void Promise.resolve(onInject(trimmed));
+      void Promise.resolve(onInject(messageWithContexts));
       setQuestion("");
       onDraftChange?.("");
       setForcePlanMode(false);
+      promptContexts.clear();
       return;
     }
     if (busy) {
@@ -399,7 +410,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
 
     send(
       buildSubmitPayload({
-        question: trimmed,
+        question: messageWithContexts,
         visibleMode,
         isDataAgent,
         uploadedFiles,
@@ -414,6 +425,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     onDraftChange?.("");
     setForcePlanMode(false);
     clearAttachmentUploads();
+    promptContexts.clear();
   };
 
   const handleKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement> = (event) => {
@@ -494,6 +506,14 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
               )}
             </PromptInputAttachments>
 
+            <PromptContextChips
+              className="px-1.5 pt-2 pb-0"
+              contexts={promptContexts.contexts}
+              onRemoveCodeComment={promptContexts.removeCodeComment}
+              onRemoveWebElement={promptContexts.removeWebElement}
+              onRemoveConversationSelection={promptContexts.removeConversationSelection}
+            />
+
             {markdownBarOpen ? (
               <MarkdownBar
                 textareaRef={textareaRef}
@@ -505,7 +525,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
 
             <PromptInputTextarea
               className={cn(
-                "reactor-composer-textarea px-4 text-[15px] leading-[1.5] text-[#1d1d1f] placeholder:text-[#9aa3af] placeholder:opacity-100",
+                "reactor-composer-textarea px-4 text-ui-lg leading-[1.5] text-foreground placeholder:text-foreground-subtlest placeholder:opacity-100",
                 size === "big"
                   ? "reactor-composer-textarea-big min-h-[76px] pt-3.5"
                   : "reactor-composer-textarea-medium min-h-[54px] pt-3"
@@ -526,10 +546,10 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
             {question.length >= Math.floor(MAX_QUERY_CHARS * 0.8) ? (
               <div
                 className={cn(
-                  "px-4 pb-1 text-right text-[11px] tabular-nums",
+                  "px-4 pb-1 text-right text-ui-xs tabular-nums",
                   question.length >= MAX_QUERY_CHARS
-                    ? "text-[#ff3b30]"
-                    : "text-[#aeaeb2]"
+                    ? "text-destructive"
+                    : "text-foreground-subtlest"
                 )}
               >
                 {question.length}/{MAX_QUERY_CHARS}
@@ -543,7 +563,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                 size="icon-sm"
                 variant="ghost"
                 disabled={disabled}
-                className="reactor-composer-icon-button h-8 w-8 rounded-md border-0 bg-transparent text-[#6b6b70] shadow-none ring-0 hover:bg-black/[0.04] hover:text-[#1d1d1f] focus-visible:ring-0"
+                className="reactor-composer-icon-button h-8 w-8 rounded-md border-0 bg-transparent text-foreground-subtle shadow-none ring-0 hover:bg-hover hover:text-foreground focus-visible:ring-0"
               />
 
               <BrowserRelayChip disabled={disabled} />
@@ -557,7 +577,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                   className={cn(
                     toolBtnClassName(false, disabled || busy),
                     forcePlanMode &&
-                      "bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] hover:text-white"
+                      "bg-brand text-foreground-inverse hover:bg-brand/90 hover:text-foreground-inverse"
                   )}
                   title={
                     busy
@@ -607,17 +627,17 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                               className={menuItemClassName(isActive)}
                               onClick={() => handleModeSelect(option.key)}
                             >
-                              <option.icon className="size-3.5 shrink-0 text-[#6b6b70]" />
+                              <option.icon className="size-3.5 shrink-0 text-foreground-subtle" />
                               <span className="min-w-0 flex-1">
-                                <span className="block text-[13.5px] font-medium text-[#1d1d1f]">
+                                <span className="block text-ui-base font-medium text-foreground">
                                   {option.label}
                                 </span>
-                                <span className="mt-0.5 block text-[11px] leading-4 text-[#86868b]">
+                                <span className="mt-0.5 block text-ui-xs leading-4 text-foreground-subtle">
                                   {option.description}
                                 </span>
                               </span>
                               {isActive ? (
-                                <CheckIcon className="size-3.5 shrink-0 text-[#1d1d1f]" />
+                                <CheckIcon className="size-3.5 shrink-0 text-foreground" />
                               ) : null}
                             </button>
                           );
@@ -692,7 +712,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                   <TooltipTrigger asChild>
                     <button
                       type="button"
-                      className="reactor-composer-stop group relative flex size-8 items-center justify-center rounded-full border border-[var(--color-danger-bd)] bg-[var(--color-danger-soft)] p-0 text-[var(--color-danger)] shadow-[var(--shadow-xs)] transition-[background-color,border-color,color,transform] duration-150 hover:border-[var(--color-danger)] hover:bg-[var(--color-danger)] hover:text-white active:scale-[0.92]"
+                      className="reactor-composer-stop group relative flex size-8 items-center justify-center rounded-full border border-destructive bg-surface p-0 text-destructive transition-[background-color,border-color,color,transform] duration-150 hover:bg-destructive hover:text-destructive-foreground active:scale-[0.92]"
                       onClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
@@ -714,8 +734,8 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                     <PromptInputSubmit
                       className={cn(
                         "reactor-send-btn relative flex size-8 items-center justify-center rounded-full border-0 p-0 shadow-none transition-opacity",
-                        "bg-[var(--color-accent)] text-[var(--color-text-on-accent)] hover:bg-[var(--color-accent-hover)]",
-                        "disabled:cursor-not-allowed disabled:bg-[var(--color-accent)] disabled:text-[var(--color-text-on-accent)] disabled:opacity-45"
+                        "bg-primary text-primary-foreground hover:bg-primary/80",
+                        "disabled:cursor-not-allowed disabled:bg-primary disabled:text-primary-foreground disabled:opacity-45"
                       )}
                       disabled={!canSubmit}
                       variant="ghost"
