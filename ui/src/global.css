@@ -71,6 +71,10 @@
   --color-text: rgba(0, 0, 0, 0.9);
   --color-text-muted: #6b7280;
   --color-text-faint: #9aa3af;
+  /* 工具卡运行态扫光（对齐 ZCode --animated-gradient-text-*）：strong 为常态字色，
+     soft 是掠过时被“擦淡”的那一段。两色必须同源，否则 background-clip:text 会出现色偏。 */
+  --tool-sweep-strong: rgba(0, 0, 0, 0.9);
+  --tool-sweep-soft: rgba(0, 0, 0, 0.22);
   --color-line: #e7eaee;
   --color-line-strong: #d4d9e0;
   --color-hover: #f1f3f5;
@@ -247,6 +251,10 @@
   --color-text: #c9cdd4;
   --color-text-muted: #9aa0a8;
   --color-text-faint: #6b7280;
+  /* 工具卡运行态扫光：暗色下 strong 必须够亮，soft 用同色低透明，
+     否则 background-clip:text 会把整段文字压成不可读的深灰。 */
+  --tool-sweep-strong: #c9cdd4;
+  --tool-sweep-soft: rgba(201, 205, 212, 0.2);
   --color-line: #2d333b;
   --color-line-strong: #3d444d;
   --color-hover: #20252c;
@@ -775,14 +783,47 @@ ol {
   scrollbar-width: none;
 }
 
-.scrollbar-hover::-webkit-scrollbar-thumb {
-  visibility: hidden;
+/* ZCode 同款滚动条（styles.css:762-782 逐值照抄）：
+   轨道 14px、thumb 用 3px 透明 border 内缩 → 视觉 8px 实色胶囊。
+   之前错写成 4px + 28% 透明度，在白底上几乎不可见（用户反馈「根本看不到」）。
+   ⚠️ 基础态必须保持 scrollbar-width: auto —— Chrome 121+ 只要它不是 auto，
+   ::-webkit-scrollbar 全部失效（会回落到不可定制的原生 thin）。 */
+.scrollbar-thin {
+  scrollbar-width: auto;
+  scrollbar-color: var(--chat-border) transparent;
 }
 
-.scrollbar-hover:hover::-webkit-scrollbar-thumb,
-.scrollbar-hover:focus-within::-webkit-scrollbar-thumb,
-.scrollbar-hover:active::-webkit-scrollbar-thumb {
-  visibility: visible;
+.scrollbar-thin::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  min-height: 32px;
+  min-width: 32px;
+  border: 3px solid transparent;
+  border-radius: 9999px;
+  background: var(--chat-border);
+  background-clip: padding-box;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--chat-text-muted) 70%, transparent);
+  background-clip: padding-box;
+}
+
+.scrollbar-thin::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .scrollbar-thin {
+    scrollbar-color: var(--chat-border) transparent;
+  }
 }
 
 .chat-fade-bottom {
@@ -1699,7 +1740,6 @@ ol {
 .agent-step-timeline {
   --timeline-meta: color-mix(in oklab, var(--chat-text-muted) 92%, transparent);
   --timeline-soft: color-mix(in oklab, var(--chat-text-soft) 88%, transparent);
-  --timeline-rail: color-mix(in oklab, var(--chat-border) 90%, transparent);
   font-feature-settings: "tnum" 1;
 }
 
@@ -1802,20 +1842,23 @@ ol {
   color: var(--chat-text-muted);
 }
 
-/* Kimi-style tool cards */
+/* Kimi-style tool cards — 对齐 ZCode ToolLayout / ToolSummaryRow
+   摘要行是**无边框、无底色**的一行内联文本：图标 + 类别标签 + 主文本 + 变更计数 + 状态
+   紧贴排列，折叠箭头只在 hover / 聚焦 / 已展开时浮出。
+   展开区自带卡片（.kimi-tool-output / .kimi-tool-json），所以这里必须去卡片化，
+   否则会出现「卡里套卡」的双层边框。 */
 .kimi-tool-row {
   margin: 0;
-  background: var(--color-surface);
-  border: 1px solid var(--color-line);
-  border-radius: var(--kimi-radius-md);
-  overflow: hidden;
-  transition:
-    background-color var(--duration-fast) var(--ease-out),
-    border-color var(--duration-base) var(--ease-out);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+  transition: color var(--duration-fast) var(--ease-out);
 }
 
-.kimi-tool-row.is-error {
-  border-color: color-mix(in srgb, var(--color-danger) 25%, var(--color-bg));
+/* 失败态已经没有边框可描，改为把类别标签染成危险色 */
+.kimi-tool-row.is-error .kimi-tool-row-name {
+  color: var(--color-danger);
 }
 
 .kimi-tool-row.is-stacked {
@@ -1823,22 +1866,30 @@ ol {
   border-radius: 0;
 }
 
+/* 同一工具组内的行之间只留间距、不画分隔线。
+   ZCode 的组体容器一律是 `ml-2 space-y-2 border-border border-l pl-3.5`
+   （ToolCallBlocks.tsx:25 / changes-group.tsx:266 / cua-group.tsx:113），
+   同级关系用 **space-y 间距** 表达，从不加 divide-y / border-top。
+   这里只取 space-y-2 的 8px；竖线导轨按用户要求不引入。 */
 .kimi-tool-row.is-stack-middle,
 .kimi-tool-row.is-stack-last {
-  border-top: 1px solid var(--color-line);
+  margin-top: 8px;
 }
 
 .kimi-tool-row-head {
   display: flex;
   align-items: center;
-  gap: 4px;
-  min-height: 30px;
+  gap: 2px;
+  min-height: 26px;
   width: 100%;
-  padding: 0 11px;
+  padding: 1px 0;
   border: none;
   background: transparent;
-  font: var(--text-sm) / 1.4 var(--font-mono);
-  color: var(--color-text);
+  /* ZCode 摘要行是 UI sans，不是 mono；mono 只属于展开后的命令 / 输出 */
+  /* 字号对齐 ZCode `ToolSummaryRow.tsx:182,209,229` 的 `text-ui-base`（14px）。
+     历史值 `--text-sm`(13px) 比 ZCode 小一档，已弃用。 */
+  font: var(--text-ui-base) / 1.5 var(--font-ui);
+  color: var(--color-text-muted);
   text-align: left;
 }
 
@@ -1847,7 +1898,9 @@ ol {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  flex: 1;
+  /* 按内容宽度而非撑满：让 +N −M 紧跟文件名，形成 ZCode 那样一整段左对齐摘要，
+     而不是把计数推到容器右边缘 */
+  flex: 0 1 auto;
   padding: 0;
   border: none;
   background: transparent;
@@ -1862,20 +1915,25 @@ ol {
   flex: none;
   align-items: center;
   justify-content: center;
-  padding: 4px;
+  padding: 2px;
   border: none;
   background: transparent;
   cursor: pointer;
   color: var(--color-text-faint);
+  /* 对齐 ZCode：折叠箭头默认隐形，hover / 键盘聚焦 / 已展开时才浮出 */
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease-out);
 }
 
-.kimi-tool-row.is-open .kimi-tool-row-head,
+.kimi-tool-row:hover .kimi-tool-row-toggle,
+.kimi-tool-row:focus-within .kimi-tool-row-toggle,
+.kimi-tool-row.is-open .kimi-tool-row-toggle {
+  opacity: 1;
+}
+
+/* 摘要行不再铺底色：悬停只做文字提亮，否则又回到卡片观感 */
 .kimi-tool-row-head:hover {
-  background: var(--color-surface-sunken);
-}
-
-.kimi-tool-row.is-error .kimi-tool-row-head {
-  background: color-mix(in srgb, var(--color-danger) 4%, var(--color-bg));
+  color: var(--color-text);
 }
 
 .kimi-tool-row-glyph {
@@ -1886,49 +1944,152 @@ ol {
   color: var(--color-text-faint);
 }
 
+/* ZCode 图标是 size-4（16px）；JSX 里写死 size-3.5，这里统一抬到 16px */
+.kimi-tool-row-glyph svg,
+.kimi-tool-row-toggle svg {
+  width: 16px;
+  height: 16px;
+}
+
 .kimi-tool-row-text {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  flex: 1;
   min-width: 0;
 }
 
 .kimi-tool-row-name {
-  color: var(--color-text);
+  /* ZCode：类别标签用最浅一档文本色，把注意力留给后面的文件名 */
+  color: var(--color-text-faint);
   font-weight: var(--weight-medium);
+  white-space: nowrap;
   flex: none;
+}
+
+/* 运行态扫光 = ZCode .animated-gradient-text（300% 渐变 + 4s 线性循环） */
+.kimi-tool-row.is-running .kimi-tool-row-name {
+  background-image: linear-gradient(
+    90deg,
+    var(--tool-sweep-strong) 0%,
+    var(--tool-sweep-strong) 34%,
+    var(--tool-sweep-soft) 50%,
+    var(--tool-sweep-strong) 66%,
+    var(--tool-sweep-strong) 100%
+  );
+  background-size: 300% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: toolKindSweep 4s linear infinite;
+  will-change: background-position;
+}
+
+@keyframes toolKindSweep {
+  0% {
+    background-position: 100% 0;
+  }
+  50% {
+    background-position: 0% 0;
+  }
+  100% {
+    background-position: 0% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kimi-tool-row.is-running .kimi-tool-row-name {
+    animation: none;
+    background-image: none;
+    color: var(--color-text-faint);
+    -webkit-text-fill-color: currentColor;
+  }
 }
 
 .kimi-tool-row-arg {
   color: var(--color-text-muted);
-  font-size: var(--text-xs);
+  /* 与类别标签同字号：ZCode 摘要行是一行同号的文本 */
+  font-size: inherit;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1;
   min-width: 0;
 }
 
 .kimi-tool-row-trailing {
-  margin-left: auto;
+  /* 刻意不加 margin-left:auto —— 尾部元信息要紧跟主文本 */
   color: var(--color-text-muted);
-  font-size: var(--text-xs);
+  font-size: inherit;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex: none;
+  min-width: 0;
 }
 
 .kimi-tool-row-chip {
   color: var(--color-text-muted);
   font-family: var(--font-ui);
-  font-size: var(--text-xs);
+  font-size: inherit;
   flex: none;
 }
 
 .kimi-tool-row-time {
   color: var(--color-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 工具卡里的文件 chip（ZCode renderFileChip）：文件名本身是打开右侧预览的入口。
+   行头主按钮可能承载折叠，因此 chip 自带 hover:underline 以表达可点击。 */
+.kimi-tool-row-arg button,
+.kimi-tool-file-chip {
+  cursor: pointer;
+  font: inherit;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+/* 多文件 edit（ZCode edit.tsx:216 的 ml-2 space-y-2 border-l pl-3.5）：
+   主体一行总览 + 左侧竖线引导的逐文件子卡，子卡本身仍然无边框。 */
+.kimi-tool-multi-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kimi-tool-multi-edit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: 8px;
+  padding-left: 14px;
+  border-left: 1px solid var(--color-line);
+}
+
+/* 变更计数 +A −B（ZCode renderDiffCount）：等宽 + 表格数字，翻页时行宽不抖 */
+.kimi-tool-diff {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.kimi-tool-diff-added,
+.kimi-tool-diff-removed {
+  display: inline-flex;
+  align-items: center;
+}
+
+.kimi-tool-diff-added {
+  color: var(--color-success);
+}
+
+.kimi-tool-diff-removed {
+  color: var(--color-danger);
 }
 
 .kimi-tool-row-status {
@@ -1959,11 +2120,16 @@ ol {
 .kimi-tool-row-body-pad {
   min-height: 0;
   overflow: hidden;
-  padding: 8px 12px 12px;
-  background: var(--color-surface-sunken);
-  border-top: 1px solid var(--color-line);
+  /* 摘要行已经去卡片化，展开区也不铺底色 / 不再画顶部分隔线：
+     内部内容（.kimi-tool-output / .kimi-tool-json / diff 预览）各自带卡片，
+     这里再加一层就是 ZCode 明确避免的「卡里套卡」。 */
+  padding: 6px 0 2px;
+  background: transparent;
+  border-top: none;
   color: var(--color-text);
-  font: var(--text-sm) / 1.65 var(--font-mono);
+  /* 与摘要行同号（对齐 ZCode `ToolCallBody.tsx:82,184` 的 `text-ui-base`），
+     避免展开后正文比标题还小 */
+  font: var(--text-ui-base) / 1.65 var(--font-mono);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -1972,7 +2138,6 @@ ol {
   max-height: min(320px, 42vh);
   overflow-y: auto;
   color: var(--color-text);
-  border-bottom: 1px dashed var(--color-line);
   padding-bottom: 6px;
   margin-bottom: 6px;
   word-break: break-all;
@@ -2062,7 +2227,7 @@ ol {
   border-radius: var(--kimi-radius-md, 8px);
   background: var(--color-surface-sunken, var(--color-surface-raised));
   color: var(--color-text);
-  font: 13px / 1.65 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+  font: var(--text-ui-base) / 1.65 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
   white-space: pre-wrap;
   word-break: break-word;
@@ -2169,51 +2334,195 @@ ol {
   font-style: normal;
 }
 
+/* execute 卡展开区（对齐 ZCode renderers/execute.tsx）：`$ 命令` + 吸底输出。
+   展开区本身允许是卡片（与 .kimi-tool-output / .kimi-tool-json 同级），
+   但摘要行仍然必须无卡片 —— 不要把这些规则挪到 .kimi-tool-row 上。 */
+.kimi-tool-execute {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--kimi-radius-md);
+  background: var(--color-surface-raised);
+}
+
+.kimi-tool-execute-command {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kimi-tool-execute-prompt {
+  flex: none;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--ui-font-size);
+  line-height: 1.5;
+  user-select: none;
+}
+
+.kimi-tool-execute-script {
+  min-width: 0;
+  flex: 1;
+  /* 完整命令：等宽 + 换行，长命令不横向撑破面板 */
+  max-height: calc(var(--ui-font-size) * 1.5 * 5);
+  overflow: auto;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: var(--ui-font-size);
+  line-height: 1.5;
+  color: var(--color-text);
+}
+
+/* 吸底输出区：本身不设卡片（父级 .kimi-tool-execute 已是卡片），只做滚动与高度上限。 */
+.kimi-tool-execute [data-testid="bash-output-scroll"] {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.kimi-tool-execute [data-testid="bash-output-scroll"].is-error pre,
+.kimi-tool-execute [data-testid="bash-output-scroll"] pre {
+  margin: 0;
+}
+
+.kimi-tool-execute [data-testid="bash-output-scroll"].is-error pre {
+  color: color-mix(in srgb, #b91c1c 75%, var(--color-text));
+}
+
+/* mcp 卡展开区（对齐 ZCode renderers/mcp.tsx）：调用参数 / 结果两段。
+   结果段头部放「换行 / 复制」两个 ghost 图标按钮 —— 与头部其它图标按钮同规格，
+   不给实心底色，保持安静。 */
+.kimi-tool-mcp-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kimi-tool-mcp-section + .kimi-tool-mcp-section {
+  margin-top: 12px;
+}
+
+.kimi-tool-mcp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 24px;
+}
+
+.kimi-tool-mcp-title {
+  margin: 0;
+  color: var(--color-text-faint);
+  font-size: var(--ui-font-size-xs, 11px);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.kimi-tool-mcp-text {
+  max-height: min(288px, 42vh);
+  overflow: auto;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--color-surface-raised);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--color-text);
+  scrollbar-gutter: stable;
+}
+
+/* 自动换行受全局偏好（useCodePreviewWrap）控制，两个类互斥。 */
+.kimi-tool-mcp-text.is-wrap {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.kimi-tool-mcp-text.is-nowrap {
+  white-space: pre;
+}
+
+.kimi-tool-mcp-empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.kimi-tool-mcp-error {
+  border-color: color-mix(in srgb, #ef4444 35%, var(--color-line));
+  background: color-mix(in srgb, #ef4444 6%, var(--color-surface-raised));
+  color: color-mix(in srgb, #b91c1c 70%, var(--color-text));
+}
+
+/* 工具组：对齐 ZCode `ToolCallBlocks/ToolLayout.tsx:306` 的外壳 —— 只有
+   `w-full flex flex-col`，**不带边框 / 底色 / 圆角**。
+   展开区里的内容各自带卡片（.kimi-tool-output / .kimi-tool-json），组本身再套一层就是
+   「卡里套卡」。需要表达层级时用 `border-left` 缩进导轨（见 .kimi-tool-multi-edit-list）。 */
 .kimi-tool-group {
   display: flex;
   flex-direction: column;
-  background: var(--color-surface);
-  border: 1px solid var(--color-line);
-  border-radius: var(--kimi-radius-md);
   overflow: hidden;
 }
 
+/* 组头 = ZCode `ToolSummaryRow` 的摘要行：无边框 / 无底色 / 无圆角的一行内联文本，
+   图标 + 标题 + 状态紧贴排列，箭头只在 hover / 聚焦 / 已展开时浮出。 */
 .kimi-tool-group-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
   width: 100%;
-  height: 32px;
-  padding: 0 11px;
+  min-height: 26px;
+  padding: 1px 0;
   border: none;
   background: transparent;
   color: var(--color-text-muted);
   font-family: var(--font-ui);
-  font-size: var(--text-sm);
+  /* 与工具行摘要同号（ZCode `ToolLayout` 组头同为 `text-ui-base`），历史值 `--text-sm` 已弃用 */
+  font-size: var(--text-ui-base);
+  line-height: 1.5;
   text-align: left;
   cursor: pointer;
   user-select: none;
 }
 
+/* 摘要行不铺底色：悬停只提亮文字，否则又回到卡片观感 */
 .kimi-tool-group-head:hover {
-  background: var(--color-surface-sunken);
   color: var(--color-text);
 }
 
 .kimi-tool-group-title {
   font-weight: var(--weight-medium);
-  color: var(--color-text);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  flex: none;
 }
 
 .kimi-tool-group-meta {
   color: var(--color-text-faint);
 }
 
+/* 箭头紧跟尾部文字（不加 margin-left:auto），默认隐形 —— 与 .kimi-tool-row-toggle 同规格 */
 .kimi-tool-group-chevron {
-  margin-left: auto;
   color: var(--color-text-faint);
   flex: none;
-  transition: transform var(--duration-base) var(--ease-out);
+  opacity: 0;
+  transition:
+    transform var(--duration-base) var(--ease-out),
+    opacity var(--duration-base) var(--ease-out);
+}
+
+.kimi-tool-group:hover .kimi-tool-group-chevron,
+.kimi-tool-group:focus-within .kimi-tool-group-chevron,
+.kimi-tool-group.is-open .kimi-tool-group-chevron {
+  opacity: 1;
 }
 
 .kimi-tool-group.is-open .kimi-tool-group-chevron {
@@ -2234,6 +2543,76 @@ ol {
 .kimi-tool-group-body-inner {
   min-height: 0;
   overflow: hidden;
+}
+
+/* ==========================================================================
+   工作区 tab 条（对齐 ZCode `app-shell/SidePaneTabTrigger.tsx` +
+   `AnimatedSidePanePanel.tsx:971-984`）
+   ========================================================================== */
+
+/* 滚动边缘渐隐：只在**真的有溢出**的那一侧做 mask，避免两端同时糊掉。
+   有了它就可以隐藏滚动条（mask 本身就是「还能滚」的提示）。 */
+.reactor-workspace-tabs.mask-left {
+  mask-image: linear-gradient(to right, transparent 0, #000 16px);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 16px);
+}
+
+.reactor-workspace-tabs.mask-right {
+  mask-image: linear-gradient(
+    to right,
+    #000 calc(100% - 16px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 calc(100% - 16px),
+    transparent 100%
+  );
+}
+
+.reactor-workspace-tabs.mask-both {
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 16px,
+    #000 calc(100% - 16px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 16px,
+    #000 calc(100% - 16px),
+    transparent 100%
+  );
+}
+
+/* tab 标题溢出用**渐隐**而不是硬裁切。
+   ZCode `SidePaneTabTrigger.tsx:230-237`：淡出起点由 `--tab-fade-offset` 控制 ——
+   关闭按钮可见时给它留 1.25rem，否则贴到最右（长标题能多显示两个字符）。 */
+.reactor-workspace-tab {
+  --tab-fade-offset: 0px;
+}
+
+.reactor-workspace-tab:hover,
+.reactor-workspace-tab:focus-within,
+.reactor-workspace-tab[data-active="true"] {
+  --tab-fade-offset: 1.25rem;
+}
+
+.reactor-workspace-tab-title {
+  overflow: hidden;
+  white-space: nowrap;
+  mask-image: linear-gradient(
+    to right,
+    #000 calc(100% - var(--tab-fade-offset) - 0.5rem),
+    transparent calc(100% - var(--tab-fade-offset))
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 calc(100% - var(--tab-fade-offset) - 0.5rem),
+    transparent calc(100% - var(--tab-fade-offset))
+  );
 }
 
 /* Keep split-pane layout and paint work local to each side of the workspace. */
@@ -2454,14 +2833,10 @@ ol {
     min-height: 44px;
   }
 
-  .kimi-tool-group-head,
-  .kimi-tool-row-head {
-    padding-inline: 12px;
-  }
-
-  .kimi-tool-row-head {
-    font-size: 13px;
-  }
+  /* 工具行 / 工具组摘要都已改成左对齐内联（对齐 ZCode），不能再加 inline padding：
+     聊天容器本身已有 12px 内边距，这里再加会双重缩进。 */
+  /* 这里曾把工具行单独压到 13px；现在摘要行与组头同为 `var(--text-ui-base)`，
+     再压就会让「组头 14px + 组内行 13px」在同一组里对不齐，故删掉。 */
 
   .kimi-tool-row-body-pad {
     max-height: 42dvh;
@@ -2723,7 +3098,7 @@ ol {
   align-items: center;
   gap: 8px;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--color-line);
+  /* 不画头部横线：面板头部与内容同属一个平面，分隔靠间距表达。 */
   flex: none;
 }
 
@@ -3419,8 +3794,12 @@ ol {
   color: var(--chat-text-muted);
 }
 
+/*
+ * 步骤列表的左侧导轨。历史上这里有一条 `border-left` 竖线，与 ZCode 的
+ * 「纯缩进、无连线」观感不符，已去掉 —— 层级靠 `ml-[7px] pl-3.5` 的缩进表达。
+ * 保留 margin/padding 以维持折叠组标题与步骤之间的呼吸感。
+ */
 .timeline-rail {
-  border-left: 1px solid var(--timeline-rail);
   margin-top: 2px;
   margin-bottom: 8px;
   padding-top: 2px;
