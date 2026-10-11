@@ -1,12 +1,145 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <title>reactor</title>
+    <!--
+      首屏骨架屏：纯内联 HTML + CSS，零依赖、零网络请求。
+      目的：在 JS bundle（约 2.8 MB）下载/解析/执行完成之前，页面上就有东西可看，
+      消除「白屏且无任何加载动画、像是前端没进去」的观感。
+
+      约定：
+      - 骨架屏放在 #root **外面**（作为兄弟节点），不依赖 React 是否清空容器。
+      - 由 src/App.tsx 的 useLayoutEffect 在 React 首次提交后同步移除（DOM 变更后、
+        浏览器绘制前），因此不会闪一下空白。
+      - 颜色对齐 global.css 的亮色令牌（--chat-bg / --muted / --border），
+        项目是 color-scheme: light 的纯 CSS 主题，无运行时深色切换。
+    -->
+    <style>
+      html {
+        color-scheme: light;
+        background: #ffffff;
+      }
+      #boot-skeleton {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483000;
+        display: flex;
+        flex-direction: column;
+        background: #ffffff;
+        color: #9a9aa2;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        pointer-events: none;
+      }
+      #boot-skeleton .bs-top {
+        display: flex;
+        flex: none;
+        align-items: center;
+        gap: 10px;
+        height: 56px;
+        padding: 0 16px;
+        border-bottom: 1px solid #ececf0;
+      }
+      #boot-skeleton .bs-body {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+      }
+      #boot-skeleton .bs-side {
+        display: flex;
+        flex: none;
+        flex-direction: column;
+        gap: 12px;
+        width: 260px;
+        padding: 18px 14px;
+        border-right: 1px solid #ececf0;
+      }
+      #boot-skeleton .bs-main {
+        display: flex;
+        flex: 1;
+        min-width: 0;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        padding: 24px;
+      }
+      #boot-skeleton .bs-block {
+        background: #f1f1f3;
+        border-radius: 6px;
+        animation: bs-pulse 1.4s ease-in-out infinite;
+      }
+      #boot-skeleton .bs-logo {
+        flex: none;
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+      }
+      #boot-skeleton .bs-avatar {
+        flex: none;
+        width: 28px;
+        height: 28px;
+        margin-left: auto;
+        border-radius: 999px;
+      }
+      #boot-skeleton .bs-line {
+        height: 10px;
+      }
+      #boot-skeleton .bs-hint {
+        margin: 4px 0 0;
+        font-size: 13px;
+        line-height: 1.6;
+        color: #9a9aa2;
+      }
+      @keyframes bs-pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.45;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #boot-skeleton .bs-block {
+          animation: none;
+        }
+      }
+      @media (max-width: 720px) {
+        #boot-skeleton .bs-side {
+          display: none;
+        }
+      }
+    </style>
   </head>
   <body>
+    <div id="boot-skeleton" role="status" aria-live="polite" aria-label="页面加载中">
+      <div class="bs-top">
+        <div class="bs-block bs-logo"></div>
+        <div class="bs-block bs-line" style="width: 96px"></div>
+        <div class="bs-block bs-avatar"></div>
+      </div>
+      <div class="bs-body">
+        <div class="bs-side">
+          <div class="bs-block bs-line" style="width: 58%"></div>
+          <div class="bs-block bs-line" style="width: 82%"></div>
+          <div class="bs-block bs-line" style="width: 70%"></div>
+          <div class="bs-block bs-line" style="width: 88%"></div>
+          <div class="bs-block bs-line" style="width: 54%"></div>
+          <div class="bs-block bs-line" style="width: 76%"></div>
+        </div>
+        <div class="bs-main">
+          <div class="bs-block" style="width: min(420px, 72%); height: 14px"></div>
+          <div class="bs-block" style="width: min(320px, 56%); height: 14px"></div>
+          <div class="bs-block" style="width: min(240px, 42%); height: 14px"></div>
+          <p class="bs-hint">正在加载…</p>
+        </div>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
