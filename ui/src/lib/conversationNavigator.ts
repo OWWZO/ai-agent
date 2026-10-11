@@ -33,7 +33,8 @@ export interface NavigatorBarVisualState {
 export const DEFAULT_MAX_PREVIEW_CHARS = 220;
 export const DEFAULT_MAX_PREVIEW_PARAGRAPHS = 2;
 
-export const ASSISTANT_EMPTY_PREVIEW = "暂无助手正文";
+/** 助手无正文时预览留空（不渲染占位文案）。 */
+export const ASSISTANT_EMPTY_PREVIEW = "";
 export const ASSISTANT_RUNNING_PREVIEW = "助手仍在工作";
 export const USER_FALLBACK_PREVIEW = "（空消息）";
 

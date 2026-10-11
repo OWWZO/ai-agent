@@ -1,13 +1,5 @@
 import { useRef, useState, type FC } from "react";
-import {
-  AlertCircle,
-  Ban,
-  CheckCircle2,
-  ChevronRight,
-  Clock3,
-  LoaderCircle,
-  type LucideIcon,
-} from "lucide-react";
+import { ChevronRight, LoaderCircle } from "lucide-react";
 import { formatWorkDuration } from "@/lib/workDuration";
 import { cn } from "@/lib/utils";
 
@@ -15,46 +7,27 @@ export type ReplayRequestHandler = (
   requestId: string
 ) => void | PromiseLike<unknown>;
 
+/**
+ * 状态文案表。
+ *
+ * 对齐 ZCode `AssistantHistoryStatus`：**这一行没有任何状态图标**，
+ * 只用文字表达状态（`已工作 30 分 48 秒` / `已停止`），右侧跟一个 16px 的
+ * 展开箭头。ZCode 的 `chat.history.*` 文案里也只有文字，没有 icon 位。
+ */
 type ReplayStatusMeta = {
   label: string;
-  icon: LucideIcon;
-  iconClass: string;
 };
 
 const STATUS_META: Record<string, ReplayStatusMeta> = {
-  SUCCESS: {
-    // 对齐 ZCode `chat.history.workedFor`：时长跟在「已工作」之后，而不是「已完成 4m13s」。
-    label: "已工作",
-    icon: CheckCircle2,
-    iconClass: "text-[var(--color-success)]",
-  },
-  FAILED: {
-    label: "执行失败",
-    icon: AlertCircle,
-    iconClass: "text-[var(--color-danger)]",
-  },
-  STOPPED: {
-    label: "已停止",
-    icon: Ban,
-    iconClass: "text-[var(--chat-text-muted)]",
-  },
-  TIMEOUT: {
-    label: "已超时",
-    icon: Clock3,
-    iconClass: "text-[var(--chat-text-muted)]",
-  },
-  WAITING_INPUT: {
-    label: "等待回答",
-    icon: Clock3,
-    iconClass: "text-[var(--color-warning)]",
-  },
+  // 对齐 ZCode `chat.history.workedFor`：时长跟在「已工作」之后，而不是「已完成 4m13s」。
+  SUCCESS: { label: "已工作" },
+  FAILED: { label: "执行失败" },
+  STOPPED: { label: "已停止" },
+  TIMEOUT: { label: "已超时" },
+  WAITING_INPUT: { label: "等待回答" },
 };
 
-const FALLBACK_STATUS_META: ReplayStatusMeta = {
-  label: "查看回放",
-  icon: Clock3,
-  iconClass: "text-[var(--chat-text-muted)]",
-};
+const FALLBACK_STATUS_META: ReplayStatusMeta = { label: "查看回放" };
 
 export type ReplayRequestGate = {
   isLocked: () => boolean;
@@ -173,8 +146,9 @@ const ReplayDisclosure: FC<ReplayDisclosureProps> = (props) => {
   const collapsible = typeof onToggle === "function";
   const status = String(chat.metrics?.status || "").trim().toUpperCase();
   const statusMeta = STATUS_META[status] || FALLBACK_STATUS_META;
-  const StatusIcon = statusMeta.icon;
   const duration = formatWorkDuration(chat.runDurationMs);
+  /** ZCode 的写法是一整句 `已工作 {duration}`，而不是「标签 + 独立时长」两段。 */
+  const label = duration ? `${statusMeta.label} ${duration}` : statusMeta.label;
   const isLoading = replayLoading || requestPending;
 
   const handleRequest = () => {
@@ -206,54 +180,48 @@ const ReplayDisclosure: FC<ReplayDisclosureProps> = (props) => {
   };
 
   return (
-    <button
-      type="button"
-      data-testid="replay-disclosure"
-      data-request-id={chat.requestId}
-      onClick={handleRequest}
-      disabled={isLoading}
-      aria-busy={isLoading || undefined}
-      aria-label={`${statusMeta.label}${duration ? ` ${duration}` : ""}，${
-        collapsible ? (open ? "折叠" : "展开") + "过程" : "展开回放"
-      }`}
-      title={
-        collapsible
-          ? open
-            ? "折叠本轮执行过程"
-            : "展开本轮执行过程"
-          : "展开当前 run 的完整回放"
-      }
-      data-process-open={collapsible ? String(open) : undefined}
-      className="flex w-full items-center gap-2 border-b border-[var(--chat-border)]/50 pb-2 text-left text-ui-base text-[var(--chat-text-soft)] transition-colors hover:text-[var(--chat-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chat-accent-soft)] disabled:cursor-wait disabled:opacity-60"
-    >
-      <StatusIcon
-        className={`h-3.5 w-3.5 shrink-0 ${statusMeta.iconClass}`}
-        aria-hidden="true"
-      />
-      <span className="shrink-0">{statusMeta.label}</span>
-      {duration ? (
-        <span className="shrink-0 tabular-nums">{duration}</span>
-      ) : null}
-      <span
-        className="inline-flex shrink-0 text-[var(--chat-text-faint)]"
-        aria-hidden="true"
+    // 分隔线挂在外层容器上（ZCode `AssistantHistoryStatus` 同款）：`pb-2` 也在外层，
+    // 按钮本身只负责文字 + 箭头，不参与分隔线绘制。
+    <div className="flex w-full border-b border-border/50 pb-2">
+      <button
+        type="button"
+        data-testid="replay-disclosure"
+        data-request-id={chat.requestId}
+        onClick={handleRequest}
+        disabled={isLoading}
+        aria-busy={isLoading || undefined}
+        aria-label={`${label}，${
+          collapsible ? (open ? "折叠" : "展开") + "过程" : "展开回放"
+        }`}
+        title={
+          collapsible
+            ? open
+              ? "折叠本轮执行过程"
+              : "展开本轮执行过程"
+            : "展开当前 run 的完整回放"
+        }
+        data-process-open={collapsible ? String(open) : undefined}
+        className="group/history-message inline-flex max-w-full items-center gap-2 text-left text-ui-lg text-foreground-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-input-border-focused disabled:cursor-wait disabled:opacity-60"
       >
+        <span className="truncate">{label}</span>
         {isLoading ? (
           <LoaderCircle
-            className="h-3.5 w-3.5 animate-spin"
+            className="size-[18px] shrink-0 animate-spin text-foreground-subtlest opacity-70"
             data-testid="replay-loading"
+            aria-hidden="true"
           />
         ) : collapsible ? (
           <ChevronRight
             className={cn(
-              "h-3.5 w-3.5 transition-transform duration-200",
-              open && "rotate-90"
+              "size-[18px] shrink-0 text-foreground-subtlest opacity-70 transition-transform",
+              open ? "rotate-90" : "rotate-0"
             )}
             data-testid="replay-chevron"
+            aria-hidden="true"
           />
         ) : null}
-      </span>
-    </button>
+      </button>
+    </div>
   );
 };
 

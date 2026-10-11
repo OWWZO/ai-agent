@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  ASSISTANT_EMPTY_PREVIEW,
   ASSISTANT_RUNNING_PREVIEW,
   DEFAULT_MAX_PREVIEW_CHARS,
   buildNavigatorItems,
@@ -88,7 +87,7 @@ describe("buildNavigatorItems", () => {
     expect(items[0].assistantPreview).toBe("已经改好了");
     expect(items[1].assistantPreview).toBe(ASSISTANT_RUNNING_PREVIEW);
     expect(items[1].isRunning).toBe(true);
-    expect(items[2].assistantPreview).toBe(ASSISTANT_EMPTY_PREVIEW);
+    expect(items[2].assistantPreview).toBe("");
   });
 
   it("无 requestId 时用下标兜底 key", () => {
