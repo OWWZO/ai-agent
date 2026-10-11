@@ -14,6 +14,9 @@ export interface PanelResolverMessageTypes {
   useCode?: boolean;
   useHtml?: boolean;
   useImage?: boolean;
+  useSvg?: boolean;
+  useMedia?: boolean;
+  mediaKind?: "video" | "audio" | null;
   useExcel?: boolean;
   usePdf?: boolean;
   useDocx?: boolean;
@@ -43,7 +46,16 @@ type InlineHtmlPanelView = {
 };
 
 type FilePanelView = {
-  type: "file" | "image" | "excel" | "pdf" | "docx" | "legacy-doc";
+  type: "file" | "image" | "svg" | "excel" | "pdf" | "docx" | "legacy-doc" | "pptx";
+  fileUrl: string;
+  fileName?: string;
+  downloadUrl?: string;
+  missingReason?: string;
+};
+
+type MediaPanelView = {
+  type: "media";
+  mediaKind: "video" | "audio";
   fileUrl: string;
   fileName?: string;
   downloadUrl?: string;
@@ -99,6 +111,7 @@ export type PanelView =
   | HtmlPanelView
   | InlineHtmlPanelView
   | FilePanelView
+  | MediaPanelView
   | DownloadOnlyPanelView
   | MarkdownPanelView;
 
@@ -173,6 +186,9 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
     useCode,
     useFile,
     useImage,
+    useSvg,
+    useMedia,
+    mediaKind,
     isHtml,
     useExcel,
     usePdf,
@@ -239,18 +255,22 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
     return { type: "empty" };
   }
 
+  // PPTX 走内置渲染引擎在线预览；无可用文件时仍回落到下载引导。
   if (usePpt) {
-    return {
-      type: "download-only",
-      label: "PPT",
-      title: "暂不支持在线预览 PPT/PPTX",
-      description:
-        missingReason ||
-        "二进制演示文稿无法在浏览器中直接打开，请下载后用 PowerPoint / WPS 查看。若后端已转为 HTML 演示页，请使用 .html 产物。",
-      fileName: primaryFile?.name,
-      downloadUrl: primaryFile?.downloadUrl || primaryFile?.url || downloadHtmlUrl,
-      missingReason,
-    };
+    if (!primaryFile?.url) {
+      return {
+        type: "download-only",
+        label: "PPT",
+        title: "演示文稿暂不可预览",
+        description:
+          missingReason ||
+          "未拿到可读取的演示文稿文件，请下载后用 PowerPoint / WPS 查看。若后端已转为 HTML 演示页，请使用 .html 产物。",
+        fileName: primaryFile?.name,
+        downloadUrl: primaryFile?.downloadUrl || primaryFile?.url || downloadHtmlUrl,
+        missingReason,
+      };
+    }
+    return fileView("pptx", primaryFile, missingReason);
   }
 
   if (useHtml) {
@@ -294,6 +314,21 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
 
   if (useImage) {
     return fileView("image", primaryFile, missingReason);
+  }
+
+  if (useSvg) {
+    return fileView("svg", primaryFile, missingReason);
+  }
+
+  if (useMedia) {
+    return {
+      type: "media",
+      mediaKind: mediaKind === "audio" ? "audio" : "video",
+      fileUrl: primaryFile?.url || "",
+      fileName: primaryFile?.name,
+      downloadUrl: primaryFile?.downloadUrl || primaryFile?.url,
+      missingReason,
+    };
   }
 
   if (usePdf) {

@@ -4,12 +4,14 @@ export type FileKind =
   | "md"
   | "html"
   | "pdf"
+  | "ppt"
   | "css"
   | "code"
   | "py"
   | "file";
 
-export const FILE_KIND_TONE = "bg-[#f5f5f7] text-[#6b6b70]";
+/** 文件类型角标底色/字色。走语义 token，避免写死 hex。 */
+export const FILE_KIND_TONE = "bg-hover text-foreground-subtle";
 
 // 优先使用后端提供的类型，缺失时才从文件名后缀推断，保证展示和下载协议一致。
 export function resolveFileKind(type?: string, name?: string): FileKind {
@@ -21,6 +23,7 @@ export function resolveFileKind(type?: string, name?: string): FileKind {
   if (["md", "markdown", "txt"].includes(ext)) return "md";
   if (["html", "htm"].includes(ext)) return "html";
   if (ext === "pdf") return "pdf";
+  if (["ppt", "pptx", "pps", "ppsx"].includes(ext)) return "ppt";
   if (["css", "scss", "less"].includes(ext)) return "css";
   if (ext === "py") return "py";
   if (["js", "ts", "tsx", "jsx", "java", "json", "xml", "code"].includes(ext)) {
@@ -43,6 +46,8 @@ export function fileKindLabel(type?: string, name?: string) {
       return "Web page · HTML";
     case "pdf":
       return "PDF · PDF";
+    case "ppt":
+      return `演示文稿 · ${ext || "PPTX"}`;
     case "css":
       return "样式文件 · CSS";
     case "py":
@@ -61,5 +66,6 @@ export function fileKindBadge(kind: FileKind) {
   if (kind === "html" || kind === "code") return "</>";
   if (kind === "img") return "▢";
   if (kind === "pdf") return "P";
+  if (kind === "ppt") return "P/";
   return "T";
 }

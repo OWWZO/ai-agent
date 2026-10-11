@@ -3,6 +3,7 @@ import {
   normalizeFileUrlForBrowser,
 } from "@/utils/fileUrl";
 import { resolveTaskResultMap } from "@/utils/chat/toolCalls";
+import { resolveFilePreviewKind } from "@/lib/filePreview/kinds";
 
 /**
  * 任务产物和附件引用归一化工具。
@@ -155,6 +156,7 @@ const IMAGE_FILE_EXTENSIONS = new Set([
   "svg",
   "svg+xml",
   "avif",
+  "apng",
   "ico",
 ]);
 
@@ -166,8 +168,6 @@ const DOCX_FILE_EXTENSIONS = new Set(["docx"]);
 
 /** 老式 Word，浏览器端不做预览 */
 const LEGACY_DOC_EXTENSIONS = new Set(["doc"]);
-
-const EXCEL_FILE_EXTENSIONS = new Set(["csv", "xlsx", "xls"]);
 
 const TEXT_COPYABLE_EXTENSIONS = new Set([
   "md",
@@ -441,28 +441,23 @@ export const isExcelFileLike = (
   ) {
     return true;
   }
-  const ext = resolveFileExtension(fileLike);
-  if (EXCEL_FILE_EXTENSIONS.has(ext)) {
-    return true;
-  }
-  const name = String(fileLike.name || "").toLowerCase();
-  return name.includes(".csv") || name.includes(".xlsx") || name.includes(".xls");
+  // 扩展名判定统一走 resolveFilePreviewKind，避免与其它调用点各维护一份表
+  // （历史 bug：.xlsm 在这张表里漏掉，导致它被当成二进制引导下载）。
+  const kind = resolveFilePreviewKind({
+    name: fileLike.name,
+    mimeType: fileLike.mimeType,
+  });
+  return kind === "xlsx" || kind === "csv";
 };
 
 const PPT_FILE_EXTENSIONS = new Set(["ppt", "pptx", "pps", "ppsx"]);
+/** 二进制 / 媒体容器：禁止按文本复制。与 filePreview 的 binary / media 白名单保持一致。 */
 const ARCHIVE_MEDIA_EXTENSIONS = new Set([
   "zip",
   "rar",
   "7z",
   "tar",
   "gz",
-  "mp3",
-  "mp4",
-  "mov",
-  "avi",
-  "mkv",
-  "webm",
-  "wav",
   "exe",
   "dmg",
   "apk",
@@ -470,6 +465,26 @@ const ARCHIVE_MEDIA_EXTENSIONS = new Set([
   "bin",
   "glb",
   "gltf",
+  // 视频
+  "mp4",
+  "mov",
+  "webm",
+  "m4v",
+  "avi",
+  "mkv",
+  "wmv",
+  "mpeg",
+  "mpg",
+  "flv",
+  // 音频
+  "mp3",
+  "wav",
+  "m4a",
+  "ogg",
+  "opus",
+  "flac",
+  "weba",
+  "aac",
 ]);
 
 export const isPptFileLike = (

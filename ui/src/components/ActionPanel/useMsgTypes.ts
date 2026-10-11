@@ -15,11 +15,11 @@ import {
   getPrimaryTaskFile,
   isDocxFileLike,
   isExcelFileLike,
-  isImageFileLike,
   isLegacyDocFileLike,
   isPdfFileLike,
   isPptFileLike,
 } from "@/utils/taskArtifacts";
+import { resolveFilePreviewKind } from "@/lib/filePreview/kinds";
 import { normalizeToolName } from "@/components/Dialogue/tools/toolMeta";
 
 export const getSearchList = (taskItem?: PanelItemType) => {
@@ -109,12 +109,19 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
     const rawToolName = String(toolResult?.toolName || "").toLowerCase();
     const primaryFile = getPrimaryTaskFile(taskItem);
     const fileName = primaryFile?.name || '';
-    const isImageFile = isImageFileLike(primaryFile);
     const normalizedFileName = fileName.toLowerCase();
     const normalizedMimeType = (primaryFile?.mimeType || '').toLowerCase();
     const isHtmlFile = normalizedFileName.endsWith('.html')
       || normalizedFileName.endsWith('.htm')
       || normalizedMimeType.includes('text/html');
+    // 类型判定统一走 resolveFilePreviewKind，不再各自维护扩展名表。
+    const primaryKind = primaryFile
+      ? resolveFilePreviewKind({
+          name: primaryFile.name,
+          mimeType: primaryFile.mimeType,
+          url: primaryFile.url,
+        })
+      : null;
     const useExcel = !!primaryFile && isExcelFileLike(primaryFile);
     const usePdf = !!primaryFile && isPdfFileLike(primaryFile);
     const useDocx = !!primaryFile && isDocxFileLike(primaryFile);
@@ -130,11 +137,18 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
     const useHtml = messageType === 'html' || (!!primaryFile && isHtmlFile);
     const useGenUi = messageType === 'ui_tree';
     const usePpt = messageType === 'ppt' || (!!primaryFile && isPptFileLike(primaryFile));
-    // 只要主文件是图片就走图片预览（图表/工具产物常见为 tool_result + .png）
-    const useImage = isImageFile;
+    // 只要主文件是图片就走图片预览（图表/工具产物常见为 tool_result + .png）。
+    // 注意 SVG 不算位图：它要「图形 / 源码」双模式，走 useSvg。
+    const useImage = primaryKind === "image";
+    const useSvg = primaryKind === "svg";
+    const mediaKind: "video" | "audio" | null =
+      primaryKind === "video" ? "video" : primaryKind === "audio" ? "audio" : null;
+    const useMedia = mediaKind !== null;
     const useFile =
       !!primaryFile &&
       !useImage &&
+      !useSvg &&
+      !useMedia &&
       !useExcel &&
       !useHtml &&
       !usePpt &&
@@ -148,6 +162,9 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
       useHtml,
       useGenUi,
       useImage,
+      useSvg,
+      useMedia,
+      mediaKind,
       useExcel,
       usePdf,
       useDocx,
