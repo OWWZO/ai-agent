@@ -1,5 +1,3 @@
-import type { BundledLanguage } from "shiki";
-
 /**
  * 扩展名 → shiki 语言标识。
  *
@@ -126,10 +124,11 @@ export function isKnownCodeExtension(extension: string): boolean {
  * 解析高亮语言：接受扩展名或完整文件名。
  * 未知扩展名统一回退到 `text`，由 shiki 侧保证不会因语言缺失而渲染失败。
  */
-export function resolveCodeLanguage(extensionOrName?: string | null): BundledLanguage {
-  const ext = normalizeExtension(extensionOrName).includes(".")
-    ? extractExtension(extensionOrName)
-    : normalizeExtension(extensionOrName);
-  const language = LANGUAGE_BY_EXTENSION[ext] || "text";
-  return language as BundledLanguage;
+export function resolveCodeLanguage(extensionOrName?: string | null): string {
+  const raw = String(extensionOrName ?? "").trim();
+  const ext =
+    raw.includes(".") || raw.includes("/") || raw.includes("\\")
+      ? extractExtension(raw)
+      : normalizeExtension(raw);
+  return LANGUAGE_BY_EXTENSION[ext] || "text";
 }

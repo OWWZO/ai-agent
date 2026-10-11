@@ -248,3 +248,28 @@ export function isBinaryBackedKind(kind: FilePreviewKind): boolean {
     kind === "binary"
   );
 }
+
+/**
+ * 预览区头部是否需要一条底部分隔线。
+ *
+ * 对齐 ZCode `PreviewPane.tsx:363 shouldShowPreviewPaneHeaderDivider()`：
+ * **只在「头部下方是完全不同类型的渲染面」时才画线** ——
+ * pdf / pptx / 音视频 / Office 这些会换成独立的 viewer（自带工具条、底色、滚动容器），
+ * 不画线会糊在一起；而代码 / 文本 / Markdown / SVG / 图片的头部与内容同属一个平面，
+ * 画线纯属噪音。
+ *
+ * 这是本项目「线只出现在真正分隔不同内容类型的地方」规则的唯一实现点。
+ */
+export function shouldShowPreviewHeaderDivider(
+  kind: FilePreviewKind
+): boolean {
+  return (
+    kind === "pdf" ||
+    kind === "pptx" ||
+    kind === "video" ||
+    kind === "audio" ||
+    kind === "docx" ||
+    kind === "doc" ||
+    kind === "xlsx"
+  );
+}

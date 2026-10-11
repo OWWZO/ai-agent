@@ -4,6 +4,7 @@ import {
   resolvePreviewExtension,
   isBinaryBackedKind,
   isTextBackedKind,
+  shouldShowPreviewHeaderDivider,
 } from "./kinds";
 import { extractExtension, resolveCodeLanguage } from "./language";
 
@@ -162,5 +163,39 @@ describe("kind 分组谓词", () => {
     expect(isBinaryBackedKind("pdf")).toBe(true);
     expect(isBinaryBackedKind("video")).toBe(true);
     expect(isBinaryBackedKind("markdown")).toBe(false);
+  });
+});
+
+describe("shouldShowPreviewHeaderDivider — 对齐 ZCode PreviewPane.tsx:363", () => {
+  it("换成独立 viewer 的类型才画线（pdf / Office / 音视频）", () => {
+    for (const kind of [
+      "pdf",
+      "pptx",
+      "docx",
+      "doc",
+      "xlsx",
+      "video",
+      "audio",
+    ] as const) {
+      expect(shouldShowPreviewHeaderDivider(kind)).toBe(true);
+    }
+  });
+
+  it("代码 / 文本 / Markdown / SVG / 图片与头部同属一个平面，不画线", () => {
+    for (const kind of [
+      "code",
+      "text",
+      "markdown",
+      "svg",
+      "image",
+      "html",
+      "csv",
+      "diff",
+      "model3d",
+      "binary",
+      "unknown",
+    ] as const) {
+      expect(shouldShowPreviewHeaderDivider(kind)).toBe(false);
+    }
   });
 });
