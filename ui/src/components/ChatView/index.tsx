@@ -14,17 +14,12 @@ import DataDialogue from "@/components/Dialogue/DataDialogue";
 import GeneralInput from "@/components/GeneralInput";
 import ActionView from "@/components/ActionView";
 import { ThinkingPanel } from "@/components/Dialogue/ThinkingPanel";
-import { ToolDiffPanel } from "@/components/Dialogue/ToolDiffPanel";
+import { ToolPreviewPanel } from "@/components/Dialogue/ToolPreviewPanel";
 import { AgentDetailPanel } from "@/components/Dialogue/AgentDetailPanel";
 import {
-  buildEditDiffCode,
-  extractEditPath,
-  resolveTaskToolArg,
-  resolveTaskToolName,
-  resolveTaskToolOutput,
-  resolveTaskToolStatus,
-  toolLabel,
-} from "@/components/Dialogue/tools";
+  buildToolPreviewSource,
+  type ToolPreviewSource,
+} from "@/components/Dialogue/tools/toolPreviewSource";
 import { MoonSpinner } from "@/components/ui/MoonSpinner";
 import SessionTaskComposerBar from "./SessionTaskComposerBar";
 import BackgroundTasksDock, {
@@ -89,6 +84,24 @@ import type { PanelItemType } from "@/components/ActionPanel";
 type ChatViewApi = {
   openFile: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
 };
+
+/**
+ * 聊天内容的水平内边距。必须放在滚动容器**内层**（ConversationContent），
+ * 而不是外层 Conversation —— use-stick-to-bottom 会在两者之间注入无类名的
+ * 滚动 div，滚动条画在它身上；外层一旦有 padding，滚动条就距面板边缘 20px。
+ *
+ * `lg:` 以下清零沿用原移动端媒体查询规则；显式写 `px-0 md:px-0` 是为了让
+ * tailwind-merge 清掉 Content 基类里的 `px-1` / `md:px-2`。
+ */
+function chatContentClassName(
+  hasWorkspaceLayout: boolean,
+  isFocusMode: boolean
+): string {
+  if (!hasWorkspaceLayout) {
+    return "mx-auto w-full max-w-[860px] px-1 pb-6";
+  }
+  return isFocusMode ? "px-0 md:px-0 lg:px-3" : "px-0 md:px-0 lg:px-5";
+}
 
 type Props = {
   inputInfo: CHAT.TInputInfo;
@@ -196,9 +209,22 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   const [workspaceOpenRequested, setWorkspaceOpenRequested] = useState(false);
   /** 打开工作区前缓存要点的文件，避免 ActionView 未挂载时 setFilePreview 丢失 */
   const [pendingPreviewFile, setPendingPreviewFile] = useState<CHAT.TFile>();
+  /**
+   * 工具卡推来的 `CodeViewerSource` tab（Stage 4）。
+   *
+   * 与 `pendingPreviewFile` 同一个理由：ActionView 可能还没挂载，先把要开的 source
+   * 暂存在父级，挂载后消费一次再清空。
+   */
+  const [pendingSourceTab, setPendingSourceTab] = useState<ToolPreviewSource | null>(
+    null
+  );
   /** Kimi 右侧互斥 detail：thinking | toolDiff | agent | ActionView */
   const [thinkingDetail, setThinkingDetail] = useState<string | null>(null);
   const [toolDiffTask, setToolDiffTask] = useState<CHAT.Task | null>(null);
+  /** 多文件 edit：右侧要展示第几个文件的 patch（undefined = 单文件 / 全部） */
+  const [toolDiffFileIndex, setToolDiffFileIndex] = useState<number | undefined>(
+    undefined
+  );
   const [agentDetail, setAgentDetail] = useState<{
     tool: CHAT.Task;
     chat: CHAT.ChatItem;
@@ -430,6 +456,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     setToolDiffTask(null);
     setAgentDetail(null);
     setPendingPreviewFile(undefined);
+    setPendingSourceTab(null);
     setActiveTask(undefined);
     setWorkspaceBackTarget(null);
     openRightWorkspace();
@@ -443,30 +470,57 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     setThinkingDetail(null);
   });
 
+  /**
+   * 点工具卡文件名 chip 的统一入口（Stage 4）。
+   *
+   * 会在侧栏 ActionView 里**新增 / 切换一个 tab**（patch 与文件 tab 共用一条 tab 栏，
+   * 对齐 ZCode 行为），而不是只替换右侧单一面板 —— 这样连开多个 diff 不会互相顶掉。
+   *
+   * `backTarget` 存在时（从子 Agent 详情进来的）仍走独立 `ToolPreviewPanel`，
+   * 因为那条路径需要保留「返回子 Agent」按钮。
+   */
   const openToolDiffPanel = useMemoizedFn(
     (
       task: CHAT.Task,
       chat?: CHAT.ChatItem,
-      backTarget?: CHAT.AgentDetailTarget
+      backTarget?: CHAT.AgentDetailTarget,
+      fileIndex?: number
     ) => {
-      setToolDiffTask(task);
+      const request = buildToolPreviewSource(task, fileIndex);
+      if (!request) return;
+
       setThinkingDetail(null);
-      setAgentDetail(null);
       setPendingPreviewFile(undefined);
       setActiveTask(undefined);
-      setWorkspaceBackTarget(backTarget || null);
-      openRightWorkspace();
-      if (chat) {
-        setActiveRunState({
-          status: chat.metrics?.status,
-          finishedAt: chat.finishedAt,
-        });
+      setActiveRunState({
+        status: chat?.metrics?.status,
+        finishedAt: chat?.finishedAt,
+      });
+
+      if (backTarget) {
+        // 详情页返回路径：独立面板 + 返回按钮
+        setToolDiffTask(task);
+        setToolDiffFileIndex(fileIndex);
+        setWorkspaceBackTarget(backTarget);
+        openRightWorkspace();
+        return;
       }
+
+      // 常规路径：只往侧栏塞一个 tab。`source` 是 file 且能映射到会话产物时，
+      // ActionView 会把它并进同 key 的文件 tab；否则作为独立 source tab 打开。
+      setToolDiffTask(null);
+      setToolDiffFileIndex(undefined);
+      setAgentDetail(null);
+      setWorkspaceBackTarget(null);
+      openRightWorkspace();
+      setPendingPreviewFile(undefined);
+      setPendingSourceTab(request);
     }
   );
 
   const closeToolDiffPanel = useMemoizedFn(() => {
     setToolDiffTask(null);
+    setToolDiffFileIndex(undefined);
     setWorkspaceBackTarget(null);
   });
 
@@ -483,6 +537,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       setThinkingDetail(null);
       setToolDiffTask(null);
       setPendingPreviewFile(undefined);
+      setPendingSourceTab(null);
       setActiveTask(undefined);
       setWorkspaceBackTarget(backTarget || null);
       openRightWorkspace();
@@ -620,22 +675,6 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     openRightWorkspace();
     actionViewRef.current?.openPlanView();
   });
-
-  const toolDiffView = useMemo(() => {
-    if (!toolDiffTask) return null;
-    const name = resolveTaskToolName(toolDiffTask);
-    const arg = resolveTaskToolArg(toolDiffTask);
-    return {
-      title: toolLabel(name),
-      path: extractEditPath(arg),
-      diffCode: buildEditDiffCode({
-        name,
-        arg
-      }),
-      output: resolveTaskToolOutput(toolDiffTask),
-      status: resolveTaskToolStatus(toolDiffTask),
-    };
-  }, [toolDiffTask]);
 
   const toggleRightPanel = useMemoizedFn(() => {
     const nextOpen = isRightCollapsed;
@@ -950,6 +989,20 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     return next;
   }, [conversation.id, deferredChatList, sessionFileTasks]);
 
+  /**
+   * 右侧「工具预览」的统一模型（只有从子 Agent 详情返回时才用）。
+   *
+   * 判定逻辑与 `openToolDiffPanel` 共用 `buildToolPreviewSource`，两者不会漂移。
+   */
+  const toolDiffView = useMemo(() => {
+    if (!toolDiffTask) return null;
+    return buildToolPreviewSource(
+      toolDiffTask,
+      toolDiffFileIndex,
+      sessionArtifactFiles
+    );
+  }, [toolDiffTask, toolDiffFileIndex, sessionArtifactFiles]);
+
   const activeChat = conversation.chatList?.[conversation.chatList.length - 1];
   const sessionBusy = loading || isParentLoopLive(activeChat);
   const liveAgentDetail = useMemo(() => {
@@ -1066,6 +1119,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       thinkingDetail ||
       toolDiffTask ||
       agentDetail ||
+      pendingSourceTab ||
       pendingDesktopStreamUrl
   );
 
@@ -1246,7 +1300,9 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             thinkingPanelOpen={thinkingDetail != null}
             onOpenThinking={openThinkingPanel}
             onSyncThinking={syncThinkingPanel}
-            onOpenToolDiff={openToolDiffPanel}
+            onOpenToolDiff={(task, chat, fileIndex) =>
+              openToolDiffPanel(task, chat, undefined, fileIndex)
+            }
             onOpenAgent={openAgentPanel}
             onOpenWorkspaceFiles={onOpenTaskFiles}
             onRequestReplay={onRequestRunReplay ? requestReplay : undefined}
@@ -1288,11 +1344,15 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       <div
         ref={containerRef}
         className={classNames(
-          "reactor-chat-workspace-layout flex h-full w-full bg-background",
-          // ZCode：frame 之间保持 4px 可缩放间隙（对齐 macOS 外缩进）
+          "reactor-chat-workspace-layout flex h-full w-full",
+          // 双栏：外壳铺一层浅底（与左侧会话栏同色），两个面板保持纯白圆角、**不描边**。
+          // 分栏靠这层底色差表达，而不是靠 border —— 这样「面板边框」这条线就不存在了。
+          // 间隙尺寸对齐 ZCode：`ResizablePanelGroup` 本身没有 gap，两栏之间**只留分隔条自身的宽度**。
+          // ZCode `WorkspaceShellLayout.tsx:1626` 的分隔条就是 `w-1`（4px）—— 所以这里 gap 取 0。
+          // 单栏时不留底，让会话直接铺在页面上。
           hasWorkspaceLayout
-            ? "gap-1 p-1"
-            : "reactor-single-chat-shell justify-center overflow-hidden px-4 pt-4 md:px-6"
+            ? "gap-0 bg-[var(--chat-nav)] p-1"
+            : "reactor-single-chat-shell justify-center overflow-hidden bg-background px-4 pt-4 md:px-6"
         )}
         data-workspace-open={hasWorkspaceLayout ? "true" : "false"}
         data-workspace-empty={hasWorkspaceContent ? "false" : "true"}
@@ -1303,10 +1363,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
           ref={leftPanelRef}
             className={classNames(
             "reactor-chat-panel-left flex min-h-0 flex-col overflow-hidden bg-background",
-            // ZCode WorkspaceShellLayout.tsx:1674 —— 仅在侧栏可见时给对话 frame 加框，
-            // 单栏（无工作区）时不留框，让会话铺满。
-            hasWorkspaceLayout &&
-              "rounded-[var(--workspace-panel-radius)] border border-border",
+            // 双栏时只保留圆角，不加描边 —— 与预览面板的分界由外壳底色差表达。
+            hasWorkspaceLayout && "rounded-[var(--workspace-panel-radius)]",
             !hasWorkspaceLayout && "mx-auto h-full w-full max-w-[980px]",
             isLeftCollapsed && !isFocusMode && "w-14 min-w-14",
             (!isLeftCollapsed || isFocusMode) && hasWorkspaceLayout && "shrink-0"
@@ -1349,8 +1407,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                 <div
                   className={classNames(
                     "reactor-chat-header flex items-center justify-between",
+                    // 头部不再画横线：面板本身已经是带框的卡片，内部再画一条会把
+                    // 标题框成「卡里套卡」。层级交给间距表达。
                     hasWorkspaceLayout
-                      ? "border-b border-border py-3.5"
+                      ? "py-3.5"
                       : "mb-3 min-h-[36px]",
                     hasWorkspaceLayout
                       ? isFocusMode
@@ -1382,20 +1442,21 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                     contextRef={conversationContextRef}
                     className={classNames(
                       "chat-fade-bottom min-h-0 flex-1 overflow-hidden",
-                      hasWorkspaceLayout && "pt-5",
-                      hasWorkspaceLayout
-                        ? isFocusMode
-                          ? "px-3"
-                          : "px-5"
-                        : ""
+                      hasWorkspaceLayout && "pt-5"
+                      // ⚠️ 水平内边距不能加在这里：use-stick-to-bottom 会在
+                      // Conversation 与 Content 之间注入无类名的滚动 div，
+                      // 滚动条画在它身上 —— 外层一旦有 padding，滚动条就
+                      // 距面板边缘 20px。内边距一律放到 Content 上（见下）。
                     )}
                   >
                     <ConversationContent
-                      className={
-                        hasWorkspaceLayout
-                          ? undefined
-                          : "mx-auto w-full max-w-[860px] px-1 pb-6"
-                      }
+                      // scrollClassName 直接命中真正的滚动容器（库的 scrollRef div），
+                      // 4px 极细滚动条 + 紧贴面板右缘。
+                      scrollClassName="scrollbar-thin"
+                      className={chatContentClassName(
+                        hasWorkspaceLayout,
+                        isFocusMode
+                      )}
                     >
                       {renderChatDialogues()}
                     </ConversationContent>
@@ -1450,12 +1511,13 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             onPointerUp={handleDragEnd}
             onPointerCancel={handleDragEnd}
             className={classNames(
-              // ZCode WorkspaceShellLayout.tsx:1626 —— 分隔条本体是一条 4px 的透明命中条，
+              // ZCode WorkspaceShellLayout.tsx:1626 —— 分隔条本体是一条透明命中条，
               // 平时完全不可见（无底色、无描边、无手柄），只有 hover / 拖拽 / 焦点时才浮出指示线。
+              // 宽度 `w-1`（4px）与 ZCode 的分隔条一致；容器 `gap-0`，所以两栏之间**就只有这 4px**，
+              // 外壳浅底从这条缝里透出来当分界（改前是 gap-1 + w-1 + gap-1 = 12px，太宽）。
               "reactor-workspace-resizer group/handle relative z-10 flex h-full w-1 shrink-0 touch-none cursor-ew-resize items-center justify-center bg-transparent outline-none",
               "focus:outline-none focus-visible:ring-0",
-              // 透明命中扩展：把 4px 视觉条的可拖拽区域撑到 12px（正好填满容器 gap-1 的 4px×2），
-              // 既保住 ZCode 的极简外观，又不会覆盖两侧面板的边框与点击区。
+              // 透明命中扩展：把 4px 视觉条的可拖拽区域撑到 12px，兼顾 ZCode 的极简外观与可用性。
               "before:absolute before:-inset-x-1 before:inset-y-0 before:content-['']",
               // 指示线：2px 圆角、三级前景半透明；上下按面板圆角内缩，默认完全透明。
               "after:pointer-events-none after:absolute after:left-1/2 after:-translate-x-1/2 after:w-0.5 after:rounded-full after:bg-foreground-subtlest/50 after:opacity-0 after:transition-opacity after:content-['']",
@@ -1478,7 +1540,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
         {hasWorkspaceLayout ? (
           <div
-            className="reactor-workspace-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--workspace-panel-radius)] border border-border bg-background"
+            className="reactor-workspace-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--workspace-panel-radius)] bg-background"
             data-workspace-collapsed="false"
           >
             {pendingDesktopStreamUrl ? (
@@ -1497,10 +1559,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                 }}
               />
             ) : toolDiffView ? (
-              <ToolDiffPanel
-                title={toolDiffView.title}
-                path={toolDiffView.path}
-                diffCode={toolDiffView.diffCode}
+              <ToolPreviewPanel
+                source={toolDiffView.source}
+                fileUrl={toolDiffView.fileUrl}
+                unavailableReason={toolDiffView.unavailableReason}
                 output={toolDiffView.output}
                 status={toolDiffView.status}
                 onBack={workspaceBackTarget ? returnToAgentDetail : undefined}
@@ -1528,8 +1590,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                   changeFile(file, chat, agentDetailBackTarget)
                 }
                 onOpenThinking={openThinkingPanel}
-                onOpenToolDiff={(task, chat) =>
-                  openToolDiffPanel(task, chat, agentDetailBackTarget)
+                onOpenToolDiff={(task, chat, fileIndex) =>
+                  openToolDiffPanel(task, chat, agentDetailBackTarget, fileIndex)
                 }
                 onOpenAgent={(task, chat) =>
                   openAgentPanel(task, chat, agentDetailBackTarget)
@@ -1549,6 +1611,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                 streamTask={workspaceStreamTask}
                 pendingPreviewFile={pendingPreviewFile}
                 onPendingPreviewFileConsumed={clearPendingPreviewFile}
+                pendingSourceTab={pendingSourceTab}
+                onPendingSourceTabConsumed={() => setPendingSourceTab(null)}
                 workspaceCaption={workspaceCaption}
                 taskList={sessionFileTasks}
                 plan={plan}
@@ -1583,7 +1647,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             key={conversation.id}
             className="chat-fade-bottom min-h-0 flex-1 overflow-hidden"
           >
-            <ConversationContent className="mx-auto w-full max-w-[860px] px-1 pb-6">
+            <ConversationContent
+              scrollClassName="scrollbar-thin"
+              className="mx-auto w-full max-w-[860px] px-1 pb-6"
+            >
               {renderDataDialogues()}
             </ConversationContent>
             <ConversationScrollButton />

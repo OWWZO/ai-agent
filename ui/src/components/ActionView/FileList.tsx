@@ -233,13 +233,18 @@ const FileList: React.FC<{
       "code",
       "log",
     ].includes(ext);
+    // 文档类（Markdown 等）走最后一个分支：对齐 ZCode
+    // `previewPaneMarkdownContent.tsx:42,54` 的 `w-full h-full bg-background
+    // overflow-auto` + `p-4` —— 内容直接铺在面板里，**不套卡片**。旧版的
+    // `rounded-2xl border + shadow` 会在已经带边框的面板里再画一圈线，
+    // 属于「卡里套卡」的另一种形态。
     const contentShellClass = isSpreadsheet
       ? "min-h-0 flex-1 overflow-hidden bg-white"
       : isSelfScrollingPreview
         ? "min-h-0 flex-1 overflow-hidden"
         : isMedia || isSourceCode
           ? "min-h-0 flex-1 overflow-auto bg-white"
-          : "mx-auto min-h-0 w-full max-w-[720px] flex-1 overflow-auto rounded-2xl border border-[var(--chat-border)]/70 bg-white p-6 shadow-[0_1px_2px_oklch(0%_0_0_/_0.03)] sm:p-8";
+          : "mx-auto min-h-0 w-full max-w-[720px] flex-1 overflow-auto bg-white p-6 sm:p-8";
 
     return (
       <div className="flex h-full min-h-0 flex-col">

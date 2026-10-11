@@ -18,9 +18,9 @@ const ActionViewFrame: React.FC<ActionViewFrameProps> = ({
 }) => {
   return (
     <div className="flex h-full flex-col">
-      {/* Header — ZCode PreviewPane.tsx:1529-1534：h-10 + bg-surface/30 + border-b border-border */}
+      {/* Header — 与 `ActionView` 顶栏同规格：不画分隔线，层级交给间距。 */}
       {titleNode && (
-        <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border bg-surface/30 px-2">
+        <div className="flex h-10 shrink-0 items-center gap-1 px-2">
           <button
             onClick={onClickTitle}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground active:scale-[0.97]"

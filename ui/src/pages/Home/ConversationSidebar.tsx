@@ -281,7 +281,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
   const isTaskFilesPanel = sidebarPanel === "task-files";
 
   return (
-    <div className="flex h-full w-full min-w-0 flex-col border-r border-[var(--chat-border)] bg-[var(--chat-nav)]">
+    <div className="flex h-full w-full min-w-0 flex-col bg-[var(--chat-nav)]">
       {/* 顶部操作区 — Manus 侧栏风格 */}
       <div className="flex h-14 shrink-0 items-center justify-between px-3.5">
         <div className="text-[18px] font-semibold tracking-[-0.02em] text-[var(--chat-text)]">
@@ -387,7 +387,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
             onBack={() => onCloseTaskFiles?.()}
             onRefresh={onRefreshTaskFiles}
           />
-          <div className="shrink-0 border-t border-[var(--chat-border)]/50 px-3 py-2.5">
+          <div className="shrink-0 px-3 py-2.5">
             <AccountSummary user={user} onLogout={onLogout} />
           </div>
         </div>
@@ -434,7 +434,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
               ref={recentSessionsListRef}
               onScroll={handleRecentSessionsScroll}
               onWheel={handleRecentSessionsWheel}
-              className="flex-1 overflow-y-auto scrollbar-hover"
+              className="flex-1 overflow-y-auto scrollbar-thin"
             >
               {filteredSessions.length === 0 ? (
                 <div className="px-2.5 py-4 text-center text-[12px] text-[var(--chat-text-muted)]">
@@ -537,7 +537,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
             </div>
           </div>
 
-          <div className="shrink-0 border-t border-[var(--chat-border)]/50 px-2 py-2">
+          <div className="shrink-0 px-2 py-2">
             <button
               type="button"
               onClick={() => onOpenTaskFiles?.()}

@@ -6,6 +6,10 @@ import {
   collectSessionFileTasks,
   collectWorkspaceFiles,
   flattenTasksWithFiles,
+  isSourceTab,
+  resolveWorkspacePaneMode,
+  workspaceTabKey,
+  type WorkspaceSourceTab,
 } from "./workspaceFiles";
 import { isFileListOnlyTask, normalizeSessionArtifactFiles } from "@/utils/taskArtifacts";
 
@@ -290,5 +294,109 @@ describe("workspaceFiles session aggregation", () => {
     ]);
     expect(files).toHaveLength(1);
     expect(files[0]?.resourceKey).toBe("workspace/report.md");
+  });
+});
+
+describe("workspace tab model (Stage 4)", () => {
+  const patchTab = (patch: string): WorkspaceSourceTab => ({
+    kind: "source",
+    key: `patch:src/a.ts:${patch}`,
+    source: {
+      type: "patch",
+      title: "a.ts",
+      path: "src/a.ts",
+      patch
+    },
+  });
+
+  it("resolves a file tab key from its artifact identity", () => {
+    const tab = {
+      name: "a.ts",
+      resourceKey: "workspace/a.ts",
+      task: {}
+    } as any;
+    expect(isSourceTab(tab)).toBe(false);
+    expect(workspaceTabKey(tab)).toBe("workspace/a.ts");
+  });
+
+  it("resolves a source tab key from its own key, not from the missing url", () => {
+    const tab = patchTab("@@ -1 +1 @@");
+    expect(isSourceTab(tab)).toBe(true);
+    expect(workspaceTabKey(tab)).toBe(tab.key);
+    // 关键回归：source tab 没有 url / resourceKey，不能被当成空 key 而互相覆盖
+    expect(workspaceTabKey(tab)).not.toBe("");
+  });
+
+  it("keeps distinct source tabs apart even when they share a title", () => {
+    const first = patchTab("@@ -1 +1 @@\n-a\n+b");
+    const second = patchTab("@@ -9 +9 @@\n-c\n+d");
+    expect(workspaceTabKey(first)).not.toBe(workspaceTabKey(second));
+  });
+
+  it("never mixes source tabs with file tabs", () => {
+    const fileTab = {
+      name: "a.ts",
+      resourceKey: "workspace/a.ts",
+      task: {}
+    } as any;
+    const source = patchTab("@@ -1 +1 @@");
+    expect(workspaceTabKey(fileTab)).not.toBe(workspaceTabKey(source));
+  });
+});
+
+describe("resolveWorkspacePaneMode", () => {
+  it("动态模式下无论有没有选中 tab 都回动态流", () => {
+    // 关键回归：点「动态」后 selectedKey 仍指向原 tab，不能被它抢走内容区。
+    expect(
+      resolveWorkspacePaneMode({
+        panelMode: "follow",
+        hasSelectedSource: true,
+        hasSelectedFile: false
+      })
+    ).toBe("follow");
+    expect(
+      resolveWorkspacePaneMode({
+        panelMode: "follow",
+        hasSelectedSource: false,
+        hasSelectedFile: true
+      })
+    ).toBe("follow");
+  });
+
+  it("file 模式下按选中 tab 的类型分派", () => {
+    expect(
+      resolveWorkspacePaneMode({
+        panelMode: "file",
+        hasSelectedSource: true,
+        hasSelectedFile: false
+      })
+    ).toBe("source");
+    expect(
+      resolveWorkspacePaneMode({
+        panelMode: "file",
+        hasSelectedSource: false,
+        hasSelectedFile: true
+      })
+    ).toBe("file");
+  });
+
+  it("source tab 优先于 file tab（同一次选中只可能有一个）", () => {
+    expect(
+      resolveWorkspacePaneMode({
+        panelMode: "file",
+        hasSelectedSource: true,
+        hasSelectedFile: true
+      })
+    ).toBe("source");
+  });
+
+  it("没有选中项时回动态流，不渲染空面板", () => {
+    expect(
+      resolveWorkspacePaneMode({
+        panelMode: "file",
+        hasSelectedSource: false,
+        hasSelectedFile: false
+      })
+    ).toBe("follow");
   });
 });

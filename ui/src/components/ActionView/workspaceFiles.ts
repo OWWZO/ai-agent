@@ -28,6 +28,63 @@ export type WorkspaceFileItem = CHAT.TFile & {
   task: PanelItemType;
 };
 
+/**
+ * 侧栏 tab 的两种来源（Stage 4）。
+ *
+ * - `file`   —— 会话产物文件（原有形态，带可读 URL）
+ * - `source` —— 由工具卡片推来的 `CodeViewerSource`（patch / text / image / 无 URL 的 file）
+ *
+ * 之所以要单独的 `source` 形态：会话产物 tab 的身份是 `workspaceFileKey()`（依赖
+ * URL / resourceKey），而 patch 这类内容根本没有落盘文件，塞不进产物模型。
+ * 两者共用一个 tab 条，但身份键与渲染分派分开。
+ */
+export type WorkspaceSourceTab = {
+  kind: "source";
+  key: string;
+  source: import("@/lib/codeViewerSource").CodeViewerSource;
+  fileUrl?: string;
+  unavailableReason?: string;
+  output?: string[];
+  status?: "running" | "ok" | "error";
+};
+
+export type WorkspaceTab =
+  | (WorkspaceFileItem & { kind?: "file"; key?: string })
+  | WorkspaceSourceTab;
+
+/** 统一取 tab 身份键：file tab 走产物 key，source tab 走 sourceTabKey。 */
+export function workspaceTabKey(tab: WorkspaceTab): string {
+  if ((tab as WorkspaceSourceTab).kind === "source") {
+    return (tab as WorkspaceSourceTab).key;
+  }
+  return workspaceFileKey(tab as WorkspaceFileItem);
+}
+
+export function isSourceTab(tab: WorkspaceTab): tab is WorkspaceSourceTab {
+  return (tab as WorkspaceSourceTab).kind === "source";
+}
+
+/**
+ * 决定工作区内容区渲染哪一屏。
+ *
+ * 抽成纯函数是因为它有个容易写错的边界：**两种 tab 都必须受 `panelMode` 守卫**。
+ * `selectedKey` 在点「动态」后不会清空，若只判断「有没有选中的 tab」，
+ * 点「动态」将无法切回动态流。
+ */
+export function resolveWorkspacePaneMode(input: {
+  panelMode: "follow" | "file";
+  hasSelectedSource: boolean;
+  hasSelectedFile: boolean;
+}): "follow" | "source" | "file" {
+  if (input.panelMode !== "file") {
+    return "follow";
+  }
+  if (input.hasSelectedSource) {
+    return "source";
+  }
+  return input.hasSelectedFile ? "file" : "follow";
+}
+
 export type WorkspaceTreeDirNode = {
   kind: "dir";
   name: string;
@@ -257,6 +314,41 @@ export function formatWorkspaceBytes(size?: number | null): string {
     return `${(value / 1024).toFixed(1)} KB`;
   }
   return `${(value / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+/**
+ * 把一个工具入参里的绝对 / 相对路径映射到会话产物文件。
+ *
+ * 决策点 B（TASKS.md §5）：前端没有「按任意绝对路径读文件」的接口，工具读写的文件
+ * 只有出现在会话产物清单里才可预览。匹配按「路径后缀」做，因为工具给的常是绝对路径
+ * （`/workspace/src/a.ts`），而产物清单里是相对路径（`src/a.ts`）。
+ */
+export function findWorkspaceFileByPath(
+  files: WorkspaceFileItem[] | CHAT.TFile[] | null | undefined,
+  path: string | null | undefined
+): WorkspaceFileItem | CHAT.TFile | undefined {
+  const target = normalizeRelativePath(path);
+  if (!target) return undefined;
+  const list = files || [];
+  // 优先精确命中，再退化为后缀命中（绝对路径 → 相对路径）
+  let suffixHit: WorkspaceFileItem | CHAT.TFile | undefined;
+  for (const file of list) {
+    const relative = workspaceRelativePath(file) || normalizeRelativePath(file.name);
+    if (!relative) continue;
+    if (relative === target) return file;
+    if (!suffixHit && (target.endsWith(`/${relative}`) || relative.endsWith(`/${target}`))) {
+      suffixHit = file;
+    }
+  }
+  return suffixHit;
+}
+
+/** 从产物文件取可读 URL（预览优先，其次原文件）。 */
+export function workspaceFileUrl(
+  file?: Pick<CHAT.TFile, "previewUrl" | "url" | "downloadUrl"> | null
+): string {
+  if (!file) return "";
+  return file.previewUrl || file.url || file.downloadUrl || "";
 }
 
 function compareTreeNodes(left: WorkspaceTreeNode, right: WorkspaceTreeNode): number {
