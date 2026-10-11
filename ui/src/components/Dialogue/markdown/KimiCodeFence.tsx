@@ -6,7 +6,8 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { CheckIcon, CopyIcon } from "lucide-react";
+import { CheckIcon, CopyIcon, WrapText } from "lucide-react";
+import { useCodePreviewWrap } from "@/hooks/useCodePreviewWrap";
 import { cn } from "@/lib/utils";
 import type { BundledLanguage, ThemedToken } from "shiki";
 import { loadShiki } from "@/lib/lazy/shiki";
@@ -60,6 +61,7 @@ function FenceChrome({
   className?: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const [wrap, , toggleWrap] = useCodePreviewWrap();
 
   const onCopy = useCallback(async () => {
     const ok = await copyText(code);
@@ -69,9 +71,22 @@ function FenceChrome({
   }, [code]);
 
   return (
-    <div className={cn("kimi-code-fence", className)}>
+    <div
+      className={cn("kimi-code-fence", className)}
+      data-wrap={wrap ? "true" : "false"}
+    >
       <div className="kimi-code-fence-bar">
         <span className="kimi-code-fence-lang">{lang}</span>
+        <button
+          type="button"
+          className="kimi-code-fence-wrap"
+          aria-label="自动换行"
+          aria-pressed={wrap}
+          title={wrap ? "自动换行：已开启" : "自动换行：已关闭"}
+          onClick={toggleWrap}
+        >
+          <WrapText className="size-3.5" />
+        </button>
         <button
           type="button"
           className="kimi-code-fence-copy"
