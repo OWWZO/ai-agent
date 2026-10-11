@@ -52,6 +52,8 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
+import ConversationTurnNavigator from "@/components/Dialogue/ConversationTurnNavigator";
+import type { StickToBottomContext } from "use-stick-to-bottom";
 import {
   ChevronUp,
   FolderOpen,
@@ -906,6 +908,12 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     files: [],
     snapshots: [],
   });
+  /**
+   * StickToBottom 的 context：消息导航跳转前要 `stopScroll()` 解锁吸底，
+   * 否则跳转后会被吸底逻辑拉回底部（`plans/030` 风险 R1）。
+   */
+  const conversationContextRef = useRef<StickToBottomContext | null>(null);
+
   const sessionArtifactFiles = useMemo(() => {
     const merged: CHAT.TFile[] = [];
     const seen = new Set<string>();
@@ -1066,7 +1074,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       <button
         type="button"
         onClick={toggleRightPanel}
-        className="reactor-mobile-workspace-trigger flex h-8 w-8 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+        className="reactor-mobile-workspace-trigger flex h-8 w-8 items-center justify-center rounded-full text-foreground-subtle transition-colors hover:bg-hover hover:text-foreground"
         title="打开工作区"
         aria-label="打开工作区"
       >
@@ -1169,26 +1177,26 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       />
       {headerStatus ? (
         <div
-          className="thinking-shimmer truncate text-[14px] font-semibold tracking-tight text-[var(--chat-text-soft)]"
+          className="thinking-shimmer truncate text-ui-base font-semibold tracking-tight text-foreground-subtle"
           role="status"
           aria-live="polite"
         >
           {headerStatus}
         </div>
       ) : (
-        <div className="min-w-0 truncate text-[14px] font-semibold tracking-[-0.01em] text-[var(--chat-text)]">
+        <div className="min-w-0 truncate text-ui-base font-semibold text-foreground">
           {headerTitle}
         </div>
       )}
       {opts?.showDeepThink && conversation.deepThink ? (
-        <div className="flex shrink-0 items-center gap-1.5 rounded-[6px] bg-[var(--chat-surface-muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--chat-text-soft)]">
-          <i className="font_family icon-shendusikao text-[11px]"></i>
+        <div className="flex shrink-0 items-center gap-1.5 rounded-xs border border-border px-2 py-1 text-ui-xs leading-none text-foreground-subtlest">
+          <i className="font_family icon-shendusikao text-ui-xs"></i>
           <span>深度研究</span>
         </div>
       ) : null}
       {opts?.badge ? (
-        <div className="flex shrink-0 items-center gap-1.5 rounded-[6px] bg-[var(--chat-surface-muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--chat-text-soft)]">
-          <i className="font_family icon-shendusikao text-[11px]"></i>
+        <div className="flex shrink-0 items-center gap-1.5 rounded-xs border border-border px-2 py-1 text-ui-xs leading-none text-foreground-subtlest">
+          <i className="font_family icon-shendusikao text-ui-xs"></i>
           <span>{opts.badge}</span>
         </div>
       ) : null}
@@ -1206,7 +1214,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
               type="button"
               onClick={() => void onLoadMoreHistory()}
               disabled={historyLoading}
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] text-[var(--chat-text-muted)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)] disabled:cursor-wait disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-ui-sm text-foreground-subtlest transition-colors hover:bg-hover hover:text-foreground disabled:cursor-wait disabled:opacity-60"
               data-testid="load-more-history"
             >
               {historyLoading ? (
@@ -1280,9 +1288,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       <div
         ref={containerRef}
         className={classNames(
-          "reactor-chat-workspace-layout flex h-full w-full bg-[var(--color-bg)]",
+          "reactor-chat-workspace-layout flex h-full w-full bg-background",
+          // ZCode：frame 之间保持 4px 可缩放间隙（对齐 macOS 外缩进）
           hasWorkspaceLayout
-            ? "gap-1.5 p-1.5 md:p-2"
+            ? "gap-1 p-1"
             : "reactor-single-chat-shell justify-center overflow-hidden px-4 pt-4 md:px-6"
         )}
         data-workspace-open={hasWorkspaceLayout ? "true" : "false"}
@@ -1293,7 +1302,11 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         <div
           ref={leftPanelRef}
             className={classNames(
-            "reactor-chat-panel-left flex min-h-0 flex-col overflow-hidden bg-[var(--color-bg)]",
+            "reactor-chat-panel-left flex min-h-0 flex-col overflow-hidden bg-background",
+            // ZCode WorkspaceShellLayout.tsx:1674 —— 仅在侧栏可见时给对话 frame 加框，
+            // 单栏（无工作区）时不留框，让会话铺满。
+            hasWorkspaceLayout &&
+              "rounded-[var(--workspace-panel-radius)] border border-border",
             !hasWorkspaceLayout && "mx-auto h-full w-full max-w-[980px]",
             isLeftCollapsed && !isFocusMode && "w-14 min-w-14",
             (!isLeftCollapsed || isFocusMode) && hasWorkspaceLayout && "shrink-0"
@@ -1325,7 +1338,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
               <div className="flex h-full flex-col items-center py-4">
                 <button
                   onClick={toggleLeftPanel}
-                  className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+                  className="flex h-10 w-10 items-center justify-center rounded-full text-foreground-subtle transition-colors hover:bg-hover hover:text-foreground"
                   title="展开聊天区"
                 >
                   <PanelRightClose className="h-5 w-5" />
@@ -1337,7 +1350,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                   className={classNames(
                     "reactor-chat-header flex items-center justify-between",
                     hasWorkspaceLayout
-                      ? "border-b border-[var(--color-line)] py-3.5"
+                      ? "border-b border-border py-3.5"
                       : "mb-3 min-h-[36px]",
                     hasWorkspaceLayout
                       ? isFocusMode
@@ -1353,7 +1366,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                       <button
                         type="button"
                         onClick={() => onOpenTaskFiles?.()}
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-foreground-subtle transition-colors hover:bg-hover hover:text-foreground"
                         title="查看当前会话的文件"
                         aria-label="查看当前会话的文件"
                       >
@@ -1363,9 +1376,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                   ) : null}
                 </div>
 
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
                   <Conversation
                     key={conversation.id}
+                    contextRef={conversationContextRef}
                     className={classNames(
                       "chat-fade-bottom min-h-0 flex-1 overflow-hidden",
                       hasWorkspaceLayout && "pt-5",
@@ -1387,6 +1401,13 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                     </ConversationContent>
                     <ConversationScrollButton />
                   </Conversation>
+
+                  <ConversationTurnNavigator
+                    chats={deferredChatList}
+                    onBeforeJump={() =>
+                      conversationContextRef.current?.stopScroll()
+                    }
+                  />
 
                   {!readOnly ? (
                     <div
@@ -1429,20 +1450,21 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             onPointerUp={handleDragEnd}
             onPointerCancel={handleDragEnd}
             className={classNames(
-              "reactor-workspace-resizer group relative flex w-4 shrink-0 touch-none cursor-col-resize items-center justify-center rounded-full transition-colors",
-              "hover:bg-[var(--chat-accent)]/10"
+              // ZCode WorkspaceShellLayout.tsx:1626 —— 分隔条本体是一条 4px 的透明命中条，
+              // 平时完全不可见（无底色、无描边、无手柄），只有 hover / 拖拽 / 焦点时才浮出指示线。
+              "reactor-workspace-resizer group/handle relative z-10 flex h-full w-1 shrink-0 touch-none cursor-ew-resize items-center justify-center bg-transparent outline-none",
+              "focus:outline-none focus-visible:ring-0",
+              // 透明命中扩展：把 4px 视觉条的可拖拽区域撑到 12px（正好填满容器 gap-1 的 4px×2），
+              // 既保住 ZCode 的极简外观，又不会覆盖两侧面板的边框与点击区。
+              "before:absolute before:-inset-x-1 before:inset-y-0 before:content-['']",
+              // 指示线：2px 圆角、三级前景半透明；上下按面板圆角内缩，默认完全透明。
+              "after:pointer-events-none after:absolute after:left-1/2 after:-translate-x-1/2 after:w-0.5 after:rounded-full after:bg-foreground-subtlest/50 after:opacity-0 after:transition-opacity after:content-['']",
+              "after:inset-y-[var(--workspace-panel-radius)]",
+              // hover / 键盘焦点 / 拖拽中点亮（拖拽态由容器 data-workspace-resizing 驱动，与 ZCode 一致）
+              "hover:after:opacity-100 focus-visible:after:opacity-100 [[data-workspace-resizing=true]_&]:after:opacity-100"
             )}
             title="拖拽调整左右区域宽度"
-          >
-            {/* 宽命中区保障可拖动，内部细线保持界面克制。 */}
-            <div className="absolute inset-y-3 left-1/2 w-px -translate-x-1/2 bg-[var(--color-line)] transition-colors group-hover:bg-[var(--color-line-strong)]" />
-            <div
-              className={classNames(
-                "relative h-14 w-1 rounded-full transition-colors duration-150",
-                "bg-[var(--color-line-strong)] group-hover:bg-[var(--color-text-faint)]"
-              )}
-            />
-          </div>
+          />
         ) : null}
 
         {hasWorkspaceLayout ? (
@@ -1456,7 +1478,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
         {hasWorkspaceLayout ? (
           <div
-            className="reactor-workspace-panel flex min-h-0 flex-1 flex-col overflow-hidden border border-[var(--color-line)] bg-[var(--color-bg)]"
+            className="reactor-workspace-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--workspace-panel-radius)] border border-border bg-background"
             data-workspace-collapsed="false"
           >
             {pendingDesktopStreamUrl ? (

@@ -22,8 +22,13 @@ import {
   getLocalUiVersion,
   subscribeGenUiLocalTree,
 } from "@/components/genui/genUiLocalTreeStore";
+import {
+  Collapsible,
+  CollapsibleContent,
+} from "@/components/ui/collapsible";
 import ConclusionSection from "./ConclusionSection";
 import ReplayDisclosure, { type ReplayRequestHandler } from "./ReplayDisclosure";
+import TurnWorkStatus from "./TurnWorkStatus";
 import { UserPromptContexts } from "./UserPromptContexts";
 import { parseComposerPromptContexts } from "@/lib/promptContexts";
 
@@ -89,6 +94,12 @@ const DialogueComponent: FC<Props> = (props) => {
     () => buildPlannerRoundsForDisplay(chat, streamingThought),
     [chat, streamingThought]
   );
+  /**
+   * 本轮执行过程（`AgentStepTimeline`）的展开态。
+   * 由「已工作 X 分 X 秒」状态条控制，对齐 ZCode `AssistantHistoryStatus`
+   * 的折叠语义：展开后还能再点折叠，状态条自身常驻不消失。
+   */
+  const [processOpen, setProcessOpen] = useState(true);
   const [thoughtVersionIndex, setThoughtVersionIndex] = useState(() =>
     Math.max(plannerRounds.length - 1, 0)
   );
@@ -225,7 +236,10 @@ const DialogueComponent: FC<Props> = (props) => {
   ]);
 
   return (
-    <div className="chat-dialogue flex h-full flex-col font-normal">
+    <div
+      className="chat-dialogue flex h-full flex-col font-normal"
+      data-request-id={chat.requestId}
+    >
       {/* 附件 */}
       {(chat.files || []).length ? (
         <div className="mt-5 flex w-full justify-end">
@@ -263,16 +277,25 @@ const DialogueComponent: FC<Props> = (props) => {
         />
       </div>
 
+      {/* 运行中：每秒跳动的「已工作 X」；结束后同位置换成 ReplayDisclosure */}
+      {chat.loading && chat.startedAt ? (
+        <div className="mt-2 w-full">
+          <TurnWorkStatus startedAt={chat.startedAt} />
+        </div>
+      ) : null}
+
       {onRequestReplay &&
         chat.requestId &&
         chat.replayAvailable !== false &&
-        !chat.replayLoaded &&
         !chat.loading ? (
           <div className="mt-2 w-full">
             <ReplayDisclosure
               chat={chat}
               onRequestReplay={onRequestReplay}
               replayLoading={replayLoading}
+              open={processOpen}
+              // 只有真的存在过程区时才给折叠能力，否则按钮退化为纯回放入口
+              onToggle={showProcessTimeline ? setProcessOpen : undefined}
             />
           </div>
         ) : null}
@@ -298,30 +321,34 @@ const DialogueComponent: FC<Props> = (props) => {
 
       {/* 运行状态已上移到 ChatView 顶栏，对话区不再重复展示 tip */}
 
-      {/* Cursor 风格过程时间线 */}
+      {/* Cursor 风格过程时间线；展开态由「已工作 X」状态条控制 */}
       {showProcessTimeline ? (
-        <div className="mt-5 w-full max-w-[min(960px,100%)]">
-          <AgentStepTimeline
-            chat={timelineChat}
-            isPlanSolveMessage={isPlanSolveMessage}
-            thoughtText={thoughtText}
-            thoughtStreaming={thoughtStreaming}
-            thoughtVersionLabel={thoughtVersionLabel}
-            thoughtVersionIndex={thoughtVersionIndex}
-            thoughtVersionTotal={plannerRounds.length}
-            onThoughtPrev={handleThoughtPrev}
-            onThoughtNext={handleThoughtNext}
-            canThoughtPrev={thoughtVersionIndex > 0}
-            canThoughtNext={thoughtVersionIndex < latestRoundIndex}
-            planSlot={planSlot}
-            changeActiveChat={changeActiveChat}
-            changePlan={changePlan}
-            changeFile={changeFile}
-            onOpenThinking={handleOpenThinking}
-            onOpenToolDiff={onOpenToolDiff}
-            onOpenAgent={onOpenAgent}
-          />
-        </div>
+        <Collapsible open={processOpen} onOpenChange={setProcessOpen}>
+          <CollapsibleContent className="chat-process-collapse">
+            <div className="mt-5 w-full max-w-[min(960px,100%)]">
+              <AgentStepTimeline
+                chat={timelineChat}
+                isPlanSolveMessage={isPlanSolveMessage}
+                thoughtText={thoughtText}
+                thoughtStreaming={thoughtStreaming}
+                thoughtVersionLabel={thoughtVersionLabel}
+                thoughtVersionIndex={thoughtVersionIndex}
+                thoughtVersionTotal={plannerRounds.length}
+                onThoughtPrev={handleThoughtPrev}
+                onThoughtNext={handleThoughtNext}
+                canThoughtPrev={thoughtVersionIndex > 0}
+                canThoughtNext={thoughtVersionIndex < latestRoundIndex}
+                planSlot={planSlot}
+                changeActiveChat={changeActiveChat}
+                changePlan={changePlan}
+                changeFile={changeFile}
+                onOpenThinking={handleOpenThinking}
+                onOpenToolDiff={onOpenToolDiff}
+                onOpenAgent={onOpenAgent}
+              />
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       ) : null}
 
       {/* GenUI：面向用户的可视化最终产物（过程之后、结论附近） */}
