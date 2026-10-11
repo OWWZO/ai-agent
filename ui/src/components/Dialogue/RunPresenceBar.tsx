@@ -15,7 +15,7 @@ const RunPresenceBar: FC<RunPresenceBarProps> = ({ hint, compact = false }) => {
   if (compact) {
     return (
       <div
-        className="mt-4 inline-flex max-w-full items-center gap-2 rounded-full border border-[var(--chat-border)]/50 bg-[var(--chat-surface-soft)]/55 px-3 py-1.5 text-[13px] text-[var(--chat-text-soft)]"
+        className="mt-4 inline-flex max-w-full items-center gap-2 rounded-full border border-[var(--chat-border)]/50 bg-[var(--chat-surface-soft)]/55 px-3 py-1.5 text-ui-caption text-[var(--chat-text-soft)]"
         role="status"
         aria-live="polite"
       >
@@ -34,7 +34,7 @@ const RunPresenceBar: FC<RunPresenceBarProps> = ({ hint, compact = false }) => {
     >
       <AnimatedOrb size={28} />
       <div className="min-w-0">
-        <div className="thinking-shimmer text-[15px] font-medium tracking-[0.02em] text-[var(--chat-text-soft)]">
+        <div className="thinking-shimmer text-ui-lg font-medium tracking-[0.02em] text-[var(--chat-text-soft)]">
           {text}
         </div>
       </div>

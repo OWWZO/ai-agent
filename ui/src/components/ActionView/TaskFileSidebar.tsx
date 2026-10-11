@@ -70,7 +70,7 @@ const TaskFileSidebar = memo(function TaskFileSidebar(props: TaskFileSidebarProp
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center justify-between gap-2 px-3 pb-2 pt-1">
-        <div className="text-[13px] font-medium text-[var(--chat-text)]">全部文件</div>
+        <div className="text-ui-caption font-medium text-[var(--chat-text)]">全部文件</div>
         <div className="flex items-center gap-0.5">
           <button
             type="button"
@@ -129,7 +129,7 @@ const TaskFileSidebar = memo(function TaskFileSidebar(props: TaskFileSidebarProp
         <button
           type="button"
           onClick={onBack}
-          className="flex h-9 w-full items-center gap-2 rounded-[10px] px-2.5 text-[14px] font-medium text-[var(--chat-text)] transition-colors hover:bg-black/[0.04]"
+          className="flex h-9 w-full items-center gap-2 rounded-[10px] px-2.5 text-ui-base font-medium text-[var(--chat-text)] transition-colors hover:bg-black/[0.04]"
         >
           <ArrowLeft className="h-4 w-4 text-[var(--chat-text-muted)]" />
           返回

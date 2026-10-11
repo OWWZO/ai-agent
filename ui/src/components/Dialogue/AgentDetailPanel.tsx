@@ -104,11 +104,11 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
     <div className="kimi-detail-panel">
       <div className="kimi-detail-panel-head">
         <div className="min-w-0 flex-1">
-          <div className="text-[12px] text-[var(--color-text-faint)]">子智能体</div>
-          <div className="truncate text-[14px] font-medium text-[var(--color-text)]">
+          <div className="text-ui-sm text-[var(--color-text-faint)]">子智能体</div>
+          <div className="truncate text-ui-base font-medium text-[var(--color-text)]">
             {sub.description || sub.subagentType || "Agent"}
           </div>
-          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-[12px] text-[var(--color-text-muted)]">
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-ui-sm text-[var(--color-text-muted)]">
             <span
               className={cn(
                 "kimi-agent-phase-badge",
@@ -124,7 +124,7 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
             {nested.length > 0 ? <span>{nested.length} tools</span> : null}
             {duration ? <span>{duration}</span> : null}
             {sub.runInBackground ? (
-              <span className="rounded border border-[var(--color-line)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
+              <span className="rounded border border-[var(--color-line)] px-1.5 py-0.5 text-ui-xs uppercase tracking-wide">
                 background
               </span>
             ) : null}
@@ -141,7 +141,7 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
       </div>
       <div ref={bodyRef} className="kimi-detail-panel-body px-3 py-2">
         {sub.errorMsg ? (
-          <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700">
+          <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-ui-caption text-red-700">
             {sub.errorMsg}
           </div>
         ) : null}

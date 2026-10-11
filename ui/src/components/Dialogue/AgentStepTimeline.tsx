@@ -184,7 +184,7 @@ const DurationBadge: FC<{ label?: string; active?: boolean }> = ({
   return (
     <span
       className={cn(
-        "timeline-duration ml-auto shrink-0 text-[13px] font-normal text-[var(--chat-text-muted)]"
+        "timeline-duration ml-auto shrink-0 text-ui-caption font-normal text-[var(--chat-text-muted)]"
       )}
     >
       {active && !label ? "…" : label}
@@ -200,7 +200,7 @@ const ThoughtVersionSwitcher: FC<{
   canPrev?: boolean;
   canNext?: boolean;
 }> = ({ versionLabel, onPrev, onNext, canPrev, canNext }) => (
-  <div className="inline-flex items-center gap-0.5 rounded-full bg-[var(--chat-surface-soft)] px-1.5 py-0.5 text-[11px] text-[var(--chat-text-muted)]">
+  <div className="inline-flex items-center gap-0.5 rounded-full bg-[var(--chat-surface-soft)] px-1.5 py-0.5 text-ui-xs text-[var(--chat-text-muted)]">
     <button
       type="button"
       className="rounded px-0.5 disabled:opacity-30"
@@ -254,6 +254,7 @@ const CompactStepRow: FC<{
         <ThinkingBlock
           text={thoughtText || "…"}
           streaming={step.active}
+          durationMs={step.durationMs}
           durationLabel={step.durationLabel}
         />
       </div>
@@ -452,14 +453,14 @@ const StepGroupBlock: FC<{
       >
         <span
           className={cn(
-            "timeline-group-title min-w-0 flex-1 truncate text-[14.5px] font-medium",
+            "timeline-group-title min-w-0 flex-1 truncate text-ui-base font-medium",
             group.active && "thinking-shimmer"
           )}
         >
           {group.title}
         </span>
         {group.digitalEmployee ? (
-          <span className="hidden shrink-0 text-[12px] text-[var(--chat-text-muted)] sm:inline">
+          <span className="hidden shrink-0 text-ui-sm text-[var(--chat-text-muted)] sm:inline">
             {group.digitalEmployee}
           </span>
         ) : null}
@@ -503,6 +504,7 @@ const ThinkingSegment: FC<{
       <ThinkingBlock
         text={thoughtText || "…"}
         streaming={streaming}
+        durationMs={step.durationMs}
         durationLabel={step.durationLabel}
       />
     </div>
@@ -718,6 +720,7 @@ const AgentStepTimelineComponent: FC<AgentStepTimelineProps> = (props) => {
           <ThinkingBlock
             text={model.thought.text}
             streaming={model.thought.streaming}
+            durationMs={model.thought.durationMs}
             durationLabel={model.thought.durationLabel}
             headerExtra={
               model.thought.versionLabel ? (
@@ -732,7 +735,7 @@ const AgentStepTimelineComponent: FC<AgentStepTimelineProps> = (props) => {
             }
           />
           {!model.thought.streaming && model.intentLine ? (
-            <p className="timeline-assistant-reply mt-1 text-[13px] leading-6">
+            <p className="timeline-assistant-reply mt-1 text-ui-caption leading-6">
               {model.intentLine}
             </p>
           ) : null}

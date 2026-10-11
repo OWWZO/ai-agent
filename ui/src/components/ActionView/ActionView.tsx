@@ -41,8 +41,10 @@ import {
 } from "@/utils/fileKind";
 import { isTextCopyableFileLike } from "@/utils/taskArtifacts";
 
+// ZCode PreviewPane.tsx:1596-1605 —— 头部操作一律 ghost 图标按钮：rounded-lg、
+// 三级前景、hover 才升到主前景；不用实心底色，保持头部安静。
 const iconBtnClass =
-  "reactor-action-icon flex h-7 w-7 items-center justify-center rounded-full text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-hover)] hover:text-[var(--color-text)]";
+  "reactor-action-icon flex h-7 w-7 items-center justify-center rounded-lg text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground";
 
 type ActionViewRef = PlanViewAction & {
   setFilePreview: (file?: CHAT.TFile) => void;
@@ -286,7 +288,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
   return (
     <motion.div
       className={classNames(
-        "reactor-workspace-content flex h-full w-full flex-col overflow-hidden bg-[var(--color-bg)]",
+        "reactor-workspace-content flex h-full w-full flex-col overflow-hidden bg-background",
         className
       )}
       initial={{ opacity: 0 }}
@@ -296,9 +298,10 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
         ease: EASE_OUT,
       }}
     >
-      {/* 顶栏：「动态」+ 已打开文件 pill；点工具回动态，点文件进文件预览 */}
-      <div className="reactor-workspace-toolbar flex shrink-0 flex-col gap-1 border-b border-[var(--color-line)] bg-[var(--chat-nav)] px-3 pt-2.5 pb-1.5">
-        <div className="flex items-center gap-2">
+      {/* 顶栏：「动态」+ 已打开文件 pill；点工具回动态，点文件进文件预览。
+          ZCode PreviewPane.tsx:1529-1534 —— 头部统一 h-10 + bg-surface/30 + border-b border-border 单行。 */}
+      <div className="reactor-workspace-toolbar flex h-10 shrink-0 items-center border-b border-border bg-surface/30 px-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           {onBack ? (
             <button
               type="button"
@@ -313,16 +316,18 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
           {files.length > 0 ? (
             <div
               ref={tabsRef}
-              className="reactor-workspace-tabs flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-color:#c7c7cc_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#c7c7cc]"
+              className="reactor-workspace-tabs flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-color:var(--zc-foreground-subtlest)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-foreground-subtlest"
             >
               <button
                 type="button"
                 onClick={() => setPanelMode("follow")}
                 className={classNames(
-                  "inline-flex h-8 shrink-0 items-center rounded-[6px] px-2.5 text-[12.5px] font-medium transition-colors",
+                  // ZCode 选中态走 bg-selected + text-foreground，未选中只有 hover 才上底色，
+                  // 不再给每个 pill 挂 shadow-xs（DESIGN.md：阴影只留给菜单/浮层）。
+                  "inline-flex h-7 shrink-0 items-center rounded-lg px-2 text-ui-sm font-medium transition-colors",
                   panelMode === "follow"
-                    ? "bg-[var(--color-surface-raised)] text-[var(--color-text)] shadow-[var(--shadow-xs)]"
-                    : "bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)]"
+                    ? "bg-selected text-foreground"
+                    : "text-foreground-subtle hover:bg-surface-hover hover:text-foreground"
                 )}
               >
                 动态
@@ -341,22 +346,22 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                       setPanelMode("file");
                     }}
                     className={classNames(
-                      "inline-flex h-8 max-w-[200px] shrink-0 items-center gap-1.5 rounded-[6px] px-2.5 text-left transition-colors",
+                      "inline-flex h-7 max-w-[200px] shrink-0 items-center gap-1.5 rounded-lg px-2 text-left transition-colors",
                       active
-                        ? "bg-[var(--color-surface-raised)] text-[var(--color-text)] shadow-[var(--shadow-xs)]"
-                        : "bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)]"
+                        ? "bg-selected text-foreground"
+                        : "text-foreground-subtle hover:bg-surface-hover hover:text-foreground"
                     )}
                     title={file.name}
                   >
                     <span
                       className={classNames(
-                        "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md text-[10px] font-bold leading-none",
+                        "flex size-4 shrink-0 items-center justify-center rounded-sm text-ui-xs font-bold leading-none",
                         FILE_KIND_TONE
                       )}
                     >
                       {fileKindBadge(kind)}
                     </span>
-                    <span className="truncate text-[12.5px] font-medium">
+                    <span className="truncate text-ui-sm font-medium">
                       {file.name}
                     </span>
                   </button>
@@ -364,19 +369,19 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
               })}
             </div>
           ) : (
-            <div className="min-w-0 flex-1 truncate px-1 text-[13px] font-medium text-[var(--color-text-muted)]">
+            <div className="min-w-0 flex-1 truncate px-1 text-ui-base text-foreground-subtle">
               动态
             </div>
           )}
 
-          <div className="ml-auto flex shrink-0 items-center gap-0.5">
+          <div className="flex shrink-0 items-center gap-0.5">
             {onToggleFocusMode ? (
               <button
                 type="button"
                 onClick={onToggleFocusMode}
                 className={classNames(
                   iconBtnClass,
-                  isFocusMode && "bg-[var(--color-surface-raised)] text-[var(--color-text)] shadow-[var(--shadow-xs)]"
+                  isFocusMode && "bg-selected text-foreground"
                 )}
                 title={isFocusMode ? "退出沉浸模式" : "进入沉浸模式"}
               >
@@ -409,20 +414,21 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
         </div>
       </div>
 
-      {/* 工作区内容：工具条 + 预览 */}
-      <div className="mx-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--color-surface-raised)]">
+      {/* 工作区内容：工具条 + 预览。
+          ZCode PreviewPane.tsx:1729 —— 内容区不套内缩卡片，直接 min-h-0 flex-1 铺满面板。 */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
         {showFileBrowser && selectedFile ? (
           <>
-            <div className="flex shrink-0 items-center gap-2.5 border-b border-[var(--color-line)] px-3 py-2.5">
+            <div className="flex min-h-10 shrink-0 items-center gap-2.5 border-b border-border bg-background px-3 py-1.5">
               {canSourceMode ? (
-                <div className="inline-flex shrink-0 rounded-full bg-[var(--color-surface-sunken)] p-0.5">
+                <div className="inline-flex shrink-0 rounded-lg border border-border bg-surface-hover p-0.5">
                   <button
                     type="button"
                     className={classNames(
-                      "h-7 rounded-full px-3 text-[12.5px] font-medium transition-colors",
+                      "h-6 rounded-md px-2.5 text-ui-sm font-medium transition-colors",
                       viewMode === "preview"
-                        ? "bg-[var(--color-surface-raised)] text-[var(--color-text)] shadow-[var(--shadow-xs)]"
-                        : "text-[var(--color-text-muted)]"
+                        ? "bg-card text-foreground"
+                        : "text-foreground-subtle hover:text-foreground"
                     )}
                     onClick={() => setViewMode("preview")}
                   >
@@ -431,10 +437,10 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                   <button
                     type="button"
                     className={classNames(
-                      "h-7 rounded-full px-3 text-[12.5px] font-medium transition-colors",
+                      "h-6 rounded-md px-2.5 text-ui-sm font-medium transition-colors",
                       viewMode === "source"
-                        ? "bg-[var(--color-surface-raised)] text-[var(--color-text)] shadow-[var(--shadow-xs)]"
-                        : "text-[var(--color-text-muted)]"
+                        ? "bg-card text-foreground"
+                        : "text-foreground-subtle hover:text-foreground"
                     )}
                     onClick={() => setViewMode("source")}
                   >
@@ -448,12 +454,12 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                   <img
                     src={selectedPdfIcon}
                     alt=""
-                    className="h-8 w-8 shrink-0 rounded-md object-contain"
+                    className="size-7 shrink-0 rounded-md object-contain"
                   />
                 ) : (
                   <span
                     className={classNames(
-                      "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[12px] font-bold",
+                      "flex size-7 shrink-0 items-center justify-center rounded-md text-ui-xs font-bold",
                       FILE_KIND_TONE
                     )}
                   >
@@ -461,10 +467,10 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                   </span>
                 )}
                 <div className="min-w-0">
-                  <div className="truncate text-[13.5px] font-semibold tracking-[-0.01em] leading-tight text-[var(--color-text)]">
+                  <div className="truncate text-ui-sm font-medium leading-tight text-foreground">
                     {metaTitle}
                   </div>
-                  <div className="mt-px truncate text-[12px] leading-snug text-[var(--color-text-muted)]">
+                  <div className="mt-px truncate text-ui-xs leading-snug text-foreground-subtle">
                     {metaSub}
                   </div>
                 </div>
@@ -511,7 +517,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
             </div>
 
             <div
-              className="tab-content-enter flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--color-surface-raised)]"
+              className="tab-content-enter flex min-h-0 flex-1 flex-col overflow-hidden bg-background"
               key={`${workspaceFileKey(selectedFile)}-${refreshToken}-${viewMode}`}
             >
               <div

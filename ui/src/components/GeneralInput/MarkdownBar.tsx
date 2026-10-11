@@ -42,7 +42,7 @@ function prefixLines(
 }
 
 const btnClass =
-  "inline-flex h-7 w-7 items-center justify-center rounded-md text-[#6b6b70] transition-colors hover:bg-black/[0.04] hover:text-[#1d1d1f] disabled:opacity-40";
+  "inline-flex h-7 w-7 items-center justify-center rounded-md text-foreground-subtle transition-colors hover:bg-black/[0.04] hover:text-foreground disabled:opacity-40";
 
 const MarkdownBar: ReactorType.FC<Props> = ({
   textareaRef,
@@ -124,7 +124,7 @@ const MarkdownBar: ReactorType.FC<Props> = ({
       <button
         type="button"
         disabled={disabled}
-        className={cn(btnClass, "w-auto px-1.5 text-[11px] font-medium")}
+        className={cn(btnClass, "w-auto px-1.5 text-ui-xs font-medium")}
         title="代码块"
         onClick={() =>
           apply((v, s, e) =>

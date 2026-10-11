@@ -26,8 +26,8 @@ export const ThinkingPanel = memo(function ThinkingPanel({
     <div className="kimi-thinking-panel">
       <div className="kimi-thinking-panel-head">
         <div className="min-w-0 flex-1">
-          <div className="text-[12px] text-[var(--color-text-faint)]">预览</div>
-          <div className="truncate text-[14px] font-medium text-[var(--color-text)]">
+          <div className="text-ui-sm text-[var(--color-text-faint)]">预览</div>
+          <div className="truncate text-ui-base font-medium text-[var(--color-text)]">
             {title}
           </div>
         </div>

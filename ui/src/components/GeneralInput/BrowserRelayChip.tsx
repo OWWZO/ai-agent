@@ -96,8 +96,8 @@ export default function BrowserRelayChip({ disabled }: Props) {
         type="button"
         disabled={disabled || busy}
         className={cn(
-          "inline-flex h-8 max-w-[140px] items-center gap-1 rounded-md px-2 text-[12px] text-[#6b6b70] hover:bg-black/[0.04] hover:text-[#1d1d1f]",
-          connected && "bg-[#3b82f6] text-white hover:bg-[#2563eb] hover:text-white"
+          "inline-flex h-8 max-w-[140px] items-center gap-1 rounded-md px-2 text-ui-sm text-foreground-subtle hover:bg-black/[0.04] hover:text-foreground",
+          connected && "bg-brand text-white hover:bg-brand hover:text-white"
         )}
         title={
           connected
@@ -112,7 +112,7 @@ export default function BrowserRelayChip({ disabled }: Props) {
         <span className="truncate">{connected ? "浏览器已连接" : "连接浏览器"}</span>
       </button>
       {pairing && !connected ? (
-        <span className="truncate text-[11px] text-[#6b6b70]" title={`扩展弹窗输入配对码；服务地址 ${origin}`}>
+        <span className="truncate text-ui-xs text-foreground-subtle" title={`扩展弹窗输入配对码；服务地址 ${origin}`}>
           码 {pairing.code}
         </span>
       ) : null}

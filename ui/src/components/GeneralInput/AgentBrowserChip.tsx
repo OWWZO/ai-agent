@@ -76,8 +76,8 @@ export default function AgentBrowserChip({ disabled }: Props) {
         type="button"
         disabled={disabled || busy}
         className={cn(
-          "inline-flex h-8 max-w-[170px] min-w-0 items-center gap-1 rounded-md px-2 text-[12px] text-[#6b6b70] hover:bg-black/[0.04] hover:text-[#1d1d1f]",
-          status?.exists && "text-[#16794b] hover:text-[#12633d]"
+          "inline-flex h-8 max-w-[170px] min-w-0 items-center gap-1 rounded-md px-2 text-ui-sm text-foreground-subtle hover:bg-black/[0.04] hover:text-foreground",
+          status?.exists && "text-success hover:text-success"
         )}
         title={title}
         onClick={() => void openLiveView()}
@@ -87,14 +87,14 @@ export default function AgentBrowserChip({ disabled }: Props) {
       </button>
       {status?.exists ? (
         <>
-          <span className="hidden max-w-[118px] truncate text-[10px] text-[#86868b] sm:inline" title={lastUsedAt ?? "已启动"}>
+          <span className="hidden max-w-[118px] truncate text-ui-xs text-foreground-subtle sm:inline" title={lastUsedAt ?? "已启动"}>
             {lastUsedAt ? `最近 ${lastUsedAt}` : "已启动"}
           </span>
           <button
             type="button"
             aria-label="重置 Agent 浏览器"
             disabled={disabled || busy}
-            className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-[#6b6b70] hover:bg-black/[0.04] hover:text-[#1d1d1f] disabled:opacity-45"
+            className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-foreground-subtle hover:bg-black/[0.04] hover:text-foreground disabled:opacity-45"
             title="重置 Agent 浏览器并清除页面状态"
             onClick={() => void reset()}
           >

@@ -72,7 +72,7 @@ describe("GeneralInput", () => {
           name: "通用任务",
           placeholder: "请输入问题",
           img: "icon-task",
-          color: "text-[#4040FF]",
+          color: "text-brand",
         } as CHAT.Product}
         send={vi.fn()}
       />

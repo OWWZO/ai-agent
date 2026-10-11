@@ -16,6 +16,8 @@ export interface PreviewRendererFlags {
   useHtml?: boolean;
   useExcel?: boolean;
   useImage?: boolean;
+  useSvg?: boolean;
+  useMedia?: boolean;
   usePdf?: boolean;
   useDocx?: boolean;
   useLegacyDoc?: boolean;
@@ -126,6 +128,8 @@ export function resolvePreviewCanPreview(
       flags?.useHtml ||
       flags?.useExcel ||
       flags?.useImage ||
+      flags?.useSvg ||
+      flags?.useMedia ||
       flags?.usePdf ||
       flags?.useDocx ||
       flags?.useLegacyDoc ||

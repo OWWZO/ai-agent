@@ -69,16 +69,16 @@ const UserBriefCard: FC<UserBriefCardProps> = memo(({ tool }) => {
   return (
     <div className="mt-2 overflow-hidden rounded-2xl border border-[var(--chat-border)]/40 bg-[var(--chat-surface)]/80 px-3.5 py-3 shadow-[0_1px_0_rgba(0,0,0,0.02)]">
       <div className="mb-2 flex items-center gap-2">
-        <div className="flex size-7 items-center justify-center rounded-lg border border-[var(--chat-border)]/40 bg-[#f5f5f7] text-[var(--chat-text-muted)]">
+        <div className="flex size-7 items-center justify-center rounded-lg border border-[var(--chat-border)]/40 bg-hover text-[var(--chat-text-muted)]">
           <MessageSquareTextIcon className="size-3.5" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[12px] font-medium text-[var(--chat-text-soft)]">
+          <div className="text-ui-sm font-medium text-[var(--chat-text-soft)]">
             {isProactive ? "主动通知" : "给用户的消息"}
           </div>
         </div>
         {isProactive ? (
-          <span className="rounded-full border border-[var(--chat-border)]/40 bg-[#f5f5f7] px-2 py-0.5 text-[11px] font-medium text-[var(--chat-text-muted)]">
+          <span className="rounded-full border border-[var(--chat-border)]/40 bg-hover px-2 py-0.5 text-ui-xs font-medium text-[var(--chat-text-muted)]">
             proactive
           </span>
         ) : null}
@@ -86,7 +86,7 @@ const UserBriefCard: FC<UserBriefCardProps> = memo(({ tool }) => {
       {message ? (
         <MarkdownRenderer
           markDownContent={message}
-          className="chat-markdown kimi-md text-[14px] leading-relaxed"
+          className="chat-markdown kimi-md text-ui-base leading-relaxed"
         />
       ) : null}
       {attachments.length > 0 ? (
@@ -94,7 +94,7 @@ const UserBriefCard: FC<UserBriefCardProps> = memo(({ tool }) => {
           {attachments.map((item) => (
             <li
               key={item.path}
-              className="flex min-w-0 items-center gap-1.5 text-[12px] text-[var(--chat-text-soft)]"
+              className="flex min-w-0 items-center gap-1.5 text-ui-sm text-[var(--chat-text-soft)]"
             >
               <PaperclipIcon className="size-3 shrink-0 opacity-70" />
               <span className="truncate" title={item.path}>

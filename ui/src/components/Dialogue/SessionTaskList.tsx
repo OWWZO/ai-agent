@@ -45,7 +45,7 @@ const SessionTaskList: FC<SessionTaskListProps> = memo(({ tool, chat }) => {
       {transitions.map((item) => (
         <div
           key={item.id}
-          className="flex min-w-0 items-center gap-2 text-[13.5px] leading-6 text-[var(--chat-text-muted)]"
+          className="flex min-w-0 items-center gap-2 text-ui-base leading-6 text-[var(--chat-text-muted)]"
         >
           <ListIcon className="size-3.5 shrink-0 opacity-70" strokeWidth={1.75} />
           <span className="min-w-0 truncate">

@@ -242,7 +242,7 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
               {submitted ? (
                 <MarkdownRenderer
                   markDownContent={editedPlan || planContent || "(空计划)"}
-                  className="chat-markdown kimi-md text-[14px] leading-relaxed"
+                  className="chat-markdown kimi-md text-ui-base leading-relaxed"
                 />
               ) : (
                 <textarea

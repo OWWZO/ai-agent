@@ -98,7 +98,7 @@ const CapabilityPicker: ReactorType.FC<Props> = ({
         >
           <SlidersHorizontal className="size-3.5 shrink-0 opacity-80" />
           {enabledCount > 0 ? (
-            <span className="text-[11px] tabular-nums">{enabledCount}</span>
+            <span className="text-ui-xs tabular-nums">{enabledCount}</span>
           ) : (
             <span className="truncate">能力</span>
           )}
@@ -111,12 +111,12 @@ const CapabilityPicker: ReactorType.FC<Props> = ({
         className="max-h-[360px] w-[280px] overflow-y-auto rounded-[18px] border border-black/[0.04] bg-white p-2 shadow-[0_12px_40px_-16px_rgba(15,23,42,0.28)]"
       >
         {loading && !caps ? (
-          <div className="px-2 py-6 text-center text-[12px] text-[#aeaeb2]">
+          <div className="px-2 py-6 text-center text-ui-sm text-foreground-subtlest">
             加载中…
           </div>
         ) : null}
         {caps?.locked ? (
-          <div className="mb-2 rounded-md bg-slate-50 px-2 py-1.5 text-[11px] text-slate-500">
+          <div className="mb-2 rounded-md bg-slate-50 px-2 py-1.5 text-ui-xs text-slate-500">
             能力由配置锁定，只读
           </div>
         ) : null}
@@ -152,14 +152,14 @@ const CapabilityPicker: ReactorType.FC<Props> = ({
             ))
           )}
         </Section>
-        <p className="mt-1 px-1 text-[10.5px] leading-relaxed text-[#aeaeb2]">
+        <p className="mt-1 px-1 text-ui-xs leading-relaxed text-foreground-subtlest">
           关闭后从下一轮对话起不装入工具；刷新后状态保留。
         </p>
         <a
           href="/workspace/capabilities"
           target="_blank"
           rel="noreferrer"
-          className="mt-1 block px-1 text-[11.5px] font-medium text-sky-600 hover:underline"
+          className="mt-1 block px-1 text-ui-sm font-medium text-sky-600 hover:underline"
         >
           管理能力库（添加技能 / MCP）→
         </a>
@@ -177,7 +177,7 @@ function Section({
 }) {
   return (
     <div className="mb-2">
-      <div className="px-1.5 py-1 text-[10.5px] font-medium text-[#86868b]">
+      <div className="px-1.5 py-1 text-ui-xs font-medium text-foreground-subtle">
         {title}
       </div>
       <div className="space-y-0.5">{children}</div>
@@ -187,7 +187,7 @@ function Section({
 
 function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <div className="px-2 py-2 text-[11.5px] text-[#aeaeb2]">{children}</div>
+    <div className="px-2 py-2 text-ui-sm text-foreground-subtlest">{children}</div>
   );
 }
 
@@ -210,7 +210,7 @@ function ToggleRow({
       disabled={locked}
       className={cn(
         "flex w-full items-center gap-2 rounded-[12px] px-2 py-1.5 text-left transition-colors",
-        locked ? "opacity-60" : "hover:bg-[#f5f5f7]"
+        locked ? "opacity-60" : "hover:bg-hover"
       )}
       onClick={() => onChange(!checked)}
     >
@@ -225,11 +225,11 @@ function ToggleRow({
         {checked ? <Check className="size-3" strokeWidth={3} /> : null}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[12.5px] font-medium text-[#1d1d1f]">
+        <span className="block truncate text-ui-sm font-medium text-foreground">
           {label}
         </span>
         {hint ? (
-          <span className="block truncate text-[10.5px] text-[#aeaeb2]">
+          <span className="block truncate text-ui-xs text-foreground-subtlest">
             {hint}
           </span>
         ) : null}

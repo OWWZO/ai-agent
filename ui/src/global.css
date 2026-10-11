@@ -300,6 +300,303 @@
     linear-gradient(180deg, oklch(0.08 0.005 90) 0%, oklch(0.1 0.008 90) 50%, oklch(0.12 0.01 90) 100%);
 }
 
+/* ==========================================================================
+   ZCode Design System — semantic token layer
+   Source of truth: D:\zcode\zcode\ZCode-main\DESIGN.md
+
+   Raw values live under a private `--zc-*` namespace so they can never
+   collide with the legacy Editorial Tech / Kimi variables (--color-surface,
+   --color-accent, --color-hover … are still consumed by unmigrated code via
+   var()). Components must NOT read `--zc-*` directly — use the semantic
+   Tailwind utilities registered at the bottom of this block:
+   bg-card / bg-surface / text-foreground-subtle / border-card-border /
+   text-ui-base …
+
+   Typography: every interface size derives from --ui-font-size (default 14px).
+   Never mutate html { font-size } to scale the UI — only --ui-font-size.
+   ========================================================================== */
+
+:root {
+  /* --- Typography scale (single knob) --- */
+  --ui-font-size: 14px;
+
+  /* --- Geometry --- */
+  /* ZCode rounded-xs：用户气泡右上小角（rounded-tr-xs）。Tailwind 默认 0.125rem。 */
+  --radius-xs: 2px;
+  /* Workspace frame 圆角。ZCode 用变量控制，便于 Linux 外壳 16px 场景换挡。 */
+  --workspace-panel-radius: 12px;
+
+  /* --- Structural layout surfaces --- */
+  --zc-background-alt: #f7f7f8;
+  --zc-header: #f2f2f2;
+  --zc-panel: #fafafa;
+  --zc-sidebar: #f2f2f2;
+
+  /* --- Content surfaces --- */
+  --zc-surface: #fafbfc;
+  --zc-surface-hover: #f1f1f3;
+  --zc-card: #ffffff;
+  --zc-card-selected: #f1f1f3;
+  --zc-popover: #ffffff;
+  --zc-menu: #ffffff;
+  --zc-menu-hover: #f1f1f3;
+
+  /* --- Editable fields --- */
+  --zc-input: #fafbfc;
+  --zc-input-focused: #ffffff;
+
+  /* --- Text hierarchy (independent from size) --- */
+  --zc-foreground: oklch(0.15 0.01 60);
+  --zc-foreground-subtle: oklch(0.5 0.015 60);
+  --zc-foreground-subtlest: oklch(0.62 0.012 60);
+  --zc-foreground-inverse: #ffffff;
+
+  /* --- Borders --- */
+  --zc-border: #e7eaee;
+  --zc-border-hover: #d4d9e0;
+  --zc-card-border: #e7eaee;
+  --zc-popover-border: #e7eaee;
+  --zc-input-border: #dfe3e8;
+  --zc-input-border-hover: #c9cfd6;
+  --zc-input-border-focused: #1783ff;
+
+  /* --- Brand (sparse and intentional: key emphasis, links, active) --- */
+  --zc-brand: #1783ff;
+  --zc-icon-blue: #1783ff;
+  /* ZCode "Accent Surface": weak emphasis blocks, selected highlights */
+  --zc-accent-surface: #e8f3ff;
+
+  /* --- Generic interaction state --- */
+  --zc-hover: #f1f3f5;
+  --zc-selected: #e8f3ff;
+
+  /* --- Semantic feedback --- */
+  --zc-success: #0e7a38;
+  --zc-success-foreground: #ffffff;
+  --zc-warning: #a9610a;
+  --zc-warning-foreground: #ffffff;
+  --zc-destructive: #c0392b;
+  --zc-destructive-foreground: #ffffff;
+  --zc-idle-task: #6b7280;
+  --zc-idle-task-surface: #f1f3f5;
+
+  /* --- Blocking interaction (waiting badges share one confirmation treatment) --- */
+  --zc-interaction-ask-surface: #e8f3ff;
+  --zc-interaction-ask-foreground: #0f6fe0;
+  --zc-interaction-ask-fill: #1783ff;
+  --zc-interaction-confirmation-surface: #e7f6ee;
+  --zc-interaction-confirmation-foreground: #0e7a38;
+
+  /* --- Workflow timeline (feature-scoped) --- */
+  --zc-workflow-rule: #ececf0;
+  --zc-workflow-trace: #d4d9e0;
+  --zc-workflow-trace-strong: #1783ff;
+
+  /* --- Overlays --- */
+  --zc-toast: #ffffff;
+  --zc-tooltip: oklch(0.2 0.01 60);
+  --zc-tooltip-foreground: #ffffff;
+  --zc-tooltip-tag: oklch(0.32 0.01 60);
+  --zc-tooltip-tag-foreground: #ffffff;
+  --zc-tag: #f1f3f5;
+
+  /* --- Text search highlight (never for decoration) --- */
+  --zc-find-highlight: oklch(0.85 0.12 85);
+  --zc-find-highlight-active: oklch(0.75 0.15 70);
+
+  /* --- Diff (must not borrow generic success/destructive) --- */
+  --zc-diff-added: #e7f6ee;
+  --zc-diff-added-foreground: #0e7a38;
+  --zc-diff-removed: #fbeaea;
+  --zc-diff-removed-foreground: #c0392b;
+}
+
+.dark {
+  --zc-background-alt: #161b22;
+  --zc-header: #161b22;
+  --zc-panel: #161b22;
+  --zc-sidebar: #0d1117;
+
+  --zc-surface: #161b22;
+  --zc-surface-hover: #20252c;
+  --zc-card: #1c2128;
+  --zc-card-selected: #20252c;
+  --zc-popover: #1c2128;
+  --zc-menu: #1c2128;
+  --zc-menu-hover: #20252c;
+
+  --zc-input: #161b22;
+  --zc-input-focused: #1c2128;
+
+  --zc-foreground: #c9cdd4;
+  --zc-foreground-subtle: #9aa0a8;
+  --zc-foreground-subtlest: #6b7280;
+  --zc-foreground-inverse: #0d1117;
+
+  --zc-border: #2d333b;
+  --zc-border-hover: #3d444d;
+  --zc-card-border: #2d333b;
+  --zc-popover-border: #2d333b;
+  --zc-input-border: #2d333b;
+  --zc-input-border-hover: #3d444d;
+  --zc-input-border-focused: #58a6ff;
+
+  --zc-brand: #58a6ff;
+  --zc-icon-blue: #58a6ff;
+  --zc-accent-surface: rgba(88, 166, 255, 0.14);
+
+  --zc-hover: #20252c;
+  --zc-selected: rgba(88, 166, 255, 0.18);
+
+  --zc-success: #3fb950;
+  --zc-success-foreground: #0d1117;
+  --zc-warning: #d29922;
+  --zc-warning-foreground: #0d1117;
+  --zc-destructive: #f85149;
+  --zc-destructive-foreground: #0d1117;
+  --zc-idle-task: #8b949e;
+  --zc-idle-task-surface: #20252c;
+
+  --zc-interaction-ask-surface: rgba(88, 166, 255, 0.14);
+  --zc-interaction-ask-foreground: #79b8ff;
+  --zc-interaction-ask-fill: #58a6ff;
+  --zc-interaction-confirmation-surface: rgba(63, 185, 80, 0.15);
+  --zc-interaction-confirmation-foreground: #3fb950;
+
+  --zc-workflow-rule: #2d333b;
+  --zc-workflow-trace: #3d444d;
+  --zc-workflow-trace-strong: #58a6ff;
+
+  --zc-toast: #1c2128;
+  --zc-tooltip: #2d333b;
+  --zc-tooltip-foreground: #c9cdd4;
+  --zc-tooltip-tag: #3d444d;
+  --zc-tooltip-tag-foreground: #c9cdd4;
+  --zc-tag: #20252c;
+
+  --zc-find-highlight: rgba(210, 153, 34, 0.35);
+  --zc-find-highlight-active: rgba(210, 153, 34, 0.6);
+
+  --zc-diff-added: rgba(63, 185, 80, 0.15);
+  --zc-diff-added-foreground: #3fb950;
+  --zc-diff-removed: rgba(248, 81, 73, 0.15);
+  --zc-diff-removed-foreground: #f85149;
+}
+
+/* Zai variants — active light/dark experiences. They only re-point the
+   `--zc-*` raw values, so every semantic utility follows automatically. */
+.zai-light {
+  --zc-background-alt: #f6f7f9;
+  --zc-surface: #f7f8fa;
+  --zc-surface-hover: #eef0f3;
+  --zc-card: #ffffff;
+  --zc-card-border: #e4e7ec;
+  --zc-border: #e4e7ec;
+  --zc-hover: #eef0f3;
+  --zc-input: #f7f8fa;
+  --zc-foreground: oklch(0.18 0.012 260);
+  --zc-foreground-subtle: oklch(0.52 0.014 260);
+  --zc-foreground-subtlest: oklch(0.64 0.012 260);
+}
+
+.zai-dark {
+  --zc-background-alt: #17191d;
+  --zc-surface: #1b1e23;
+  --zc-surface-hover: #23262c;
+  --zc-card: #1f2228;
+  --zc-card-border: #2c3037;
+  --zc-border: #2c3037;
+  --zc-hover: #23262c;
+  --zc-input: #1b1e23;
+  --zc-foreground: oklch(0.93 0.004 260);
+  --zc-foreground-subtle: oklch(0.72 0.008 260);
+  --zc-foreground-subtlest: oklch(0.58 0.01 260);
+}
+
+/* Semantic utilities. `inline` keeps the generated utility pointing at the
+   live `--zc-*` variable, so .dark / .zai-* overrides work with no ordering
+   dependency and never clobber the legacy --color-* variables. */
+@theme inline {
+  /* --- text-ui-* : the only permitted interface type scale --- */
+  --text-ui-2xs: calc(var(--ui-font-size) - 5px); /* 9px  — graph axis furniture only */
+  --text-ui-xs: calc(var(--ui-font-size) - 4px); /* 10px — badges, shortcuts, weak metadata */
+  --text-ui-sm: calc(var(--ui-font-size) - 2px); /* 12px — secondary copy, tooltip copy */
+  --text-ui-caption: calc(var(--ui-font-size) - 1px); /* 13px — one step below body */
+  --text-ui-base: var(--ui-font-size); /* 14px — body, titles, controls */
+  --text-ui-lg: calc(var(--ui-font-size) + 2px); /* 16px — markdown h2 */
+  --text-ui-xl: calc(var(--ui-font-size) + 4px); /* 18px — markdown h1 */
+  --text-mobile-input-safe: 16px; /* iOS focus-zoom floor; does not scale */
+
+  /* --- Surfaces --- */
+  --color-background-alt: var(--zc-background-alt);
+  --color-header: var(--zc-header);
+  --color-panel: var(--zc-panel);
+  --color-sidebar: var(--zc-sidebar);
+  --color-surface: var(--zc-surface);
+  --color-surface-hover: var(--zc-surface-hover);
+  --color-card-selected: var(--zc-card-selected);
+  --color-menu: var(--zc-menu);
+  --color-menu-hover: var(--zc-menu-hover);
+
+  /* --- Text hierarchy --- */
+  --color-foreground-subtle: var(--zc-foreground-subtle);
+  --color-foreground-subtlest: var(--zc-foreground-subtlest);
+  --color-foreground-inverse: var(--zc-foreground-inverse);
+
+  /* --- Borders --- */
+  --color-border-hover: var(--zc-border-hover);
+  --color-card-border: var(--zc-card-border);
+  --color-popover-border: var(--zc-popover-border);
+  --color-input-focused: var(--zc-input-focused);
+  --color-input-border: var(--zc-input-border);
+  --color-input-border-hover: var(--zc-input-border-hover);
+  --color-input-border-focused: var(--zc-input-border-focused);
+
+  /* --- Brand / generic state --- */
+  --color-brand: var(--zc-brand);
+  --color-icon-blue: var(--zc-icon-blue);
+  --color-accent-surface: var(--zc-accent-surface);
+  --color-hover: var(--zc-hover);
+  --color-selected: var(--zc-selected);
+
+  /* --- Semantic feedback --- */
+  --color-success: var(--zc-success);
+  --color-success-foreground: var(--zc-success-foreground);
+  --color-warning: var(--zc-warning);
+  --color-warning-foreground: var(--zc-warning-foreground);
+  --color-destructive-foreground: var(--zc-destructive-foreground);
+  --color-idle-task: var(--zc-idle-task);
+  --color-idle-task-surface: var(--zc-idle-task-surface);
+
+  /* --- Blocking interaction --- */
+  --color-interaction-ask-surface: var(--zc-interaction-ask-surface);
+  --color-interaction-ask-foreground: var(--zc-interaction-ask-foreground);
+  --color-interaction-ask-fill: var(--zc-interaction-ask-fill);
+  --color-interaction-confirmation-surface: var(--zc-interaction-confirmation-surface);
+  --color-interaction-confirmation-foreground: var(--zc-interaction-confirmation-foreground);
+
+  /* --- Workflow timeline --- */
+  --color-workflow-rule: var(--zc-workflow-rule);
+  --color-workflow-trace: var(--zc-workflow-trace);
+  --color-workflow-trace-strong: var(--zc-workflow-trace-strong);
+
+  /* --- Overlays --- */
+  --color-toast: var(--zc-toast);
+  --color-tooltip: var(--zc-tooltip);
+  --color-tooltip-foreground: var(--zc-tooltip-foreground);
+  --color-tooltip-tag: var(--zc-tooltip-tag);
+  --color-tooltip-tag-foreground: var(--zc-tooltip-tag-foreground);
+  --color-tag: var(--zc-tag);
+  --color-find-highlight: var(--zc-find-highlight);
+  --color-find-highlight-active: var(--zc-find-highlight-active);
+
+  /* --- Diff --- */
+  --color-diff-added: var(--zc-diff-added);
+  --color-diff-added-foreground: var(--zc-diff-added-foreground);
+  --color-diff-removed: var(--zc-diff-removed);
+  --color-diff-removed-foreground: var(--zc-diff-removed-foreground);
+}
+
 /* GenUI 使用中性白色表面，避免继承聊天区域的暖色背景。 */
 .genui-root {
   --chat-surface: #ffffff;
@@ -331,6 +628,7 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --radius-xs: var(--radius-xs);
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
@@ -699,7 +997,8 @@ ol {
   font-family: var(--font-ui);
 }
 
-.kimi-code-fence-copy {
+.kimi-code-fence-copy,
+.kimi-code-fence-wrap {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -713,13 +1012,20 @@ ol {
     background var(--duration-base) var(--ease-out),
     color var(--duration-base) var(--ease-out);
 }
-.kimi-code-fence-copy:hover {
+.kimi-code-fence-copy:hover,
+.kimi-code-fence-wrap:hover {
   background: var(--color-surface-sunken);
   color: var(--color-text);
 }
-.kimi-code-fence-copy:focus-visible {
+.kimi-code-fence-copy:focus-visible,
+.kimi-code-fence-wrap:focus-visible {
   outline: none;
   box-shadow: var(--p-focus-ring);
+}
+/* 自动换行开启时按钮保持「已激活」观感 */
+.kimi-code-fence-wrap[aria-pressed="true"] {
+  background: var(--color-surface-sunken);
+  color: var(--color-text);
 }
 
 /* tokens 渲染：body 本身就是 pre，不再注入 Shiki HTML 字符串 */
@@ -749,6 +1055,20 @@ ol {
   display: inline;
 }
 
+/* 自动换行：由 FenceChrome 根节点上的 data-wrap 控制（读全局偏好 store）。
+   关闭时不写任何东西 —— 保持上面的 white-space: pre + overflow-x: auto，
+   横向滚动条由全局 ::-webkit-scrollbar 提供。 */
+.kimi-code-fence[data-wrap="true"] .kimi-code-fence-body,
+.kimi-code-fence[data-wrap="true"] .kimi-code-fence-fallback {
+  overflow-x: hidden;
+}
+.kimi-code-fence[data-wrap="true"] .kimi-code-fence-body > code,
+.kimi-code-fence[data-wrap="true"] .kimi-code-fence-fallback > code {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
 .kimi-diff-pre {
   margin: 0;
   padding: 12px 0;
@@ -776,6 +1096,20 @@ ol {
 }
 .kimi-diff-text {
   color: var(--color-text);
+}
+
+/* diff 围栏的自动换行变体：去掉 max-content 撑宽，让长行在行内折行 */
+.kimi-code-fence[data-wrap="true"] .kimi-diff-pre {
+  overflow-x: hidden;
+  white-space: pre-wrap;
+}
+.kimi-code-fence[data-wrap="true"] .kimi-diff-pre code {
+  width: auto;
+  min-width: 0;
+}
+.kimi-code-fence[data-wrap="true"] .kimi-diff-text {
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .kimi-diff-add {
   background: var(--color-success-soft);
@@ -1172,10 +1506,12 @@ ol {
   border-radius: 22px !important;
 }
 
-/* Composer shell — Kimi-style raised card with a quiet focus ring */
+/* Composer shell — ZCode v4/ConversationComposer.tsx:2232 规格：
+   rounded-2xl（已批准的 main composer 例外）+ bg-surface + 轻阴影。
+   焦点态走语义 input 边框 token，不再直接吃品牌蓝。 */
 .reactor-input-flat {
-  background: var(--color-bg) !important;
-  border: 1px solid var(--color-line) !important;
+  background: var(--zc-surface) !important;
+  border: 1px solid var(--zc-border) !important;
   border-radius: var(--radius-2xl) !important;
   box-shadow: var(--shadow-md) !important;
   padding: 0 !important;
@@ -1183,7 +1519,7 @@ ol {
 }
 
 .reactor-input-flat:focus-within {
-  border-color: var(--color-accent) !important;
+  border-color: var(--zc-input-border-focused) !important;
   box-shadow: var(--shadow-md), var(--p-focus-ring) !important;
 }
 
@@ -1218,22 +1554,23 @@ ol {
   color: color-mix(in oklab, var(--chat-text-muted) 50%, transparent) !important;
 }
 
+/* 状态灯走语义状态色（DESIGN.md：running 用 --color-warning，不用品牌蓝）。 */
 .reactor-status-dot {
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: var(--color-line-strong);
+  background: var(--zc-border-hover);
 }
 
 .reactor-status-dot.is-running {
-  background: var(--color-accent);
+  background: var(--zc-warning);
   animation: reactorStatusPulse 1.5s var(--ease-out) infinite;
 }
 
 @keyframes reactorStatusPulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 34%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--zc-warning) 34%, transparent);
   }
   60% {
     box-shadow: 0 0 0 4px transparent;
@@ -1405,6 +1742,25 @@ ol {
     height: 0;
     opacity: 0;
   }
+}
+
+/*
+ * 轮次过程区（`AgentStepTimeline`）的展开/折叠，由「已工作 X」状态条控制。
+ * 复用上面那套 keyframes，但作用域**不能**挂在 `.agent-step-timeline` 下 ——
+ * 本容器是它的**父级**，不在那个后代选择器的范围内。
+ */
+.chat-process-collapse {
+  overflow: hidden;
+}
+
+.chat-process-collapse[data-state="open"] {
+  animation: timelineCollapseOpen 0.2s var(--ease-out);
+}
+
+.chat-process-collapse[data-state="closed"] {
+  height: 0;
+  opacity: 0;
+  animation: timelineCollapseClose 0.16s var(--ease-out) forwards;
 }
 
 .timeline-segment-enter {
@@ -1915,17 +2271,9 @@ ol {
   transition: none !important;
 }
 
-.reactor-chat-workspace-layout[data-workspace-resizing="true"]
-  .reactor-workspace-resizer {
-  background: color-mix(in srgb, var(--chat-accent) 15%, transparent);
-  transition: none;
-}
-
-.reactor-chat-workspace-layout[data-workspace-resizing="true"]
-  .reactor-workspace-resizer > div:last-child {
-  background: var(--chat-accent);
-  transition: none;
-}
+/* 拖拽中分隔条的指示线点亮，已由 Tailwind 的
+   [[data-workspace-resizing=true]_&]:after:opacity-100 承担（对齐 ZCode），
+   这里不再叠品牌色，保持中性克制。 */
 
 /* Mobile chat adaptation: the workspace becomes a thumb-reachable bottom sheet. */
 .reactor-workspace-scrim {
@@ -2217,9 +2565,14 @@ ol {
   cursor: pointer;
 }
 
-.kimi-think[data-open="false"] .kimi-think-live,
-.kimi-think[data-open="false"] .kimi-think-teaser {
-  display: none;
+/*
+ * 收起态不再用 `display:none` 硬切：改由 Radix CollapsibleContent 的
+ * `[data-state="closed"]{height:0;opacity:0}` 接管（见 `.agent-step-timeline` 段），
+ * 这样才有高度过渡动画。
+ */
+
+.kimi-think-brain {
+  color: var(--chat-text-faint);
 }
 
 .kimi-think-label {
@@ -2232,6 +2585,42 @@ ol {
   font-size: 12px;
   line-height: 1;
   color: var(--chat-text-faint);
+}
+
+.kimi-think-dot {
+  flex: none;
+  color: var(--chat-text-faint);
+}
+
+/*
+ * 收起 + 流式时，标题右侧显示思考的最后一行。
+ * `justify-content: flex-end` + 子元素 `flex: none` + 父级 `overflow: hidden`：
+ * 内容超出宽度时右侧对齐、左侧被裁掉，于是永远露出**最新**的 token，
+ * 不需要 JS 维护 scrollLeft（ZCode 那边是 ResizeObserver + 手动滚到末尾）。
+ */
+.kimi-think-summary {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--color-text-faint);
+  font: var(--text-base) / var(--leading-relaxed) var(--font-ui);
+  font-weight: 425;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 24px);
+  mask-image: linear-gradient(to right, transparent 0, #000 24px);
+}
+
+.kimi-think-summary > span {
+  flex: none;
+}
+
+/* 正文缩进 + 左侧竖线（图3 里那根），与 ZCode `ml-2 border-l pl-3.5` 一致 */
+.kimi-think-indent {
+  margin-left: 8px;
+  border-left: 1px solid var(--chat-border);
+  padding-left: 14px;
 }
 
 .kimi-think-extra {
@@ -2271,7 +2660,8 @@ ol {
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
-  max-height: calc(var(--leading-relaxed) * 1em * 5);
+  /* 对齐 ZCode `max-h-60`：长思考滚动查看，不再按 5 行硬裁 */
+  max-height: 240px;
   overflow-y: auto;
   cursor: pointer;
 }

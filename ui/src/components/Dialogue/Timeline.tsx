@@ -74,10 +74,10 @@ const taskIconClass =
   "flex size-6 shrink-0 items-center justify-center text-[var(--color-text-muted)] [&_svg]:drop-shadow-none [&_svg]:[filter:none]";
 
 const taskTitleClass =
-  "shrink-0 text-[13px] font-medium text-[var(--color-text)]";
+  "shrink-0 text-ui-caption font-medium text-[var(--color-text)]";
 
 const taskMetaClass =
-  "truncate text-[12px] text-[var(--color-text-muted)]";
+  "truncate text-ui-sm text-[var(--color-text-muted)]";
 
 export const ToolItem: FC<ToolItemProps> = memo(({
   tool,
@@ -103,7 +103,7 @@ export const ToolItem: FC<ToolItemProps> = memo(({
           onClick={() => changePlan?.()}
         >
           <div className={taskIconClass}>
-            <i className={`font_family ${getIcon(tool.messageType)} text-[17px] leading-none [text-shadow:none]`}></i>
+            <i className={`font_family ${getIcon(tool.messageType)} text-ui-lg leading-none [text-shadow:none]`}></i>
           </div>
           <div className="flex min-w-0 items-center gap-2 overflow-hidden">
             <span className={taskTitleClass}>已完成</span>
@@ -135,7 +135,7 @@ export const ToolItem: FC<ToolItemProps> = memo(({
         return null;
       }
       return (
-        <div className="mt-2 px-1 text-[14px] leading-7 text-[var(--chat-text)]">
+        <div className="mt-2 px-1 text-ui-base leading-7 text-[var(--chat-text)]">
           {text}
         </div>
       );
@@ -220,10 +220,10 @@ export const ToolItem: FC<ToolItemProps> = memo(({
         ? nested.appliedPatches.length
         : Number(nested.patchCount) || 0;
       return (
-        <div className="mt-2 rounded-xl border border-[var(--chat-border)]/50 bg-[var(--chat-surface-soft)]/40 px-3 py-2 text-[13px] text-[var(--chat-text-soft)]">
+        <div className="mt-2 rounded-xl border border-[var(--chat-border)]/50 bg-[var(--chat-surface-soft)]/40 px-3 py-2 text-ui-caption text-[var(--chat-text-soft)]">
           已生成 GenUI 界面
           {patchCount > 0 ? `（已合并 ${patchCount} 条补丁）` : ""}
-          <span className="ml-1 text-[12px] text-[var(--chat-text-muted)]">
+          <span className="ml-1 text-ui-sm text-[var(--chat-text-muted)]">
             · 见下方可视化回复
           </span>
         </div>
@@ -235,9 +235,9 @@ export const ToolItem: FC<ToolItemProps> = memo(({
         ? nested.patches.length
         : Number(nested.patchCount) || 0;
       return (
-        <div className="mt-2 rounded-xl border border-[var(--chat-border)]/50 bg-[var(--chat-surface-soft)]/40 px-3 py-2 text-[13px] text-[var(--chat-text-soft)]">
+        <div className="mt-2 rounded-xl border border-[var(--chat-border)]/50 bg-[var(--chat-surface-soft)]/40 px-3 py-2 text-ui-caption text-[var(--chat-text-soft)]">
           GenUI 补丁（{count || "?"} 条）
-          <span className="ml-1 text-[12px] text-[var(--chat-text-muted)]">
+          <span className="ml-1 text-ui-sm text-[var(--chat-text-muted)]">
             · 已更新下方可视化回复
           </span>
         </div>
@@ -347,7 +347,7 @@ export const ToolItem: FC<ToolItemProps> = memo(({
                       tool.resultMap.messageType === "report"
                       ? "file"
                       : tool.messageType
-                  )} text-[17px] leading-none text-[var(--chat-text-muted)] [text-shadow:none]`}
+                  )} text-ui-lg leading-none text-[var(--chat-text-muted)] [text-shadow:none]`}
                 ></i>
               </div>
           )}
@@ -460,14 +460,14 @@ const SubAgentTimelineCard: FC<{
         <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
           <div className="flex min-w-0 items-center gap-2 overflow-hidden">
             <span className={taskTitleClass}>{actionInfo.action}</span>
-            <span className="shrink-0 rounded-md bg-[var(--chat-accent)]/12 px-1.5 py-0.5 text-[11px] font-medium text-[var(--chat-accent)]">
+            <span className="shrink-0 rounded-md bg-[var(--chat-accent)]/12 px-1.5 py-0.5 text-ui-xs font-medium text-[var(--chat-accent)]">
               {subAgent.subagentType}
             </span>
             {subAgent.description ? (
               <span className={taskMetaClass}>{subAgent.description}</span>
             ) : null}
           </div>
-          <div className="flex min-w-0 items-center gap-2 overflow-hidden text-[12px] text-[var(--chat-text-soft)]">
+          <div className="flex min-w-0 items-center gap-2 overflow-hidden text-ui-sm text-[var(--chat-text-soft)]">
             {subAgentRunning ? (
               <span className="truncate">
                 同步执行中{nestedCount > 0 ? ` · ${nestedCount} 个工具` : "…"}
@@ -481,7 +481,7 @@ const SubAgentTimelineCard: FC<{
                 ) : null}
                 {duration ? <span className="shrink-0">{duration}</span> : null}
                 {subAgent.agentId ? (
-                  <span className="truncate font-mono text-[11px] opacity-70">
+                  <span className="truncate font-mono text-ui-xs opacity-70">
                     {subAgent.agentId.slice(0, 8)}
                   </span>
                 ) : null}
@@ -550,7 +550,7 @@ export const DeepSearchPreviewItem: FC<{
         "mt-2 overflow-hidden rounded-2xl border border-[var(--chat-border)]/50",
         "bg-white px-4 py-3 ring-0",
         clickable
-          ? "cursor-pointer transition-colors duration-200 hover:bg-[#fafafa]"
+          ? "cursor-pointer transition-colors duration-200 hover:bg-surface"
           : "",
       ].join(" ")}
       onClick={handleClick}
@@ -567,7 +567,7 @@ export const DeepSearchPreviewItem: FC<{
       tabIndex={clickable ? 0 : undefined}
     >
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--chat-border)]/40 bg-[#f5f5f7] text-[var(--chat-text-muted)]">
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--chat-border)]/40 bg-hover text-[var(--chat-text-muted)]">
           {model.loading ? (
             <LoaderCircleIcon className="size-4 animate-spin" />
           ) : (
@@ -576,14 +576,14 @@ export const DeepSearchPreviewItem: FC<{
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="truncate text-[14px] font-medium leading-snug tracking-[-0.01em] text-[var(--chat-text)]">
+            <span className="truncate text-ui-base font-medium leading-snug tracking-[-0.01em] text-[var(--chat-text)]">
               {model.query}
             </span>
-            <span className="inline-flex shrink-0 items-center rounded-full border border-[var(--chat-border)]/40 bg-[#f5f5f7] px-2 py-0.5 text-[11px] font-medium text-[var(--chat-text-muted)]">
+            <span className="inline-flex shrink-0 items-center rounded-full border border-[var(--chat-border)]/40 bg-hover px-2 py-0.5 text-ui-xs font-medium text-[var(--chat-text-muted)]">
               {model.statusLabel}
             </span>
           </div>
-          <p className="mt-1 text-[12px] leading-relaxed text-[var(--chat-text-soft)]">
+          <p className="mt-1 text-ui-sm leading-relaxed text-[var(--chat-text-soft)]">
             {model.description}
           </p>
         </div>
@@ -655,13 +655,13 @@ const TimelineTaskBlock: FC<{
             ) : null}
             <div className="min-w-0 flex-1 font-[500]">{task.task}</div>
             {canCollapse && !expanded ? (
-              <span className="shrink-0 text-[12px] text-[var(--chat-text-soft)]">
+              <span className="shrink-0 text-ui-sm text-[var(--chat-text-soft)]">
                 {children.length} 步已完成
               </span>
             ) : null}
           </button>
           {digitalEmployee && (
-            <div className="mt-1.5 inline-flex items-center gap-2 rounded-lg border border-[var(--chat-border)]/18 bg-[var(--chat-surface)]/80 px-3 py-1.5 text-[13px]">
+            <div className="mt-1.5 inline-flex items-center gap-2 rounded-lg border border-[var(--chat-border)]/18 bg-[var(--chat-surface)]/80 px-3 py-1.5 text-ui-caption">
               <UserIcon className="h-3.5 w-3.5 text-[var(--chat-text-muted)]" />
               <span className="text-[var(--chat-text-soft)]">{digitalEmployee}</span>
               {taskCompleted && (
@@ -677,7 +677,7 @@ const TimelineTaskBlock: FC<{
       {!isPlanSolveMessage && canCollapse ? (
         <button
           type="button"
-          className="mt-1 flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-[13px] text-[var(--chat-text-soft)] hover:bg-[var(--chat-interactive-hover)]"
+          className="mt-1 flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-ui-caption text-[var(--chat-text-soft)] hover:bg-[var(--chat-interactive-hover)]"
           onClick={() => setExpanded((value) => !value)}
         >
           {expanded ? (
@@ -788,7 +788,7 @@ export const Timeline: FC<TimelineProps> = ({
               ) : showCompletedIcon ? (
                 <i
                   aria-label="timeline-completed"
-                  className="font_family icon-yiwanchengtianchong absolute left-0 top-0 text-[16px] text-[var(--chat-accent)]"
+                  className="font_family icon-yiwanchengtianchong absolute left-0 top-0 text-ui-lg text-[var(--chat-accent)]"
                 ></i>
               ) : null}
             </div>

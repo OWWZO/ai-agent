@@ -22,7 +22,7 @@ const DesktopPreviewPanel: ReactorType.FC<DesktopPreviewPanelProps> = ({
           className="h-4 w-4 shrink-0 text-[var(--color-text-muted)]"
           aria-hidden="true"
         />
-        <h2 className="truncate text-[13px] font-medium text-[var(--color-text)]">
+        <h2 className="truncate text-ui-caption font-medium text-[var(--color-text)]">
           桌面预览
         </h2>
       </div>

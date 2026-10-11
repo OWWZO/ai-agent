@@ -13,7 +13,7 @@ const DataDialogue: FC<Props> = memo((props) => {
   const { chat } = props;
 
   return (
-    <div className="flex h-full flex-col text-[14px] font-normal text-[#111827]">
+    <div className="flex h-full flex-col text-ui-base font-normal text-foreground">
       {chat.query ? (
         <div className="user-message-enter mt-6 ml-auto flex w-full max-w-[78%] justify-end">
           <Message from="user" className="max-w-full">
@@ -57,7 +57,7 @@ const DataDialogue: FC<Props> = memo((props) => {
         <div className="mt-6 flex w-full justify-start">
           <Message from="assistant" className="w-full max-w-full">
             <MessageContent>
-              <div className="rounded-xl bg-[#fff1f2] px-4 py-3 text-[13px] leading-6 text-[#991b1b]">
+              <div className="rounded-xl bg-destructive/10 px-4 py-3 text-ui-caption leading-6 text-destructive">
                 回答失败，没能理解您的意图。
               </div>
             </MessageContent>

@@ -28,12 +28,12 @@ export const ToolDiffPanel = memo(function ToolDiffPanel({
     <div className="kimi-detail-panel">
       <div className="kimi-detail-panel-head">
         <div className="min-w-0 flex-1">
-          <div className="text-[12px] text-[var(--color-text-faint)]">预览</div>
-          <div className="truncate text-[14px] font-medium text-[var(--color-text)]">
+          <div className="text-ui-sm text-[var(--color-text-faint)]">预览</div>
+          <div className="truncate text-ui-base font-medium text-[var(--color-text)]">
             {title}
           </div>
           {path ? (
-            <div className="truncate font-mono text-[12px] text-[var(--color-text-muted)]">
+            <div className="truncate font-mono text-ui-sm text-[var(--color-text-muted)]">
               {path}
             </div>
           ) : null}

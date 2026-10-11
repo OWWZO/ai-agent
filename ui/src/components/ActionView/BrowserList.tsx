@@ -35,10 +35,10 @@ const BrowserDetail: React.FC<{ item: BrowserItem; onBack: () => void }> = ({
       <div className="flex h-full items-center justify-center">
         <Card className="w-64 bg-muted/15 py-8 shadow-none ring-0">
           <CardContent className="flex flex-col items-center justify-center py-0 text-center">
-            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#f5f5f7]">
-              <Globe className="h-5 w-5 text-[#86868b]" />
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-hover">
+              <Globe className="h-5 w-5 text-foreground-subtle" />
             </div>
-            <p className="text-sm font-medium text-[#1d1d1f]">暂无搜索结果</p>
+            <p className="text-sm font-medium text-foreground">暂无搜索结果</p>
           </CardContent>
         </Card>
       </div>
@@ -52,12 +52,12 @@ const BrowserDetail: React.FC<{ item: BrowserItem; onBack: () => void }> = ({
           <Search className="h-4 w-4 text-blue-500" />
         </div>
         <div>
-          <p className="text-sm font-medium text-[#1d1d1f]">搜索 "{item.query}"</p>
-          <p className="text-xs text-[#86868b]">共 {item.result.length} 个结果</p>
+          <p className="text-sm font-medium text-foreground">搜索 "{item.query}"</p>
+          <p className="text-xs text-foreground-subtle">共 {item.result.length} 个结果</p>
         </div>
       </div>
 
-      <Separator className="mb-4 bg-[#e8e8ed]" />
+      <Separator className="mb-4 bg-surface-hover" />
 
       <div className="space-y-3">
         {result.map((ele, idx) => (
@@ -68,19 +68,19 @@ const BrowserDetail: React.FC<{ item: BrowserItem; onBack: () => void }> = ({
           >
             <CardContent className="p-3">
               <div className="flex items-start gap-3">
-                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#f5f5f7]">
-                  <Link2 className="h-3 w-3 text-[#86868b]" />
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-hover">
+                  <Link2 className="h-3 w-3 text-foreground-subtle" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-medium text-[var(--chat-accent)] transition-colors group-hover:underline">
+                  <p className="text-ui-caption font-medium text-[var(--chat-accent)] transition-colors group-hover:underline">
                     {ele.name}
                   </p>
                   {ele.pageContent && (
-                    <p className="mt-1 line-clamp-2 text-xs text-[#86868b]">
+                    <p className="mt-1 line-clamp-2 text-xs text-foreground-subtle">
                       {ele.pageContent}
                     </p>
                   )}
-                  <div className="mt-2 flex items-center gap-1 text-[11px] text-[#c7c7cc]">
+                  <div className="mt-2 flex items-center gap-1 text-ui-xs text-foreground-subtlest">
                     <ExternalLink className="h-3 w-3" />
                     <span className="truncate">{ele.url}</span>
                   </div>
@@ -132,7 +132,7 @@ const BrowserList: React.FC<{
           <div className="flex items-center gap-2">
             <Search className="h-4 w-4 text-blue-500" />
             <span className="truncate">搜索 "{browserItem.query}"</span>
-            <Badge variant="secondary" className="ml-2 text-[10px]">
+            <Badge variant="secondary" className="ml-2 text-ui-xs">
               {browserItem.result.length}
             </Badge>
           </div>
@@ -152,11 +152,11 @@ const BrowserList: React.FC<{
       <div className="flex h-full items-center justify-center">
         <Card className="w-64 bg-muted/15 py-8 shadow-none ring-0">
           <CardContent className="flex flex-col items-center justify-center py-0 text-center">
-            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#f5f5f7]">
-              <Globe className="h-5 w-5 text-[#86868b]" />
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-hover">
+              <Globe className="h-5 w-5 text-foreground-subtle" />
             </div>
-            <p className="text-sm font-medium text-[#1d1d1f]">暂无浏览记录</p>
-            <p className="mt-1 text-xs text-[#86868b]">搜索任务将在这里显示</p>
+            <p className="text-sm font-medium text-foreground">暂无浏览记录</p>
+            <p className="mt-1 text-xs text-foreground-subtle">搜索任务将在这里显示</p>
           </CardContent>
         </Card>
       </div>
@@ -177,17 +177,17 @@ const BrowserList: React.FC<{
                 <Search className="h-4 w-4 text-blue-500" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-medium text-[#1d1d1f]">
+                <p className="truncate text-ui-caption font-medium text-foreground">
                   搜索 "{item.query}"
                 </p>
                 <div className="mt-0.5 flex items-center gap-2">
-                  <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">
+                  <Badge variant="secondary" className="h-4 px-1.5 text-ui-xs">
                     {item.result.length} 结果
                   </Badge>
-                  <span className="text-xs text-[#86868b]">{item.messageTime}</span>
+                  <span className="text-xs text-foreground-subtle">{item.messageTime}</span>
                 </div>
               </div>
-              <ChevronRight className="h-4 w-4 shrink-0 text-[#c7c7cc] transition-colors group-hover:text-[#86868b]" />
+              <ChevronRight className="h-4 w-4 shrink-0 text-foreground-subtlest transition-colors group-hover:text-foreground-subtle" />
             </CardContent>
           </Card>
         ))}

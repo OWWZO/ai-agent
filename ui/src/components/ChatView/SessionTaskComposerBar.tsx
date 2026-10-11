@@ -59,21 +59,21 @@ const SessionTaskComposerBar: FC<SessionTaskComposerBarProps> = memo(
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="truncate text-[13px] font-semibold text-[var(--chat-text)]">
+              <span className="truncate text-ui-caption font-semibold text-[var(--chat-text)]">
                 实现任务
               </span>
-              <span className="shrink-0 rounded-full bg-[var(--chat-surface-muted)] px-2 py-0.5 text-[11px] font-medium text-[var(--chat-text-soft)]">
+              <span className="shrink-0 rounded-full bg-[var(--chat-surface-muted)] px-2 py-0.5 text-ui-xs font-medium text-[var(--chat-text-soft)]">
                 {summary}
               </span>
             </div>
             {inProgress > 0 ? (
-              <div className="mt-0.5 line-clamp-1 text-[11px] text-[var(--chat-text-soft)]">
+              <div className="mt-0.5 line-clamp-1 text-ui-xs text-[var(--chat-text-soft)]">
                 {tasks.find((task) => task.status === "in_progress")?.activeForm ||
                   tasks.find((task) => task.status === "in_progress")?.subject ||
                   "任务进行中"}
               </div>
             ) : (
-              <div className="mt-0.5 line-clamp-1 text-[11px] text-[var(--chat-text-soft)]">
+              <div className="mt-0.5 line-clamp-1 text-ui-xs text-[var(--chat-text-soft)]">
                 {completed >= total && total > 0 ? "全部完成" : "待执行"}
               </div>
             )}
@@ -97,7 +97,7 @@ const SessionTaskComposerBar: FC<SessionTaskComposerBarProps> = memo(
                 <div className="min-w-0 flex-1">
                   <div
                     className={[
-                      "text-[12px] font-medium leading-5",
+                      "text-ui-sm font-medium leading-5",
                       task.status === "completed"
                         ? "text-[var(--chat-text-soft)] line-through"
                         : "text-[var(--chat-text)]",
@@ -106,7 +106,7 @@ const SessionTaskComposerBar: FC<SessionTaskComposerBarProps> = memo(
                     {task.subject || task.description || "未命名"}
                   </div>
                   {task.status === "in_progress" && task.activeForm ? (
-                    <div className="text-[11px] text-[var(--chat-text-muted)]">
+                    <div className="text-ui-xs text-[var(--chat-text-muted)]">
                       {task.activeForm}
                     </div>
                   ) : null}

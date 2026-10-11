@@ -59,7 +59,7 @@ const ThinkingToggle: ReactorType.FC<Props> = ({
         >
           <Lightbulb className="size-3.5 shrink-0 opacity-80" />
           {label ? (
-            <span className="text-[11px] font-medium">{label}</span>
+            <span className="text-ui-xs font-medium">{label}</span>
           ) : (
             <span className="truncate">思考</span>
           )}
@@ -71,7 +71,7 @@ const ThinkingToggle: ReactorType.FC<Props> = ({
         sideOffset={10}
         className="w-[140px] rounded-[18px] border border-black/[0.04] bg-white p-1 shadow-[0_12px_40px_-16px_rgba(15,23,42,0.28)]"
       >
-        <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-[#86868b]">
+        <div className="px-2.5 pb-1 pt-1.5 text-ui-xs font-medium text-foreground-subtle">
           深度思考
         </div>
         {OPTIONS.map((o) => {
@@ -81,8 +81,8 @@ const ThinkingToggle: ReactorType.FC<Props> = ({
               key={o.label}
               type="button"
               className={cn(
-                "flex w-full items-center gap-1.5 rounded-[12px] px-2 py-1.5 text-left text-[12.5px] transition-colors",
-                active ? "bg-[#f5f5f7]" : "hover:bg-[#f5f5f7]/80"
+                "flex w-full items-center gap-1.5 rounded-[12px] px-2 py-1.5 text-left text-ui-sm transition-colors",
+                active ? "bg-hover" : "hover:bg-hover/80"
               )}
               onClick={() => {
                 onChange(o.key !== null, o.key);
@@ -92,7 +92,7 @@ const ThinkingToggle: ReactorType.FC<Props> = ({
               <CheckIcon
                 className={cn(
                   "size-3 shrink-0",
-                  active ? "text-[#1d1d1f]" : "opacity-0"
+                  active ? "text-foreground" : "opacity-0"
                 )}
               />
               {o.label}

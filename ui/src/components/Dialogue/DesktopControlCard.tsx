@@ -82,12 +82,12 @@ const DesktopControlCard: FC<DesktopControlCardProps> = memo(({ tool }) => {
         </span>
       </div>
       <div className="kimi-ui-card__body flex flex-col gap-2">
-        {fields.reason ? <div className="text-[13px] leading-6">{fields.reason}</div> : null}
+        {fields.reason ? <div className="text-ui-caption leading-6">{fields.reason}</div> : null}
         <div className="flex flex-wrap gap-2">
           {fields.streamUrl && !done ? (
             <button
               type="button"
-              className="inline-flex h-8 items-center gap-1.5 rounded-[6px] bg-[var(--color-hover)] px-3 text-[13px]"
+              className="inline-flex h-8 items-center gap-1.5 rounded-[6px] bg-[var(--color-hover)] px-3 text-ui-caption"
               onClick={openDesktop}
             >
               <PanelRightOpen className="h-3.5 w-3.5" aria-hidden="true" />
@@ -96,7 +96,7 @@ const DesktopControlCard: FC<DesktopControlCardProps> = memo(({ tool }) => {
           ) : null}
           <button
             type="button"
-            className="inline-flex h-8 items-center gap-1 rounded-[6px] bg-[var(--color-text)] px-3 text-[13px] text-[var(--color-bg)] disabled:opacity-50"
+            className="inline-flex h-8 items-center gap-1 rounded-[6px] bg-[var(--color-text)] px-3 text-ui-caption text-[var(--color-bg)] disabled:opacity-50"
             disabled={!fields.controlId || busy || done}
             onClick={() => void complete()}
           >

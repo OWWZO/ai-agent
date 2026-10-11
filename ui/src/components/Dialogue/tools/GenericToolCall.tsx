@@ -221,7 +221,7 @@ export const GenericToolCall = memo(function GenericToolCall({
     >
       {summaryFull || inputJson ? (
         <div className="kimi-tool-row-summary">
-          <div className="mb-1 text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">
+          <div className="mb-1 text-ui-xs uppercase tracking-wide text-[var(--color-text-faint)]">
             参数
           </div>
           {inputJson ? <ToolJsonBlock data={inputJson} /> : summaryFull}

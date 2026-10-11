@@ -120,7 +120,7 @@ export const SubAgentToolCall = memo(function SubAgentToolCall({
       }
     >
       {sub.subagentType ? (
-        <div className="mb-1 font-mono text-[12px] text-[var(--color-text-muted)]">
+        <div className="mb-1 font-mono text-ui-sm text-[var(--color-text-muted)]">
           {sub.subagentType}
         </div>
       ) : null}

@@ -65,8 +65,8 @@ const resolvePlanStepTone = (status?: string) => {
       };
     case "in_progress":
       return {
-        badgeClass: "bg-[#f5f5f7] text-[#6b6b70]",
-        dotClass: "bg-[#86868b]",
+        badgeClass: "bg-hover text-foreground-subtle",
+        dotClass: "bg-foreground-subtle",
         label: "进行中",
       };
     default:
@@ -119,11 +119,11 @@ export const PlanSection: FC<PlanSectionProps> = memo(({
             <Layers className="h-5 w-5" strokeWidth={1.75} />
           </div>
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--chat-text-muted)]">
+            <p className="text-ui-xs font-semibold uppercase tracking-[0.12em] text-[var(--chat-text-muted)]">
               研究路线
             </p>
             <p
-              className="text-[15px] font-semibold leading-snug tracking-[-0.02em] text-[var(--chat-text)]"
+              className="text-ui-lg font-semibold leading-snug tracking-[-0.02em] text-[var(--chat-text)]"
               style={{ fontFamily: "var(--font-sans)" }}
             >
               {normalizedPlan.title}
@@ -132,7 +132,7 @@ export const PlanSection: FC<PlanSectionProps> = memo(({
         </div>
         <div className="flex items-center gap-2">
           {versionLabel ? (
-            <div className="inline-flex items-center gap-1 rounded-full bg-[var(--chat-surface)] px-2 py-1 text-[11px] font-medium text-[var(--chat-text-soft)]">
+            <div className="inline-flex items-center gap-1 rounded-full bg-[var(--chat-surface)] px-2 py-1 text-ui-xs font-medium text-[var(--chat-text-soft)]">
               <button
                 type="button"
                 className="rounded px-1 disabled:opacity-40"
@@ -153,11 +153,11 @@ export const PlanSection: FC<PlanSectionProps> = memo(({
             </div>
           ) : null}
           {!staticSnapshot ? (
-            <div className="shrink-0 rounded-full bg-[var(--chat-surface)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
+            <div className="shrink-0 rounded-full bg-[var(--chat-surface)] px-3 py-1 text-ui-sm font-medium text-[var(--chat-text-soft)]">
               {completedCount}/{normalizedPlan.stages.length}
             </div>
           ) : (
-            <div className="shrink-0 rounded-full bg-[var(--chat-surface)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
+            <div className="shrink-0 rounded-full bg-[var(--chat-surface)] px-3 py-1 text-ui-sm font-medium text-[var(--chat-text-soft)]">
               历史快照
             </div>
           )}
@@ -188,17 +188,17 @@ export const PlanSection: FC<PlanSectionProps> = memo(({
               className="rounded-xl bg-[var(--chat-surface)]/75 px-3 py-3 shadow-[var(--shadow-xs)]"
             >
               <div className="flex items-start gap-3">
-                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--chat-surface-muted)] text-[12px] font-semibold tabular-nums text-[var(--chat-text-soft)]">
+                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--chat-surface-muted)] text-ui-sm font-semibold tabular-nums text-[var(--chat-text-soft)]">
                   {index + 1}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-[14px] font-medium leading-snug tracking-[-0.01em] text-[var(--chat-text)]">
+                    <span className="text-ui-base font-medium leading-snug tracking-[-0.01em] text-[var(--chat-text)]">
                       {stage}
                     </span>
                     {!staticSnapshot ? (
                       <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${tone.badgeClass}`}
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-ui-xs font-medium ${tone.badgeClass}`}
                       >
                         <span className={`h-1.5 w-1.5 rounded-full ${tone.dotClass}`}></span>
                         {tone.label}
@@ -206,7 +206,7 @@ export const PlanSection: FC<PlanSectionProps> = memo(({
                     ) : null}
                   </div>
                   {stepDetail ? (
-                    <p className="mt-2 text-[13px] leading-relaxed text-[var(--chat-text-soft)]">
+                    <p className="mt-2 text-ui-caption leading-relaxed text-[var(--chat-text-soft)]">
                       {stepDetail}
                     </p>
                   ) : null}

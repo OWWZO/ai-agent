@@ -312,10 +312,10 @@ const PlanComposerBarInner: FC<{
             "≡"
           )}
         </span>
-        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--color-text)]">
+        <span className="min-w-0 flex-1 truncate text-ui-caption font-semibold text-[var(--color-text)]">
           {model.title}
         </span>
-        <span className="shrink-0 rounded-full border border-[var(--color-line)] px-2 py-0.5 text-[11px] text-[var(--color-text-muted)]">
+        <span className="shrink-0 rounded-full border border-[var(--color-line)] px-2 py-0.5 text-ui-xs text-[var(--color-text-muted)]">
           {status === "planning" ? "规划中" : "进行中"}
         </span>
         {minimized ? (
@@ -326,7 +326,7 @@ const PlanComposerBarInner: FC<{
       </button>
       {!minimized ? (
         <div className="kimi-ui-card__body border-t border-[var(--color-line)]">
-          <pre className="max-h-[200px] overflow-auto whitespace-pre-wrap break-words font-sans text-[12px] leading-5 text-[var(--color-text)]">
+          <pre className="max-h-[200px] overflow-auto whitespace-pre-wrap break-words font-sans text-ui-sm leading-5 text-[var(--color-text)]">
             {editedPlan || model.planContent || "(空计划)"}
           </pre>
         </div>

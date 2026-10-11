@@ -52,14 +52,14 @@ vi.mock("@/utils/constants", () => {
     name: "数据分析",
     placeholder: "请输入问题",
     img: "icon-data",
-    color: "text-[#4040FF]",
+    color: "text-brand",
   };
   const taskProduct = {
     type: "task",
     name: "通用任务",
     placeholder: "请输入问题",
     img: "icon-task",
-    color: "text-[#4040FF]",
+    color: "text-brand",
   };
 
   return {
@@ -150,7 +150,7 @@ describe("ChatView layout", () => {
       name: "数据分析",
       placeholder: "请输入问题",
       img: "icon-data",
-      color: "text-[#4040FF]",
+      color: "text-brand",
     };
 
     const conversation = {
@@ -256,7 +256,7 @@ describe("ChatView layout", () => {
        name: "通用任务",
       placeholder: "请输入问题",
       img: "icon-docs",
-      color: "text-[#4040FF]",
+      color: "text-brand",
     };
 
     const conversation = {
@@ -312,7 +312,7 @@ describe("ChatView layout", () => {
        name: "通用任务",
       placeholder: "请输入问题",
       img: "icon-chat",
-      color: "text-[#4040FF]",
+      color: "text-brand",
     };
 
     const conversation = {
@@ -372,7 +372,7 @@ describe("ChatView layout", () => {
          name: "通用任务",
         placeholder: "请输入问题",
         img: "icon-chat",
-        color: "text-[#4040FF]",
+        color: "text-brand",
       };
 
       const conversation = {
@@ -481,7 +481,7 @@ describe("ChatView layout", () => {
        name: "通用任务",
       placeholder: "请输入问题",
       img: "icon-chat",
-      color: "text-[#4040FF]",
+      color: "text-brand",
     };
 
     const conversation = {

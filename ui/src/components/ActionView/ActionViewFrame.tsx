@@ -18,16 +18,16 @@ const ActionViewFrame: React.FC<ActionViewFrameProps> = ({
 }) => {
   return (
     <div className="flex h-full flex-col">
-      {/* Header — 去掉独立分隔线，改用 border-b，padding 收紧 */}
+      {/* Header — ZCode PreviewPane.tsx:1529-1534：h-10 + bg-surface/30 + border-b border-border */}
       {titleNode && (
-        <div className="flex items-center gap-2 border-b border-[#e8e8ed]/80 px-3 py-2">
+        <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border bg-surface/30 px-2">
           <button
             onClick={onClickTitle}
-            className="flex h-7 w-7 items-center justify-center rounded-full text-[#86868b] transition-[background-color,color,transform] duration-150 hover:bg-[#f5f5f7] hover:text-[#1d1d1f] active:scale-[0.97]"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground active:scale-[0.97]"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="size-4" />
           </button>
-          <div className="min-w-0 flex-1 text-[13px] font-medium text-[#1d1d1f]">
+          <div className="min-w-0 flex-1 truncate px-1 text-ui-base text-foreground">
             {titleNode}
           </div>
         </div>

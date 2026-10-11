@@ -84,14 +84,14 @@ const RunStatus = (props: RunStatusProps) => {
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="text-[14px] font-semibold">{meta.label}</span>
+            <span className="text-ui-base font-semibold">{meta.label}</span>
             {finishedAt ? (
-              <span className="text-[11px] opacity-80">
+              <span className="text-ui-xs opacity-80">
                 结束于 {finishedAt}
               </span>
             ) : null}
           </div>
-          <p className="mt-1 text-[12px] leading-relaxed opacity-90">
+          <p className="mt-1 text-ui-sm leading-relaxed opacity-90">
             {errorMsg || meta.description}
           </p>
         </div>

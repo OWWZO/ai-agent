@@ -25,7 +25,7 @@ const EmptyState = () => {
       <Card className="w-64 border-dashed">
         <CardContent className="flex flex-col items-center justify-center py-8 text-center">
           <motion.div
-            className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#f5f5f7]"
+            className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-hover"
             animate={reduce ? { opacity: 1 } : { opacity: [0.75, 1, 0.75] }}
             transition={
               reduce
@@ -37,10 +37,10 @@ const EmptyState = () => {
                 }
             }
           >
-            <Clock className="h-5 w-5 text-[#86868b]" />
+            <Clock className="h-5 w-5 text-foreground-subtle" />
           </motion.div>
-          <p className="text-sm font-medium text-[#1d1d1f]">动态</p>
-          <p className="mt-1 text-xs text-[#86868b]">任务执行过程将在这里实时展示</p>
+          <p className="text-ui-base font-medium text-foreground">动态</p>
+          <p className="mt-1 text-ui-sm text-foreground-subtle">任务执行过程将在这里实时展示</p>
         </CardContent>
       </Card>
     </div>
@@ -51,11 +51,11 @@ const MissingArtifactState = ({ reason }: { reason?: string }) => (
   <div className="flex h-full items-center justify-center">
     <Card className="w-72 border-dashed bg-muted/15 shadow-none">
       <CardContent className="flex flex-col items-center justify-center py-8 text-center">
-        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#f5f5f7]">
-          <span className="text-lg text-[#86868b]">?</span>
+        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-hover">
+          <span className="text-ui-lg text-foreground-subtle">?</span>
         </div>
-        <p className="text-sm font-medium text-[#1d1d1f]">引用内容不可读取</p>
-        <p className="mt-1 text-xs text-[#86868b]">
+        <p className="text-ui-base font-medium text-foreground">引用内容不可读取</p>
+        <p className="mt-1 text-ui-sm text-foreground-subtle">
           {reason || "引用资源不存在或已失效"}
         </p>
       </CardContent>
@@ -178,53 +178,63 @@ const FilePreview: React.FC<{
             }}
             transition={swapTransition}
           >
-            <div className="flex items-center justify-between px-4 py-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1 px-2 text-[13px] text-[#86868b] hover:text-[#1d1d1f] disabled:opacity-30"
-                onClick={pre}
-                disabled={realActiveTaskIndex <= 0}
-              >
-                <ChevronLeft className="h-4 w-4" />
-                上一个
-              </Button>
-
-              <motion.div
-                className="flex items-center gap-2 text-xs text-[#86868b]"
+            {/* ZCode pptx-preview-viewer.tsx:843 —— 底部工具条：min-h-10 + border-t +
+                bg-surface/30，内容居中；翻页走 ghost 图标按钮 + tabular-nums 数字。
+                时间戳保留在左端（ZCode 无此信息），用等宽 spacer 让翻页组保持居中。 */}
+            <div className="flex min-h-10 shrink-0 flex-wrap items-center justify-center gap-1 border-t border-border bg-surface/30 px-2 py-1.5 text-ui-base">
+              <motion.span
+                className="mr-auto flex items-center gap-1 text-ui-xs text-foreground-subtlest"
                 key={realActiveTaskIndex}
-                initial={
-                  reduce ? { opacity: 0 } : {
-                    opacity: 0,
-                    scale: 0.96
-                  }
-                }
+                initial={reduce ? { opacity: 0 } : {
+                  opacity: 0,
+                  scale: 0.96
+                }}
                 animate={{
                   opacity: 1,
                   scale: 1
                 }}
                 transition={swapTransition}
               >
-                <Clock className="h-3 w-3" />
-                <span>
+                <Clock className="size-3" />
+                <span className="tabular-nums">
                   {dayjs(+(taskList[realActiveTaskIndex]?.messageTime || 0)).format(
                     "HH:mm:ss"
                   )}
                 </span>
-                <span className="mx-1 text-[#e8e8ed]">|</span>
-                <span>{realActiveTaskIndex + 1} / {taskLength}</span>
-              </motion.div>
+              </motion.span>
 
               <Button
                 variant="ghost"
-                size="sm"
-                className="h-7 gap-1 px-2 text-[13px] text-[#86868b] hover:text-[#1d1d1f] disabled:opacity-30"
+                size="icon-sm"
+                className="text-foreground-subtle hover:text-foreground disabled:opacity-30"
+                aria-label="上一个"
+                title="上一个"
+                onClick={pre}
+                disabled={realActiveTaskIndex <= 0}
+              >
+                <ChevronLeft className="size-4" />
+              </Button>
+
+              <span className="w-12 text-center tabular-nums text-foreground">
+                {realActiveTaskIndex + 1}
+              </span>
+              <span className="min-w-10 text-center tabular-nums text-foreground-subtle">
+                / {taskLength}
+              </span>
+
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="text-foreground-subtle hover:text-foreground disabled:opacity-30"
+                aria-label="下一个"
+                title="下一个"
                 onClick={next}
                 disabled={realActiveTaskIndex >= taskLength - 1}
               >
-                下一个
-                <ChevronRight className="h-4 w-4" />
+                <ChevronRight className="size-4" />
               </Button>
+
+              <span className="ml-auto" aria-hidden="true" />
             </div>
           </motion.div>
         )}

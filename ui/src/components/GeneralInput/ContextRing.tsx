@@ -131,15 +131,15 @@ const ContextRing: ReactorType.FC<Props> = ({
         side="top"
         sideOffset={10}
         collisionPadding={12}
-        className="max-h-none w-[280px] overflow-visible rounded-xl border border-black/[0.06] bg-white p-0 text-[12.5px] text-[#1d1d1f] shadow-[0_12px_40px_rgba(0,0,0,0.12)]"
+        className="max-h-none w-[280px] overflow-visible rounded-xl border border-black/[0.06] bg-white p-0 text-ui-sm text-foreground shadow-[0_12px_40px_rgba(0,0,0,0.12)]"
       >
         <div className="flex items-center justify-between px-3.5 pb-1 pt-3">
-          <div className="text-[13px] font-semibold tracking-[-0.01em]">
+          <div className="text-ui-caption font-semibold tracking-[-0.01em]">
             Context
           </div>
           <button
             type="button"
-            className="flex size-6 items-center justify-center rounded-md text-[#aeaeb2] transition-colors hover:bg-black/[0.04] hover:text-[#1d1d1f]"
+            className="flex size-6 items-center justify-center rounded-md text-foreground-subtlest transition-colors hover:bg-black/[0.04] hover:text-foreground"
             aria-label="关闭"
             onClick={() => setOpen(false)}
           >
@@ -149,14 +149,14 @@ const ContextRing: ReactorType.FC<Props> = ({
 
         <div className="px-3.5 pb-3 pt-1">
           <div className="mb-1.5 flex items-baseline justify-between tabular-nums">
-            <span className="text-[13px] font-medium text-[#1d1d1f]">
+            <span className="text-ui-caption font-medium text-foreground">
               {hasMeasuredUsage ? `${pct}%` : "—"}
             </span>
-            <span className="text-[11.5px] text-[#86868b]">
+            <span className="text-ui-sm text-foreground-subtle">
               {usedLabel} / {formatTokens(model.max)}
             </span>
           </div>
-          <div className="h-[6px] overflow-hidden rounded-full bg-[#f2f2f7]">
+          <div className="h-[6px] overflow-hidden rounded-full bg-surface-hover">
             <div
               className="h-full rounded-full"
               style={{
@@ -167,7 +167,7 @@ const ContextRing: ReactorType.FC<Props> = ({
           </div>
         </div>
 
-        <div className="border-t border-black/[0.05] px-3.5 py-2 text-[10.5px] text-[#aeaeb2]">
+        <div className="border-t border-black/[0.05] px-3.5 py-2 text-ui-xs text-foreground-subtlest">
           {hasMeasuredUsage
             ? "真实 prompt tokens"
             : "等待模型返回真实 prompt tokens"}

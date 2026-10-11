@@ -88,7 +88,7 @@ function TaskRow({
       <BotIcon className="size-3.5 shrink-0 text-[var(--color-text-muted)]" />
       <span
         className={cn(
-          "min-w-0 flex-1 truncate text-[12px] font-medium",
+          "min-w-0 flex-1 truncate text-ui-sm font-medium",
           task.state === "done"
             ? "text-[var(--color-text-faint)] line-through"
             : "text-[var(--color-text)]"
@@ -96,11 +96,11 @@ function TaskRow({
       >
         {task.name}
       </span>
-      <span className="shrink-0 rounded-full bg-[var(--color-surface-sunken)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">
+      <span className="shrink-0 rounded-full bg-[var(--color-surface-sunken)] px-1.5 py-0.5 text-ui-xs uppercase tracking-wide text-[var(--color-text-faint)]">
         {task.kind}
       </span>
       {task.timing ? (
-        <span className="shrink-0 text-[11px] text-[var(--color-text-faint)]">
+        <span className="shrink-0 text-ui-xs text-[var(--color-text-faint)]">
           {task.timing}
         </span>
       ) : null}
@@ -166,14 +166,14 @@ const BackgroundTasksDock = memo(function BackgroundTasksDock({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="truncate text-[13px] font-semibold text-[var(--color-text)]">
+            <span className="truncate text-ui-caption font-semibold text-[var(--color-text)]">
               子 Agent
             </span>
-            <span className="shrink-0 rounded-full bg-[var(--color-surface-sunken)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-text-faint)]">
+            <span className="shrink-0 rounded-full bg-[var(--color-surface-sunken)] px-2 py-0.5 text-ui-xs font-medium text-[var(--color-text-faint)]">
               {tasks.length}
             </span>
           </div>
-          <div className="mt-0.5 line-clamp-1 text-[11px] text-[var(--color-text-faint)]">
+          <div className="mt-0.5 line-clamp-1 text-ui-xs text-[var(--color-text-faint)]">
             后台子 Agent
           </div>
         </div>

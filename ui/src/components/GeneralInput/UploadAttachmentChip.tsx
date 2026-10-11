@@ -77,7 +77,7 @@ export default function UploadAttachmentChip(props: {
   };
 
   return (
-    <div className="reactor-composer-attachment-chip group flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-[var(--color-line)] bg-[var(--color-surface-raised)] px-1.5 py-1 text-[12px] shadow-none transition-colors hover:border-[var(--color-line-strong)]">
+    <div className="reactor-composer-attachment-chip group flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-[var(--color-line)] bg-[var(--color-surface-raised)] px-1.5 py-1 text-ui-sm shadow-none transition-colors hover:border-[var(--color-line-strong)]">
       <div className="flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--color-surface-sunken)]">
         {isImage ? (
           <img
@@ -90,12 +90,12 @@ export default function UploadAttachmentChip(props: {
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[12px] font-medium text-[var(--color-text)]">
+        <div className="truncate text-ui-sm font-medium text-[var(--color-text)]">
           {props.attachment.filename || "未命名文件"}
         </div>
         <div
           className={cn(
-            "flex items-center gap-1 text-[10px] leading-3.5",
+            "flex items-center gap-1 text-ui-xs leading-3.5",
             isError ? "text-[var(--color-danger)]" : "text-[var(--color-text-muted)]"
           )}
         >
