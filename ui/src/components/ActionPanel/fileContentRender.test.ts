@@ -364,7 +364,7 @@ describe("ActionPanel file content rendering", () => {
     expect(panelView.type).toBe("legacy-doc");
   });
 
-  it("should classify ppt as download-only not html", () => {
+  it("should classify ppt as pptx renderer not html", () => {
     const task = buildBinaryFileTask("路演.pptx");
     let msgTypes: ReturnType<typeof useMsgTypes> | undefined;
 
@@ -377,6 +377,36 @@ describe("ActionPanel file content rendering", () => {
     expect(msgTypes?.usePpt).toBe(true);
     expect(msgTypes?.useHtml).toBe(false);
     expect(msgTypes?.useFile).toBe(false);
+
+    const panelView = resolvePanelView({
+      taskItem: task as unknown as any,
+      msgTypes,
+      markDownContent: "",
+      primaryFile: getPrimaryTaskFile(task as unknown as any),
+    });
+    expect(panelView.type).toBe("pptx");
+    if (panelView.type === "pptx") {
+      expect(panelView.fileUrl).toContain(".pptx");
+    }
+  });
+
+  it("should fall back to download-only for ppt without a readable url", () => {
+    const task = buildBinaryFileTask("路演.pptx", {
+      resultMap: {
+        command: "读取文件",
+        primaryFileName: "路演.pptx",
+        fileInfo: [{ fileName: "路演.pptx", fileSize: 1024 }],
+      },
+    } as unknown as Partial<MESSAGE.Task>);
+    let msgTypes: ReturnType<typeof useMsgTypes> | undefined;
+
+    const HookProbe = () => {
+      msgTypes = useMsgTypes(task as unknown as any);
+      return null;
+    };
+    renderToStaticMarkup(createElement(HookProbe));
+
+    expect(msgTypes?.usePpt).toBe(true);
 
     const panelView = resolvePanelView({
       taskItem: task as unknown as any,

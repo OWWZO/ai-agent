@@ -1,9 +1,11 @@
-import { jumpUrl } from "@/utils";
+import { jumpUrl, showMessage } from "@/utils";
 import { Button } from "@/components/ui/button";
 import { useBoolean } from "ahooks";
 import classNames from "classnames";
-import { Download, ExternalLink } from "lucide-react";
-import { memo, useLayoutEffect, useMemo, useState } from "react";
+import { Download, ExternalLink, MousePointerClick } from "lucide-react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useHtmlElementPicker } from "@/hooks/useHtmlElementPicker";
+import { cn } from "@/lib/utils";
 import Loading from "./Loading";
 import { Empty } from "antd";
 import MarkdownRenderer from "./MarkdownRenderer";
@@ -36,6 +38,22 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
     Boolean(htmlUrl || htmlContent)
   );
   const [error, setError] = useState<string | null>(null);
+  const frameRef = useRef<HTMLIFrameElement | null>(null);
+
+  const hasFrameContent = Boolean(htmlUrl || htmlContent);
+  const canPickElement = Boolean(showToolBar) && hasFrameContent && !isStreaming;
+
+  const {
+    isPicking,
+    error: pickerError,
+    togglePicking,
+  } = useHtmlElementPicker({ iframeRef: frameRef, enabled: canPickElement });
+
+  useEffect(() => {
+    if (pickerError) {
+      showMessage()?.warning(pickerError);
+    }
+  }, [pickerError]);
 
   useLayoutEffect(() => {
     setError(null);
@@ -52,20 +70,38 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
   }, [htmlUrl, htmlContent, startLoading, stopLoading]);
 
   const headerActions = useMemo(() => {
-    if (!showToolBar || !htmlUrl) return null;
+    if (!showToolBar) return null;
+    if (!htmlUrl && !htmlContent) return null;
     return (
       <div className="absolute right-3 top-3 z-20 flex items-center gap-1 rounded-full bg-white/90 p-0.5 shadow-sm ring-1 ring-black/[0.04]">
         <Button
-          aria-label="在新窗口打开"
-          className="h-7 w-7 shrink-0 rounded-full text-[var(--chat-text-soft)] hover:bg-[var(--chat-surface-muted)] hover:text-[var(--chat-text)]"
-          onClick={() => jumpUrl(htmlUrl)}
+          aria-label={isPicking ? "取消网页元素选择" : "选择网页元素加入聊天"}
+          aria-pressed={isPicking}
+          className={cn(
+            "h-7 w-7 shrink-0 rounded-full text-[var(--chat-text-soft)] hover:bg-[var(--chat-surface-muted)] hover:text-[var(--chat-text)]",
+            isPicking && "bg-[var(--chat-surface-muted)] text-[var(--chat-text)]"
+          )}
+          onClick={() => void togglePicking()}
           size="icon-sm"
-          title="在新窗口打开"
+          title={isPicking ? "取消网页元素选择（Esc）" : "选择网页元素加入聊天"}
           type="button"
           variant="ghost"
         >
-          <ExternalLink className="size-3.5" />
+          <MousePointerClick className="size-3.5" />
         </Button>
+        {htmlUrl ? (
+          <Button
+            aria-label="在新窗口打开"
+            className="h-7 w-7 shrink-0 rounded-full text-[var(--chat-text-soft)] hover:bg-[var(--chat-surface-muted)] hover:text-[var(--chat-text)]"
+            onClick={() => jumpUrl(htmlUrl)}
+            size="icon-sm"
+            title="在新窗口打开"
+            type="button"
+            variant="ghost"
+          >
+            <ExternalLink className="size-3.5" />
+          </Button>
+        ) : null}
         {downloadUrl ? (
           <Button
             aria-label="下载"
@@ -81,7 +117,7 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
         ) : null}
       </div>
     );
-  }, [showToolBar, htmlUrl, downloadUrl]);
+  }, [showToolBar, htmlUrl, htmlContent, downloadUrl, isPicking, togglePicking]);
 
   if (!htmlUrl && !htmlContent && outputCode) {
     return (
@@ -134,6 +170,7 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
           />
         ) : null}
         <iframe
+          ref={frameRef}
           className="absolute inset-0 h-full w-full border-0 bg-white"
           title="HTML preview"
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"

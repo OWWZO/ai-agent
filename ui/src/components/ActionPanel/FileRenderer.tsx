@@ -1,14 +1,17 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { useRequest } from "ahooks";
 import { Alert } from "antd";
-import type { BundledLanguage } from "shiki";
-import MarkdownRenderer from "./MarkdownRenderer";
+import MarkdownFileRenderer from "./MarkdownFileRenderer";
+import SvgFileRenderer from "./SvgFileRenderer";
+import MediaFileRenderer from "./MediaFileRenderer";
 import HTMLRenderer from "./HTMLRenderer";
 import ImageRenderer from "./ImageRenderer";
 import DocumentFallback from "./DocumentFallback";
+import SourceCodeView from "./SourceCodeView";
 import Loading from "./Loading";
 import GenUiModel3D from "@/components/genui/GenUiModel3D";
-import { highlightCode } from "@/components/ai-elements/code-block";
+import { isBinaryBackedKind, resolveFilePreviewKind } from "@/lib/filePreview/kinds";
+import { resolveCodeLanguage } from "@/lib/filePreview/language";
 import { cn } from "@/lib/utils";
 
 const LOADING_CLASS = "mr-32";
@@ -21,90 +24,9 @@ interface FileRendererProps {
   downloadUrl?: string;
   missingReason?: string;
   className?: string;
-  /** 强制源码高亮（忽略 HTML iframe 直出） */
+  /** 强制源码高亮（忽略 HTML iframe / 图形化预览） */
   forceSource?: boolean;
 }
-
-const MARKDOWN_EXTS = new Set(["md", "markdown", "txt"]);
-const HTML_EXTS = new Set(["html", "htm"]);
-/** 不应按文本解码的二进制/媒体扩展名 */
-const BINARY_DOWNLOAD_EXTS = new Set([
-  "zip",
-  "rar",
-  "7z",
-  "tar",
-  "gz",
-  "bz2",
-  "exe",
-  "dll",
-  "so",
-  "dmg",
-  "pkg",
-  "apk",
-  "mp3",
-  "mp4",
-  "mov",
-  "avi",
-  "mkv",
-  "webm",
-  "wav",
-  "flac",
-  "aac",
-  "ogg",
-  "ppt",
-  "pptx",
-  "pps",
-  "ppsx",
-  "doc",
-  "docx",
-  "xls",
-  "xlsx",
-  "xlsm",
-  "pdf",
-  // 图片不在此列：走 ImageRenderer，避免被误判成「不支持预览」
-  "woff",
-  "woff2",
-  "ttf",
-  "otf",
-  "eot",
-  "bin",
-  "dat",
-  "wasm",
-]);
-
-const IMAGE_PREVIEW_EXTS = new Set([
-  "png",
-  "jpg",
-  "jpeg",
-  "gif",
-  "webp",
-  "bmp",
-  "ico",
-  "svg",
-  "avif",
-]);
-const MODEL_3D_EXTS = new Set(["glb", "gltf"]);
-
-const LANG_ALIAS: Record<string, string> = {
-  py: "python",
-  js: "javascript",
-  ts: "typescript",
-  tsx: "tsx",
-  jsx: "jsx",
-  yml: "yaml",
-  sh: "bash",
-  shell: "bash",
-  md: "markdown",
-  htm: "html",
-};
-
-const getFileExtension = (fileName?: string): string => {
-  return fileName?.split(".").pop()?.toLowerCase() || "";
-};
-
-const resolveLanguage = (ext: string): BundledLanguage => {
-  return (LANG_ALIAS[ext] || ext || "text") as BundledLanguage;
-};
 
 const resolveUnavailableReason = (error: Error) => {
   const message = error?.message || "";
@@ -118,78 +40,12 @@ const resolveUnavailableReason = (error: Error) => {
   return message || "引用资源不存在或已失效";
 };
 
-/** 源码视图：行号 + github-light 高亮，无多余外壳 */
-const SourceCodeView: React.FC<{
-  code: string;
-  language: BundledLanguage;
-  className?: string;
-}> = ({ code, language, className }) => {
-  const [html, setHtml] = useState("");
-  const [highlightError, setHighlightError] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    setHtml("");
-    setHighlightError(false);
-    void highlightCode(code, language, true)
-      .then(([light]) => {
-        if (!cancelled) {
-          setHtml(light);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setHighlightError(true);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [code, language]);
-
-  if (highlightError) {
-    return (
-      <pre
-        className={cn(
-          "ws-source-view h-full min-h-0 w-full overflow-auto bg-white px-2 py-1 font-mono text-[13px] leading-[1.7] sm:px-3",
-          className
-        )}
-      >
-        {code}
-      </pre>
-    );
-  }
-
-  if (!html) {
-    return <Loading className={LOADING_CLASS} />;
-  }
-
-  return (
-    <div
-      className={cn(
-        "ws-source-view h-full min-h-0 w-full overflow-auto bg-white px-1 py-1 sm:px-2",
-        className
-      )}
-    >
-      <div
-        className={cn(
-          "source-code-highlight mx-auto max-w-[920px] text-[13px] leading-[1.7]",
-          "[&>pre]:m-0 [&>pre]:bg-transparent! [&>pre]:p-0!",
-          "[&>pre]:font-mono [&>pre]:text-[13px] [&>pre]:leading-[1.7]",
-          "[&>pre]:whitespace-pre [&>pre]:overflow-x-auto",
-          "[&_code]:font-mono [&_code]:text-[13px] [&_code]:bg-transparent!",
-          // 行号：灰字、右对齐、不换行
-          "[&_.line]:inline-block [&_.line]:w-full",
-          "[&_span.min-w-10]:min-w-[2.5rem] [&_span.min-w-10]:mr-5",
-          "[&_span.min-w-10]:text-right [&_span.min-w-10]:text-[#b0b0b5]",
-          "[&_span.min-w-10]:text-[12px] [&_span.min-w-10]:leading-[1.7]"
-        )}
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-    </div>
-  );
-};
-
+/**
+ * 通用文件渲染器：按 `FilePreviewKind` 分派到对应预览器。
+ *
+ * 这是「不知道文件是什么、只能靠扩展名判断」时的兜底入口 —— 类型判定统一走
+ * `resolveFilePreviewKind()`，本组件不再自己维护扩展名表。
+ */
 const FileRenderer: ReactorType.FC<FileRendererProps> = React.memo((props) => {
   const {
     fileUrl,
@@ -200,15 +56,24 @@ const FileRenderer: ReactorType.FC<FileRendererProps> = React.memo((props) => {
     forceSource = false,
   } = props;
 
-  const ext = useMemo(() => getFileExtension(fileName || fileUrl), [fileName, fileUrl]);
-  const language = useMemo(() => resolveLanguage(ext), [ext]);
-  const isMarkdown = MARKDOWN_EXTS.has(ext);
-  const isHtml = HTML_EXTS.has(ext) || ext === "html" || ext === "htm";
-  const isImage = IMAGE_PREVIEW_EXTS.has(ext);
-  const isModel3D = MODEL_3D_EXTS.has(ext);
-  const useIframe = isHtml && !forceSource;
-  const isBinaryDownload = BINARY_DOWNLOAD_EXTS.has(ext) && !forceSource && !isModel3D;
+  const kind = useMemo(
+    () => resolveFilePreviewKind({ name: fileName, url: fileUrl }),
+    [fileName, fileUrl]
+  );
+  const language = useMemo(
+    () => resolveCodeLanguage(fileName || fileUrl),
+    [fileName, fileUrl]
+  );
   const resolvedDownload = downloadUrl || fileUrl;
+
+  // 强制源码模式下不按类型分派，但**仍然需要把内容取回来**当纯文本读。
+  const shouldFetchText =
+    forceSource ||
+    kind === "code" ||
+    kind === "text" ||
+    kind === "unknown" ||
+    kind === "diff" ||
+    kind === "csv";
 
   const { data, loading, error } = useRequest(
     async () => {
@@ -226,62 +91,124 @@ const FileRenderer: ReactorType.FC<FileRendererProps> = React.memo((props) => {
     },
     {
       refreshDeps: [fileUrl, missingReason, forceSource],
-      // 图片 / HTML / 二进制 / 3D 均不按文本拉取
-      ready: !useIframe && !isBinaryDownload && !isImage && !isModel3D,
+      ready: shouldFetchText,
     }
   );
 
-  if (isImage && !forceSource) {
+  // ---- 强制源码模式：任何类型都当纯文本读 ----
+  if (forceSource) {
+    if (loading) {
+      return (
+        <div className={cn("flex h-full min-h-[200px] items-center justify-center bg-white", className)}>
+          <Loading className={LOADING_CLASS} />
+        </div>
+      );
+    }
+    if (error) {
+      return (
+        <div className={cn("bg-white p-6", className)}>
+          <Alert
+            type="error"
+            message="内容不可读取"
+            description={resolveUnavailableReason(error as Error)}
+            showIcon
+            className={ERROR_CLASS}
+          />
+        </div>
+      );
+    }
     return (
-      <ImageRenderer
-        imageUrl={fileUrl}
-        fileName={fileName}
-        missingReason={missingReason}
+      <SourceCodeView
+        code={data || ""}
+        language={language}
         className={className}
+        sourcePath={fileName}
       />
     );
   }
 
-  if (isModel3D && !forceSource) {
-    if (missingReason || !fileUrl) {
+  // ---- 有专门渲染器的类型：直接委派 ----
+  switch (kind) {
+    case "image":
       return (
-        <DocumentFallback
-          label={ext ? ext.toUpperCase() : "GLB"}
-          title="3D 模型不可读取"
-          description={missingReason || "引用资源不存在或已失效"}
+        <ImageRenderer
+          imageUrl={fileUrl}
           fileName={fileName}
-          downloadUrl={resolvedDownload}
+          missingReason={missingReason}
           className={className}
-          type="info"
         />
       );
-    }
-    return (
-      <div className={cn("flex h-full min-h-[360px] items-stretch bg-[#0f172a] p-3", className)}>
-        <div className="min-h-[360px] w-full">
-          <GenUiModel3D src={fileUrl} caption={fileName} height={520} />
-        </div>
-      </div>
-    );
-  }
-
-  if (isBinaryDownload) {
-    const isMedia = ["mp3", "mp4", "mov", "webm", "wav", "ogg"].includes(ext);
-    if (isMedia && fileUrl) {
-      const isVideo = ["mp4", "mov", "webm"].includes(ext);
+    case "svg":
       return (
-        <div className={cn("flex h-full items-center justify-center bg-white p-4", className)}>
-          {isVideo ? (
-            <video src={fileUrl} controls className="max-h-full max-w-full rounded-lg" />
-          ) : (
-            <audio src={fileUrl} controls className="w-full max-w-md" />
-          )}
+        <SvgFileRenderer
+          fileUrl={fileUrl}
+          fileName={fileName}
+          downloadUrl={resolvedDownload}
+          missingReason={missingReason}
+          className={className}
+        />
+      );
+    case "markdown":
+      return (
+        <MarkdownFileRenderer
+          fileUrl={fileUrl}
+          fileName={fileName}
+          downloadUrl={resolvedDownload}
+          missingReason={missingReason}
+          className={className}
+        />
+      );
+    case "video":
+    case "audio":
+      return (
+        <MediaFileRenderer
+          kind={kind}
+          fileUrl={fileUrl}
+          fileName={fileName}
+          missingReason={missingReason}
+          className={className}
+        />
+      );
+    case "html":
+      return (
+        <HTMLRenderer
+          htmlUrl={fileUrl}
+          downloadUrl={resolvedDownload}
+          missingReason={missingReason}
+          showToolBar
+          className={className}
+        />
+      );
+    case "model3d":
+      if (missingReason || !fileUrl) {
+        return (
+          <DocumentFallback
+            label="GLB"
+            title="3D 模型不可读取"
+            description={missingReason || "引用资源不存在或已失效"}
+            fileName={fileName}
+            downloadUrl={resolvedDownload}
+            className={className}
+            type="info"
+          />
+        );
+      }
+      return (
+        <div className={cn("flex h-full min-h-[360px] items-stretch bg-[#0f172a] p-3", className)}>
+          <div className="min-h-[360px] w-full">
+            <GenUiModel3D src={fileUrl} caption={fileName} height={520} />
+          </div>
         </div>
       );
-    }
+    default:
+      break;
+  }
+
+  // ---- 二进制：引导下载 ----
+  if (isBinaryBackedKind(kind)) {
     return (
       <DocumentFallback
-        label={ext ? ext.toUpperCase() : "FILE"}
+        label={(fileName?.split(".").pop() || "FILE").toUpperCase()}
         title="该文件类型不支持在线预览"
         description={
           missingReason ||
@@ -295,18 +222,7 @@ const FileRenderer: ReactorType.FC<FileRendererProps> = React.memo((props) => {
     );
   }
 
-  // HTML：直接 iframe 预览，不做源码高亮
-  if (useIframe) {
-    return (
-      <HTMLRenderer
-        htmlUrl={fileUrl}
-        downloadUrl={resolvedDownload}
-        missingReason={missingReason}
-        className={className}
-      />
-    );
-  }
-
+  // ---- 其余（code / text / csv / diff / unknown）：按文本高亮 ----
   if (loading) {
     return (
       <div className={cn("flex h-full min-h-[200px] items-center justify-center bg-white", className)}>
@@ -329,21 +245,12 @@ const FileRenderer: ReactorType.FC<FileRendererProps> = React.memo((props) => {
     );
   }
 
-  if (isMarkdown) {
-    return (
-      <div className={cn("mx-auto max-w-[720px] bg-white px-6 py-6 sm:px-8", className)}>
-        <MarkdownRenderer
-          markDownContent={data || ""}
-        />
-      </div>
-    );
-  }
-
   return (
     <SourceCodeView
       code={data || ""}
       language={language}
       className={className}
+      sourcePath={fileName}
     />
   );
 });

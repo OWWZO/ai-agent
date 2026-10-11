@@ -5,7 +5,8 @@ import { Empty, Image, Modal } from 'antd';
 import classNames from 'classnames';
 import { Expand, X } from 'lucide-react';
 import { usePanelContext } from './PanelProvider';
-import { loadMermaid } from '@/lib/lazy/mermaid';
+import MermaidBlock from './MermaidBlock';
+import { containsMath, loadMathPlugins, type MathPlugins } from '@/lib/lazy/math';
 import {
   DiffCodeFence,
   KimiCodeFence,
@@ -119,43 +120,6 @@ const MarkdownMediaPlayer: ReactorType.FC<{
   );
 };
 
-const Mermaid: ReactorType.FC = (props) => {
-  const { children } = props;
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [loadError, setLoadError] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoadError(false);
-
-    void loadMermaid()
-      .then(({ default: mermaid }) => {
-        if (cancelled || !ref.current) return;
-        mermaid.contentLoaded();
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          console.error('加载 Mermaid 失败', error);
-          setLoadError(true);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [children]);
-
-  if (loadError) {
-    return <pre className="overflow-auto">{children}</pre>;
-  }
-
-  return (
-    <div className="mermaid" ref={ref}>
-      {children}
-    </div>
-  );
-};
-
 function childrenToText(children: unknown): string {
   if (children == null || typeof children === "boolean") {
     return "";
@@ -186,7 +150,7 @@ const CodeBlock: ReactorType.FC<{
   const trimmed = childrenToText(children).replace(/\n$/, "");
 
   if (match?.[1] === "mermaid") {
-    return <Mermaid>{children as ReactNode}</Mermaid>;
+    return <MermaidBlock>{children as ReactNode}</MermaidBlock>;
   }
 
   if (isBlock && match?.[1] === "diff") {
@@ -236,6 +200,35 @@ const MarkdownRenderer: ReactorType.FC<{
 
   const { scrollToBottom } = usePanelContext() || {};
   const lastScrollAtRef = useRef<number>(0);
+
+  // 数学公式按需加载：只有内容里出现 `$...$` / `$$...$$` 时才拉取 katex（含样式）。
+  const hasMath = useMemo(() => containsMath(normalizedContent), [normalizedContent]);
+  const [mathPlugins, setMathPlugins] = useState<MathPlugins | null>(null);
+
+  useEffect(() => {
+    if (!hasMath || mathPlugins) return;
+    let cancelled = false;
+    void loadMathPlugins()
+      .then((plugins) => {
+        if (!cancelled) setMathPlugins(plugins);
+      })
+      .catch((error) => {
+        // 公式插件加载失败不影响其余 markdown 渲染，退化成纯文本。
+        console.error('加载数学公式插件失败', error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hasMath, mathPlugins]);
+
+  const remarkPlugins = useMemo(
+    () => (mathPlugins ? [gfm, ...mathPlugins.remarkPlugins] : [gfm]),
+    [mathPlugins]
+  );
+  const rehypePlugins = useMemo(
+    () => (mathPlugins ? [...mathPlugins.rehypePlugins] : []),
+    [mathPlugins]
+  );
 
   const markdownComponents = useMemo(() => {
     const resolveHref = (href?: string | null) =>
@@ -306,7 +299,8 @@ const MarkdownRenderer: ReactorType.FC<{
   return (
     <div className={classNames('w-full markdown-body kimi-md', className)}>
       <ReactMarkdown
-        remarkPlugins={[gfm]}
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
         components={markdownComponents}
       >
         {normalizedContent}

@@ -9,7 +9,10 @@ import MarkdownRenderer from "./MarkdownRenderer";
 import TableRenderer from "./TableRenderer";
 import FileRenderer from "./FileRenderer";
 import ImageRenderer from "./ImageRenderer";
+import MediaFileRenderer from "./MediaFileRenderer";
 import PdfRenderer from "./PdfRenderer";
+import PptxRenderer from "./PptxRenderer";
+import SvgFileRenderer from "./SvgFileRenderer";
 import WordRenderer from "./WordRenderer";
 import SearchListRenderer from "./SearchListRenderer";
 import DeepSearchChapterPanel from "./DeepSearchChapterPanel";
@@ -247,6 +250,30 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
             />
           </ContentWrapper>
         );
+      case "svg":
+        return (
+          <ContentWrapper key="svg">
+            <SvgFileRenderer
+              fileUrl={panelView.fileUrl}
+              fileName={panelView.fileName}
+              downloadUrl={panelView.downloadUrl}
+              missingReason={panelView.missingReason}
+              className="h-full"
+            />
+          </ContentWrapper>
+        );
+      case "media":
+        return (
+          <ContentWrapper key="media">
+            <MediaFileRenderer
+              kind={panelView.mediaKind}
+              fileUrl={panelView.fileUrl}
+              fileName={panelView.fileName}
+              missingReason={panelView.missingReason}
+              className="h-full"
+            />
+          </ContentWrapper>
+        );
       case "pdf":
         return (
           <ContentWrapper key="pdf">
@@ -255,6 +282,18 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
               fileName={panelView.fileName}
               downloadUrl={panelView.downloadUrl}
               missingReason={panelView.missingReason}
+            />
+          </ContentWrapper>
+        );
+      case "pptx":
+        return (
+          <ContentWrapper key="pptx">
+            <PptxRenderer
+              fileUrl={panelView.fileUrl}
+              fileName={panelView.fileName}
+              downloadUrl={panelView.downloadUrl}
+              missingReason={panelView.missingReason}
+              className="h-full"
             />
           </ContentWrapper>
         );
@@ -277,7 +316,7 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
               fileName={panelView.fileName}
               downloadUrl={panelView.downloadUrl}
               missingReason={panelView.missingReason}
-              legacyOnly
+              legacyDoc
             />
           </ContentWrapper>
         );
@@ -287,6 +326,7 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
             <FileRenderer
               fileUrl={panelView.fileUrl}
               fileName={panelView.fileName}
+              downloadUrl={panelView.downloadUrl}
               missingReason={panelView.missingReason}
             />
           </ContentWrapper>
@@ -307,7 +347,10 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
     panelView.type === "html" ||
     panelView.type === "inline-html" ||
     panelView.type === "pdf" ||
+    panelView.type === "pptx" ||
     panelView.type === "docx" ||
+    panelView.type === "svg" ||
+    panelView.type === "media" ||
     panelView.type === "legacy-doc";
 
   const ref = useRef<HTMLDivElement>(null);

@@ -1,31 +1,21 @@
 import { copyText, downloadFile, showMessage } from "@/utils";
 import React, { memo, useMemo, useState } from "react";
 import ActionViewFrame from "./ActionViewFrame";
-import {
-  FileRenderer,
-  HTMLRenderer,
-  ImageRenderer,
-  PanelItemType,
-  PdfRenderer,
-  TableRenderer,
-  WordRenderer,
-} from "../ActionPanel";
-import DocumentFallback from "../ActionPanel/DocumentFallback";
+import { FilePreviewSwitch, PanelItemType } from "../ActionPanel";
 import { useBoolean, useMemoizedFn } from "ahooks";
 import LoadingSpinner from "../LoadingSpinner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { resolveFilePreviewKind } from "@/lib/filePreview/kinds";
 import {
   isBinaryPreviewFileLike,
-  isDocxFileLike,
   isImageFileLike,
-  isLegacyDocFileLike,
   isModel3DFileLike,
   isPdfFileLike,
+  isPptFileLike,
   isTextCopyableFileLike,
 } from "@/utils/taskArtifacts";
-import GenUiModel3D from "@/components/genui/GenUiModel3D";
 import {
   FileText,
   Download,
@@ -33,6 +23,7 @@ import {
   FileSpreadsheet,
   FileCode,
   FileIcon,
+  Presentation,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -45,26 +36,32 @@ import WorkspaceFileTree from "./WorkspaceFileTree";
 
 type FileItem = WorkspaceFileItem;
 
+// 类型色统一走语义 token（ZCode 迁移要求：禁写死 hex / Tailwind 调色板）。
 const getFileIcon = (type: string) => {
   switch (type) {
     case "csv":
     case "xlsx":
     case "xls":
-      return <FileSpreadsheet className="h-4 w-4 text-emerald-500" />;
+      return <FileSpreadsheet className="h-4 w-4 text-success" />;
     case "html":
     case "code":
-      return <FileCode className="h-4 w-4 text-blue-500" />;
+      return <FileCode className="h-4 w-4 text-brand" />;
     case "pdf":
-      return <FileText className="h-4 w-4 text-red-500" />;
+      return <FileText className="h-4 w-4 text-destructive" />;
+    case "ppt":
+    case "pptx":
+    case "pps":
+    case "ppsx":
+      return <Presentation className="h-4 w-4 text-warning" />;
     case "doc":
     case "docx":
-      return <FileText className="h-4 w-4 text-blue-600" />;
+      return <FileText className="h-4 w-4 text-brand" />;
     case "md":
     case "markdown":
     case "txt":
-      return <FileText className="h-4 w-4 text-gray-500" />;
+      return <FileText className="h-4 w-4 text-foreground-subtle" />;
     default:
-      return <FileIcon className="h-4 w-4 text-gray-400" />;
+      return <FileIcon className="h-4 w-4 text-foreground-subtlest" />;
   }
 };
 
@@ -135,11 +132,11 @@ const FileList: React.FC<{
         <div className="flex h-full items-center justify-center">
           <Card className="w-64 bg-muted/15 py-8 shadow-none ring-0">
             <CardContent className="flex flex-col items-center justify-center py-0 text-center">
-              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#f5f5f7]">
-                <FileText className="h-5 w-5 text-[#86868b]" />
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-hover">
+                <FileText className="h-5 w-5 text-foreground-subtle" />
               </div>
-              <p className="text-sm font-medium text-[#1d1d1f]">暂无文件</p>
-              <p className="mt-1 text-xs text-[#86868b]">任务生成的文件将在这里显示</p>
+              <p className="text-sm font-medium text-foreground">暂无文件</p>
+              <p className="mt-1 text-xs text-foreground-subtle">任务生成的文件将在这里显示</p>
             </CardContent>
           </Card>
         </div>
@@ -147,7 +144,7 @@ const FileList: React.FC<{
     }
 
     return (
-      <div className="h-full overflow-auto p-3">
+      <div className="h-full overflow-auto p-2">
         <WorkspaceFileTree
           nodes={buildWorkspaceTree(fileList)}
           selectedFileKey={activeItem}
@@ -163,11 +160,11 @@ const FileList: React.FC<{
       <div className="flex h-full items-center justify-center">
         <Card className="w-72 bg-muted/15 py-8 shadow-none ring-0">
           <CardContent className="flex flex-col items-center justify-center py-0 text-center">
-            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#f5f5f7]">
-              <FileText className="h-5 w-5 text-[#86868b]" />
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-hover">
+              <FileText className="h-5 w-5 text-foreground-subtle" />
             </div>
-            <p className="text-sm font-medium text-[#1d1d1f]">文件不可读取</p>
-            <p className="mt-1 text-xs text-[#86868b]">
+            <p className="text-sm font-medium text-foreground">文件不可读取</p>
+            <p className="mt-1 text-xs text-foreground-subtle">
               {missingReason || "引用资源不存在或已失效"}
             </p>
           </CardContent>
@@ -176,131 +173,31 @@ const FileList: React.FC<{
     );
   }
 
-  // File Detail View — 与 ActionPanel / useMsgTypes 同一套类型分支
-  const renderContent = () => {
-    const nameExt = (fileItem.name?.split(".").pop() || "").toLowerCase();
-    const rawType = (fileItem.type || "").toLowerCase();
-    const resolvedExt = resolvePreviewExtension(nameExt, rawType);
-
-    if (isImageFile) {
-      return (
-        <ImageRenderer
-          imageUrl={fileItem.url}
-          fileName={fileItem.name}
-          missingReason={missingReason}
-          className="h-full"
-        />
-      );
-    }
-
-    if (isModel3DFileLike(fileItem) && !forceSource) {
-      return (
-        <div className="flex h-full min-h-[360px] items-stretch bg-[#0f172a] p-3">
-          <div className="min-h-[360px] w-full">
-            <GenUiModel3D
-              src={fileItem.url}
-              caption={fileItem.name}
-              height={520}
-            />
-          </div>
-        </div>
-      );
-    }
-
-    if (isPdfFileLike(fileItem)) {
-      return (
-        <PdfRenderer
-          fileUrl={fileItem.url}
-          fileName={fileItem.name}
-          downloadUrl={downloadUrl || fileItem.url}
-          missingReason={missingReason}
-          hideChrome={embedded}
-          className="h-full"
-        />
-      );
-    }
-
-    if (isLegacyDocFileLike(fileItem) || isDocxFileLike(fileItem)) {
-      return (
-        <WordRenderer
-          fileUrl={fileItem.url}
-          fileName={fileItem.name}
-          downloadUrl={downloadUrl || fileItem.url}
-          missingReason={missingReason}
-          legacyOnly={isLegacyDocFileLike(fileItem)}
-          hideChrome={embedded}
-          className="h-full"
-        />
-      );
-    }
-
-    // HTML：预览 = iframe；源码分段 = FileRenderer 高亮
-    if ((resolvedExt === "html" || resolvedExt === "htm") && !forceSource) {
-      return (
-        <HTMLRenderer
-          htmlUrl={fileItem.url}
-          downloadUrl={downloadUrl || fileItem.url}
-          missingReason={missingReason}
-          className="h-full min-h-[480px]"
-        />
-      );
-    }
-
-    if ((resolvedExt === "html" || resolvedExt === "htm") && forceSource) {
-      return (
-        <FileRenderer
-          fileUrl={fileItem.url}
-          fileName={fileItem.name?.endsWith(".html") || fileItem.name?.endsWith(".htm")
-            ? fileItem.name
-            : `${fileItem.name || "preview"}.html`}
-          missingReason={missingReason}
-          forceSource
-        />
-      );
-    }
-
-    switch (resolvedExt) {
-      case "ppt":
-      case "pptx":
-        return (
-          <DocumentFallback
-            label="PPT"
-            title="暂不支持在线预览 PPT/PPTX"
-            description="请下载后用 PowerPoint / WPS 打开。若产物已转为 HTML 演示页，请打开对应 .html 文件。"
-            fileName={fileItem.name}
-            downloadUrl={downloadUrl || fileItem.url}
-            className="h-full"
-            type="info"
-          />
-        );
-      case "csv":
-      case "xlsx":
-      case "xls":
-        return (
-          <TableRenderer
-            fileUrl={fileItem.url}
-            fileName={fileItem.name}
-            downloadUrl={downloadUrl || fileItem.url}
-            missingReason={missingReason}
-            className="h-full min-h-0"
-          />
-        );
-      default:
-        return (
-          <FileRenderer
-            fileUrl={fileItem.url}
-            fileName={fileItem.name}
-            downloadUrl={downloadUrl || fileItem.url}
-            missingReason={missingReason}
-          />
-        );
-    }
-  };
+  // File Detail View — 类型分派统一交给 FilePreviewSwitch（全项目唯一分派点）
+  const renderContent = () => (
+    <FilePreviewSwitch
+      fileUrl={fileItem.url}
+      fileName={fileItem.name}
+      mimeType={fileItem.type}
+      downloadUrl={downloadUrl || fileItem.url}
+      missingReason={missingReason}
+      forceSource={forceSource}
+      embedded={embedded}
+    />
+  );
 
   if (embedded) {
     const ext = (fileItem.type || fileItem.name?.split(".").pop() || "").toLowerCase();
     const isSpreadsheet = ["csv", "xlsx", "xls"].includes(ext);
     const isDownloadOnly = ["ppt", "pptx", "pps", "ppsx"].includes(ext);
+    // 这些渲染器自带 ViewerPanelShell（含顶栏与滚动容器），外壳必须让位，否则会套出双层边框。
+    const isSelfScrollingPreview =
+      (isPptFileLike(fileItem) && !forceSource && Boolean(fileItem.url)) ||
+      (isPdfFileLike(fileItem) && !forceSource && Boolean(fileItem.url)) ||
+      (!forceSource &&
+        ["svg", "markdown", "video", "audio"].includes(
+          resolveFilePreviewKind({ name: fileItem.name, mimeType: fileItem.type, url: fileItem.url })
+        ));
     const isMedia =
       isImageFile ||
       isPdfFileLike(fileItem) ||
@@ -338,9 +235,11 @@ const FileList: React.FC<{
     ].includes(ext);
     const contentShellClass = isSpreadsheet
       ? "min-h-0 flex-1 overflow-hidden bg-white"
-      : isMedia || isSourceCode
-        ? "min-h-0 flex-1 overflow-auto bg-white"
-        : "mx-auto min-h-0 w-full max-w-[720px] flex-1 overflow-auto rounded-2xl border border-[var(--chat-border)]/70 bg-white p-6 shadow-[0_1px_2px_oklch(0%_0_0_/_0.03)] sm:p-8";
+      : isSelfScrollingPreview
+        ? "min-h-0 flex-1 overflow-hidden"
+        : isMedia || isSourceCode
+          ? "min-h-0 flex-1 overflow-auto bg-white"
+          : "mx-auto min-h-0 w-full max-w-[720px] flex-1 overflow-auto rounded-2xl border border-[var(--chat-border)]/70 bg-white p-6 shadow-[0_1px_2px_oklch(0%_0_0_/_0.03)] sm:p-8";
 
     return (
       <div className="flex h-full min-h-0 flex-col">
@@ -354,11 +253,22 @@ const FileList: React.FC<{
     fileItem.name?.split(".").pop() ||
     ""
   ).toLowerCase();
-  const isSpreadsheetDetail = ["csv", "xlsx", "xls"].includes(detailExt);
+  // 表格、PPTX、PDF 以及自带外壳的 SVG / Markdown / 音视频预览都需要撑满面板并自管滚动，
+  // 不能套 h-full overflow-auto p-4。
+  const detailKind = resolveFilePreviewKind({
+    name: fileItem.name,
+    mimeType: fileItem.type,
+    url: fileItem.url,
+  });
+  const isImmersiveDetail =
+    ["csv", "xlsx", "xls"].includes(detailExt) ||
+    (isPptFileLike(fileItem) && !forceSource && Boolean(fileItem.url)) ||
+    (isPdfFileLike(fileItem) && !forceSource && Boolean(fileItem.url)) ||
+    (!forceSource && ["svg", "markdown", "video", "audio"].includes(detailKind));
 
   return (
     <ActionViewFrame
-      className={isSpreadsheetDetail ? "flex min-h-0 flex-col overflow-hidden bg-white/50" : "bg-white/50"}
+      className={isImmersiveDetail ? "flex min-h-0 flex-col overflow-hidden bg-white/50" : "bg-white/50"}
       titleNode={
         <div className="flex min-w-0 items-center gap-2">
           {getFileIcon(fileItem.type)}
@@ -367,7 +277,7 @@ const FileList: React.FC<{
       }
       onClickTitle={clearActive}
     >
-      <div className={isSpreadsheetDetail ? "flex h-full min-h-0 flex-col" : undefined}>
+      <div className={isImmersiveDetail ? "flex h-full min-h-0 flex-col" : undefined}>
         <TooltipProvider>
           <div className="flex shrink-0 items-center justify-end gap-1 px-4 py-2">
             <Tooltip>
@@ -375,7 +285,7 @@ const FileList: React.FC<{
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-[#86868b] hover:text-[#1d1d1f]"
+                  className="h-8 w-8 text-foreground-subtle hover:text-foreground"
                   onClick={() =>
                     downloadFile(
                       downloadUrl || fileItem.url || "",
@@ -397,7 +307,7 @@ const FileList: React.FC<{
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 text-[#86868b] hover:text-[#1d1d1f]"
+                    className="h-8 w-8 text-foreground-subtle hover:text-foreground"
                     onClick={copy}
                     disabled={copying}
                   >
@@ -416,11 +326,11 @@ const FileList: React.FC<{
           </div>
         </TooltipProvider>
 
-        <Separator className="shrink-0 bg-[#e8e8ed]" />
+        <Separator className="shrink-0 bg-surface-hover" />
 
         <div
           className={
-            isSpreadsheetDetail
+            isImmersiveDetail
               ? "min-h-0 flex-1 overflow-hidden"
               : "h-full overflow-auto p-4"
           }
@@ -431,19 +341,6 @@ const FileList: React.FC<{
     </ActionViewFrame>
   );
 });
-
-function resolvePreviewExtension(nameExt: string, rawType: string) {
-  if (nameExt && nameExt.length <= 8 && !nameExt.includes("/")) {
-    return nameExt;
-  }
-  if (rawType.includes("html")) return "html";
-  if (rawType.includes("pdf")) return "pdf";
-  if (rawType.includes("/")) {
-    const leaf = rawType.split("/").pop() || "";
-    return leaf === "plain" ? "txt" : leaf;
-  }
-  return rawType.replace(/^\./, "");
-}
 
 FileList.displayName = "FileList";
 
