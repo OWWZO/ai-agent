@@ -87,13 +87,23 @@ export default defineConfig(({ command, mode }) => {
     },
     css: {preprocessorOptions: {less: {javascriptEnabled: true},},},
     optimizeDeps: {
-      exclude: [
-        'clsx',
-        'nanoid',
-        'radix-ui',
-        'lucide-react',
-        'tailwind-merge',
-      ],
+      // ⚠️ 必须限制扫描入口。Vite 默认会爬取项目里**所有 .html**，实测它把
+      // `dist-doc/index.html`、`docs/superpowers/decks/**/slides/*.html`（演示文稿）、
+      // `src/assets/relayFonts/RelayIcon.html` 也当成依赖扫描入口 —— 这些都不是应用的一部分。
+      // 只留真正的应用入口 index.html。
+      entries: ['index.html'],
+      // ⚠️ 不要把 lucide-react / radix-ui 加回 exclude（barrel 包，1706 条 re-export，
+      // 排除后 dev 下浏览器要逐个请求上千个模块）。
+      //
+      // ⚠️ 也不要试图用 exclude 压冷启动 —— 实测过，不划算。
+      // 冷启动的耗时是 esbuild **按模块数**打包 43 个依赖造成的，实测 `Dependencies
+      // bundled in ~100s`，其中模块数大头是：antd 1871、lucide-react 1967、echarts 700、
+      // mermaid 204。前两个是运行时真正需要的，压不掉。
+      // 能排除的（three / shiki 实测 OK 400ms / 599ms）都是单文件或小库，省不了多少；
+      // 想排除 mermaid 会直接坏掉：它的依赖 @braintree/sanitize-url 是 CJS，排除后浏览器报
+      // `does not provide an export named 'sanitizeUrl'`，图渲染不出来。
+      // 冷启动是一次性的（改 vite.config.ts / 装依赖才会重来），之后热启动页面加载仅 479ms。
+      exclude: ['clsx', 'nanoid', 'tailwind-merge'],
     },
     server: {
       // 修改为监听所有接口，而不是特定主机名
