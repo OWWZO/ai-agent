@@ -12,9 +12,17 @@ dist
 dist-ssr
 *.local
 
+# 构建产物目录。`dist` 是默认 outDir；`dist-doc` / `dist-verify*` 是历史验证构建用过的
+# outDir。它们由 `vite build` 生成（`dist-doc/pdfjs/**` 是 pdfjsStaticAssets 插件在
+# build 时从 node_modules/pdfjs-dist 复制过来的 cmaps / standard_fonts，共 185 个文件、
+# 约 2.3MB），**不要提交进仓库**。
+dist-doc
+dist-verify
+dist-verify-*
+
 # 临时备份目录（清理后可删除以下两行）
 node_modules.npm-backup
-dist-verify
+_tmp_*
 
 # Editor directories and files
 .vscode/*
