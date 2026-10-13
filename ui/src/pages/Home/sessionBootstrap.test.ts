@@ -112,10 +112,11 @@ function createResultEvent(): MESSAGE.EventData {
 
 function createReplay(
   status: string,
-  replayFrames: ConversationReplayFrame[] = []
+  replayFrames: ConversationReplayFrame[] = [],
+  requestId = "req-running"
 ): ConversationRunReplay {
   return {
-    requestId: "req-running",
+    requestId,
     sessionId: "session-running",
     status,
     queryText: "正在执行的问题",
@@ -352,5 +353,48 @@ describe("sessionBootstrap", () => {
     expect(conversation.chatList[1].metrics?.status).toBe("RUNNING");
     expect(conversation.chatList[1].replayLoaded).toBe(false);
     expect(onReplayError).toHaveBeenCalledWith("req-running", error);
+  });
+
+  it("没有 RUNNING run 时补最后一个 turn：提问 run 与续跑 run 一起补齐", async () => {
+    const page = createRunningPage();
+    page.runCount = 3;
+    page.runs = [
+      {
+        requestId: "req-old",
+        status: "SUCCESS",
+        queryPreview: "更早的问题",
+        hasReplay: true,
+      },
+      {
+        requestId: "req-ask",
+        status: "WAITING_INPUT",
+        queryPreview: "写文件再提问",
+        hasReplay: true,
+      },
+      {
+        requestId: "resume_1",
+        status: "SUCCESS",
+        queryPreview: "",
+        hasReplay: true,
+      },
+    ];
+    const requested: string[] = [];
+
+    const conversation = await hydrateSessionWithRunningReplay(
+      page,
+      async (requestId) => {
+        requested.push(requestId);
+        return createReplay("SUCCESS", [], requestId);
+      }
+    );
+
+    // 合并后的 Dialogue 只认最后一个 run 的 requestId，所以 turn 内两个 run 都要补 ——
+    // 漏掉 req-ask 就会让 AskUserQuestion 之前那个 run 的工具卡整段消失。
+    expect(requested).toEqual(["req-ask", "resume_1"]);
+    expect(conversation.chatList.map((chat) => chat.replayLoaded)).toEqual([
+      false,
+      true,
+      true,
+    ]);
   });
 });

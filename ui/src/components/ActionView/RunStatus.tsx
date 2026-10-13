@@ -44,13 +44,9 @@ const STATUS_META: Record<
     toneClass:
       "border-[var(--chat-border)] bg-[var(--chat-surface-soft)] text-[var(--chat-text-soft)]",
   },
-  WAITING_INPUT: {
-    label: "等待回答",
-    description: "Agent 正在等待你的选择题答案。",
-    icon: Clock3,
-    toneClass:
-      "border-amber-200 bg-amber-50/85 text-amber-700",
-  },
+  // WAITING_INPUT **故意不在此表内**：ZCode 没有轮次级「等待回答」卡片，
+  // 「正在询问 / 已询问」由 AskUserQuestion 工具卡（AskUserToolCall）承担。
+  // 缺表项 → 该状态返回 null，卡片不渲染；状态机里的 WAITING_INPUT 逻辑不受影响。
 };
 
 const normalizeStatus = (status?: string | null) => {

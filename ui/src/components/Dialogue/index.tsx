@@ -52,6 +52,25 @@ type Props = {
   replayLoading?: boolean;
 };
 
+/**
+ * 本轮过程区的默认展开态（对齐 ZCode `assistantHistoryDefaultOpen`）。
+ *
+ * - 异常终态（失败 / 停止 / 超时）：展开 —— 过程是排障的唯一线索；
+ * - 运行中 / 等待回答：展开 —— 实时能看到步骤在走；
+ * - 已完成但还没产出最终回复：展开 —— 否则这一段会折叠成空；
+ * - 正常完成且已有回复：**折叠** —— 只留「已工作 X」一行，点开才看过程。
+ */
+function resolveProcessDefaultOpen(chat: CHAT.ChatItem): boolean {
+  const status = String(chat.metrics?.status || "").trim().toUpperCase();
+  if (status === "FAILED" || status === "STOPPED" || status === "TIMEOUT") {
+    return true;
+  }
+  if (chat.loading || status === "RUNNING" || status === "WAITING_INPUT") {
+    return true;
+  }
+  return !chat.response && !chat.conclusion;
+}
+
 const DialogueComponent: FC<Props> = (props) => {
   const {
     chat,
@@ -98,8 +117,13 @@ const DialogueComponent: FC<Props> = (props) => {
    * 本轮执行过程（`AgentStepTimeline`）的展开态。
    * 由「已工作 X 分 X 秒」状态条控制，对齐 ZCode `AssistantHistoryStatus`
    * 的折叠语义：展开后还能再点折叠，状态条自身常驻不消失。
+   *
+   * 初始值对齐 ZCode `conversationTurnRenderUnits.ts` 的 `assistantHistoryDefaultOpen`：
+   * 异常态 / 运行中 / 还没产出最终回复 → 展开；正常完成且已有回复 → 折叠。
    */
-  const [processOpen, setProcessOpen] = useState(true);
+  const [processOpen, setProcessOpen] = useState(() =>
+    resolveProcessDefaultOpen(chat)
+  );
   const [thoughtVersionIndex, setThoughtVersionIndex] = useState(() =>
     Math.max(plannerRounds.length - 1, 0)
   );

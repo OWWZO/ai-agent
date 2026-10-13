@@ -9,6 +9,11 @@ import {
 import { ActionViewItemEnum } from "@/utils";
 import querySSE from "@/utils/querySSE";
 import { buildConversationTaskData, getStableTaskIdentity } from "@/utils/chat";
+import {
+  collectPendingReplayIds,
+  groupChatsIntoTurns,
+  mergeTurnChats,
+} from "@/lib/turnGroups";
 import Dialogue from "@/components/Dialogue";
 import DataDialogue from "@/components/Dialogue/DataDialogue";
 import GeneralInput from "@/components/GeneralInput";
@@ -265,6 +270,37 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     deferredConversationList.id === conversation.id
       ? deferredConversationList.chatList
       : conversation.chatList;
+  /**
+   * 同一提问下的续跑 run（AskUserQuestion / ExitPlanMode 之后的 continuation run）
+   * 归成一个 turn，只渲染一条「已工作」状态条 —— 对齐 ZCode 的 turn 语义。
+   * 合并结果必须 memo：`Dialogue` 是 memo 组件，靠 `chat` 引用相等判断是否重渲染。
+   */
+  const chatTurns = useMemo(
+    () =>
+      groupChatsIntoTurns(deferredChatList).map((turn) => ({
+        key: turn.key,
+        chat: mergeTurnChats(turn),
+        /**
+         * 整个 turn 的 requestId。历史回放是**按 run** 懒加载的，而合并后的
+         * `Dialogue` 只认最后一个 run 的 requestId —— 只补它会让 turn 内其它 run
+         * （尤其是 AskUserQuestion 之前那个）永远拿不到过程数据，工具卡整段消失。
+         */
+        requestIds: turn.chats
+          .map((item) => String(item.requestId || ""))
+          .filter(Boolean),
+        /** 仍需补回放的 run；补齐后随 `deferredChatList` 更新自动缩短。 */
+        pendingReplayIds: collectPendingReplayIds(turn.chats),
+      })),
+    [deferredChatList]
+  );
+  /**
+   * 轮次导航按 turn 出刻度：它的活跃项靠 DOM 锚点（`data-request-id`）测量，
+   * 而合并后的 `Dialogue` 只有一个锚点，传原始 chatList 会让刻度与 DOM 错位。
+   */
+  const turnChatList = useMemo(
+    () => chatTurns.map((turn) => turn.chat),
+    [chatTurns]
+  );
 
   // 工作区的打开、任务选择和文件预览与对话流是两套生命周期。这里保留
   // conversation 的最新快照，同时允许 ActionView 尚未挂载时暂存一次文件预览。
@@ -320,25 +356,34 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   const requestReplay = useCallback(
     async (requestId: string) => {
-      if (!onRequestRunReplay || replayLoadingIds.has(requestId)) {
+      if (!onRequestRunReplay) {
         return;
       }
-      setReplayLoadingIds((previous) => {
-        const next = new Set(previous);
-        next.add(requestId);
-        return next;
-      });
-      try {
-        await onRequestRunReplay(requestId);
-      } finally {
+      // 状态条属于整个 turn：把该 turn 里**所有**还没补过回放的 run 依次补上。
+      // 只补传入的 requestId（= 最后一个 run）会让提问前的 run 永远没有过程数据。
+      const turn = chatTurns.find((item) => item.requestIds.includes(requestId));
+      const targets = turn ? turn.pendingReplayIds : [requestId];
+      for (const target of targets) {
+        if (!target || replayLoadingIds.has(target)) {
+          continue;
+        }
         setReplayLoadingIds((previous) => {
           const next = new Set(previous);
-          next.delete(requestId);
+          next.add(target);
           return next;
         });
+        try {
+          await onRequestRunReplay(target);
+        } finally {
+          setReplayLoadingIds((previous) => {
+            const next = new Set(previous);
+            next.delete(target);
+            return next;
+          });
+        }
       }
     },
-    [onRequestRunReplay, replayLoadingIds]
+    [chatTurns, onRequestRunReplay, replayLoadingIds]
   );
 
   useEffect(() => {
@@ -1280,9 +1325,9 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             </button>
           </div>
         ) : null}
-        {deferredChatList.map((chat) => (
+        {chatTurns.map(({ key, chat, requestIds }) => (
           <Dialogue
-            key={chat.requestId}
+            key={key}
             chat={chat}
             streamingThought={streamingThoughtMap[chat.requestId]}
             deepThink={conversation.deepThink}
@@ -1306,7 +1351,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             onOpenAgent={openAgentPanel}
             onOpenWorkspaceFiles={onOpenTaskFiles}
             onRequestReplay={onRequestRunReplay ? requestReplay : undefined}
-            replayLoading={replayLoadingIds.has(chat.requestId)}
+            replayLoading={requestIds.some((id) => replayLoadingIds.has(id))}
           />
         ))}
         {streamLoading ? (
@@ -1464,7 +1509,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                   </Conversation>
 
                   <ConversationTurnNavigator
-                    chats={deferredChatList}
+                    chats={turnChatList}
                     onBeforeJump={() =>
                       conversationContextRef.current?.stopScroll()
                     }

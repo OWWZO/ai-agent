@@ -4,6 +4,10 @@ import type {
   ConversationSessionItem,
 } from "@/services/agentConversation";
 import {
+  collectPendingReplayIds,
+  groupChatsIntoTurns,
+} from "@/lib/turnGroups";
+import {
   hydrateConversationFromSummaryPage,
   mergeRunReplayIntoConversation,
 } from "@/utils/conversationHistory";
@@ -79,29 +83,45 @@ export async function resolveInitialSession(params: {
   };
 }
 
+/**
+ * 首屏补齐历史回放。
+ *
+ * 历史接口只返回**轻量摘要壳**（`tasks` 为空），过程数据必须按 run 单独拉回放。
+ * 这里按 **turn** 补：合并后的 `Dialogue` 只有一个 requestId（最后一个 run），
+ * 只补它会漏掉 turn 内其它 run —— AskUserQuestion 之前那个 run 的工具卡就会整段消失。
+ *
+ * 目标 turn 的选择：
+ * 1. 有 RUNNING run 的 turn（刷新时仍在后台执行的会话）；
+ * 2. 否则退化为**最后一个 turn** —— 刷新后用户看到的就是它，不补的话过程区
+ *    只剩被 AskUserQuestion 恢复逻辑注入的那张卡。
+ */
 export async function hydrateSessionWithRunningReplay(
   page: ConversationHistoryPage,
   loadReplay: (requestId: string) => Promise<ConversationRunReplay>,
   onReplayError?: (requestId: string, error: unknown) => void
 ): Promise<CHAT.ConversationHistory> {
   const conversation = hydrateConversationFromSummaryPage(page);
-  const runningChat = [...conversation.chatList]
+  const turns = groupChatsIntoTurns(conversation.chatList);
+  const runningTurn = [...turns]
     .reverse()
-    .find(
-      (chat) =>
-        chat.requestId &&
-        String(chat.metrics?.status || "").toUpperCase() === "RUNNING"
+    .find((turn) =>
+      turn.chats.some(
+        (chat) => String(chat.metrics?.status || "").toUpperCase() === "RUNNING"
+      )
     );
-
-  if (!runningChat?.requestId) {
+  const target = runningTurn || turns[turns.length - 1];
+  if (!target) {
     return conversation;
   }
 
-  try {
-    const replay = await loadReplay(runningChat.requestId);
-    return mergeRunReplayIntoConversation(conversation, replay);
-  } catch (error) {
-    onReplayError?.(runningChat.requestId, error);
-    return conversation;
+  let next = conversation;
+  for (const requestId of collectPendingReplayIds(target.chats)) {
+    try {
+      const replay = await loadReplay(requestId);
+      next = mergeRunReplayIntoConversation(next, replay);
+    } catch (error) {
+      onReplayError?.(requestId, error);
+    }
   }
+  return next;
 }
