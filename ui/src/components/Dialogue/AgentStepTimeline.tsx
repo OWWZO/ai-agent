@@ -37,7 +37,6 @@ import {
 import {
   ToolCallView,
   ToolGroup,
-  aggregateToolStatuses,
   resolveStackPosition,
 } from "./tools";
 
@@ -284,8 +283,6 @@ const CompactStepRow: FC<{
         <ToolCallView
           tool={step.tool}
           chat={ctx.chat}
-          durationMs={step.durationMs}
-          durationLabel={step.durationLabel}
           defaultExpanded={step.active}
           changeActiveChat={ctx.changeActiveChat}
           changeFile={ctx.changeFile}
@@ -335,8 +332,6 @@ const CompactStepRow: FC<{
       <ToolCallView
         tool={step.tool}
         chat={ctx.chat}
-        durationMs={step.durationMs}
-        durationLabel={step.durationLabel}
         defaultExpanded={step.active}
         changeActiveChat={ctx.changeActiveChat}
         changeFile={ctx.changeFile}
@@ -379,12 +374,11 @@ const StepGroupBlock: FC<{
     toolCardSteps.length > 0 && toolCardSteps.length === group.steps.length;
 
   if (allToolCards) {
-    const tools = toolCardSteps.map((step) => step.tool);
     return (
       <div className="timeline-segment-enter w-full py-0.5">
         <ToolGroup
+          title={group.title}
           count={toolCardSteps.length}
-          aggregateStatus={aggregateToolStatuses(tools)}
           defaultOpen={forceOpen || open || group.active || !group.completed}
         >
           {toolCardSteps.map((step, index) => (
@@ -392,8 +386,6 @@ const StepGroupBlock: FC<{
               key={step.id}
               tool={step.tool}
               chat={ctx.chat}
-              durationMs={step.durationMs}
-              durationLabel={step.durationLabel}
               stackPosition={resolveStackPosition(index, toolCardSteps.length)}
               defaultExpanded={step.active}
               changeActiveChat={ctx.changeActiveChat}

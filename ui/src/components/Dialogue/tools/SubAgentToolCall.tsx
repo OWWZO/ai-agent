@@ -1,23 +1,15 @@
-import { memo, useEffect, useMemo, useState, type MouseEvent } from "react";
+import { memo, useMemo } from "react";
 import { BotIcon } from "lucide-react";
-import {
-  formatSubAgentDuration,
-  resolveSubAgentDisplay,
-} from "@/utils/chat/subagent";
+import { cn } from "@/lib/utils";
+import { resolveSubagentColorFromName } from "@/lib/subagentColors";
+import { resolveSubAgentDisplay } from "@/utils/chat/subagent";
 import { ToolRow, type ToolRowStackPosition } from "./ToolRow";
-import { ToolOutputBlock } from "./ToolOutputBlock";
 import { toolLabel } from "./toolMeta";
-import {
-  formatDurationLabel,
-  resolveTaskToolOutput,
-  resolveTaskToolStatus,
-} from "./toolTaskAdapter";
+import { resolveTaskToolStatus } from "./toolTaskAdapter";
 
 type SubAgentToolCallProps = {
   tool: CHAT.Task;
   chat: CHAT.ChatItem;
-  durationMs?: number;
-  durationLabel?: string;
   stackPosition?: ToolRowStackPosition;
   defaultExpanded?: boolean;
   changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
@@ -27,29 +19,23 @@ type SubAgentToolCallProps = {
 };
 
 /**
- * 对齐 kimi AgentTool：
- * - 行头：Agent + description
- * - 可展开：subagentType / prompt / 终态输出
- * - 尾部 Open → 右侧详情面板（直播进度）
+ * 子智能体卡（对齐 ZCode `ToolCallBlocks/renderers/agent.tsx`）。
+ *
+ * ZCode 在这里是 `canToggle={false}` + 整行可点：**卡内永远不展开**，只保留一行摘要，
+ * 完整过程统一从右侧详情面板看。源码注释把这条写成了产品边界：
+ * 「Agent/Task 在父对话中只保留单行摘要；完整 child timeline 统一从右侧 tab / 手机抽屉查看，
+ * 因此这里既不自动展开，也不提供手动展开入口。」
+ *
+ * 所以这里没有入参段也没有结果段 —— 子代理的 prompt 与输出都归 `AgentDetailPanel`。
  */
 export const SubAgentToolCall = memo(function SubAgentToolCall({
   tool,
   chat,
-  durationMs,
-  durationLabel,
   stackPosition = "single",
-  defaultExpanded,
   changeActiveChat,
   onOpenAgent,
 }: SubAgentToolCallProps) {
   const sub = useMemo(() => resolveSubAgentDisplay(tool), [tool]);
-  const nested = tool.children || [];
-  const output = useMemo(() => {
-    if (sub.content) {
-      return sub.content.split("\n");
-    }
-    return resolveTaskToolOutput(tool);
-  }, [sub.content, tool]);
 
   const status =
     sub.status === "failed"
@@ -57,32 +43,11 @@ export const SubAgentToolCall = memo(function SubAgentToolCall({
       : sub.status === "running"
         ? "running"
         : resolveTaskToolStatus(tool);
-  const timing =
-    durationLabel ||
-    formatSubAgentDuration(sub.totalDurationMs) ||
-    formatDurationLabel(durationMs);
-  const chip =
-    nested.length > 0
-      ? `${nested.length} 个工具`
-      : sub.totalToolUseCount != null
-        ? `${sub.totalToolUseCount} 个工具`
-        : "";
 
-  const canExpand = Boolean(
-    sub.prompt || sub.subagentType || output.length > 0
-  );
-  const [open, setOpen] = useState(
-    () => Boolean(defaultExpanded) && canExpand
-  );
+  const agentName = sub.subagentType || "";
+  const agentColor = agentName ? resolveSubagentColorFromName(agentName) : null;
 
-  useEffect(() => {
-    if (defaultExpanded && canExpand) {
-      setOpen(true);
-    }
-  }, [defaultExpanded, canExpand]);
-
-  const openDetail = (event?: MouseEvent) => {
-    event?.stopPropagation();
+  const openDetail = () => {
     if (onOpenAgent) {
       onOpenAgent(tool, chat);
       return;
@@ -97,44 +62,26 @@ export const SubAgentToolCall = memo(function SubAgentToolCall({
           ? status
           : "ok"
       }
-      icon={<BotIcon className="size-3.5" />}
+      icon={<BotIcon className="size-4" />}
       name={toolLabel("task")}
-      arg={!open ? sub.description || sub.subagentType : ""}
-      time={timing}
-      chip={chip}
-      open={open}
-      expandable={canExpand}
+      kindDetail={
+        agentName && agentColor ? (
+          <span
+            className={cn("kimi-agent-name", `is-${agentColor}`)}
+            title={agentName}
+          >
+            {agentName}
+          </span>
+        ) : undefined
+      }
+      separator={sub.description ? "·" : undefined}
+      arg={sub.description || ""}
+      open={false}
+      // ZCode `canToggle={false}`：卡内不可展开，摘要行本身就是打开详情面板的入口。
+      expandable={false}
       stacked={stackPosition !== "single"}
       stackPosition={stackPosition}
-      onToggle={() => {
-        if (canExpand) setOpen((v) => !v);
-      }}
-      trailing={
-        <button
-          type="button"
-          className="kimi-agent-open-btn"
-          onClick={openDetail}
-        >
-          查看
-        </button>
-      }
-    >
-      {sub.subagentType ? (
-        <div className="mb-1 font-mono text-ui-sm text-[var(--color-text-muted)]">
-          {sub.subagentType}
-        </div>
-      ) : null}
-      {sub.prompt ? (
-        <div className="kimi-tool-row-summary whitespace-pre-wrap">
-          {sub.prompt}
-        </div>
-      ) : null}
-      {output.length > 0 ? (
-        <ToolOutputBlock
-          lines={output}
-          tone={status === "error" ? "error" : "default"}
-        />
-      ) : null}
-    </ToolRow>
+      onOpenWorkspace={openDetail}
+    />
   );
 });

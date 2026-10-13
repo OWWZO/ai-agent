@@ -18,8 +18,6 @@ import { resolveTaskToolName } from "./toolTaskAdapter";
 export type ToolCallViewProps = {
   tool: CHAT.Task;
   chat: CHAT.ChatItem;
-  durationMs?: number;
-  durationLabel?: string;
   stackPosition?: ToolRowStackPosition;
   defaultExpanded?: boolean;
   changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
@@ -69,8 +67,6 @@ function AskUserAdapter(props: ToolCallViewProps) {
   return (
     <AskUserToolCall
       tool={props.tool}
-      durationMs={props.durationMs}
-      durationLabel={props.durationLabel}
       stackPosition={props.stackPosition}
       defaultExpanded={props.defaultExpanded}
     />

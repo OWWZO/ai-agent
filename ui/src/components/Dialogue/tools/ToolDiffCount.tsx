@@ -40,7 +40,8 @@ export function ToolDiffCount({
           role="text"
           title={`-${removed}`}
         >
-          −
+          {/* ZCode `renderDiffCount` 用的是 ASCII 连字符 `-`，不是 U+2212 */}
+          -
           <FlipMetricValue value={String(removed)} animateInitial={animateInitial} />
         </span>
       ) : null}

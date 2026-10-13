@@ -1,34 +1,32 @@
-import { memo, useEffect, useState, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   AppWindowIcon,
   BotIcon,
-  FilePenLineIcon,
-  FilePlusIcon,
-  FileTextIcon,
   FolderIcon,
   GlobeIcon,
   HelpCircleIcon,
+  ListTodoIcon,
+  PencilIcon,
   SearchIcon,
-  SparklesIcon,
-  TerminalIcon,
+  SquareTerminalIcon,
   WrenchIcon,
 } from "lucide-react";
 import { getTaskFiles } from "@/utils/taskArtifacts";
 import { ToolRow, type ToolRowStackPosition } from "./ToolRow";
 import { ToolOutputBlock } from "./ToolOutputBlock";
+import { ToolParametersBlock } from "./ToolParametersBlock";
 import { ToolArgStreamPreview } from "./ToolArgStreamPreview";
 import {
   extractExecuteCommand,
   normalizeToolName,
-  toolChip,
   toolLabel,
   toolSummary,
 } from "./toolMeta";
 import {
-  formatDurationLabel,
   resolveTaskToolArg,
   resolveTaskToolName,
   resolveTaskToolOutput,
+  resolveTaskToolPatch,
   resolveTaskToolStatus,
 } from "./toolTaskAdapter";
 import {
@@ -37,35 +35,37 @@ import {
   resolveToolStreamPath,
   shouldShowToolArgStream,
 } from "./toolStreamPreview";
-import { ToolJsonBlock, parseToolJson } from "./ToolJsonBlock";
+import { parseToolJson } from "./ToolJsonBlock";
 import { editDiffStats } from "./toolDiff";
 import { ToolDiffCount } from "./ToolDiffCount";
 import { ExecuteOutput } from "./ExecuteOutput";
 
+/**
+ * 工具图标：与 ZCode `ToolCallBlocks/renderers/*` 逐一对齐
+ * （read/search/explore 共用放大镜，edit/write 共用铅笔，execute 用方框终端），
+ * 尺寸统一 `size-4`（16px），与 ZCode 的 `className="size-4 shrink-0"` 一致。
+ */
 function toolGlyph(name: string): ReactNode {
   const key = normalizeToolName(name);
-  const cls = "size-3.5";
+  const cls = "size-4";
   switch (key) {
     case "read":
-      return <FileTextIcon className={cls} />;
-    case "bash":
-      return <TerminalIcon className={cls} />;
-    case "edit":
-    case "multi_edit":
-      return <FilePenLineIcon className={cls} />;
-    case "write":
-      return <FilePlusIcon className={cls} />;
     case "grep":
     case "search":
-      return <SearchIcon className={cls} />;
     case "glob":
       return <SearchIcon className={cls} />;
+    case "bash":
+      return <SquareTerminalIcon className={cls} />;
+    case "edit":
+    case "multi_edit":
+    case "write":
+      return <PencilIcon className={cls} />;
     case "ls":
       return <FolderIcon className={cls} />;
     case "web_fetch":
       return <GlobeIcon className={cls} />;
     case "todo":
-      return <SparklesIcon className={cls} />;
+      return <ListTodoIcon className={cls} />;
     case "task":
       return <BotIcon className={cls} />;
     case "askuserquestion":
@@ -81,8 +81,6 @@ function toolGlyph(name: string): ReactNode {
 type GenericToolCallProps = {
   tool: CHAT.Task;
   chat: CHAT.ChatItem;
-  durationMs?: number;
-  durationLabel?: string;
   stackPosition?: ToolRowStackPosition;
   defaultExpanded?: boolean;
   changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
@@ -94,7 +92,9 @@ type GenericToolCallProps = {
 
 /**
  * 默认工具卡（对齐 kimi GenericTool）。
- * Edit / Agent / AskUser 由 toolRegistry 分流，不走进这里。
+ * Edit / Read / Agent / AskUser / MCP 由 toolRegistry 分流，不走进这里。
+ *
+ * 展开体顺序对齐 ZCode `ToolCallBody.tsx`：Parameters → Result → 原始 JSON 兜底。
  */
 function shouldOpenCanvasPreview(tool: CHAT.Task): boolean {
   const name = normalizeToolName(resolveTaskToolName(tool));
@@ -107,8 +107,6 @@ function shouldOpenCanvasPreview(tool: CHAT.Task): boolean {
 export const GenericToolCall = memo(function GenericToolCall({
   tool,
   chat,
-  durationMs,
-  durationLabel,
   stackPosition = "single",
   defaultExpanded,
   changeActiveChat,
@@ -118,28 +116,24 @@ export const GenericToolCall = memo(function GenericToolCall({
   const arg = resolveTaskToolArg(tool);
   const status = resolveTaskToolStatus(tool);
   const output = resolveTaskToolOutput(tool);
-  const timing = durationLabel || formatDurationLabel(durationMs);
   const argStreaming = isToolArgStreaming(tool);
   const showArgStream = shouldShowToolArgStream(tool);
   const streamPath = showArgStream ? resolveToolStreamPath(arg) : "";
   const summary = showArgStream
     ? streamPath || (argStreaming ? "生成参数中…" : toolSummary(name, arg))
     : toolSummary(name, arg);
-  const summaryFull = toolSummary(name, arg, true);
   const inputJson = parseToolJson(arg);
-  const chip = showArgStream
-    ? formatToolStreamChip(arg, arg)
-    : toolChip({
-      name,
-      arg,
-      output,
-      timing,
-      status,
-    });
+  // 摘要行已不再挂任何文本 chip（ZCode 的摘要只有图标 + 类别 + 主文本 + diffCount）；
+  // 仅入参流预览还保留一个参数统计 chip。
+  const chip = showArgStream ? formatToolStreamChip(arg, arg) : "";
 
   // 变更计数走翻页节点（对齐 ZCode）。Edit/Write 正常由 EditToolCall 接管，
   // 这里只是让 registry 分流变化时同一份 diff 语义不会退化成静态字符串。
-  const diffStats = showArgStream ? null : editDiffStats(name, arg);
+  // 优先用后端 unified diff（带真实行号 + 上下文），缺失时 toolDiff 自己回退 LCS。
+  const backendPatch = useMemo(() => resolveTaskToolPatch(tool), [tool]);
+  const diffStats = showArgStream
+    ? null
+    : editDiffStats(name, arg, backendPatch);
   const chipNode = diffStats ? (
     <ToolDiffCount added={diffStats.added} removed={diffStats.removed} />
   ) : undefined;
@@ -150,25 +144,37 @@ export const GenericToolCall = memo(function GenericToolCall({
   /** execute/bash 卡：展开区走 `$ 命令` + 吸底输出（对齐 ZCode execute.tsx）。 */
   const isExecute = normalizeToolName(name) === "bash";
   const executeCommand = isExecute ? extractExecuteCommand(arg) : "";
+  const isError = status === "error";
 
   /**
-   * fallback（对齐 ZCode `renderers/fallback.tsx`）：既没有结构化入参可预览、
-   * 也没有任何输出时，展开区会完全空白 —— 那种情况退化为整块原始 JSON，
-   * 至少让用户能自查工具到底带了什么字段。
+   * 失败态只保留可读错误文本：ZCode `ToolOutput` 在 `errorText` 存在时**不渲染**结构化输出，
+   * `showInput` 也会被策略层强制关掉 —— 否则 `old_string`/`new_string` 整坨 JSON 会把报错顶下去。
+   * Reactor 的失败原因就藏在 output 里，所以这里直接把它当 errorText 交给结果段。
    */
-  const showRawFallback = !inputJson && !summaryFull && !hasOutput && !isExecute;
-  const rawFallback = showRawFallback
-    ? {
-      input: arg,
-      resultMap: tool.resultMap
-    }
-    : null;
+  const errorText = isError ? output.join("\n").trim() : "";
+  const hasParameters = !isError && Boolean(inputJson || arg.trim());
+
+  /**
+   * 原始 JSON 兜底（对齐 ZCode `renderers/fallback.tsx`）：
+   * 只有在**这张卡既没有结构化入参、也没有任何输出**时才铺原始数据。
+   * ZCode 的判据是「有没有 inlinePreview」—— 那边 Glob/Grep/WebFetch 都有专用 renderer
+   * 不会走到 fallback；Reactor 这些工具共用本组件，若照抄字面判据会给每张搜索卡
+   * 都挂一份原始 JSON 转储，所以这里按「卡片是否为空」等价折算。
+   */
+  const showRawFallback = !hasParameters && !hasOutput && !isExecute;
+  const rawFallbackPayload = {
+    input: arg,
+    resultMap: tool.resultMap,
+  };
+  const rawFallbackJson = showRawFallback
+    ? JSON.stringify(rawFallbackPayload, null, 2)
+    : "";
 
   const canExpand =
+    hasParameters ||
     hasOutput ||
+    Boolean(errorText) ||
     isRunningBash ||
-    Boolean(summaryFull) ||
-    Boolean(inputJson) ||
     showRawFallback ||
     showArgStream;
 
@@ -191,8 +197,6 @@ export const GenericToolCall = memo(function GenericToolCall({
   }, [showArgStream, canExpand, defaultExpanded, userToggled]);
 
   const stacked = stackPosition !== "single";
-
-  // 工具卡片默认内联展开参数和出参；文件附件等独立入口再打开工作区。
   const expandable = showArgStream || canExpand;
 
   // 入参流：像终答一样直接铺在工具名下方（不依赖折叠 body / status）
@@ -230,8 +234,8 @@ export const GenericToolCall = memo(function GenericToolCall({
       icon={toolGlyph(name)}
       name={toolLabel(name)}
       arg={!open ? summary : ""}
-      time={normalizeToolName(name) !== "bash" ? timing : ""}
-      chip={chip}
+      // ZCode 的失败状态词带 hover 提示展示报错原文；这里用原生 title 承载同一份文本。
+      statusTitle={isError && output.length > 0 ? output.join("\n") : undefined}
       chipNode={chipNode}
       open={open}
       expandable={expandable}
@@ -268,44 +272,29 @@ export const GenericToolCall = memo(function GenericToolCall({
             <ExecuteOutput
               text={output.join("\n")}
               running={isRunningBash}
-              className={status === "error" ? "is-error" : undefined}
+              className={isError ? "is-error" : undefined}
             />
           ) : (
-            <div className="kimi-tool-output">
-              <div className="kimi-tool-output-empty">
-                {status === "error" ? "工具执行失败" : "暂无输出"}
-              </div>
-            </div>
+            // ZCode execute 的无输出态：一行等宽次浅色文本，**不套卡片**。
+            <p className="kimi-tool-execute-no-output">暂无输出</p>
           )}
         </div>
       ) : (
         <>
-          {summaryFull || inputJson ? (
-            <div className="kimi-tool-row-summary">
-              <div className="mb-1 text-ui-xs uppercase tracking-wide text-[var(--color-text-faint)]">
-                参数
-              </div>
-              {inputJson ? <ToolJsonBlock data={inputJson} /> : summaryFull}
-            </div>
+          {hasParameters ? (
+            <ToolParametersBlock
+              value={inputJson}
+              text={inputJson ? undefined : arg}
+            />
           ) : null}
-          {rawFallback ? (
-            <div className="kimi-tool-row-summary">
-              <div className="mb-1 text-ui-xs uppercase tracking-wide text-[var(--color-text-faint)]">
-                原始数据
-              </div>
-              <ToolJsonBlock data={rawFallback} />
-            </div>
+          {showRawFallback ? (
+            <pre className="kimi-tool-raw-json" data-testid="tool-raw-json">
+              {rawFallbackJson}
+            </pre>
           ) : null}
           <ToolOutputBlock
             lines={output}
-            tone={status === "error" ? "error" : "default"}
-            emptyText={
-              status === "error"
-                ? "工具执行失败"
-                : status === "running"
-                  ? "等待输出…"
-                  : "暂无输出"
-            }
+            errorText={errorText || undefined}
           />
         </>
       )}

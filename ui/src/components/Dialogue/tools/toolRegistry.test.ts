@@ -188,7 +188,8 @@ describe("toolRegistry", () => {
     );
 
     expect(html).toContain('aria-expanded="false"');
-    expect(html).toContain("参数");
+    // 段标题对齐 ZCode `ToolInput` / `ToolOutput`：Parameters / Result
+    expect(html).toContain("Parameters");
     expect(html).toContain("found Controller");
   });
 
@@ -247,7 +248,7 @@ describe("toolRegistry", () => {
     expect(html).toContain("kimi-tool-row-body");
   });
 
-  it("read 出错时才允许内联展开看原始输出", () => {
+  it("read 卡即使出错也不提供内联展开（对齐 ZCode canToggle=false）", () => {
     const html = renderToStaticMarkup(
       createElement(ReadToolCall, {
         tool: toolTask({
@@ -263,12 +264,15 @@ describe("toolRegistry", () => {
       })
     );
 
-    // 出错时才提供内联展开箭头，且渲染真实错误输出
-    expect(html).toContain("kimi-tool-row-toggle");
-    expect(html).toContain("ENOENT: no such file");
+    // ZCode read 渲染器是 `canToggle={false}` + `content={null}`：失败态同样不给展开入口，
+    // 报错只由摘要行的状态词 tooltip 承载，正文一律走右侧面板。
+    expect(html).not.toContain("kimi-tool-row-toggle");
+    // 展开体恒为空（ToolRow 仍会渲染 body 外壳，但里面没有任何内容）
+    expect(html).toContain('<div class="kimi-tool-row-body-pad"></div>');
+    expect(html).toContain("执行失败");
   });
 
-  it("keeps edit input and output inline", () => {
+  it("keeps edit diff inline（成功态不出 Result）", () => {
     const html = renderToStaticMarkup(
       createElement(EditToolCall, {
         tool: toolTask({
@@ -285,7 +289,10 @@ describe("toolRegistry", () => {
 
     expect(html).toContain('aria-expanded="false"');
     expect(html).toContain("a.ts");
-    expect(html).toContain("updated a.ts");
+    // 展开体里是内联 diff，不是 toolResult 的 JSON 转储
+    // （ZCode `diffToolStrategy` 的 `showOutput: Boolean(errorText)`）
+    expect(html).toContain("kimi-inline-diff");
+    expect(html).not.toContain("updated a.ts");
   });
 
   it("pretty prints JSON input and output inside the tool row", () => {
@@ -363,7 +370,38 @@ describe("Stage 5 · 卡内展开区", () => {
     expect(html).toContain('data-following="true"');
   });
 
-  it("mcp 卡渲染「调用参数 / 结果」两段并带复制与换行开关", () => {
+  it("mcp 卡以「结果」为一级内容，参数收进「调用详情」二级折叠", () => {
+    const html = renderToStaticMarkup(
+      createElement(McpToolCall, {
+        tool: toolTask({
+          resultMap: {
+            toolName: "mcp__filesystem__read_file",
+            input: { path: "src/a.ts" },
+            // 多行结果走完整代码块分支（单行短结果会走 compact 分支，见下一个用例）
+            toolResult: "line one\nline two\nline three"
+          },
+        }),
+        chat: {} as CHAT.ChatItem,
+        defaultExpanded: true,
+        changeActiveChat: () => undefined,
+      })
+    );
+
+    // 一级：结果 + 头部动作
+    expect(html).toContain("结果");
+    expect(html).toContain("自动换行");
+    expect(html).toContain("复制结果");
+    expect(html).toContain('data-testid="mcp-result-surface"');
+    // 二级：调用详情折叠（默认收起，参数不在一级平铺）
+    expect(html).toContain("调用详情");
+    expect(html).toContain('data-testid="mcp-call-details-trigger"');
+    expect(html).toContain('aria-expanded="false"');
+    // 摘要行展示 server 段，工具段作主标题
+    expect(html).toContain("read_file");
+    expect(html).toContain("filesystem");
+  });
+
+  it("mcp 短结果走 compact 分支：不套代码块、不给结果标题", () => {
     const html = renderToStaticMarkup(
       createElement(McpToolCall, {
         tool: toolTask({
@@ -379,14 +417,9 @@ describe("Stage 5 · 卡内展开区", () => {
       })
     );
 
-    expect(html).toContain("调用参数");
-    expect(html).toContain("结果");
-    expect(html).toContain("自动换行");
-    expect(html).toContain("复制结果");
-    expect(html).toContain('data-testid="mcp-result-surface"');
-    // 摘要行展示 server 段，工具段作主标题
-    expect(html).toContain("read_file");
-    expect(html).toContain("filesystem");
+    expect(html).toContain("kimi-tool-mcp-compact");
+    expect(html).toContain("file contents");
+    expect(html).not.toContain("kimi-tool-mcp-head");
   });
 
   it("fallback：无入参预览且无输出时退化为原始 JSON", () => {
@@ -399,8 +432,12 @@ describe("Stage 5 · 卡内展开区", () => {
       })
     );
 
-    expect(html).toContain("原始数据");
-    expect(html).toContain('data-testid="tool-json-block"');
+    // 对齐 ZCode `renderers/fallback.tsx`：一块 `<pre>` 原始 JSON，**不给段标题**。
+    expect(html).toContain('data-testid="tool-raw-json"');
+    expect(html).toContain("SomeUnknownTool");
+    // 卡片本身为空时不应该再出现 Parameters / Result 段
+    expect(html).not.toContain("Parameters");
+    expect(html).not.toContain("Result");
   });
 });
 
@@ -516,5 +553,190 @@ describe("write 工具也有可点 chip（回归）", () => {
     );
     expect(html).toContain("new.ts");
     expect(html).not.toContain('<button type="button" title="src/app/new.ts"');
+  });
+});
+
+describe("Edit 卡内联 diff（对齐 ZCode EditInlineDiffContent）", () => {
+  it("单文件 edit 展开体只渲染 diff，不再摊 Parameters", () => {
+    const html = renderToStaticMarkup(
+      createElement(EditToolCall, {
+        tool: toolTask({
+          resultMap: {
+            toolName: "Edit",
+            input: {
+              path: "a.ts",
+              old_string: "const a = 1",
+              new_string: "const a = 2"
+            },
+            toolResult: "updated a.ts"
+          }
+        }),
+        chat: {} as CHAT.ChatItem,
+        defaultExpanded: true,
+        changeActiveChat: () => undefined
+      })
+    );
+
+    expect(html).toContain("kimi-inline-diff");
+    expect(html).toContain('data-testid="inline-diff-preview"');
+    expect(html).toContain("const a = 2");
+    // ZCode 在有内联 diff 的分支会把通用 Parameters 关掉：变更内容已由 diff 表达
+    expect(html).not.toContain("Parameters");
+    // diffToolStrategy 是 `showOutput: Boolean(errorText)` —— 成功态**不渲染 Result**。
+    // 现在 toolResult 里还带着整份 patch，渲染出来就是一坨 JSON。
+    expect(html).not.toContain("kimi-tool-section-title");
+    expect(html).not.toContain("updated a.ts");
+  });
+
+  it("后端 diff 进展开体：hunk 头与上下文行都保留", () => {
+    const backendPatch = [
+      "--- a/a.ts",
+      "+++ b/a.ts",
+      "@@ -44,7 +44,7 @@",
+      " 第44行",
+      "-第47行",
+      "+第47行-新",
+      " 第50行",
+      "",
+    ].join("\n");
+    const html = renderToStaticMarkup(
+      createElement(EditToolCall, {
+        tool: toolTask({
+          resultMap: {
+            toolName: "workspace_edit",
+            input: {
+              path: "a.ts",
+              old_string: "第47行",
+              new_string: "第47行-新"
+            },
+            toolResult: JSON.stringify({
+              path: "a.ts",
+              replacements: 1,
+              diff: backendPatch
+            })
+          }
+        }),
+        chat: {} as CHAT.ChatItem,
+        defaultExpanded: true,
+        changeActiveChat: () => undefined
+      })
+    );
+
+    // getPlainTextPatchPreviewLines 剥掉 ---/+++/@@ 协议头，但保留上下文行
+    expect(html).toContain("第44行");
+    expect(html).toContain("第50行");
+    expect(html).toContain("第47行-新");
+    expect(html).not.toContain("@@ -44");
+  });
+
+  it("成功态不渲染 Result，但失败态渲染 Error", () => {
+    const failed = renderToStaticMarkup(
+      createElement(EditToolCall, {
+        tool: toolTask({
+          resultMap: {
+            toolName: "workspace_edit",
+            status: "failed",
+            input: {
+              path: "a.ts",
+              old_string: "x",
+              new_string: "y"
+            },
+            errorMsg: "old_string not found"
+          }
+        }),
+        chat: {} as CHAT.ChatItem,
+        defaultExpanded: true,
+        changeActiveChat: () => undefined
+      })
+    );
+    expect(failed).toContain("Error");
+    expect(failed).toContain("old_string not found");
+    expect(failed).not.toContain("Result");
+  });
+
+  it("多文件 edit 走 border-l 导轨 + 逐文件可展开子卡", () => {
+    const html = renderToStaticMarkup(
+      createElement(EditToolCall, {
+        tool: toolTask({
+          resultMap: {
+            toolName: "MultiEdit",
+            input: {
+              files: [
+                {
+                  path: "a.ts",
+                  old_string: "x",
+                  new_string: "y"
+                },
+                {
+                  path: "b/c.ts",
+                  old_string: "p\nq",
+                  new_string: "p"
+                }
+              ]
+            },
+            toolResult: "done"
+          }
+        }),
+        chat: {} as CHAT.ChatItem,
+        defaultExpanded: true,
+        changeActiveChat: () => undefined
+      })
+    );
+
+    expect(html).toContain("kimi-tool-multi-edit-list");
+    expect(html).toContain("2 个文件");
+    // 每个文件一张子卡，各自带**自己的** diff 预览
+    expect(html.match(/data-testid="inline-diff-preview"/g)).toHaveLength(2);
+  });
+
+  it("write 走合成 patch：展开后是整文件新增的 diff", () => {
+    const html = renderToStaticMarkup(
+      createElement(EditToolCall, {
+        tool: toolTask({
+          resultMap: {
+            toolName: "Write",
+            input: {
+              path: "new.ts",
+              content: "alpha\nbeta"
+            },
+            toolResult: "written"
+          }
+        }),
+        chat: {} as CHAT.ChatItem,
+        defaultExpanded: true,
+        changeActiveChat: () => undefined
+      })
+    );
+
+    expect(html).toContain("kimi-inline-diff");
+    expect(html).toContain("alpha");
+    expect(html).toContain("beta");
+  });
+
+  it("失败态只渲染错误文本，不渲染 diff 也不渲染 Parameters", () => {
+    const html = renderToStaticMarkup(
+      createElement(EditToolCall, {
+        tool: toolTask({
+          resultMap: {
+            toolName: "Edit",
+            status: "failed",
+            input: {
+              path: "a.ts",
+              old_string: "x",
+              new_string: "y"
+            },
+            errorMsg: "old_string not found"
+          }
+        }),
+        chat: {} as CHAT.ChatItem,
+        defaultExpanded: true,
+        changeActiveChat: () => undefined
+      })
+    );
+
+    expect(html).toContain("Error");
+    expect(html).toContain("old_string not found");
+    expect(html).not.toContain("kimi-inline-diff");
+    expect(html).not.toContain("Parameters");
   });
 });

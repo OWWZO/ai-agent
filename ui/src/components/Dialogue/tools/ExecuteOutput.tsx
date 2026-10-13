@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { ScrollFadeViewport } from "@/components/ui/ScrollFadeViewport";
 
 /** 底部判定容差：小于该像素数视为「已在底部」。 */
 const AT_BOTTOM_THRESHOLD = 8;
@@ -42,8 +43,8 @@ export function ExecuteOutput({
   }, [display, following, running]);
 
   return (
-    <div
-      ref={scroll}
+    <ScrollFadeViewport
+      scrollRef={scroll}
       data-testid="bash-output-scroll"
       data-following={following}
       tabIndex={0}
@@ -75,6 +76,6 @@ export function ExecuteOutput({
       >
         {display}
       </pre>
-    </div>
+    </ScrollFadeViewport>
   );
 }

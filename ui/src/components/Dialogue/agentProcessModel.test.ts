@@ -822,3 +822,85 @@ describe("agentProcessModel", () => {
     expect(model.totalDurationMs).toBe(12_000);
   });
 });
+
+describe("interactive 步骤会切开前面的工具组", () => {
+  it("AskUser 之前的写入工具独立成组，不再被提问卡吞掉", () => {
+    const chat = createChat({
+      tasks: workGroup([
+        tool({
+          id: "w1",
+          messageType: "tool_call",
+          messageTime: "1714041601000",
+          resultMap: {
+            toolName: "workspace_write",
+            isFinal: true
+          },
+          isFinal: true,
+          finish: true
+        }),
+        tool({
+          id: "ask1",
+          messageType: "ask_user_question",
+          messageTime: "1714041602000",
+          resultMap: {
+            isFinal: true
+          },
+          isFinal: true,
+          finish: true
+        }),
+        tool({
+          id: "t1",
+          messageType: "llm_reasoning",
+          messageTime: "1714041603000",
+          toolThought: "先看用户选了什么",
+          resultMap: {
+            isFinal: true
+          },
+          isFinal: true,
+          finish: true
+        }),
+        tool({
+          id: "r1",
+          messageType: "tool_thought",
+          messageTime: "1714041604000",
+          toolThought: "你选择了列表处理，我现在改写测试内容。",
+          resultMap: {
+            isFinal: true
+          },
+          isFinal: true,
+          finish: true
+        }),
+        tool({
+          id: "w2",
+          messageType: "tool_call",
+          messageTime: "1714041605000",
+          resultMap: {
+            toolName: "workspace_write",
+            isFinal: true
+          },
+          isFinal: true,
+          finish: true
+        })
+      ])
+    });
+
+    const model = deriveAgentProcessModel({
+      chat,
+      isPlanSolve: false,
+      nowMs: BASE_TIME_MS + 10_000
+    });
+
+    const groups = model.segments.filter((segment) => segment.type === "group");
+    expect(groups.length).toBeGreaterThanOrEqual(3);
+    // 第一个组只装写入工具：以前它会和 AskUser 合并成一组，导致这张卡"消失"
+    expect(
+      groups[0].type === "group" &&
+        groups[0].group.steps.map((step) => step.tool.id)
+    ).toEqual(["w1"]);
+    // AskUser 落在紧随其后的组里
+    expect(
+      groups[1].type === "group" &&
+        groups[1].group.steps.map((step) => step.tool.id)
+    ).toContain("ask1");
+  });
+});

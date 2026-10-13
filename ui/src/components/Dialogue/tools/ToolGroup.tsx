@@ -1,29 +1,21 @@
 import { useCallback, useRef, useState, type ReactNode } from "react";
-import { ChevronRightIcon, ListIcon } from "lucide-react";
+import { ChevronRightIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { StatusDot } from "./StatusDot";
-
-type AggregateStatus = "running" | "error" | "done";
-
-function statusLabel(status: AggregateStatus): string {
-  switch (status) {
-    case "running":
-      return "执行中";
-    case "error":
-      return "失败";
-    default:
-      return "已完成";
-  }
-}
 
 export function ToolGroup({
+  title,
   count,
-  aggregateStatus,
   defaultOpen = true,
   children,
 }: {
+  /**
+   * 组标题。**必须由 `agentProcessModel.buildGroupTitle()` 统一生成**
+   * （「执行了 N 个步骤」/「正在执行 · N 个步骤」），不要在这里另拼文案 ——
+   * 曾经这里硬编码「N 个工具 · 已完成」，导致纯工具组和混合组出现两套 UI。
+   */
+  title: string;
+  /** 仅用于无障碍标签。 */
   count: number;
-  aggregateStatus: AggregateStatus;
   defaultOpen?: boolean;
   children: ReactNode;
 }) {
@@ -55,19 +47,13 @@ export function ToolGroup({
         type="button"
         className="kimi-tool-group-head"
         aria-expanded={open}
+        aria-label={`${title}（${count} 个工具）`}
         onClick={() => {
           setOpen((v) => !v);
           pinScroll();
         }}
       >
-        <StatusDot status={aggregateStatus} />
-        <ListIcon className="size-3.5 shrink-0 text-[var(--color-text-faint)]" />
-        <span className="kimi-tool-group-title">
-          {count} 个工具
-        </span>
-        <span className="kimi-tool-group-meta">
-          · {statusLabel(aggregateStatus)}
-        </span>
+        <span className="kimi-tool-group-title">{title}</span>
         <ChevronRightIcon className="kimi-tool-group-chevron size-3.5" />
       </button>
       <div

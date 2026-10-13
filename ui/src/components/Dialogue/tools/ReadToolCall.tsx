@@ -1,25 +1,19 @@
-import { memo, useEffect, useState } from "react";
-import { FileTextIcon } from "lucide-react";
+import { memo } from "react";
+import { SearchIcon } from "lucide-react";
 import { ToolRow, type ToolRowStackPosition } from "./ToolRow";
 import { ToolFileChip } from "./ToolFileChip";
-import { ToolOutputBlock } from "./ToolOutputBlock";
 import { ToolArgStreamPreview } from "./ToolArgStreamPreview";
 import { extractToolFilePath, normalizeToolName, toolLabel, toolSummary } from "./toolMeta";
 import {
-  formatDurationLabel,
   resolveTaskToolArg,
   resolveTaskToolName,
-  resolveTaskToolOutput,
   resolveTaskToolStatus,
 } from "./toolTaskAdapter";
 import { isToolArgStreaming, shouldShowToolArgStream } from "./toolStreamPreview";
-import { ToolJsonBlock, parseToolJson } from "./ToolJsonBlock";
 
 type ReadToolCallProps = {
   tool: CHAT.Task;
   chat: CHAT.ChatItem;
-  durationMs?: number;
-  durationLabel?: string;
   stackPosition?: ToolRowStackPosition;
   defaultExpanded?: boolean;
   changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
@@ -31,51 +25,31 @@ type ReadToolCallProps = {
 /**
  * Read 工具卡（对齐 ZCode `ToolCallBlocks/renderers/read.tsx`）。
  *
- * 与 Generic 卡的唯一区别：文件名 chip 可点击 → 右侧打开文件内容
- * （带行号 / 行选择 / 行内评论），而不是内联展开。
- * `canToggle` 与 ZCode 保持一致：读文件的结果太长，默认不提供内联展开，
- * 正文只看文件名，内容交给右侧预览面板。
+ * ZCode 这个 renderer 是 `canToggle={false}` + `content={null}`：**永远不展开**，
+ * 正文只由「可点击的文件名 chip」承担，内容一律交给右侧代码查看器。
+ * 所以这里既没有入参段也没有结果段 —— 读文件的结果是整份文件正文，
+ * 塞进消息流只会把对话淹掉。出错时也一样：报错改由摘要行的状态词 tooltip 承载。
  */
 export const ReadToolCall = memo(function ReadToolCall({
   tool,
   chat,
-  durationMs,
-  durationLabel,
   stackPosition = "single",
-  defaultExpanded,
   onOpenToolDiff,
 }: ReadToolCallProps) {
   const name = resolveTaskToolName(tool);
   const arg = resolveTaskToolArg(tool);
   const status = resolveTaskToolStatus(tool);
-  const output = resolveTaskToolOutput(tool);
-  const timing = durationLabel || formatDurationLabel(durationMs);
   const argStreaming = isToolArgStreaming(tool);
   const showArgStream = shouldShowToolArgStream(tool);
   const summary = toolSummary(name, arg);
-  const summaryFull = toolSummary(name, arg, true);
-  const inputJson = parseToolJson(arg);
   const filePath = extractToolFilePath(arg);
-  const chip = output.length > 0 ? `${output.length} lines` : "";
-  const isError = status === "error";
-
-  // ZCode read 渲染器 `canToggle={false}`：出错时才允许展开看原始输出，
-  // 正常读取的内容一律走右侧面板，不在消息流里堆正文。
-  const expandable = showArgStream || isError;
-  const [open, setOpen] = useState(() => Boolean(defaultExpanded) && expandable);
-
-  useEffect(() => {
-    if (defaultExpanded && expandable) {
-      setOpen(true);
-    }
-  }, [defaultExpanded, expandable]);
 
   if (showArgStream) {
     return (
       <div className="kimi-tool-arg-stream" data-testid="read-tool-arg-stream">
         <div className="kimi-tool-arg-stream-head">
           <span className="kimi-tool-arg-stream-glyph">
-            <FileTextIcon className="size-3.5" />
+            <SearchIcon className="size-4" />
           </span>
           <span className="kimi-tool-arg-stream-name">{toolLabel(name)}</span>
           {summary ? (
@@ -97,9 +71,9 @@ export const ReadToolCall = memo(function ReadToolCall({
   return (
     <ToolRow
       status={status}
-      icon={<FileTextIcon className="size-3.5" />}
+      icon={<SearchIcon className="size-4" />}
       name={toolLabel(name)}
-      arg={!open ? summary : ""}
+      arg={summary}
       argNode={
         filePath ? (
           <ToolFileChip
@@ -110,33 +84,20 @@ export const ReadToolCall = memo(function ReadToolCall({
           />
         ) : undefined
       }
-      time={timing}
-      chip={chip}
-      open={open}
-      expandable={expandable}
+      secondary={
+        // ZCode `renderFilePath`：文件名之后补一段父目录路径。
+        // 入参本来就是裸文件名时不重复渲染（否则会看到 `README.md README.md`）。
+        filePath && /[\\/]/.test(filePath) ? (
+          <span className="kimi-tool-row-secondary" title={filePath}>
+            {filePath}
+          </span>
+        ) : undefined
+      }
+      open={false}
+      expandable={false}
       stacked={stackPosition !== "single"}
       stackPosition={stackPosition}
-      onToggle={() => {
-        if (expandable) setOpen((v) => !v);
-      }}
-    >
-      {summaryFull || inputJson ? (
-        <div className="kimi-tool-row-summary">
-          {inputJson ? <ToolJsonBlock data={inputJson} /> : summaryFull}
-        </div>
-      ) : null}
-      <ToolOutputBlock
-        lines={output}
-        tone={isError ? "error" : "default"}
-        emptyText={
-          isError
-            ? "读取失败"
-            : status === "running"
-              ? "读取中…"
-              : "暂无输出"
-        }
-      />
-    </ToolRow>
+    />
   );
 });
 

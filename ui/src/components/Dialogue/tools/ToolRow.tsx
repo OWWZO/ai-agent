@@ -5,29 +5,61 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { CheckIcon, ChevronDownIcon, ChevronRightIcon, XIcon } from "lucide-react";
+import { ChevronRightIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { StatusDot } from "./StatusDot";
 
 export type ToolRowStackPosition = "single" | "first" | "middle" | "last";
 
+export type ToolRowStatus = "running" | "ok" | "error" | "suspended";
+
+/**
+ * 失败 / 停止时追加在摘要行尾的状态词。
+ *
+ * 对齐 ZCode `ToolLayout`：**成功态与运行中都不显示任何状态标记**，
+ * 运行中的活跃感来自类别标签的扫光；只有失败才出现一个带虚线下划线的词
+ * （原版还有 hover 提示展示报错原文，这里用原生 `title` 承载同一份文本）。
+ * 文案取自 ZCode `chat.toolCall.status.*`。
+ */
+const STATUS_WORD: Partial<Record<ToolRowStatus, string>> = {
+  error: "执行失败",
+  suspended: "已停止",
+};
+
 type ToolRowProps = {
-  status: "running" | "ok" | "error" | "suspended";
+  status: ToolRowStatus;
   icon?: ReactNode;
+  /** 类别标签（ZCode `kindLabel`）：Read / Edit / MCP … */
   name: string;
+  /**
+   * 类别标签后的补充说明（ZCode `kindDetail`）：MCP 的 server 名这类。
+   * 排在类别标签与主文本之间，用次一档的 `foreground-subtle`，比类别标签略实一点。
+   */
+  kindDetail?: ReactNode;
+  /** 主文本（ZCode `primaryText`）：文件名 / 命令 / 摘要 */
   arg?: string;
+  /**
+   * 主文本前的分隔符（ZCode `summaryContentSeparator`）：
+   * MCP 用 `·` 把 `server` 与工具名隔开，避免两个文本节点直接粘连。
+   */
+  separator?: string;
   /**
    * arg 的富节点形态（对齐 ZCode `renderFileChip`）：文件名 chip 要能点击打开右侧预览，
    * 纯字符串塞不进 button。给了 argNode 就优先渲染它，arg 字符串退为兜底。
    */
   argNode?: ReactNode;
-  time?: string;
+  /**
+   * 次级文本（ZCode `secondaryText`）：目录路径这类补充信息。
+   * 与主文本同色（最浅一档），在窄屏可被隐藏，所以放在主文本之后、计数之前。
+   */
+  secondary?: ReactNode;
   chip?: string;
   /**
    * chip 的富节点形态（对齐 ZCode）：`+A −B` 这类计数需要逐字符翻页动画，
    * 纯字符串塞不进 FlipMetricValue。给了 chipNode 就优先渲染它，chip 字符串退为兜底。
    */
   chipNode?: ReactNode;
+  /** 失败 / 停止的提示原文（原生 tooltip），仅状态词存在时生效 */
+  statusTitle?: string;
   open?: boolean;
   expandable?: boolean;
   stacked?: boolean;
@@ -42,11 +74,14 @@ export function ToolRow({
   status,
   icon,
   name,
+  kindDetail,
   arg = "",
   argNode,
-  time = "",
+  separator,
+  secondary,
   chip = "",
   chipNode,
+  statusTitle,
   open = false,
   expandable = false,
   stacked = false,
@@ -101,6 +136,8 @@ export function ToolRow({
     pinScroll();
   };
 
+  const statusWord = STATUS_WORD[status];
+
   return (
     <div
       className={cn(
@@ -126,13 +163,16 @@ export function ToolRow({
             <ToolRowHeadContent
               icon={icon}
               name={name}
+              kindDetail={kindDetail}
               arg={arg}
               argNode={argNode}
-              status={status}
+              separator={separator}
+              secondary={secondary}
               chip={chip}
               chipNode={chipNode}
+              statusWord={statusWord}
+              statusTitle={statusTitle}
               trailing={trailing}
-              time={time}
             />
           </button>
         ) : (
@@ -156,13 +196,16 @@ export function ToolRow({
             <ToolRowHeadContent
               icon={icon}
               name={name}
+              kindDetail={kindDetail}
               arg={arg}
               argNode={argNode}
-              status={status}
+              separator={separator}
+              secondary={secondary}
               chip={chip}
               chipNode={chipNode}
+              statusWord={statusWord}
+              statusTitle={statusTitle}
               trailing={trailing}
-              time={time}
             />
           </div>
         )}
@@ -174,11 +217,13 @@ export function ToolRow({
             aria-label={open ? "收起工具详情" : "展开工具详情"}
             onClick={handleToggleClick}
           >
-            {open ? (
-              <ChevronDownIcon className="size-3.5 shrink-0 text-[var(--color-text-faint)]" />
-            ) : (
-              <ChevronRightIcon className="size-3.5 shrink-0 text-[var(--color-text-faint)]" />
-            )}
+            {/* 单一右箭头，展开时旋转 90° —— 与 ZCode 的 ChevronRight + rotate-90 一致 */}
+            <ChevronRightIcon
+              className={cn(
+                "size-4 shrink-0 transition-transform duration-200 ease-out",
+                open ? "rotate-90" : "rotate-0"
+              )}
+            />
           </button>
         ) : null}
       </div>
@@ -192,57 +237,56 @@ export function ToolRow({
   );
 }
 
-/** 行头内容：icon / 名称 / arg（富节点优先）/ 状态 / chip / 尾部。 */
+/**
+ * 行头内容，顺序与 ZCode `ToolSummaryRow` 一致：
+ * 图标 → 类别标签 → 主文本 → 次级文本 → 变更计数 → 状态词 → 尾部动作。
+ */
 function ToolRowHeadContent({
   icon,
   name,
+  kindDetail,
   arg,
   argNode,
-  status,
+  separator,
+  secondary,
   chip,
   chipNode,
+  statusWord,
+  statusTitle,
   trailing,
-  time,
 }: {
   icon?: ReactNode;
   name: string;
+  kindDetail?: ReactNode;
   arg: string;
   argNode?: ReactNode;
-  status: ToolRowProps["status"];
+  separator?: string;
+  secondary?: ReactNode;
   chip: string;
   chipNode?: ReactNode;
+  statusWord?: string;
+  statusTitle?: string;
   trailing?: ReactNode;
-  time: string;
 }) {
   return (
     <>
       {icon ? <span className="kimi-tool-row-glyph">{icon}</span> : null}
-      <span className="kimi-tool-row-text">
-        <span className="kimi-tool-row-name">{name}</span>
-        {argNode ?? (arg ? <span className="kimi-tool-row-arg" title={arg}>{arg}</span> : null)}
-      </span>
-      <span className="kimi-tool-row-trailing">
-        <span
-          className={cn(
-            "kimi-tool-row-status",
-            status === "ok" && "is-ok",
-            status === "error" && "is-error"
-          )}
-          role="status"
-          aria-label={status}
-        >
-          {status === "ok" ? (
-            <CheckIcon className="size-3.5" />
-          ) : status === "error" ? (
-            <XIcon className="size-3.5" />
-          ) : (
-            <StatusDot status={status} />
-          )}
+      {name ? <span className="kimi-tool-row-name">{name}</span> : null}
+      {kindDetail ? (
+        <span className="kimi-tool-row-kind-detail">{kindDetail}</span>
+      ) : null}
+      {separator ? (
+        <span className="kimi-tool-row-separator">{separator}</span>
+      ) : null}
+      {argNode ?? (arg ? <span className="kimi-tool-row-arg" title={arg}>{arg}</span> : null)}
+      {secondary}
+      {chipNode ?? (chip ? <span className="kimi-tool-row-chip">{chip}</span> : null)}
+      {statusWord ? (
+        <span className="kimi-tool-row-status" title={statusTitle || statusWord}>
+          {statusWord}
         </span>
-        {chipNode ?? (chip ? <span className="kimi-tool-row-chip">{chip}</span> : null)}
-        {trailing}
-        {time ? <span className="kimi-tool-row-time">{time}</span> : null}
-      </span>
+      ) : null}
+      {trailing}
     </>
   );
 }

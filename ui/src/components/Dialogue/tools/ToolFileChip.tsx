@@ -31,7 +31,8 @@ export const ToolFileChip = memo(function ToolFileChip({
   className,
 }: ToolFileChipProps) {
   const leaf = label || pathBaseName(path) || path;
-  const glyph = icon ?? <FileTextIcon className="size-3.5 shrink-0" />;
+  // ZCode `renderFileChip` 用 `FileDisplayIcon size={16}` + `size-4 shrink-0`
+  const glyph = icon ?? <FileTextIcon className="size-4 shrink-0" />;
 
   if (!onOpen) {
     return (

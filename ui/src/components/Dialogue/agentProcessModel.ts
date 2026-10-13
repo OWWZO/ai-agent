@@ -873,6 +873,16 @@ export function segmentProcessSteps(
       continue;
     }
 
+    // 3.5) 富交互步骤（AskUserQuestion / ExitPlanMode / 桌面控制）：**先切开前面的工具组**。
+    // 它本身不是一个「可折叠步骤」，若与普通工具一起进 buffer，前面那个写入工具就会被
+    // 并进同一组，在视觉上被提问卡吞掉（用户看到的就是「AskUser 前面的 Write 不见了」）。
+    // 切开后它单独成组，组内只有它（必要时带相邻思考）。
+    if (step.kind === "interactive") {
+      flushWorkGroup(false);
+      buffer.push(step);
+      continue;
+    }
+
     // 4) 真实工具
     buffer.push(step);
   }
