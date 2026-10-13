@@ -180,6 +180,88 @@ describe("buildToolPreviewSource", () => {
   });
 });
 
+describe("edit 的 patch 来源（后端 unified diff 优先）", () => {
+  /** 后端 WorkspaceEditTool 的返回：{path, replacements, charsBefore, charsAfter, diff} */
+  const backendPatch = [
+    "--- a/src/a.ts",
+    "+++ b/src/a.ts",
+    "@@ -44,7 +44,7 @@",
+    " 第44行",
+    "-第47行",
+    "+第47行-新",
+    " 第50行",
+    "",
+  ].join("\n");
+
+  const editResult = (extra: Record<string, unknown>) =>
+    JSON.stringify({
+      path: "src/a.ts",
+      replacements: 1,
+      charsBefore: 100,
+      charsAfter: 100,
+      ...extra,
+    });
+
+  it("结果带 diff → 右侧直接用后端 patch（真实行号 + 上下文）", () => {
+    const view = buildToolPreviewSource(
+      toolTask({
+        resultMap: {
+          toolName: "workspace_edit",
+          input: {
+            path: "src/a.ts",
+            old_string: "第47行",
+            new_string: "第47行-新"
+          },
+          toolResult: editResult({ diff: backendPatch }),
+        },
+      })
+    );
+
+    expect(view!.source.type).toBe("patch");
+    expect((view!.source as { patch?: string }).patch).toBe(backendPatch);
+  });
+
+  it("历史会话没有 diff 字段 → 回退到前端 LCS 合成（裸 @@）", () => {
+    const view = buildToolPreviewSource(
+      toolTask({
+        resultMap: {
+          toolName: "workspace_edit",
+          input: {
+            path: "src/a.ts",
+            old_string: "const a = 1;",
+            new_string: "const a = 2;"
+          },
+          toolResult: editResult({}),
+        },
+      })
+    );
+
+    expect(view!.source.type).toBe("patch");
+    const patch = (view!.source as { patch?: string }).patch || "";
+    expect(patch).toContain("--- a/src/a.ts");
+    expect(patch).toContain("@@\n");
+    expect(patch).not.toBe(backendPatch);
+  });
+
+  it("diff 是空壳（没有 @@）→ 同样回退 LCS", () => {
+    const view = buildToolPreviewSource(
+      toolTask({
+        resultMap: {
+          toolName: "workspace_edit",
+          input: {
+            path: "src/a.ts",
+            old_string: "const a = 1;",
+            new_string: "const a = 2;"
+          },
+          toolResult: editResult({ diff: "" }),
+        },
+      })
+    );
+
+    expect((view!.source as { patch?: string }).patch).toContain("@@\n");
+  });
+});
+
 describe("workspace_read 结果自带正文（绕开产物 catalog）", () => {
   /** 后端 WorkspaceReadTool 的真实返回：{type:"text", path, startLine, content, ...} */
   const readResult = (path: string, content: string) =>

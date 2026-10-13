@@ -8,6 +8,7 @@ import {
 import { isSubAgentParentTask } from "@/utils/chat/subagent";
 import { isTimelineToolActive } from "@/components/ChatView/streamState";
 import { resolveTaskSummaryText } from "../contentHelpers";
+import { isUsableUnifiedPatch } from "./toolDiff";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -173,6 +174,31 @@ export function resolveTaskToolStatus(
     return "ok";
   }
   return "ok";
+}
+
+/**
+ * 读后端产出的 unified diff（`workspace_edit` 结果里的 `diff` 字段）。
+ *
+ * 解析方式与 `toolPreviewSource.ts` 的 `extractReadResult` 同款：从 `toolResult` 取 JSON。
+ * 拿不到（历史会话 / 生成失败 / 非 edit 工具）一律返回 null —— 调用方**必须**保留自己的
+ * LCS 兜底，否则已落库的旧对话里 edit 卡会全部退化成参数 JSON。
+ */
+export function resolveTaskToolPatch(tool: CHAT.Task): string | null {
+  const raw = resolveTaskToolResult(tool)?.toolResult;
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("{")) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed)) return null;
+
+  const diff = (parsed as Record<string, unknown>).diff;
+  return isUsableUnifiedPatch(diff) ? diff : null;
 }
 
 export function resolveTaskToolOutput(tool: CHAT.Task): string[] {

@@ -28,6 +28,7 @@ import {
   resolveTaskToolArg,
   resolveTaskToolName,
   resolveTaskToolOutput,
+  resolveTaskToolPatch,
   resolveTaskToolStatus,
 } from "./toolTaskAdapter";
 
@@ -160,9 +161,12 @@ export function buildToolPreviewSource(
   const arg = resolveTaskToolArg(task);
   const output = resolveTaskToolOutput(task);
   const status = resolveTaskToolStatus(task);
+  // 后端 unified diff（带文件真实行号 + 3 行上下文）。历史会话没有该字段时返回 null，
+  // 由 buildEditDiffCode / extractEditFileSummaries 内部回退到片段 LCS。
+  const backendPatch = resolveTaskToolPatch(task);
 
   // 1. 多文件 edit：按 fileIndex 取该文件自己的 patch / 路径。
-  const summaries = extractEditFileSummaries(name, arg);
+  const summaries = extractEditFileSummaries(name, arg, backendPatch);
   const picked = fileIndex != null ? summaries[fileIndex] : undefined;
   if (picked) {
     return {
@@ -218,6 +222,7 @@ export function buildToolPreviewSource(
   const patch = buildEditDiffCode({
     name,
     arg,
+    backendPatch,
   });
   const path = extractEditPath(arg);
 

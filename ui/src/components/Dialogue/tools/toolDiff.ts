@@ -23,13 +23,34 @@ function splitLines(s: string): string[] {
   return lines;
 }
 
-/** Build a unified-diff string for Edit old_string/new_string. Null → show raw output. */
+/**
+ * 校验一份 unified diff 是否可用：必须是非空字符串且含 hunk 头（`@@`）。
+ *
+ * 后端 `WorkspaceEditTool` 的 `diff` 字段在两种情况下会缺席 ——
+ * 历史会话（字段还不存在）与生成失败（片段过大等），所以调用方必须能区分
+ * 「拿到一份能用的 patch」和「拿到了个空壳」。
+ */
+export function isUsableUnifiedPatch(patch: unknown): patch is string {
+  return typeof patch === "string" && patch.includes("@@");
+}
+
+/**
+ * Build a unified-diff string for Edit old_string/new_string.
+ *
+ * 三级回退（顺序不能变）：
+ * 1. `backendPatch` —— 后端产出的 unified diff，带**文件真实行号**与前后 3 行上下文；
+ * 2. 下面基于 `old_string` / `new_string` 两个片段的 LCS 合成 —— 历史会话靠它；
+ * 3. `null` → 调用方退回「参数 + 结果」两段。
+ */
 export function buildEditDiffCode(tool: {
   name: string;
   arg: string;
+  /** 后端 unified diff（优先）；缺失 / 无效时回退 LCS */
+  backendPatch?: string | null;
 }): string | null {
   const kind = normalizeToolName(tool.name);
   if (kind !== "edit" && kind !== "multi_edit") return null;
+  if (isUsableUnifiedPatch(tool.backendPatch)) return tool.backendPatch;
   const d = parseArg(tool.arg);
   if (!d) return null;
   if (d.replace_all === true) return null;
@@ -90,6 +111,45 @@ export function buildEditDiffCode(tool: {
   return `--- a/${path}\n+++ b/${path}\n@@\n${body}`;
 }
 
+/**
+ * `write` 没有 `old_string`，构造不出真实 diff。
+ *
+ * 但内联 diff 预览需要一份「整文件新增」的 patch —— ZCode 对新建文件同样走这条
+ * 轻量 diff 路径（`patchDiffPreview` 的 `isCreatedFile` 分支），否则写入工具
+ * 展开后什么都没有。这里按同一语义合成：正文每行都是 `+`。
+ *
+ * 与 `buildEditDiffCode` 一样，拿不到内容 / 超出行数上限时返回 null，
+ * 由调用方退回「参数 + 结果」两段。
+ */
+export function buildWriteDiffCode(name: string, arg: string): string | null {
+  if (normalizeToolName(name) !== "write") return null;
+  const d = parseArg(arg);
+  if (!d) return null;
+
+  const path =
+    (typeof d.path === "string" && d.path) ||
+    (typeof d.file_path === "string" && d.file_path) ||
+    (typeof d.filePath === "string" && d.filePath) ||
+    "";
+  if (!path) return null;
+
+  const content =
+    typeof d.content === "string"
+      ? d.content
+      : typeof d.new_string === "string"
+        ? d.new_string
+        : typeof d.text === "string"
+          ? d.text
+          : "";
+  if (!content) return null;
+
+  const lines = splitLines(content);
+  if (lines.length === 0 || lines.length > MAX_DIFF_ROWS) return null;
+
+  const body = lines.map((line) => `+${line}`).join("\n");
+  return `--- a/${path}\n+++ b/${path}\n@@\n${body}`;
+}
+
 export function extractEditPath(arg: string): string | undefined {
   const d = parseArg(arg);
   if (!d) return undefined;
@@ -123,7 +183,8 @@ export type EditFileSummary = {
  */
 export function extractEditFileSummaries(
   name: string,
-  arg: string
+  arg: string,
+  backendPatch?: string | null
 ): EditFileSummary[] {
   const key = normalizeToolName(name);
   if (key !== "edit" && key !== "multi_edit" && key !== "write") return [];
@@ -165,6 +226,10 @@ export function extractEditFileSummaries(
     )
     : [d];
 
+  // 后端 diff 是「一次调用一个文件」的产物，只有单文件入参时才可能对得上；
+  // 多文件入参（files/edits/changes）下套用同一份 patch 会把每个子卡都渲染成第一个文件的内容。
+  const singleBackendPatch = entries.length === 1 ? backendPatch : null;
+
   const out: EditFileSummary[] = [];
   for (const entry of entries) {
     const path =
@@ -176,6 +241,7 @@ export function extractEditFileSummaries(
     const patch = buildEditDiffCode({
       name: key,
       arg: JSON.stringify(entry),
+      backendPatch: singleBackendPatch,
     });
     let added = 0;
     let removed = 0;
@@ -222,14 +288,21 @@ export function prefersToolDiffPanel(name: string): boolean {
 /** Edit/Write 行尾 chip：`+A −B`（对齐 kimi EditTool） */
 export function editDiffStats(
   name: string,
-  arg: string
+  arg: string,
+  backendPatch?: string | null
 ): { added: number; removed: number } | null {
   const key = normalizeToolName(name);
   if (key !== "edit" && key !== "multi_edit" && key !== "write") {
     return null;
   }
 
-  const code = buildEditDiffCode({ name, arg });
+  // 上下文行以空格开头、`@@` 以 `@` 开头，都不会被计入 `+`/`-`；
+  // 所以换用后端 patch 后计数语义不变（它本来就只统计真正的变更行）。
+  const code = buildEditDiffCode({
+    name,
+    arg,
+    backendPatch,
+  });
   if (code) {
     let added = 0;
     let removed = 0;

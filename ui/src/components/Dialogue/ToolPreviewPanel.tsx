@@ -4,6 +4,7 @@ import { useRequest } from "ahooks";
 import { Alert } from "antd";
 import { DiffCodeFence } from "./markdown/KimiCodeFence";
 import { ToolOutputBlock } from "./tools/ToolOutputBlock";
+import { PatchViewer } from "../ActionPanel/codeViewer/PatchViewer";
 import SourceCodeView from "../ActionPanel/SourceCodeView";
 import Loading from "../ActionPanel/Loading";
 import { cn } from "@/lib/utils";
@@ -16,6 +17,7 @@ import {
   resolveFilePreviewKind,
   shouldShowPreviewHeaderDivider,
 } from "@/lib/filePreview/kinds";
+import { isPatchDiffCompatible } from "@/lib/patchPreview";
 import { pathBreadcrumb, type CodeViewerSource } from "@/lib/codeViewerSource";
 
 type ToolPreviewPanelProps = {
@@ -122,14 +124,20 @@ export const ToolPreviewPanel = memo(function ToolPreviewPanel({
     if (source.type === "patch") {
       const showDiff = Boolean(source.patch) && status !== "error";
       if (showDiff) {
-        return <DiffCodeFence code={source.patch} />;
+        // 后端 unified diff（带 hunk 行号区间）→ 完整 diff 查看器（真实行号 + 3 行上下文）。
+        // 历史会话只有前端 LCS 合成的**裸 `@@`**，PatchDiff 解析不出 hunk，退回原围栏渲染。
+        return isPatchDiffCompatible(source.patch) ? (
+          <PatchViewer patch={source.patch} />
+        ) : (
+          <DiffCodeFence code={source.patch} />
+        );
       }
       if (output.length > 0) {
         return (
           <div className="px-3 py-2">
             <ToolOutputBlock
               lines={output}
-              emptyText={status === "error" ? "工具执行失败" : "No output"}
+              errorText={status === "error" ? output.join("\n") : undefined}
             />
           </div>
         );
