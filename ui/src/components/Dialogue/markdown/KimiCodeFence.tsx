@@ -3,22 +3,19 @@ import {
   useCallback,
   useEffect,
   useState,
-  type CSSProperties,
   type ReactNode,
 } from "react";
 import { CheckIcon, CopyIcon, WrapText } from "lucide-react";
 import { useCodePreviewWrap } from "@/hooks/useCodePreviewWrap";
 import { cn } from "@/lib/utils";
 import type { BundledLanguage, ThemedToken } from "shiki";
-import { loadShiki } from "@/lib/lazy/shiki";
+import { tokenizeCode, tokenStyle } from "@/lib/shikiTokens";
 
 type DiffRow = {
   type: "add" | "del" | "hunk" | "ctx";
   sign: string;
   text: string;
 };
-
-const TEXT_LANGUAGE = "text" as BundledLanguage;
 
 export function parseDiffLines(code: string): DiffRow[] {
   return code.split("\n").map((line) => {
@@ -131,48 +128,6 @@ export const DiffCodeFence = memo(function DiffCodeFence({
     </FenceChrome>
   );
 });
-
-function tokenStyle(token: ThemedToken): CSSProperties | undefined {
-  if (!token.color && !token.fontStyle) {
-    return undefined;
-  }
-  const style: CSSProperties = {};
-  if (token.color) {
-    style.color = token.color;
-  }
-  // shiki FontStyle: italic=1, bold=2, underline=4
-  const fontStyle = token.fontStyle ?? 0;
-  if (fontStyle & 1) {
-    style.fontStyle = "italic";
-  }
-  if (fontStyle & 2) {
-    style.fontWeight = 700;
-  }
-  if (fontStyle & 4) {
-    style.textDecoration = "underline";
-  }
-  return style;
-}
-
-async function tokenizeCode(
-  code: string,
-  language: BundledLanguage,
-  dark: boolean
-): Promise<ThemedToken[][]> {
-  const { codeToTokens } = await loadShiki();
-  const tokenize = (lang: BundledLanguage) =>
-    codeToTokens(code, {
-      lang,
-      theme: dark ? "github-dark" : "github-light",
-    });
-
-  try {
-    return (await tokenize(language)).tokens;
-  } catch {
-    if (language === TEXT_LANGUAGE) throw new Error("Shiki language unavailable");
-    return (await tokenize(TEXT_LANGUAGE)).tokens;
-  }
-}
 
 export const KimiCodeFence = memo(function KimiCodeFence({
   code,
