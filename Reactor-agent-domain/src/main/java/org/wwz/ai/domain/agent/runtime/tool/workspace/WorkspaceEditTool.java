@@ -142,6 +142,13 @@ public class WorkspaceEditTool extends AbstractWorkspacePathTool {
             data.put("replacements", replaceAll ? occurrences : 1);
             data.put("charsBefore", original.length());
             data.put("charsAfter", updated.length());
+            // 带真实行号与上下文的 unified diff：前端内联预览与右侧 PatchDiff 共用。
+            // 生成失败（片段过大等）时不落字段，前端退回自己的 LCS 合成。
+            String diff = UnifiedDiffBuilder.build(
+                    toAgentPath(filePath), original, oldString, newString, replaceAll);
+            if (diff != null) {
+                data.put("diff", diff);
+            }
             return okResult(data);
         } catch (WorkspaceAccessException e) {
             log.warn("{} workspace_edit failed, input={}", requestId(), input, e);

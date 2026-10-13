@@ -115,4 +115,54 @@ public class WorkspaceEditToolTest {
         Assert.assertEquals("workspace_edit", detail.get("tool"));
         Assert.assertTrue(String.valueOf(detail.get("message")).contains("not found"));
     }
+
+    /**
+     * 返回里必须带上带真实行号与上下文的 unified diff —— 前端内联预览与右侧 PatchDiff
+     * 都只吃这个字段；缺失时前端只能拿 old_string/new_string 做片段 LCS，
+     * 既没有上下文也不知道改动落在第几行。
+     */
+    @Test
+    public void shouldReturnUnifiedDiffWithRealLineNumbers() throws Exception {
+        readTool.execute(Map.of("path", "demo.txt"));
+        ToolResultPayload payload = (ToolResultPayload) editTool.execute(Map.of(
+                "path", "demo.txt",
+                "old_string", "beta",
+                "new_string", "BETA"
+        ));
+
+        Map<?, ?> data = (Map<?, ?>) payload.getLlmData();
+        Object diff = data.get("diff");
+        Assert.assertTrue("diff 字段缺失", diff instanceof String);
+        String patch = (String) diff;
+        // 3 行文件、改第 2 行 → 上下文被截断到文件头尾
+        Assert.assertTrue(patch, patch.contains("@@ -1,3 +1,3 @@"));
+        Assert.assertTrue(patch, patch.contains("-beta\n+BETA\n"));
+        Assert.assertTrue(patch, patch.contains(" alpha\n"));
+        Assert.assertTrue(patch, patch.contains(" gamma\n"));
+        Assert.assertTrue(patch, patch.startsWith("--- a/"));
+    }
+
+    @Test
+    public void shouldEmitMultipleHunksForReplaceAll() throws Exception {
+        StringBuilder content = new StringBuilder();
+        for (int line = 1; line <= 20; line++) {
+            content.append(line == 3 || line == 15 ? "TOKEN" : "L" + line).append('\n');
+        }
+        Files.writeString(targetFile, content.toString(), StandardCharsets.UTF_8);
+        readTool.execute(Map.of("path", "demo.txt"));
+
+        ToolResultPayload payload = (ToolResultPayload) editTool.execute(Map.of(
+                "path", "demo.txt",
+                "old_string", "TOKEN",
+                "new_string", "TOKEN2",
+                "replace_all", true
+        ));
+
+        Map<?, ?> data = (Map<?, ?>) payload.getLlmData();
+        Assert.assertEquals(2, data.get("replacements"));
+        String patch = String.valueOf(data.get("diff"));
+        // 第 3 行与第 15 行相距 12 行 > 2 × context，拆成两个 hunk，行号是文件真实行号
+        Assert.assertTrue(patch, patch.contains("@@ -1,6 +1,6 @@"));
+        Assert.assertTrue(patch, patch.contains("@@ -12,7 +12,7 @@"));
+    }
 }
