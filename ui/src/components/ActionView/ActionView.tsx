@@ -105,11 +105,6 @@ type ActionViewProps = {
   onPendingSourceTabConsumed?: () => void;
   workspaceCaption?: string;
   plan?: CHAT.Plan;
-  runState?: {
-    status?: string;
-    errorMsg?: string;
-    finishedAt?: string;
-  };
   isFocusMode?: boolean;
   onToggleFocusMode?: () => void;
   onBack?: () => void;
@@ -125,7 +120,6 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
     streamTask,
     taskList,
     plan,
-    runState,
     isFocusMode,
     onToggleFocusMode,
     onBack,
@@ -865,7 +859,6 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
             <FilePreview
               taskItem={activeTask || streamTask}
               taskList={taskList}
-              runState={runState}
               className="h-full"
             />
           </div>

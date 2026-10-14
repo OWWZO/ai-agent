@@ -7,7 +7,6 @@ import dayjs from "dayjs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Clock } from "lucide-react";
-import RunStatus from "./RunStatus";
 import { getPrimaryTaskFile } from "@/utils/taskArtifacts";
 import { EASE_OUT, useMotionConfig } from "@/lib/motion";
 import {
@@ -67,12 +66,7 @@ const FilePreview: React.FC<{
   taskItem?: CHAT.Task;
   taskList?: PanelItemType[];
   className?: string;
-  runState?: {
-    status?: string;
-    errorMsg?: string;
-    finishedAt?: string;
-  };
-}> = memo(({ taskItem: defaultTaskItem, className, taskList: taskListProp, runState }) => {
+}> = memo(({ taskItem: defaultTaskItem, className, taskList: taskListProp }) => {
   const taskList = useMemo(() => {
     return filterPreviewTaskList(taskListProp);
   }, [taskListProp]);
@@ -120,12 +114,6 @@ const FilePreview: React.FC<{
       {/* Content — 删除内部 Header，直接上内容 */}
       <div className="flex-1 overflow-hidden">
         <div className="flex h-full flex-col">
-          <RunStatus
-            status={runState?.status}
-            errorMsg={runState?.errorMsg}
-            finishedAt={runState?.finishedAt}
-            className="mx-3 mt-2 mb-1"
-          />
           <div className="min-h-0 flex-1">
             {artifactMissing ? (
               <MissingArtifactState reason={primaryFile?.missingReason} />

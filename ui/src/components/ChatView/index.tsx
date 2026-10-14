@@ -319,7 +319,6 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     taskList,
     workspaceStreamTask,
     workspaceCaption,
-    activeRunState,
     setActiveRunState,
     plan,
     showAction,
@@ -1661,7 +1660,6 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                 workspaceCaption={workspaceCaption}
                 taskList={sessionFileTasks}
                 plan={plan}
-                runState={activeRunState}
                 isFocusMode={isFocusMode}
                 onToggleFocusMode={toggleFocusMode}
                 onBack={workspaceBackTarget ? returnToAgentDetail : undefined}

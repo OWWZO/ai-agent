@@ -2,7 +2,6 @@ import { FC, useState, useCallback, useMemo, memo, useEffect, useRef, useSyncExt
 import AttachmentList from "@/components/AttachmentList";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import MarkdownRenderer from "@/components/ActionPanel/MarkdownRenderer";
-import RunStatus from "@/components/ActionView/RunStatus";
 import { isPlanSolveConversation } from "@/utils/agentMode";
 import {
   buildPlannerRoundsForDisplay,
@@ -292,14 +291,6 @@ const DialogueComponent: FC<Props> = (props) => {
           ) : null}
         </div>
       ) : null}
-
-      <div className="mt-4 w-full">
-        <RunStatus
-          status={chat.metrics?.status}
-          errorMsg={chat.tip || undefined}
-          finishedAt={chat.finishedAt}
-        />
-      </div>
 
       {/* 运行中：每秒跳动的「已工作 X」；结束后同位置换成 ReplayDisclosure */}
       {chat.loading && chat.startedAt ? (

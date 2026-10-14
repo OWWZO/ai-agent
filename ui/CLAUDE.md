@@ -38,7 +38,6 @@ ui/
 │   │   │   ├── FileList.tsx      # 文件列表
 │   │   │   ├── FilePreview.tsx   # 文件预览
 │   │   │   ├── BrowserList.tsx   # 浏览行为列表
-│   │   │   └── RunStatus.tsx     # 任务运行状态
 │   │   ├── ActionPanel/    # 内容渲染面板（根据消息类型选择渲染器）
 │   │   │   ├── MarkdownRenderer.tsx   # Markdown 渲染
 │   │   │   ├── HTMLRenderer.tsx       # HTML 渲染
