@@ -19,7 +19,10 @@ function lifecycleEvent(
     messageId: `m-${messageType}`,
     taskId: "t1",
     taskOrder: 1,
-    resultMap: { messageType, ...payload } as unknown as MESSAGE.Task,
+    resultMap: {
+      messageType,
+      ...payload
+    } as unknown as MESSAGE.Task,
     ...overrides,
   } as unknown as MESSAGE.EventData;
 }
@@ -43,7 +46,10 @@ function chatWithParentCard() {
             resultMap: {
               toolName: "Agent",
               status: "running",
-              input: { description: "探索代码库", subagent_type: "Explore" },
+              input: {
+                description: "探索代码库",
+                subagent_type: "Explore"
+              },
             },
           } as unknown as MESSAGE.Task,
         ],

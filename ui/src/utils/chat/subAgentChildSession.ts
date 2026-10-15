@@ -238,11 +238,17 @@ function applyRunStatus(
 ) {
   if (liveSettled) {
     // 实时流已收口：以流的终态为准，不要被滞后的账本 RUNNING 拉回 loading。
-    chat.metrics = { ...(chat.metrics || {}), status: liveSettled.status };
+    chat.metrics = {
+      ...(chat.metrics || {}),
+      status: liveSettled.status
+    };
     chat.loading = false;
   } else {
     const status = normalizeRunStatus(run?.status);
-    chat.metrics = { ...(chat.metrics || {}), status };
+    chat.metrics = {
+      ...(chat.metrics || {}),
+      status
+    };
     // RUNNING 必须覆盖事件里的暂态字段：刷新后不要把仍在跑的子 Agent 显示成已完成。
     chat.loading = status === "RUNNING";
   }

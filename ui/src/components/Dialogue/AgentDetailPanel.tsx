@@ -87,14 +87,22 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
     () =>
       useRealChildSession
         ? buildChildSessionChat({
-            childSessionId,
-            history: childSession.history,
-            replay: childSession.replay,
-            frames: childSession.frames,
-            fallbackQuery: sub.prompt || sub.description,
-          })
+          childSessionId,
+          history: childSession.history,
+          replay: childSession.replay,
+          frames: childSession.frames,
+          fallbackQuery: sub.prompt || sub.description,
+        })
         : null,
-    [useRealChildSession, childSessionId, childSession.history, childSession.replay, childSession.frames, sub.prompt, sub.description]
+    [
+      useRealChildSession,
+      childSessionId,
+      childSession.history,
+      childSession.replay,
+      childSession.frames,
+      sub.prompt,
+      sub.description,
+    ]
   );
 
   const sourceChat = useMemo(

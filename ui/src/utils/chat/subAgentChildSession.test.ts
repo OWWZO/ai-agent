@@ -72,7 +72,10 @@ describe("readChildSessionEventData", () => {
   });
 
   it("从 SSE 信封与回放帧里都能取到 eventData", () => {
-    const data = eventData({ messageType: "tool_thought", toolThought: "hi" });
+    const data = eventData({
+      messageType: "tool_thought",
+      toolThought: "hi"
+    });
     expect(readChildSessionEventData(frameOf(data))?.resultMap?.messageType).toBe(
       "tool_thought"
     );
@@ -90,8 +93,16 @@ describe("pickChildSessionRun / shouldFetchChildSessionReplay", () => {
   it("优先 latestRequestId，否则取最后一条 run", () => {
     const page = historyPage(
       [
-        { requestId: "r1", status: "SUCCESS", hasReplay: true },
-        { requestId: "r2", status: "SUCCESS", hasReplay: true },
+        {
+          requestId: "r1",
+          status: "SUCCESS",
+          hasReplay: true
+        },
+        {
+          requestId: "r2",
+          status: "SUCCESS",
+          hasReplay: true
+        },
       ],
       "r1"
     );
@@ -131,8 +142,14 @@ describe("buildChildSessionChat", () => {
     const chat = buildChildSessionChat({
       childSessionId: "sub_1",
       replay: replayOf("r1", [
-        eventData({ messageType: "tool_thought", toolThought: "正在检索" }),
-        eventData({ messageType: "result", result: "子结论" }),
+        eventData({
+          messageType: "tool_thought",
+          toolThought: "正在检索"
+        }),
+        eventData({
+          messageType: "result",
+          result: "子结论"
+        }),
       ]),
     });
 
@@ -146,11 +163,33 @@ describe("buildChildSessionChat", () => {
   it("无 replay 时用实时帧，并按 eventSeq 去重", () => {
     const chat = buildChildSessionChat({
       childSessionId: "sub_1",
-      history: historyPage([{ requestId: "r1", status: "RUNNING", hasReplay: true }]),
+      history: historyPage([{
+        requestId: "r1",
+        status: "RUNNING",
+        hasReplay: true
+      }]),
       frames: [
-        { eventSeq: 1, ...frameOf(eventData({ messageType: "agent_stream", result: "A" })) },
-        { eventSeq: 2, ...frameOf(eventData({ messageType: "agent_stream", result: "B" })) },
-        { eventSeq: 2, ...frameOf(eventData({ messageType: "agent_stream", result: "B" })) },
+        {
+          eventSeq: 1,
+          ...frameOf(eventData({
+            messageType: "agent_stream",
+            result: "A"
+          }))
+        },
+        {
+          eventSeq: 2,
+          ...frameOf(eventData({
+            messageType: "agent_stream",
+            result: "B"
+          }))
+        },
+        {
+          eventSeq: 2,
+          ...frameOf(eventData({
+            messageType: "agent_stream",
+            result: "B"
+          }))
+        },
       ],
     });
 
@@ -162,10 +201,19 @@ describe("buildChildSessionChat", () => {
     const chat = buildChildSessionChat({
       childSessionId: "sub_1",
       replay: replayOf("r1", [
-        eventData({ messageType: "agent_stream", result: "A" }),
+        eventData({
+          messageType: "agent_stream",
+          result: "A"
+        }),
       ]),
       frames: [
-        { eventSeq: 1, ...frameOf(eventData({ messageType: "agent_stream", result: "B" })) },
+        {
+          eventSeq: 1,
+          ...frameOf(eventData({
+            messageType: "agent_stream",
+            result: "B"
+          }))
+        },
       ],
     });
 
@@ -213,12 +261,19 @@ describe("buildChildSessionChat", () => {
   it("实时帧 finished 时收口 loading", () => {
     const chat = buildChildSessionChat({
       childSessionId: "sub_1",
-      history: historyPage([{ requestId: "r1", status: "RUNNING", hasReplay: true }]),
+      history: historyPage([{
+        requestId: "r1",
+        status: "RUNNING",
+        hasReplay: true
+      }]),
       frames: [
         {
           eventSeq: 1,
           finished: true,
-          ...frameOf(eventData({ messageType: "result", result: "完成" })),
+          ...frameOf(eventData({
+            messageType: "result",
+            result: "完成"
+          })),
         },
       ],
     });

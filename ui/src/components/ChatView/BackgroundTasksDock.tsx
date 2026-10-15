@@ -167,7 +167,10 @@ const BackgroundTasksDock = memo(function BackgroundTasksDock({
           subAgentType: matched?.meta,
           subAgentDescription: matched?.name,
           runInBackground: true,
-          input: { description: matched?.name, subagent_type: matched?.meta },
+          input: {
+            description: matched?.name,
+            subagent_type: matched?.meta,
+          },
         },
       } as unknown as CHAT.Task,
       host

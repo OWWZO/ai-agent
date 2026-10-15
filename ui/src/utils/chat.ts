@@ -532,7 +532,10 @@ function applySubAgentLifecycle(
 ): boolean {
   const resultMap = toNestedResultMap(eventData.resultMap);
   const nested = toNestedResultMap(resultMap.resultMap);
-  const merged: Record<string, unknown> = { ...resultMap, ...nested };
+  const merged: Record<string, unknown> = {
+    ...resultMap,
+    ...nested,
+  };
   const parentToolUseId = resolveSubAgentParentId(eventData);
   if (!parentToolUseId || !currentChat.multiAgent?.tasks?.length) {
     return false;

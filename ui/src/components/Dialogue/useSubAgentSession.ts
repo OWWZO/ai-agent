@@ -98,7 +98,11 @@ export function subscribeSubAgentSession(
   }
 
   const controller = new AbortController();
-  onState({ ...IDLE_STATE, loading: true, error: "" });
+  onState({
+    ...IDLE_STATE,
+    loading: true,
+    error: ""
+  });
 
   let frameCount = 0;
   let replayRequested = false;
@@ -117,7 +121,12 @@ export function subscribeSubAgentSession(
         if (controller.signal.aborted) {
           return;
         }
-        onState({ ready: true, loading: false, replay, source: "history" });
+        onState({
+          ready: true,
+          loading: false,
+          replay,
+          source: "history"
+        });
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) {
@@ -143,7 +152,11 @@ export function subscribeSubAgentSession(
         return;
       }
       run = pickChildSessionRun(page);
-      onState({ ready: true, history: page, source: "history" });
+      onState({
+        ready: true,
+        history: page,
+        source: "history"
+      });
       if (streamEnded) {
         loadReplayIfNoLiveFrames();
         return;
@@ -186,7 +199,11 @@ export function subscribeSubAgentSession(
         if (frameCount > MAX_BUFFERED_FRAMES) {
           return;
         }
-        onState({ ready: true, source: "live", frames: [frame] });
+        onState({
+          ready: true,
+          source: "live",
+          frames: [frame]
+        });
       });
       streamEnded = true;
       loadReplayIfNoLiveFrames();
@@ -223,7 +240,10 @@ function mergePatch(
   prev: SubAgentSessionState,
   patch: Partial<SubAgentSessionState>
 ): SubAgentSessionState {
-  const next: SubAgentSessionState = { ...prev, ...patch };
+  const next: SubAgentSessionState = {
+    ...prev,
+    ...patch
+  };
   // 帧以「增量追加」语义合并，避免调用方自己拼帧
   if (patch.frames && patch.frames.length > 0) {
     next.frames = [...prev.frames, ...patch.frames];
