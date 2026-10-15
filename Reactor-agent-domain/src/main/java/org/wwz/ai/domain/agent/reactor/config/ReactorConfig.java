@@ -105,6 +105,23 @@ public class ReactorConfig {
     private String maxObserve;
 
     /**
+     * 子智能体独立会话流开关（BREAKING）。
+     * <p>
+     * {@code true}：子 Agent 的思考 / 工具 / 过程回复不再混入父 SSE，改为写入子会话自己的投影流，
+     * 父流只保留 {@code subagent_start} / {@code subagent_end} 两条自包含帧。
+     * {@code false}：维持旧的 SubAgentPrinter 透传父流行为。
+     * <p>
+     * 默认 false：该开关是破坏性变更，必须与右侧详情面板改造（Phase 4）同发；
+     * 单独开启会让详情面板拿不到子会话轨迹。
+     */
+    @Value("${autobots.agent.subagent-isolated-session:false}")
+    private Boolean subagentIsolatedSession;
+
+    public boolean isSubagentIsolatedSession() {
+        return subagentIsolatedSession != null && subagentIsolatedSession;
+    }
+
+    /**
      * 单次 LLM 工具调用的业务超时时间，单位秒；非正值由调用方回退到默认值。
      */
     @Value("${autobots.autoagent.llm-timeout-seconds:1200}")

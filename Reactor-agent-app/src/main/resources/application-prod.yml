@@ -144,6 +144,10 @@ autobots:
   http:
     max-requests: 384
     max-requests-per-host: 96
+  agent:
+    # 子智能体独立会话流（BREAKING，默认关）。开启后子 Agent 事件写入子会话自己的投影流，
+    # 父流只留 subagent_start / subagent_end；须与右侧子会话详情面板改造同发。
+    subagent-isolated-session: false
   execution:
     virtual-threads-enabled: true
     # 全局最多同时运行 30 个同步子 Agent

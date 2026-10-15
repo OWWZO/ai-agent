@@ -5,10 +5,12 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.wwz.ai.domain.agent.adapter.port.SubAgentSessionPort;
+import org.wwz.ai.domain.agent.adapter.port.SubAgentSessionStreamPort;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
 import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
 import org.wwz.ai.domain.agent.memory.WorkingMemoryScopes;
+import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReactImplAgent;
 import org.wwz.ai.domain.agent.runtime.artifact.TaskSummaryArtifactProtocol;
@@ -19,6 +21,7 @@ import org.wwz.ai.domain.agent.runtime.dto.TaskSummaryResult;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.enums.AgentState;
 import org.wwz.ai.domain.agent.runtime.enums.RoleType;
+import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.tasklist.RuntimeBackgroundTask;
 import org.wwz.ai.domain.agent.runtime.tasklist.RuntimeBackgroundTaskRegistry;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionAgentMailboxHub;
@@ -26,8 +29,10 @@ import org.wwz.ai.domain.agent.runtime.tool.ContextScopedTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -216,8 +221,21 @@ public class SubAgentRunner {
             return failed(agentId, childSessionId, definition, description, prompt, start,
                     "子会话身份落库失败，已中止子 Agent 启动");
         }
+
+        // Phase 3 SSE 隔离：开关开启且端口可用时，子事件写子会话自己的投影流，
+        // 父流只留 subagent_start / subagent_end 两条自包含帧。
+        // 隔离失败（端口返回 null）时回退旧的 SubAgentPrinter 透传父流行为，保证不破线。
+        String childRequestId = SubAgentContextFactory.newChildRequestId(agentId);
+        Printer isolatedChildPrinter = openIsolatedChildStream(
+                parentContext, childSessionId, childRequestId, prompt);
+        if (isolatedChildPrinter != null) {
+            emitParentSubAgentFrame(parentContext, "subagent_start", childSessionId, parentToolUseId,
+                    agentId, definition.getAgentType(), description, "running", null);
+        }
+
         AgentContext childContext = SubAgentContextFactory.create(
-                parentContext, prompt, description, childTools, agentId, definition.getAgentType(), parentToolUseId);
+                parentContext, prompt, description, childTools, agentId, definition.getAgentType(), parentToolUseId,
+                isolatedChildPrinter, isolatedChildPrinter == null ? null : childRequestId);
         // 后台 Agent：用任务级取消令牌，TaskStop 不误伤主 run；同步派发仍共享父令牌
         if (cancellationOverride != null) {
             childContext.setRunCancellation(cancellationOverride);
@@ -245,8 +263,12 @@ public class SubAgentRunner {
                         null, false);
             }
             // 与首跑统一短 requestId；父 requestId 仅用于日志
-            String resumeRequestId = SubAgentContextFactory.newChildRequestId(agentId);
-            childContext.setRequestId(resumeRequestId);
+            // 隔离流路径下 requestId 已在建流时定死，不能重新分配，否则投影与 ledger run 对不上；
+            // 仅旧透传路径仍按原逻辑换新 requestId，保证 working_memory persist 不被幂等跳过。
+            if (isolatedChildPrinter == null) {
+                childContext.setRequestId(SubAgentContextFactory.newChildRequestId(agentId));
+            }
+            String resumeRequestId = childContext.getRequestId();
             List<Message> prior = sessionWorkingMemoryService.loadReadyMessages(
                     parentContext.getSessionId(), memoryScope, resumeRequestId);
             if (prior == null || prior.isEmpty()) {
@@ -373,7 +395,136 @@ public class SubAgentRunner {
                 log.warn("{} subagent run finish failed id={}: {}",
                         parentContext.getRequestId(), agentId, ledgerError.getMessage());
             }
+            // Phase 3：父流补一条自包含的 subagent_end，然后关闭子会话投影流。
+            if (isolatedChildPrinter != null) {
+                emitParentSubAgentFrame(parentContext, "subagent_end", childSessionId, parentToolUseId,
+                        agentId, definition.getAgentType(), description,
+                        childContext.isRunCancelled() ? "stopped" : resolveEndStatus(childRunStatus.get()),
+                        resolveEndSummary(childRunStatus, childRunSummary));
+                closeIsolatedChildStream(parentContext, childSessionId, isolatedChildPrinter);
+            }
             SessionAgentMailboxHub.markActive(sessionKey, agentId, false);
+        }
+    }
+
+    private static String resolveEndStatus(int runStatus) {
+        return runStatus == ExecutionLedgerConstants.STATUS_SUCCESS ? "completed" : "failed";
+    }
+
+    private static String resolveEndSummary(java.util.concurrent.atomic.AtomicInteger runStatus,
+                                            java.util.concurrent.atomic.AtomicReference<String> runSummary) {
+        if (runStatus.get() == ExecutionLedgerConstants.STATUS_SUCCESS) {
+            return runSummary.get();
+        }
+        return runSummary.get();
+    }
+
+    /**
+     * 打开子会话独立投影流（Phase 3）。
+     * <p>
+     * 只有开关开启、端口可用且拿到 Printer 时才算隔离成功；否则返回 null，
+     * 调用方回退到旧的 SubAgentPrinter 透传父流行为。
+     */
+    private static Printer openIsolatedChildStream(AgentContext parentContext,
+                                                   String childSessionId,
+                                                   String childRequestId,
+                                                   String prompt) {
+        ReactorRuntimeDependencies dependencies = parentContext == null
+                ? null
+                : parentContext.getRuntimeDependencies();
+        if (dependencies == null || !dependencies.isSubAgentIsolatedSessionEnabled()) {
+            return null;
+        }
+        SubAgentSessionStreamPort port = dependencies.getOptionalSubAgentSessionStreamPort();
+        if (port == null) {
+            log.warn("{} subagent isolated session port absent, fallback to parent passthrough childSessionId={}",
+                    parentContext.getRequestId(), childSessionId);
+            return null;
+        }
+        try {
+            Printer printer = port.openChildSessionStream(
+                    childSessionId,
+                    parentContext.getUserId(),
+                    childRequestId,
+                    prompt);
+            if (printer == null) {
+                log.warn("{} open child session stream returned null, fallback childSessionId={}",
+                        parentContext.getRequestId(), childSessionId);
+            }
+            return printer;
+        } catch (Exception e) {
+            log.error("{} open child session stream failed childSessionId={}, fallback",
+                    parentContext.getRequestId(), childSessionId, e);
+            return null;
+        }
+    }
+
+    /**
+     * 关闭子会话投影流。仅隔离路径调用；异常不影响主流程。
+     */
+    private static void closeIsolatedChildStream(AgentContext parentContext,
+                                                 String childSessionId,
+                                                 Printer isolatedChildPrinter) {
+        if (isolatedChildPrinter == null) {
+            return;
+        }
+        ReactorRuntimeDependencies dependencies = parentContext == null
+                ? null
+                : parentContext.getRuntimeDependencies();
+        SubAgentSessionStreamPort port = dependencies == null
+                ? null
+                : dependencies.getOptionalSubAgentSessionStreamPort();
+        if (port == null) {
+            return;
+        }
+        try {
+            port.closeChildSessionStream(childSessionId, isolatedChildPrinter);
+        } catch (Exception e) {
+            log.warn("{} close child session stream failed childSessionId={}: {}",
+                    parentContext == null ? "-" : parentContext.getRequestId(),
+                    childSessionId, e.getMessage());
+        }
+    }
+
+    /**
+     * 父流子代理摘要帧（{@code subagent_start} / {@code subagent_end}）。
+     * 只在隔离路径下发，复用既有 messageType 通道，不造新协议；
+     * 帧内容自包含，不依赖子会话流。
+     */
+    private static void emitParentSubAgentFrame(AgentContext parentContext,
+                                                String messageType,
+                                                String childSessionId,
+                                                String parentToolUseId,
+                                                String agentId,
+                                                String agentType,
+                                                String description,
+                                                String status,
+                                                String summary) {
+        Printer parentPrinter = parentContext == null ? null : parentContext.getPrinter();
+        if (parentPrinter == null) {
+            return;
+        }
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("delegationId", agentId);
+            payload.put("childSessionId", childSessionId);
+            payload.put("parentToolCallId", parentToolUseId);
+            payload.put("subAgentId", agentId);
+            payload.put("subagentType", agentType);
+            payload.put("description", description);
+            payload.put("status", status);
+            if (summary != null) {
+                payload.put("summary", summary);
+            }
+            Map<String, Object> extra = new LinkedHashMap<>();
+            extra.put(SubAgentPrinter.KEY_PARENT_TOOL_USE_ID, parentToolUseId);
+            extra.put(SubAgentPrinter.KEY_SUB_AGENT_ID, agentId);
+            extra.put(SubAgentPrinter.KEY_SUB_AGENT_TYPE, agentType);
+            extra.put("childSessionId", childSessionId);
+            parentPrinter.send(null, messageType, payload, extra, null, true);
+        } catch (Exception e) {
+            log.debug("{} emit {} skipped id={}: {}",
+                    parentContext.getRequestId(), messageType, agentId, e.getMessage());
         }
     }
 

@@ -47,6 +47,25 @@ public final class SubAgentContextFactory {
                                       String agentId,
                                       String agentType,
                                       String explicitParentToolUseId) {
+        return create(parent, prompt, description, childTools, agentId, agentType, explicitParentToolUseId,
+                (Printer) null, null);
+    }
+
+    /**
+     * @param isolatedChildPrinter Phase 3 SSE 隔离时外部提供的子会话 Printer；
+     *                              非 null 时不再包装父 printer，子事件直接写子会话投影流。
+     * @param childRequestIdOverride 指定的子 requestId；空时按 agentId 派生。
+     *                              与 isolatedChildPrinter 必须来自同一次 {@code openChildSessionStream}。
+     */
+    public static AgentContext create(AgentContext parent,
+                                      String prompt,
+                                      String description,
+                                      ToolCollection childTools,
+                                      String agentId,
+                                      String agentType,
+                                      String explicitParentToolUseId,
+                                      Printer isolatedChildPrinter,
+                                      String childRequestIdOverride) {
         if (parent == null) {
             throw new IllegalArgumentException("parent AgentContext 不能为空");
         }
@@ -57,13 +76,18 @@ public final class SubAgentContextFactory {
         String parentToolUseId = StringUtils.isNotBlank(explicitParentToolUseId)
                 ? explicitParentToolUseId.trim()
                 : resolveParentToolUseId(parent);
-        Printer childPrinter = wrapPrinter(parent.getPrinter(), parentToolUseId, agentId, agentType, description);
+        Printer childPrinter = isolatedChildPrinter != null
+                ? isolatedChildPrinter
+                : wrapPrinter(parent.getPrinter(), parentToolUseId, agentId, agentType, description);
         // 确定性子会话 ID：由 agentId 纯函数派生，无需外部传参即可保证三处一致
         // （落库 / AgentContext / 账本 run）。
         String childSessionId = newChildSessionId(agentId);
+        String effectiveChildRequestId = StringUtils.isNotBlank(childRequestIdOverride)
+                ? childRequestIdOverride.trim()
+                : newChildRequestId(agentId);
 
         AgentContext child = AgentContext.builder()
-                .requestId(childRequestId)
+                .requestId(effectiveChildRequestId)
                 .sessionId(childSessionId)
                 .query(prompt)
                 .task(description)

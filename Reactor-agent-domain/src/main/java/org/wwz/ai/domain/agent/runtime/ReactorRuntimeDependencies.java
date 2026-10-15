@@ -10,6 +10,7 @@ import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteStreamPort;
 import org.wwz.ai.domain.agent.adapter.port.SubAgentSessionPort;
+import org.wwz.ai.domain.agent.adapter.port.SubAgentSessionStreamPort;
 import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
 import org.wwz.ai.domain.agent.runtime.tool.codemode.CodeModeExecutorPort;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.port.McpToolExecutor;
@@ -115,6 +116,12 @@ public class ReactorRuntimeDependencies {
      * 缺失时子 Agent 退化为不落子会话（仅日志告警），不阻断运行。
      */
     SubAgentSessionPort subAgentSessionPort;
+
+    /**
+     * 可选：子会话独立流端口（Phase 3 SSE 隔离）。
+     * 仅在 {@code subagent-isolated-session} 开关为 true 时使用；缺失时回退透传父流。
+     */
+    SubAgentSessionStreamPort subAgentSessionStreamPort;
 
     public ReactorConfig requireReactorConfig() {
         return Objects.requireNonNull(reactorConfig, "ReactorConfig must not be null");
@@ -228,6 +235,17 @@ public class ReactorRuntimeDependencies {
 
     public SubAgentSessionPort getOptionalSubAgentSessionPort() {
         return subAgentSessionPort;
+    }
+
+    public SubAgentSessionStreamPort getOptionalSubAgentSessionStreamPort() {
+        return subAgentSessionStreamPort;
+    }
+
+    /**
+     * 子会话独立流是否开启（BREAKING，默认 false）。
+     */
+    public boolean isSubAgentIsolatedSessionEnabled() {
+        return reactorConfig != null && reactorConfig.isSubagentIsolatedSession();
     }
 
     /**
