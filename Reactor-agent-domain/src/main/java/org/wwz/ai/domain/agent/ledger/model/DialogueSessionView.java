@@ -22,6 +22,10 @@ public class DialogueSessionView {
 
     private String userId;
 
+    private String sessionKind;
+
+    private String parentSessionId;
+
     private String title;
 
     private Integer status;

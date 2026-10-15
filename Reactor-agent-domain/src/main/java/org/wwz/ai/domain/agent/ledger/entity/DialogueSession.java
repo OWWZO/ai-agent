@@ -32,6 +32,14 @@ public class DialogueSession {
 
     private String userId;
 
+    /**
+     * 会话类型 code，见 {@link org.wwz.ai.domain.agent.ledger.model.SessionKind}。
+     */
+    private String sessionKind;
+
+    /** 父会话ID，仅审计与授权穿透。 */
+    private String parentSessionId;
+
     private String title;
 
     private Integer status;

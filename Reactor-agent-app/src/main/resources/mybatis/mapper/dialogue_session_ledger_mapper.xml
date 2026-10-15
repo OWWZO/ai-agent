@@ -6,6 +6,8 @@
         <id column="id" property="id"/>
         <result column="session_id" property="sessionId"/>
         <result column="user_id" property="userId"/>
+        <result column="session_kind" property="sessionKind"/>
+        <result column="parent_session_id" property="parentSessionId"/>
         <result column="title" property="title"/>
         <result column="status" property="status"/>
         <result column="latest_request_id" property="latestRequestId"/>
@@ -26,6 +28,8 @@
         <id column="id" property="id"/>
         <result column="session_id" property="sessionId"/>
         <result column="user_id" property="userId"/>
+        <result column="session_kind" property="sessionKind"/>
+        <result column="parent_session_id" property="parentSessionId"/>
         <result column="title" property="title"/>
         <result column="status" property="status"/>
         <result column="latest_request_id" property="latestRequestId"/>
@@ -40,32 +44,42 @@
     </resultMap>
 
     <sql id="dialogueSessionColumns">
-        id, session_id, user_id, title, status, latest_request_id, latest_query_text,
-        latest_summary_text, run_count, finished_run_count, failed_run_count,
+        id, session_id, user_id, session_kind, parent_session_id, title, status, latest_request_id,
+        latest_query_text, latest_summary_text, run_count, finished_run_count, failed_run_count,
         started_at, last_active_at, event_seq, create_time, update_time, deleted
     </sql>
 
     <sql id="dialogueSessionViewColumns">
-        id, session_id, user_id, title, status, latest_request_id, latest_query_text,
-        latest_summary_text, run_count, finished_run_count, failed_run_count,
+        id, session_id, user_id, session_kind, parent_session_id, title, status, latest_request_id,
+        latest_query_text, latest_summary_text, run_count, finished_run_count, failed_run_count,
         started_at, last_active_at, create_time
     </sql>
 
     <sql id="dialogueSessionHistoryViewColumns">
-        id, session_id, user_id, title, status, latest_request_id,
+        id, session_id, user_id, session_kind, parent_session_id, title, status, latest_request_id,
         LEFT(latest_query_text, 241) AS latest_query_text,
         LEFT(latest_summary_text, 241) AS latest_summary_text,
         run_count, finished_run_count, failed_run_count,
         started_at, last_active_at, create_time
     </sql>
 
+    <!-- 侧栏白名单：只有 conversation 进列表。子会话靠 session_kind 隐藏，
+         不用 parent_session_id is null —— 后者会误杀有父但应可见的会话。 -->
+    <sql id="listableSessionKindPredicate">
+        AND session_kind = 'conversation'
+    </sql>
+
+    <!-- session_kind / parent_session_id 只在建行时写入，ON DUPLICATE 段刻意不覆盖：
+         会话身份一旦确定就不该被后续 run 改写，否则子会话可能被父 run 刷回 conversation 漏进侧栏。 -->
     <insert id="upsertSession" parameterType="org.wwz.ai.domain.agent.ledger.model.DialogueSessionUpsertRecord">
         INSERT INTO ai_agent_dialogue_session (
-            session_id, user_id, title, status, latest_request_id, latest_query_text, latest_summary_text,
+            session_id, user_id, session_kind, parent_session_id, title, status, latest_request_id,
+            latest_query_text, latest_summary_text,
             run_count, finished_run_count, failed_run_count, started_at, last_active_at,
             create_time, update_time, deleted
         ) VALUES (
-            #{sessionId}, #{userId}, #{title}, #{status}, #{latestRequestId}, #{latestQueryText}, #{latestSummaryText},
+            #{sessionId}, #{userId}, IFNULL(#{sessionKind}, 'conversation'), #{parentSessionId},
+            #{title}, #{status}, #{latestRequestId}, #{latestQueryText}, #{latestSummaryText},
             #{runCount}, #{finishedRunCount}, #{failedRunCount}, #{startedAt}, #{lastActiveAt},
             NOW(), NOW(), 0
         )
@@ -90,11 +104,13 @@
     <!-- run 启动：已存在则 run_count 原子 +1，保留 started_at 与 finished/failed 计数，避免读-改-写丢更新 -->
     <insert id="upsertSessionOnRunStart" parameterType="org.wwz.ai.domain.agent.ledger.model.DialogueSessionUpsertRecord">
         INSERT INTO ai_agent_dialogue_session (
-            session_id, user_id, title, status, latest_request_id, latest_query_text, latest_summary_text,
+            session_id, user_id, session_kind, parent_session_id, title, status, latest_request_id,
+            latest_query_text, latest_summary_text,
             run_count, finished_run_count, failed_run_count, started_at, last_active_at,
             create_time, update_time, deleted
         ) VALUES (
-            #{sessionId}, #{userId}, #{title}, #{status}, #{latestRequestId}, #{latestQueryText}, #{latestSummaryText},
+            #{sessionId}, #{userId}, IFNULL(#{sessionKind}, 'conversation'), #{parentSessionId},
+            #{title}, #{status}, #{latestRequestId}, #{latestQueryText}, #{latestSummaryText},
             1, 0, 0, #{startedAt}, #{lastActiveAt},
             NOW(), NOW(), 0
         )
@@ -162,6 +178,7 @@
         SELECT <include refid="dialogueSessionViewColumns"/>
         FROM ai_agent_dialogue_session
         WHERE deleted = 0
+        <include refid="listableSessionKindPredicate"/>
         ORDER BY last_active_at DESC, id DESC
         LIMIT #{limit}
     </select>
@@ -180,6 +197,7 @@
         FROM ai_agent_dialogue_session
         WHERE user_id = #{userId}
           AND deleted = 0
+        <include refid="listableSessionKindPredicate"/>
         ORDER BY last_active_at DESC, id DESC
         LIMIT #{limit}
     </select>
@@ -189,6 +207,7 @@
         FROM ai_agent_dialogue_session
         WHERE user_id = #{userId}
           AND deleted = 0
+        <include refid="listableSessionKindPredicate"/>
         <if test="afterId != null">
             <choose>
                 <when test="afterLastActiveAt != null">

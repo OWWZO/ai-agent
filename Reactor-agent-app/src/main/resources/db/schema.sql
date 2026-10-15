@@ -231,6 +231,8 @@ CREATE TABLE IF NOT EXISTS ai_agent_dialogue_session (
     id                 BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     session_id         VARCHAR(64)    NOT NULL COMMENT '会话ID',
     user_id            VARCHAR(64)    NULL COMMENT '用户ID',
+    session_kind       VARCHAR(32)    NOT NULL DEFAULT 'conversation' COMMENT '会话类型：conversation=用户会话；subagent=子智能体隐藏会话',
+    parent_session_id  VARCHAR(64)    NULL COMMENT '父会话ID（仅审计与授权穿透；子会话不继承父工作记忆）',
     title              VARCHAR(256)   NOT NULL COMMENT '会话标题',
     status             TINYINT        NOT NULL DEFAULT 0 COMMENT '会话终态，复用 run\r\n  状态枚举',
     latest_request_id  VARCHAR(64)    NULL COMMENT '最近一次请求ID',
@@ -248,6 +250,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_dialogue_session (
     PRIMARY KEY (id),
     UNIQUE KEY uk_dialogue_session_id (session_id, deleted),
     KEY idx_dialogue_session_user_active (user_id, deleted, last_active_at DESC),
+    KEY idx_dialogue_session_kind (session_kind, deleted),
     KEY idx_dialogue_session_active (deleted, last_active_at DESC, id DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='对话会话\r\n  主表';
 

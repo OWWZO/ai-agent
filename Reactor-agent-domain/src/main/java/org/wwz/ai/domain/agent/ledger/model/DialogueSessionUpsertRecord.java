@@ -20,6 +20,14 @@ public class DialogueSessionUpsertRecord {
 
     private String userId;
 
+    /**
+     * 会话类型（落库为 code）。为空时由 SQL 默认值兜底为 {@code conversation}。
+     */
+    private String sessionKind;
+
+    /** 父会话ID，仅审计与授权穿透；子会话不继承父工作记忆。 */
+    private String parentSessionId;
+
     private String title;
 
     private Integer status;

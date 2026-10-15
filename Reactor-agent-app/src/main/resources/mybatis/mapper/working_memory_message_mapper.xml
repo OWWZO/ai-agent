@@ -118,7 +118,10 @@
                MATCH(m.content) AGAINST (#{query} IN NATURAL LANGUAGE MODE) AS search_score
         FROM ai_agent_working_memory_message m
         INNER JOIN ai_agent_working_memory_turn t ON m.turn_id = t.id
+        <!-- 用户级记忆检索只覆盖用户会话：子智能体隐藏会话即便残留 main 作用域行也不得被搜出。
+             第一道闸是 m.memory_scope = 'main'（子代理写 sub:{agentId}），此处为纵深兜底。 -->
         INNER JOIN ai_agent_dialogue_session s ON s.session_id = m.session_id AND s.deleted = 0
+             AND s.session_kind = 'conversation'
         WHERE s.user_id = #{userId}
           AND m.memory_scope = 'main'
           AND m.deleted = 0
@@ -150,7 +153,9 @@
         SELECT <include refid="searchColumns"/>
         FROM ai_agent_working_memory_message m
         INNER JOIN ai_agent_working_memory_turn t ON m.turn_id = t.id
+        <!-- 同 searchFullTextByUserId：用户级检索排除子智能体隐藏会话。 -->
         INNER JOIN ai_agent_dialogue_session s ON s.session_id = m.session_id AND s.deleted = 0
+             AND s.session_kind = 'conversation'
         WHERE s.user_id = #{userId}
           AND m.memory_scope = 'main'
           AND m.deleted = 0
