@@ -10,6 +10,7 @@ import {
   combineData,
   normalizeEventData,
 } from "@/utils/chat";
+import { identityKeys, readTaskIdentity } from "./taskIdentity";
 
 /**
  * 真实子会话（child session）→ 可渲染 ChatItem 的投影层。
@@ -152,6 +153,90 @@ export function readChildSessionEventData(
   return normalizeEventData(raw);
 }
 
+/** 父链嵌套标签：把帧挂到「派发它的那张 Agent 卡」下。两种别名都来自历史链路。 */
+const PARENT_ID_KEYS = ["parentToolUseId", "parentToolCallId"] as const;
+
+function readFrameParentId(eventData: MESSAGE.EventData): string {
+  const source = eventData as unknown as Record<string, unknown>;
+  const resultMap = isRecord(source.resultMap) ? source.resultMap : undefined;
+  const nested = isRecord(resultMap?.resultMap) ? resultMap.resultMap : undefined;
+  const toolResult = isRecord(source.toolResult) ? source.toolResult : undefined;
+  return asText(
+    resultMap?.parentToolUseId ??
+      resultMap?.parentToolCallId ??
+      nested?.parentToolUseId ??
+      nested?.parentToolCallId ??
+      source.parentToolUseId ??
+      toolResult?.parentToolUseId
+  );
+}
+
+function removeParentIdKeys(target: Record<string, unknown>): void {
+  for (const key of PARENT_ID_KEYS) {
+    delete target[key];
+  }
+}
+
+/**
+ * 本子会话自身出现过的全部身份键（toolCallId / streamToolKey / messageId / id）。
+ * 与派生层的嵌套判据同源，保证「父 id 能不能在本会话里找到卡」的结论一致。
+ */
+function collectChildSessionOwnKeys(events: ChildSessionFrameEvent[]): Set<string> {
+  const keys = new Set<string>();
+  for (const event of events) {
+    for (const key of identityKeys(
+      readTaskIdentity(event.eventData as unknown as Record<string, unknown>)
+    )) {
+      keys.add(key);
+    }
+  }
+  return keys;
+}
+
+/**
+ * 剥离指向本会话之外的父链标签，让子 Agent 的事件回到根时间线。
+ * <p>
+ * 账本回放会给子会话自己的 run 里每条帧都打上派发者的 tool call id
+ * （后端 {@code AbstractToolInvocationProjector#appendSubAgentNestingTags} 读 ledger 的
+ * {@code parent_tool_call_id}），但那张 Agent 卡属于**父会话**，在本子会话的时间线里并不存在。
+ * 派生层遇到「有父 id 但父卡找不到」的子事件会把它塞进 pending 桶，父卡始终不出现
+ * → 工具卡整批从时间线消失，只剩终答。实时流没有这个标签，所以运行中反而正常。
+ * <p>
+ * 判据是「父 id 能否在本会话自身的帧里找到对应卡」：找不到才剥，因此子 Agent 自己
+ * 再派子 Agent 的嵌套结构照旧保留。
+ */
+function detachExternalParentTags(
+  eventData: MESSAGE.EventData,
+  ownKeys: Set<string>
+): MESSAGE.EventData {
+  const parentId = readFrameParentId(eventData);
+  if (!parentId || ownKeys.has(parentId)) {
+    return eventData;
+  }
+  const source = eventData as unknown as Record<string, unknown>;
+  const next: Record<string, unknown> = { ...source };
+  removeParentIdKeys(next);
+
+  const resultMap = isRecord(source.resultMap) ? { ...source.resultMap } : undefined;
+  if (resultMap) {
+    removeParentIdKeys(resultMap);
+    const nested = isRecord(resultMap.resultMap) ? { ...resultMap.resultMap } : undefined;
+    if (nested) {
+      removeParentIdKeys(nested);
+      resultMap.resultMap = nested;
+    }
+    next.resultMap = resultMap;
+  }
+
+  const toolResult = isRecord(source.toolResult) ? { ...source.toolResult } : undefined;
+  if (toolResult) {
+    removeParentIdKeys(toolResult);
+    next.toolResult = toolResult;
+  }
+
+  return next as unknown as MESSAGE.EventData;
+}
+
 function createChildSessionShell(
   childSessionId: string,
   run: ChildSessionRun,
@@ -258,6 +343,51 @@ function applyRunStatus(
   }
 }
 
+/** 一帧可渲染的子会话事件；实时路径额外带原始帧用于判定收口。 */
+type ChildSessionFrameEvent = {
+  eventData: MESSAGE.EventData;
+  frame?: Record<string, unknown>;
+};
+
+function readReplayFrameEvents(
+  replayFrames: ConversationReplayFrame[]
+): ChildSessionFrameEvent[] {
+  const events: ChildSessionFrameEvent[] = [];
+  for (const frame of replayFrames) {
+    const eventData = readChildSessionEventData(frame);
+    if (eventData) {
+      events.push({ eventData });
+    }
+  }
+  return events;
+}
+
+/** 实时帧按 eventSeq 去重；投影自带全量回放，重复序号直接丢弃。 */
+function readLiveFrameEvents(frames?: unknown[]): ChildSessionFrameEvent[] {
+  const events: ChildSessionFrameEvent[] = [];
+  let lastSeq = 0;
+  for (const frame of frames || []) {
+    if (!isRecord(frame)) {
+      continue;
+    }
+    const seq = Number(frame.eventSeq || 0);
+    if (seq > 0) {
+      if (seq <= lastSeq) {
+        continue;
+      }
+      lastSeq = seq;
+    }
+    const eventData = readChildSessionEventData(frame);
+    if (eventData) {
+      events.push({
+        eventData,
+        frame
+      });
+    }
+  }
+  return events;
+}
+
 /**
  * 把子会话的历史回放 / 实时帧合成一个可渲染的 ChatItem。
  * 纯函数：不触碰网络与 React 状态，便于单测直接驱动帧序列。
@@ -279,36 +409,21 @@ export function buildChildSessionChat(
   const replayFrames: ConversationReplayFrame[] =
     replay && Array.isArray(replay.replayFrames) ? replay.replayFrames : [];
 
-  let liveSettled: { status: string } | undefined;
+  // 回放为空才吃实时帧：两者同源会重复追加同一段流式增量。
+  const frameEvents =
+    replayFrames.length > 0
+      ? readReplayFrameEvents(replayFrames)
+      : readLiveFrameEvents(frames);
 
-  if (replayFrames.length > 0) {
-    for (const frame of replayFrames) {
-      const eventData = readChildSessionEventData(frame);
-      if (eventData) {
-        applyChildSessionEvent(chat, eventData, remember);
-      }
-    }
-  } else {
-    // 回放为空才吃实时帧：两者同源会重复追加同一段流式增量。
-    let lastSeq = 0;
-    for (const frame of frames || []) {
-      if (!isRecord(frame)) {
-        continue;
-      }
-      const seq = Number(frame.eventSeq || 0);
-      if (seq > 0) {
-        if (seq <= lastSeq) {
-          continue;
-        }
-        lastSeq = seq;
-      }
-      const eventData = readChildSessionEventData(frame);
-      if (eventData) {
-        applyChildSessionEvent(chat, eventData, remember);
-      }
-      if (frame.finished === true) {
-        liveSettled = { status: frame.errorMsg ? "FAILED" : "SUCCESS" };
-      }
+  // 先收集本会话自身的身份键，再逐帧剥离指向会话之外的父链标签。
+  // 顺序很重要：剥离判据要看全量帧，不能边读边判。
+  const ownKeys = collectChildSessionOwnKeys(frameEvents);
+
+  let liveSettled: { status: string } | undefined;
+  for (const { eventData, frame } of frameEvents) {
+    applyChildSessionEvent(chat, detachExternalParentTags(eventData, ownKeys), remember);
+    if (frame?.finished === true) {
+      liveSettled = { status: frame.errorMsg ? "FAILED" : "SUCCESS" };
     }
   }
 

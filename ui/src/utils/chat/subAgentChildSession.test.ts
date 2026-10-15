@@ -10,6 +10,7 @@ import type {
   ConversationHistoryPage,
   ConversationRunReplay,
 } from "@/services/agentConversation";
+import { resolveTaskToolCallId } from "./toolCalls";
 
 function eventData(
   resultMap: Record<string, unknown>,
@@ -28,6 +29,60 @@ function eventData(
 
 function frameOf(data: unknown) {
   return { resultMap: { eventData: data } };
+}
+
+/**
+ * 账本回放的工具帧真实形态：外层 `eventData.resultMap` 是 envelope，
+ * 内层 `resultMap.resultMap` 才是工具 payload，两层都带父链标签
+ * （后端 mirrorNestingToOuter 会把 parentToolUseId 镜像到外层）。
+ */
+function replayToolEvent(
+  messageType: "tool_call" | "tool_result",
+  payload: Record<string, unknown>,
+  messageId: string
+): MESSAGE.EventData {
+  return eventData(
+    {
+      messageType,
+      messageId,
+      isFinal: true,
+      parentToolUseId: payload.parentToolUseId,
+      resultMap: payload,
+    },
+    { messageId }
+  );
+}
+
+/** 在派生后的时间线里按 toolCallId 找任务（含嵌套 children）。 */
+function findTaskByToolCallId(
+  chat: CHAT.ChatItem,
+  toolCallId: string
+): CHAT.Task | undefined {
+  const visit = (task: CHAT.Task | undefined): CHAT.Task | undefined => {
+    if (!task) {
+      return undefined;
+    }
+    const resolved = resolveTaskToolCallId(task);
+    if (resolved === toolCallId) {
+      return task;
+    }
+    for (const child of task.children || []) {
+      const hit = visit(child);
+      if (hit) {
+        return hit;
+      }
+    }
+    return undefined;
+  };
+  for (const group of chat.tasks || []) {
+    for (const container of group || []) {
+      const hit = visit(container as CHAT.Task);
+      if (hit) {
+        return hit;
+      }
+    }
+  }
+  return undefined;
 }
 
 function historyPage(
@@ -280,5 +335,112 @@ describe("buildChildSessionChat", () => {
 
     expect(chat.loading).toBe(false);
     expect(chat.metrics?.status).toBe("SUCCESS");
+  });
+
+  it("回放帧带父会话 Agent 标签时，工具卡仍留在子会话时间线", () => {
+    // 回归：账本回放会把派发者的 tool call id 打成 parentToolUseId，但那块 Agent 卡
+    // 属于父会话，本子会话内不存在 → 派生层把工具塞进 pending 桶，完成后只剩终答。
+    const chat = buildChildSessionChat({
+      childSessionId: "sub_1",
+      replay: replayOf("r1", [
+        replayToolEvent(
+          "tool_call",
+          {
+            messageType: "tool_call",
+            toolName: "workspace_write",
+            toolCallId: "call_w1",
+            parentToolUseId: "call_parent_agent",
+            status: "success",
+            input: { path: "a.md" },
+          },
+          "m-tool"
+        ),
+        replayToolEvent(
+          "tool_result",
+          {
+            messageType: "tool_result",
+            toolName: "workspace_write",
+            toolCallId: "call_w1",
+            parentToolUseId: "call_parent_agent",
+            status: "success",
+            result: "写入完成",
+          },
+          "m-tool"
+        ),
+        eventData(
+          {
+            messageType: "result",
+            result: "子结论",
+            parentToolUseId: "call_parent_agent",
+          },
+          { messageId: "m-result" }
+        ),
+      ]),
+    });
+
+    const tool = findTaskByToolCallId(chat, "call_w1");
+    expect(tool).toBeDefined();
+    expect(tool?.messageType).toBe("tool_result");
+    expect(chat.conclusion?.result).toBe("子结论");
+  });
+
+  it("子 Agent 自己再派子 Agent 时保留嵌套（父卡确实在本会话内）", () => {
+    const chat = buildChildSessionChat({
+      childSessionId: "sub_1",
+      replay: replayOf("r1", [
+        replayToolEvent(
+          "tool_call",
+          {
+            messageType: "tool_call",
+            toolName: "Agent",
+            toolCallId: "call_inner_agent",
+            status: "success",
+            input: { description: "内层子代理" },
+          },
+          "m-inner"
+        ),
+        replayToolEvent(
+          "tool_call",
+          {
+            messageType: "tool_call",
+            toolName: "workspace_read",
+            toolCallId: "call_inner_tool",
+            parentToolUseId: "call_inner_agent",
+            status: "success",
+            input: { path: "b.md" },
+          },
+          "m-inner-tool"
+        ),
+      ]),
+    });
+
+    const innerTool = findTaskByToolCallId(chat, "call_inner_tool");
+    const parentCard = findTaskByToolCallId(chat, "call_inner_agent");
+    expect(innerTool).toBeDefined();
+    expect(parentCard).toBeDefined();
+    // 内层工具必须挂在内层 Agent 卡下，而不是被剥成根时间线平铺
+    expect(parentCard?.children?.some((child) => child === innerTool)).toBe(true);
+  });
+
+  it("父链标签指向会话外时只剥标签，不改动入参帧", () => {
+    const raw = replayToolEvent(
+      "tool_call",
+      {
+        messageType: "tool_call",
+        toolName: "workspace_write",
+        toolCallId: "call_w1",
+        parentToolUseId: "call_parent_agent",
+        status: "success",
+      },
+      "m-tool"
+    );
+    const snapshot = JSON.stringify(raw);
+
+    buildChildSessionChat({
+      childSessionId: "sub_1",
+      replay: replayOf("r1", [raw]),
+    });
+
+    expect(JSON.stringify(raw)).toBe(snapshot);
   });
 });
