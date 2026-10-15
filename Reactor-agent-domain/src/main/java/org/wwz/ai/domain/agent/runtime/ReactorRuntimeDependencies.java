@@ -10,6 +10,7 @@ import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteStreamPort;
 import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
+import org.wwz.ai.domain.agent.runtime.tool.codemode.CodeModeExecutorPort;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.port.McpToolExecutor;
 import org.wwz.ai.domain.agent.runtime.tasklist.TasklistPersistencePort;
 import org.wwz.ai.domain.agent.memory.SessionContextCompactionService;
@@ -20,6 +21,7 @@ import org.wwz.ai.domain.agent.memory.ltm.MemoryFlushService;
 import org.wwz.ai.domain.agent.memory.ltm.SessionSearchService;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.image.service.IImageGenerationExecutionKernel;
+import org.wwz.ai.types.agent.config.CodeModeProperties;
 import org.wwz.ai.types.agent.config.HostCliProperties;
 import org.wwz.ai.types.agent.config.OpenCliProperties;
 import org.springframework.scheduling.TaskScheduler;
@@ -65,6 +67,11 @@ public class ReactorRuntimeDependencies {
     OpenCliProperties openCliProperties;
 
     HostCliProperties hostCliProperties;
+
+    CodeModeProperties codeModeProperties;
+
+    /** 可选：Code Mode（GraalJS 同 JVM JS 执行器，实现在 infrastructure） */
+    CodeModeExecutorPort codeModeExecutorPort;
 
     //预留给之后并发调用llm
     Executor llmExecutor;
@@ -144,6 +151,14 @@ public class ReactorRuntimeDependencies {
 
     public AgentBrowserSessionPort getOptionalAgentBrowserSessionPort() {
         return agentBrowserSessionPort;
+    }
+
+    public CodeModeProperties getOptionalCodeModeProperties() {
+        return codeModeProperties;
+    }
+
+    public CodeModeExecutorPort getOptionalCodeModeExecutorPort() {
+        return codeModeExecutorPort;
     }
 
     public Executor requireLlmExecutor() {

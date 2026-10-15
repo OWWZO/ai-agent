@@ -64,6 +64,7 @@ import org.wwz.ai.domain.agent.runtime.tool.common.canvas.ListUiComponentsTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.MemoryTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.SessionSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.cli.HostCliTool;
+import org.wwz.ai.domain.agent.runtime.tool.codemode.CodeModeTool;
 import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserTool;
 import org.wwz.ai.domain.agent.runtime.tool.browser.AgentBrowserTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.WebFetchTool;
@@ -97,6 +98,7 @@ import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceEditTool;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceWriteTool;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.types.agent.config.CodeModeProperties;
 import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 
@@ -221,6 +223,7 @@ public class AgentToolCollectionFactory {
             registerBrowserTool(toolCollection, agentContext, request);
             registerAgentBrowserTool(toolCollection, agentContext, request);
             registerHostCliTool(toolCollection, agentContext);
+            registerCodeModeTool(toolCollection, agentContext);
 
             List<String> agentToolList = parseToolNames(reactorConfig.getMultiAgentToolListMap()
                             .getOrDefault("default", "search,web_fetch,web_search,code_execution,docgen,docread,dataprep,canvas,image_generation,data_analysis")
@@ -693,6 +696,30 @@ public class AgentToolCollectionFactory {
             return;
         }
         addTool(toolCollection, new HostCliTool(available), agentContext, HostCliTool::setAgentContext);
+    }
+
+    /**
+     * Code Mode（GraalJS 同 JVM JS 编排）。
+     * <p>
+     * 注册条件只看三件事：配置启用、执行器已装配、workspace 可用；
+     * <b>不因为 Agent Browser 是否可用来决定</b>，也不影响现有 browser / host_cli 注册。
+     * </p>
+     */
+    private void registerCodeModeTool(ToolCollection toolCollection, AgentContext agentContext) {
+        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
+            return;
+        }
+        ReactorRuntimeDependencies deps = agentContext.getRuntimeDependencies();
+        CodeModeProperties properties = deps.getOptionalCodeModeProperties();
+        if (properties == null || !properties.isEnabled()) {
+            return;
+        }
+        if (deps.getOptionalCodeModeExecutorPort() == null || !workspaceService.isEnabled()) {
+            return;
+        }
+        CodeModeTool codeModeTool = new CodeModeTool(properties);
+        codeModeTool.setExecutorPort(deps.getOptionalCodeModeExecutorPort());
+        addTool(toolCollection, codeModeTool, agentContext, CodeModeTool::setAgentContext);
     }
 
     /** 统一完成工具上下文绑定和注册，避免遗漏其中任一步骤。 */

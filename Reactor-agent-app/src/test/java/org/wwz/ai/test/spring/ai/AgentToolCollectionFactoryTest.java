@@ -1,9 +1,14 @@
 package org.wwz.ai.test.spring.ai;
 
 import com.alibaba.fastjson.JSONObject;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.Mockito;
+import org.slf4j.LoggerFactory;
+import org.wwz.ai.domain.agent.runtime.util.ToolSchemaNormalizer;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
@@ -28,6 +33,8 @@ import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
 import org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort;
 import org.wwz.ai.domain.agent.adapter.port.AgentBrowserSessionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
+import org.wwz.ai.domain.agent.runtime.tool.codemode.CodeModeExecutorPort;
+import org.wwz.ai.types.agent.config.CodeModeProperties;
 import org.wwz.ai.types.agent.config.HostCliProperties;
 import org.wwz.ai.types.agent.config.OpenCliProperties;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
@@ -444,7 +451,83 @@ public class AgentToolCollectionFactoryTest {
             String line = end < 0 ? yaml.substring(idx) : yaml.substring(idx, end);
             Assert.assertTrue(profile + " missing TaskOutput", line.contains("TaskOutput"));
             Assert.assertTrue(profile + " missing SendMessage", line.contains("SendMessage"));
+            // code_mode 是主 Agent 的编排工具：白名单漏了它，开关打开也调用不到
+            Assert.assertTrue(profile + " missing code_mode", line.contains("code_mode"));
         }
+    }
+
+    /**
+     * code_mode 的注册条件与主 Agent 可见性。
+     * <p>
+     * 这里锁住两个曾经同时成立、导致"工具调用不了"的坑：
+     * ① 配置关闭 / 执行器缺失时不能注册；② 注册后必须留在 PlanSolve 主 Agent 白名单里，
+     * 否则 {@link AgentToolCollectionFactory#filterForPlanSolveMain} 会把它过滤掉。
+     * </p>
+     */
+    @Test
+    public void shouldRegisterCodeModeOnlyWhenEnabledAndKeepItVisibleToPlanSolveMain() {
+        McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
+        Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
+
+        ReactorConfig reactorConfig = buildReactorConfig();
+        reactorConfig.setPlanSolveMainToolList("Agent,workspace_read,code_mode");
+
+        AgentToolCollectionFactory factory = newFactory(
+                reactorConfig,
+                mcpToolExecutor,
+                Mockito.mock(DefaultSkillRegistry.class),
+                SkillRuntimeOptions.builder().enabled(false).build(),
+                enabledWorkspaceService(),
+                enabledWorkspaceOptions()
+        );
+
+        ToolCollection disabled = factory.buildForPlanSolve(
+                buildAgentContextWithCodeMode(false, null), buildAgentExecutionCommand("html"));
+        Assert.assertFalse("配置关闭时不应注册 code_mode", disabled.getToolMap().containsKey("code_mode"));
+
+        ToolCollection noExecutor = factory.buildForPlanSolve(
+                buildAgentContextWithCodeMode(true, null), buildAgentExecutionCommand("html"));
+        Assert.assertFalse("缺少执行器时不应注册 code_mode", noExecutor.getToolMap().containsKey("code_mode"));
+
+        ToolCollection full = factory.buildForPlanSolve(
+                buildAgentContextWithCodeMode(true, Mockito.mock(CodeModeExecutorPort.class)),
+                buildAgentExecutionCommand("html"));
+        Assert.assertTrue("启用且执行器就绪时应注册 code_mode", full.getToolMap().containsKey("code_mode"));
+        Assert.assertTrue("code_mode 必须能通过主 Agent 白名单过滤",
+                factory.filterForPlanSolveMain(full).getToolMap().containsKey("code_mode"));
+    }
+
+    /**
+     * {@code @Value} 的兜底白名单也必须包含 code_mode。
+     * <p>
+     * 没有 {@code autobots.autoagent.plan-solve-main-tool-list} 的 profile（例如 test）
+     * 走的就是这个兜底值，漏了它主 Agent 同样看不到 code_mode。
+     * </p>
+     */
+    @Test
+    public void valueFallbackPlanSolveMainToolListIncludesCodeMode() throws Exception {
+        java.lang.reflect.Field field = ReactorConfig.class.getDeclaredField("planSolveMainToolList");
+        org.springframework.beans.factory.annotation.Value annotation =
+                field.getAnnotation(org.springframework.beans.factory.annotation.Value.class);
+        Assert.assertNotNull("@Value 注解缺失", annotation);
+        String fallback = annotation.value();
+        int colon = fallback.indexOf(':');
+        String defaults = colon < 0 ? "" : fallback.substring(colon + 1, fallback.length() - 1);
+        Assert.assertTrue("@Value 兜底白名单缺少 code_mode",
+                Arrays.asList(defaults.split(",")).contains("code_mode"));
+    }
+
+    private AgentContext buildAgentContextWithCodeMode(boolean enabled, CodeModeExecutorPort executorPort) {
+        AgentContext base = buildAgentContext();
+        CodeModeProperties codeModeProperties = new CodeModeProperties();
+        codeModeProperties.setEnabled(enabled);
+        ReactorRuntimeDependencies dependencies = base.getRuntimeDependencies().toBuilder()
+                .codeModeProperties(codeModeProperties)
+                .codeModeExecutorPort(executorPort)
+                .build();
+        // AgentContext 只有 @Builder，没有 toBuilder；每次 buildAgentContext() 都是新实例，直接 set 即可
+        base.setRuntimeDependencies(dependencies);
+        return base;
     }
 
     @Test
@@ -766,6 +849,74 @@ public class AgentToolCollectionFactoryTest {
         Assert.assertTrue(toolCollection.getToolMap().containsKey("host_cli"));
         Assert.assertTrue(toolCollection.getTool("host_cli").getDescription().contains("git"));
         Assert.assertFalse(toolCollection.getTool("host_cli").getDescription().contains("missing-bin"));
+    }
+
+    /**
+     * 装配出来的每个工具（本地 + MCP）其 schema 都必须是完整的 object schema。
+     * <p>
+     * 漏声明 {@code properties}/{@code required} 不会报错（会被 {@link ToolSchemaNormalizer} 自动补齐），
+     * 但每次装配都会刷 WARN 噪音，且补齐结果依赖下游推断。新增工具时该测试即护栏。
+     * </p>
+     * <p>
+     * MCP 工具的 schema 由外部服务器提供，可能本身就不完整；这里用完整 schema 的 mock，
+     * 只验证「完整 schema 不会被误判」。
+     * </p>
+     */
+    @Test
+    public void registeredToolSchemasShouldNotEmitIncompleteSchemaWarning() throws Exception {
+        DefaultSkillRegistry skillRegistry = createRegistry(true, true);
+        skillRegistry.refresh();
+
+        McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
+        Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of(
+                McpToolInfo.builder()
+                        .mcpId("mcp-1")
+                        .serverKey("demo")
+                        .name("mcp__demo__remote_tool")
+                        .originalName("remote_tool")
+                        .desc("远程测试工具")
+                        .parameters("{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\"}},\"required\":[\"query\"]}")
+                        .alwaysLoad(true)
+                        .build()
+        ));
+
+        AgentToolCollectionFactory factory = newFactory(
+                buildReactorConfig(),
+                mcpToolExecutor,
+                skillRegistry,
+                SkillRuntimeOptions.builder()
+                        .enabled(true)
+                        .reactEnabled(true)
+                        .planSolveEnabled(true)
+                        .build(),
+                disabledWorkspaceService(),
+                disabledWorkspaceOptions()
+        );
+
+        ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentExecutionCommand("html"));
+
+        Logger logger = (Logger) LoggerFactory.getLogger(ToolSchemaNormalizer.class);
+        ListAppender<ILoggingEvent> listAppender = new ListAppender<>();
+        listAppender.start();
+        logger.addAppender(listAppender);
+        try {
+            for (org.wwz.ai.domain.agent.runtime.tool.BaseTool tool : toolCollection.getToolMap().values()) {
+                ToolSchemaNormalizer.normalizeSchema(tool.toParams(), tool.getName());
+            }
+            for (McpToolInfo info : toolCollection.getMcpToolMap().values()) {
+                ToolSchemaNormalizer.normalizeSchemaAsMap(info.getParameters(), info.getName());
+            }
+
+            List<String> warnings = listAppender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .filter(message -> message.contains("检测到不完整 object schema"))
+                    .toList();
+
+            Assert.assertTrue("已注册工具的 schema 不应触发不完整 object schema 告警: " + warnings, warnings.isEmpty());
+        } finally {
+            logger.detachAppender(listAppender);
+            listAppender.stop();
+        }
     }
 
     private AgentToolCollectionFactory newFactory(ReactorConfig reactorConfig,

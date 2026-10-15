@@ -1,6 +1,8 @@
 package org.wwz.ai.config.reactor;
 
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Configuration;
@@ -29,8 +31,12 @@ import org.wwz.ai.domain.agent.runtime.tasklist.TasklistPersistencePort;
 import org.springframework.beans.factory.ObjectProvider;
 import org.wwz.ai.domain.agent.image.service.IImageGenerationExecutionKernel;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentConcurrencyGate;
+import org.wwz.ai.domain.agent.runtime.tool.codemode.CodeModeExecutorPort;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
+import org.wwz.ai.infrastructure.codemode.GraalJsCodeModeExecutor;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
 import org.wwz.ai.types.agent.config.AgentExecutorProperties;
+import org.wwz.ai.types.agent.config.CodeModeProperties;
 import org.wwz.ai.types.agent.config.HostCliProperties;
 import org.wwz.ai.types.agent.config.OpenCliProperties;
 
@@ -42,7 +48,22 @@ import java.util.concurrent.Executor;
  * 不在此处承接执行编排、controller 协议适配。
  */
 @Configuration
+@EnableConfigurationProperties(CodeModeProperties.class)
 public class ReactorRuntimeAutoConfiguration {
+
+    /**
+     * Code Mode 执行器（GraalJS 同 JVM）。
+     * <p>
+     * 只有 {@code reactor.code-mode.enabled=true} 时才创建；配置关闭时
+     * {@link ReactorRuntimeDependencies} 拿不到执行器，{@code code_mode} 工具也就不会注册。
+     * </p>
+     */
+    @Bean
+    @ConditionalOnProperty(prefix = "reactor.code-mode", name = "enabled", havingValue = "true")
+    public CodeModeExecutorPort codeModeExecutorPort(CodeModeProperties codeModeProperties,
+                                                     ObjectProvider<WorkspaceService> workspaceServiceProvider) {
+        return new GraalJsCodeModeExecutor(codeModeProperties, workspaceServiceProvider.getIfAvailable());
+    }
 
     /**
      * StreamResponseHandler 已按 domain 边界要求移除 Spring 注解（不再 import Spring AI），
@@ -78,6 +99,8 @@ public class ReactorRuntimeAutoConfiguration {
                                                                      ObjectProvider<AgentBrowserSessionPort> agentBrowserSessionPortProvider,
                                                                    ObjectProvider<OpenCliProperties> openCliPropertiesProvider,
                                                                    ObjectProvider<HostCliProperties> hostCliPropertiesProvider,
+                                                                   ObjectProvider<CodeModeProperties> codeModePropertiesProvider,
+                                                                   ObjectProvider<CodeModeExecutorPort> codeModeExecutorPortProvider,
                                                                   @Qualifier(AgentExecutorNames.LLM_EXECUTOR) Executor llmExecutor,
                                                                   @Qualifier(AgentExecutorNames.TASK_EXECUTOR) Executor taskExecutor,
                                                                   @Qualifier(AgentExecutorNames.TOOL_EXECUTOR) Executor toolExecutor,
@@ -107,6 +130,8 @@ public class ReactorRuntimeAutoConfiguration {
                  .agentBrowserSessionPort(agentBrowserSessionPortProvider.getIfAvailable())
                 .openCliProperties(openCliPropertiesProvider.getIfAvailable())
                 .hostCliProperties(hostCliPropertiesProvider.getIfAvailable())
+                .codeModeProperties(codeModePropertiesProvider.getIfAvailable())
+                .codeModeExecutorPort(codeModeExecutorPortProvider.getIfAvailable())
                 .llmExecutor(llmExecutor)
                 .taskExecutor(taskExecutor)
                 .toolExecutor(toolExecutor)

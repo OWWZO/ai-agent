@@ -54,7 +54,7 @@ public class ReactorConfig {
     /**
      * PlanSolve 主 Agent 可见的工具白名单。完整 tool_list 仍作为子 Agent 的工具来源。
      */
-    @Value("${autobots.autoagent.plan-solve-main-tool-list:Agent,TaskCreate,TaskGet,TaskUpdate,TaskList,TodoWrite,TaskStop,TaskOutput,SendMessage,EnterPlanMode,ExitPlanMode,AskUserQuestion,ToolSearch,ToolDescribe,ToolCall,ListMcpResources,ReadMcpResource,workspace_read,workspace_list,workspace_glob,workspace_grep,workspace_write,workspace_edit,skill_view,skills_search,memory,session_search,emit_ui_patch,emit_ui_tree,list_ui_components,get_genui_guide,image_ocr,canvas_publish,pdf_reader,pdf_structure,word_reader,text_processor,markdown_processor,html_processor,excel_reader,csv_processor}")
+    @Value("${autobots.autoagent.plan-solve-main-tool-list:Agent,TaskCreate,TaskGet,TaskUpdate,TaskList,TodoWrite,TaskStop,TaskOutput,SendMessage,EnterPlanMode,ExitPlanMode,AskUserQuestion,ToolSearch,ToolDescribe,ToolCall,ListMcpResources,ReadMcpResource,workspace_read,workspace_list,workspace_glob,workspace_grep,workspace_write,workspace_edit,code_mode,skill_view,skills_search,memory,session_search,emit_ui_patch,emit_ui_tree,list_ui_components,get_genui_guide,image_ocr,canvas_publish,pdf_reader,pdf_structure,word_reader,text_processor,markdown_processor,html_processor,excel_reader,csv_processor}")
     private String planSolveMainToolList;
 
     public void setPlanSolveMainToolList(String planSolveMainToolList) {

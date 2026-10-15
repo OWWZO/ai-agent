@@ -20,6 +20,27 @@ reactor:
       - rdt
     default-timeout-ms: 120000
     max-timeout-ms: 300000
+  # GraalJS Code Mode：同 JVM 执行 JS，编排 browser / host / workspace。
+  # 生产默认关闭；同 JVM 模式不是强沙箱，开启前需确认该安全边界可接受。
+  code-mode:
+    enabled: false
+    default-timeout-ms: 180000
+    max-timeout-ms: 540000
+    max-source-chars: 262144
+    max-output-chars: 1048576
+    max-tool-calls: 100
+    max-total-memory-bytes: 134217728
+    workspace:
+      max-read-bytes: 33554432
+      max-write-bytes: 33554432
+      max-csv-rows: 100000
+      max-csv-columns: 200
+      allowed-script-prefixes:
+        - scripts/
+        - jobs/
+      allowed-output-prefixes:
+        - outputs/
+        - artifacts/
   browser-relay:
     enabled: true
     path: /api/agent/browser/relay
@@ -170,7 +191,7 @@ autobots:
     task:
       tool_list: '{"default":"search,web_fetch,web_search,code_execution,docgen,docread,dataprep,canvas,image_generation,data_analysis"}'
       # PlanSolve 主 Agent 只负责编排；完整 tool_list 仍作为子 Agent 的工具来源
-    plan-solve-main-tool-list: "Agent,TaskCreate,TaskGet,TaskUpdate,TaskList,TodoWrite,TaskStop,TaskOutput,SendMessage,EnterPlanMode,ExitPlanMode,AskUserQuestion,ToolSearch,ToolDescribe,ToolCall,workspace_read,workspace_list,workspace_glob,workspace_grep,workspace_write,workspace_edit,skill_view,skills_search,memory,session_search,emit_ui_patch,emit_ui_tree,list_ui_components,get_genui_guide,image_ocr,canvas_publish,pdf_reader,pdf_structure,word_reader,text_processor,markdown_processor,html_processor,excel_reader,csv_processor"
+    plan-solve-main-tool-list: "Agent,TaskCreate,TaskGet,TaskUpdate,TaskList,TodoWrite,TaskStop,TaskOutput,SendMessage,EnterPlanMode,ExitPlanMode,AskUserQuestion,ToolSearch,ToolDescribe,ToolCall,workspace_read,workspace_list,workspace_glob,workspace_grep,workspace_write,workspace_edit,code_mode,skill_view,skills_search,memory,session_search,emit_ui_patch,emit_ui_tree,list_ui_components,get_genui_guide,image_ocr,canvas_publish,pdf_reader,pdf_structure,word_reader,text_processor,markdown_processor,html_processor,excel_reader,csv_processor"
     code_interpreter_url: "http://127.0.0.1:1601"
     deep_search_url: "http://127.0.0.1:1601"
     web_fetch_url: "http://reactor-tool:1601"

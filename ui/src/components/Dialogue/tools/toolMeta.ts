@@ -59,6 +59,12 @@ const NAME_ALIASES: Record<string, string> = {
   workspace_glob: "glob",
   workspace_grep: "grep",
   workspace_list: "ls",
+  /**
+   * Code Mode（GraalJS 同 JVM 执行 JS）入参是 `source` / `workspaceFile` / `inputs` /
+   * `timeoutMs`，与 `code_execution` 同族，按 execute 卡渲染源码。
+   * 缺这条别名会一路落到 generic，表现为没有源码预览、点不开右侧面板。
+   */
+  code_mode: "bash",
 };
 
 const TOOL_LABELS: Record<string, string> = {
