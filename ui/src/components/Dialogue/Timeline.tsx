@@ -499,6 +499,7 @@ const SubAgentTimelineCard: FC<{
               chat={chat}
               stackPosition={resolveStackPosition(index, nested.length)}
               defaultExpanded={isTimelineToolActive(child)}
+              streaming={chat.loading}
               changeActiveChat={changeActiveChat}
               changeFile={changeFile}
               changePlan={changePlan}

@@ -284,6 +284,7 @@ const CompactStepRow: FC<{
           tool={step.tool}
           chat={ctx.chat}
           defaultExpanded={step.active}
+          streaming={ctx.chat.loading}
           changeActiveChat={ctx.changeActiveChat}
           changeFile={ctx.changeFile}
           changePlan={ctx.changePlan}
@@ -333,6 +334,7 @@ const CompactStepRow: FC<{
         tool={step.tool}
         chat={ctx.chat}
         defaultExpanded={step.active}
+        streaming={ctx.chat.loading}
         changeActiveChat={ctx.changeActiveChat}
         changeFile={ctx.changeFile}
         changePlan={ctx.changePlan}
@@ -388,6 +390,7 @@ const StepGroupBlock: FC<{
               chat={ctx.chat}
               stackPosition={resolveStackPosition(index, toolCardSteps.length)}
               defaultExpanded={step.active}
+              streaming={ctx.chat.loading}
               changeActiveChat={ctx.changeActiveChat}
               changeFile={ctx.changeFile}
               changePlan={ctx.changePlan}

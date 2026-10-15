@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { isSubAgentParentTask } from "@/utils/chat/subagent";
 import { AskUserToolCall } from "./AskUserToolCall";
 import DesktopControlCard from "../DesktopControlCard";
@@ -13,13 +14,19 @@ import { ReadToolCall } from "./ReadToolCall";
 import { SubAgentToolCall } from "./SubAgentToolCall";
 import { normalizeToolName } from "./toolMeta";
 import type { ToolRowStackPosition } from "./ToolRow";
-import { resolveTaskToolName } from "./toolTaskAdapter";
+import { resolveTaskToolName, resolveToolKey } from "./toolTaskAdapter";
+import { useToolEntranceAnimation } from "./useToolEntranceAnimation";
 
 export type ToolCallViewProps = {
   tool: CHAT.Task;
   chat: CHAT.ChatItem;
   stackPosition?: ToolRowStackPosition;
   defaultExpanded?: boolean;
+  /**
+   * 当前对话是否正在流式输出。为 true 时，首次出现的工具卡会播一次进场淡入
+   * （对齐 ZCode `streamingEntranceActive`）；历史回放 / 完成后重挂不播。
+   */
+  streaming?: boolean;
   changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
   changeFile?: CHAT.OpenFileHandler;
   changePlan?: () => void;
@@ -76,13 +83,30 @@ function AskUserAdapter(props: ToolCallViewProps) {
 /** 时间线统一入口：按工具名分发 Edit / Read / MCP / Agent / AskUser / Generic */
 export function ToolCallView(props: ToolCallViewProps) {
   const kind = resolveToolRendererKind(props.tool);
-  if (kind === "edit") return <EditToolCall {...props} />;
-  if (kind === "read") return <ReadToolCall {...props} />;
-  if (kind === "mcp") return <McpToolCall {...props} />;
-  if (kind === "agent") return <SubAgentToolCall {...props} />;
-  if (kind === "askuser") return <AskUserAdapter {...props} />;
-  if (kind === "desktop") return <DesktopControlCard tool={props.tool} />;
-  return <GenericToolCall {...props} />;
+  // 进场淡入挂在最外层：ZCode 也是包在 `div.w-full` 上，而不是卡片内部。
+  // 去重按 toolId，避免历史重放 / 虚拟列表重挂时整屏闪。
+  const shouldAnimateEntrance = useToolEntranceAnimation(
+    resolveToolKey(props.tool),
+    Boolean(props.streaming)
+  );
+
+  let content: ReactNode;
+  if (kind === "edit") content = <EditToolCall {...props} />;
+  else if (kind === "read") content = <ReadToolCall {...props} />;
+  else if (kind === "mcp") content = <McpToolCall {...props} />;
+  else if (kind === "agent") content = <SubAgentToolCall {...props} />;
+  else if (kind === "askuser") content = <AskUserAdapter {...props} />;
+  else if (kind === "desktop") content = <DesktopControlCard tool={props.tool} />;
+  else content = <GenericToolCall {...props} />;
+
+  return (
+    <div
+      className="w-full"
+      data-zcode-tool-stream-animate={shouldAnimateEntrance ? "true" : undefined}
+    >
+      {content}
+    </div>
+  );
 }
 
 export { resolveStackPosition, aggregateToolStatuses };
