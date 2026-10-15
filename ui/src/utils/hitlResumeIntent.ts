@@ -25,6 +25,36 @@ export function resolveHitlResumeIntent(
   return "none";
 }
 
+/**
+ * 页内派发去重窗口：快速切会话 / StrictMode 双调用会在毫秒级重复派发同一个
+ * resumeRequestId。窗口不宜过长，避免某次派发失败后连刷新都无法重试。
+ */
+const RESUME_DISPATCH_TTL_MS = 15_000;
+
+const dispatchedAt = new Map<string, number>();
+
+/** 返回 true 表示本次可以派发（已登记占位）。key 为空时不做去重。 */
+export function claimHitlResumeDispatch(key: string): boolean {
+  if (!key) {
+    return true;
+  }
+  const at = dispatchedAt.get(key);
+  if (typeof at === "number" && Date.now() - at < RESUME_DISPATCH_TTL_MS) {
+    return false;
+  }
+  dispatchedAt.set(key, Date.now());
+  return true;
+}
+
+/** 供单测清理去重表 */
+export function resetHitlResumeDispatch(key?: string): void {
+  if (key) {
+    dispatchedAt.delete(key);
+    return;
+  }
+  dispatchedAt.clear();
+}
+
 /** 把「运行中」标记打到指定 chat 上（loading + RUNNING + 推进提示） */
 export function markChatResuming(chat: CHAT.ChatItem): CHAT.ChatItem {
   return {

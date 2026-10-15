@@ -6,6 +6,7 @@ import {
 import { buildConversationTaskData, combineData } from "@/utils/chat";
 import { applyWaitingUserInputState } from "@/components/ChatView/streamState";
 import {
+  claimHitlResumeDispatch,
   markChatResuming,
   markChatSettled,
   resolveHitlResumeIntent,
@@ -242,6 +243,10 @@ export async function restoreAskUserQuestionsForSession(
     if (autoResumes.length) {
       window.setTimeout(() => {
         for (const item of autoResumes) {
+          // 快速切会话 / StrictMode 双调用可能重复派发同一个 resumeRequestId
+          if (!claimHitlResumeDispatch(`ask-user::${item.resumeRequestId}`)) {
+            continue;
+          }
           dispatchAskUserResume(item);
         }
       }, 0);

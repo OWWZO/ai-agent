@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { resolveHitlResumeIntent } from "./hitlResumeIntent";
+import { beforeEach, describe, expect, it } from "vitest";
+import {
+  claimHitlResumeDispatch,
+  resetHitlResumeDispatch,
+  resolveHitlResumeIntent,
+} from "./hitlResumeIntent";
 
 describe("resolveHitlResumeIntent", () => {
   it("空 / RESUME_PENDING → 补发 resume", () => {
@@ -16,5 +20,22 @@ describe("resolveHitlResumeIntent", () => {
     expect(resolveHitlResumeIntent("ANSWERED")).toBe("none");
     expect(resolveHitlResumeIntent("CANCELLED")).toBe("none");
     expect(resolveHitlResumeIntent("TIMEOUT")).toBe("none");
+  });
+});
+
+describe("claimHitlResumeDispatch", () => {
+  beforeEach(() => {
+    resetHitlResumeDispatch();
+  });
+
+  it("同一个 resumeRequestId 在窗口内只放行一次", () => {
+    expect(claimHitlResumeDispatch("resume_1")).toBe(true);
+    expect(claimHitlResumeDispatch("resume_1")).toBe(false);
+    expect(claimHitlResumeDispatch("resume_2")).toBe(true);
+  });
+
+  it("空 key 不做去重", () => {
+    expect(claimHitlResumeDispatch("")).toBe(true);
+    expect(claimHitlResumeDispatch("")).toBe(true);
   });
 });
