@@ -49,7 +49,7 @@ public class AgentSessionStreamHubTest {
         String sessionId = "session-serial";
         SessionProjectionRegistry projectionRegistry = new SessionProjectionRegistry();
         for (int i = 0; i < AgentSessionStreamHub.MAX_STREAMS_PER_OWNER; i++) {
-            hub.open(sessionId, hub.reserve(ownerKey), 0L);
+            hub.open(sessionId, hub.reserve(ownerKey, AgentSessionStreamHub.StreamKind.CONVERSATION), 0L);
 
             AgentExecutionCommand request = new AgentExecutionCommand();
             request.setRequestId("request-" + i);
@@ -72,7 +72,7 @@ public class AgentSessionStreamHubTest {
             }
         }
 
-        hub.reserve(ownerKey).close();
+        hub.reserve(ownerKey, AgentSessionStreamHub.StreamKind.CONVERSATION).close();
         Assert.assertEquals("最后一个 run 完成后应关闭观察流", 0, hub.connectionCount());
     }
 
@@ -93,11 +93,11 @@ public class AgentSessionStreamHubTest {
 
         String ownerKey = "user-1";
         for (int i = 0; i < AgentSessionStreamHub.MAX_STREAMS_PER_OWNER; i++) {
-            hub.open("session-" + i, hub.reserve(ownerKey), 0L);
+            hub.open("session-" + i, hub.reserve(ownerKey, AgentSessionStreamHub.StreamKind.CONVERSATION), 0L);
             abortLatestStream(hub);
         }
 
-        hub.reserve(ownerKey).close();
+        hub.reserve(ownerKey, AgentSessionStreamHub.StreamKind.CONVERSATION).close();
         Assert.assertEquals("已断开的观察流不应继续占用连接槽位", 0, hub.connectionCount());
     }
 

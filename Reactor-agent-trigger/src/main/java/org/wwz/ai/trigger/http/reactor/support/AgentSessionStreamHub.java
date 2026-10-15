@@ -35,6 +35,52 @@ import java.util.concurrent.atomic.AtomicReference;
 public class AgentSessionStreamHub implements AgentSessionEventBus {
 
     public static final int MAX_STREAMS_PER_OWNER = 3;
+    /**
+     * 子会话观察流的独立配额。
+     * <p>
+     * 子 Agent 详情面板是<b>只读观察通道</b>，由已经占着一条主对话流的页面派生出来。
+     * 与主对话流共用同一份 3 条配额时，「开两个对话页 + 打开一个子 Agent 详情」就会打满，
+     * 第 4 条请求（无论来自对话页还是详情面板）直接 429 —— 详情面板本可优雅降级，
+     * 却把用户的对话流挤掉了。两者生命周期、代价、可降级性都不同，因此分桶计数。
+     * <p>
+     * 上限取 8：单个 run 的并发子代理闸门是 4，留一倍余量给「多个对话页各开一个详情面板」，
+     * 同时仍然封住「一次派发 N 个子代理就开 N 条长连接」的无界增长。
+     */
+    public static final int MAX_OBSERVE_STREAMS_PER_OWNER = 8;
+
+    /**
+     * 观察流配额分桶。{@code bucketSuffix} 参与计数键，保证两个桶互不干扰。
+     */
+    public enum StreamKind {
+        CONVERSATION("", MAX_STREAMS_PER_OWNER, "并发对话流", "请关闭其它对话页后重试"),
+        SUB_AGENT("#observe", MAX_OBSERVE_STREAMS_PER_OWNER, "并发子会话观察流",
+                "请关闭其它子 Agent 详情面板后重试");
+
+        private final String bucketSuffix;
+        private final int limit;
+        private final String label;
+        private final String advice;
+
+        StreamKind(String bucketSuffix, int limit, String label, String advice) {
+            this.bucketSuffix = bucketSuffix;
+            this.limit = limit;
+            this.label = label;
+            this.advice = advice;
+        }
+
+        public int limit() {
+            return limit;
+        }
+
+        public String limitMessage() {
+            return label + "已达上限（" + limit + "），" + advice;
+        }
+
+        private String bucketKey(String ownerKey) {
+            return ownerKey + bucketSuffix;
+        }
+    }
+
     private static final long FOLLOW_PARK_INTERVAL_MS = 200L;
     private static final int FOLLOW_PARK_MAX_TICKS = 50;
 
@@ -80,18 +126,19 @@ public class AgentSessionStreamHub implements AgentSessionEventBus {
         }
     }
 
-    public StreamReservation reserve(String ownerKey) {
-        acquireSlot(ownerKey);
-        return new StreamReservation(ownerKey);
+    public StreamReservation reserve(String ownerKey, StreamKind kind) {
+        acquireSlot(ownerKey, kind);
+        return new StreamReservation(ownerKey, kind);
     }
 
     public SseEmitter open(String sessionId, StreamReservation reservation, long lastEventSeq) {
-        String ownerKey = reservation.transfer();
+        // transfer 之后槽位由 Conn 持有，这里的值已经是计数桶键（ownerKey + kind 后缀）。
+        String bucketKey = reservation.transfer();
         Conn created = null;
         try {
             SseEmitter emitter = SseLifecycleSupport.createLongLivedEmitter();
             SseEmitterAgentSessionStream stream = new SseEmitterAgentSessionStream(emitter);
-            final Conn conn = new Conn(sessionId, emitter, stream, ownerKey);
+            final Conn conn = new Conn(sessionId, emitter, stream, bucketKey);
             created = conn;
             byEmitter.put(emitter, conn);
             bySession.computeIfAbsent(sessionId, key -> new CopyOnWriteArrayList<>()).add(conn);
@@ -132,7 +179,7 @@ public class AgentSessionStreamHub implements AgentSessionEventBus {
             if (created != null) {
                 created.close(true);
             } else {
-                releaseSlot(ownerKey);
+                releaseSlot(bucketKey);
             }
             throw e;
         }
@@ -172,30 +219,30 @@ public class AgentSessionStreamHub implements AgentSessionEventBus {
         conn.stream.onAbort(() -> cancelPark(futureRef));
     }
 
-    private void acquireSlot(String ownerKey) {
+    private void acquireSlot(String ownerKey, StreamKind kind) {
         if (ownerKey == null) {
             return;
         }
+        String bucketKey = kind.bucketKey(ownerKey);
         AtomicBoolean acquired = new AtomicBoolean(false);
-        ownerCounts.compute(ownerKey, (key, existing) -> {
+        ownerCounts.compute(bucketKey, (key, existing) -> {
             AtomicInteger counter = existing == null ? new AtomicInteger() : existing;
-            if (counter.get() < MAX_STREAMS_PER_OWNER) {
+            if (counter.get() < kind.limit()) {
                 counter.incrementAndGet();
                 acquired.set(true);
             }
             return counter;
         });
         if (!acquired.get()) {
-            throw new AgentStreamLimitException(
-                    "并发对话流已达上限（" + MAX_STREAMS_PER_OWNER + "），请关闭其它对话页后重试");
+            throw new AgentStreamLimitException(kind.limitMessage());
         }
     }
 
-    private void releaseSlot(String ownerKey) {
-        if (ownerKey == null) {
+    private void releaseSlot(String bucketKey) {
+        if (bucketKey == null) {
             return;
         }
-        ownerCounts.computeIfPresent(ownerKey, (key, counter) -> {
+        ownerCounts.computeIfPresent(bucketKey, (key, counter) -> {
             if (counter.decrementAndGet() <= 0) {
                 return null;
             }
@@ -211,23 +258,24 @@ public class AgentSessionStreamHub implements AgentSessionEventBus {
     }
 
     public final class StreamReservation {
-        private final String ownerKey;
+        /** 计数桶键（= ownerKey + kind 后缀），transfer 之后由 Conn 持有。 */
+        private final String bucketKey;
         private final AtomicBoolean transferred = new AtomicBoolean(false);
 
-        private StreamReservation(String ownerKey) {
-            this.ownerKey = ownerKey;
+        private StreamReservation(String ownerKey, StreamKind kind) {
+            this.bucketKey = ownerKey == null ? null : kind.bucketKey(ownerKey);
         }
 
         private String transfer() {
             if (!transferred.compareAndSet(false, true)) {
                 throw new IllegalStateException("stream reservation already used");
             }
-            return ownerKey;
+            return bucketKey;
         }
 
         public void close() {
             if (transferred.compareAndSet(false, true)) {
-                releaseSlot(ownerKey);
+                releaseSlot(bucketKey);
             }
         }
     }
@@ -236,7 +284,7 @@ public class AgentSessionStreamHub implements AgentSessionEventBus {
         private final String sessionId;
         private final SseEmitter emitter;
         private final SseEmitterAgentSessionStream stream;
-        private final String ownerKey;
+        private final String bucketKey;
         private final Object lock = new Object();
         private final ArrayDeque<AgentSessionStreamFrame> queued = new ArrayDeque<>();
         private final AtomicBoolean closed = new AtomicBoolean(false);
@@ -248,11 +296,11 @@ public class AgentSessionStreamHub implements AgentSessionEventBus {
         private Conn(String sessionId,
                      SseEmitter emitter,
                      SseEmitterAgentSessionStream stream,
-                     String ownerKey) {
+                     String bucketKey) {
             this.sessionId = sessionId;
             this.emitter = emitter;
             this.stream = stream;
-            this.ownerKey = ownerKey;
+            this.bucketKey = bucketKey;
         }
 
         private void attachHeartbeat(ScheduledFuture<?> heartbeat) {
@@ -338,7 +386,7 @@ public class AgentSessionStreamHub implements AgentSessionEventBus {
             if (heartbeat != null) {
                 heartbeat.cancel(false);
             }
-            releaseSlot(ownerKey);
+            releaseSlot(bucketKey);
             if (completeEmitter) {
                 try {
                     stream.complete();
