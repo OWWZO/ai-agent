@@ -5,6 +5,11 @@ import {
 } from "@/services/planApproval";
 import { buildConversationTaskData, combineData } from "@/utils/chat";
 import { applyWaitingUserInputState } from "@/components/ChatView/streamState";
+import {
+  markChatResuming,
+  markChatSettled,
+  resolveHitlResumeIntent,
+} from "@/utils/hitlResumeIntent";
 
 function chatHasApproval(chat: CHAT.ChatItem, approvalId: string): boolean {
   if (!approvalId) {
@@ -170,29 +175,34 @@ export function mergePendingPlanApprovals(
     if (clientStatus === "pending") {
       chat = applyWaitingUserInputState(chat);
     } else if (clientStatus === "decided") {
-      const resumePending =
-        !persistenceStatus ||
-        persistenceStatus === "RESUME_PENDING" ||
-        persistenceStatus === "RESUMING";
-      chat = {
-        ...chat,
-        loading: resumePending,
-        tip: resumePending ? "正在推进任务…" : "",
-        metrics: {
-          ...(chat.metrics || {}),
-          status: resumePending ? "RUNNING" : "SUCCESS",
-        },
-      };
       const resumeRequestId = String(payload.resumeRequestId || "");
-      if (resumeRequestId && resumePending) {
-        autoResumes.push({
-          resumeRequestId,
-          sessionId: String(payload.sessionId || conversation.sessionId || ""),
-          approvalId,
-          ...(typeof payload.approved === "boolean"
-            ? { approved: payload.approved }
-            : {}),
-        });
+      const intent = resolveHitlResumeIntent(persistenceStatus);
+      if (intent === "submit") {
+        chat = markChatResuming(chat);
+        if (resumeRequestId) {
+          autoResumes.push({
+            resumeRequestId,
+            sessionId: String(payload.sessionId || conversation.sessionId || ""),
+            approvalId,
+            ...(typeof payload.approved === "boolean"
+              ? { approved: payload.approved }
+              : {}),
+          });
+        }
+      } else if (intent === "observe") {
+        // 续跑正在飞：不重发 resume（否则后端 409），并把「运行中」标到续跑轮，
+        // 避免续跑收口后源轮成为唯一可 follow 的轮、观察流挂到无投影的 requestId。
+        const resumeIndex = resumeRequestId
+          ? chatList.findIndex((item) => item.requestId === resumeRequestId)
+          : -1;
+        if (resumeIndex >= 0 && resumeIndex !== index) {
+          chat = markChatSettled(chat);
+          chatList[resumeIndex] = markChatResuming(chatList[resumeIndex]);
+        } else {
+          chat = markChatResuming(chat);
+        }
+      } else {
+        chat = markChatSettled(chat);
       }
     } else if (clientStatus === "cancelled" || clientStatus === "timeout") {
       chat = {

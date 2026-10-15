@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mergePendingAskUserQuestions } from "./askUserRestore";
+import { resolveHitlResumeIntent } from "./hitlResumeIntent";
 
 function emptyChat(requestId: string): CHAT.ChatItem {
   return {
@@ -38,7 +39,13 @@ describe("mergePendingAskUserQuestions", () => {
         sessionId: "s1",
         requestId: "r1",
         status: "pending",
-        questions: [{ question: "选哪个？", header: "方向", options: [{ label: "A" }] }],
+        questions: [
+          {
+            question: "选哪个？",
+            header: "方向",
+            options: [{ label: "A" }],
+          },
+        ],
       },
     ]);
 
@@ -84,7 +91,13 @@ describe("mergePendingAskUserQuestions", () => {
         requestId: "r1",
         status: "answered",
         resumeRequestId: "resume_abc",
-        questions: [{ question: "选哪个？", header: "方向", options: [{ label: "A" }] }],
+        questions: [
+          {
+            question: "选哪个？",
+            header: "方向",
+            options: [{ label: "A" }],
+          },
+        ],
       },
     ]);
 
@@ -120,7 +133,13 @@ describe("mergePendingAskUserQuestions", () => {
         status: "answered",
         resumeRequestId: "resume_xyz",
         answers: { "选哪个？": "A" },
-        questions: [{ question: "选哪个？", header: "方向", options: [{ label: "A" }] }],
+        questions: [
+          {
+            question: "选哪个？",
+            header: "方向",
+            options: [{ label: "A" }],
+          },
+        ],
       },
     ]);
 
@@ -159,13 +178,148 @@ describe("mergePendingAskUserQuestions", () => {
         persistenceStatus: "ANSWERED",
         resumeRequestId: "resume_finished",
         answers: { "选哪个？": "A" },
-        questions: [{ question: "选哪个？", header: "方向", options: [{ label: "A" }] }],
+        questions: [
+          {
+            question: "选哪个？",
+            header: "方向",
+            options: [{ label: "A" }],
+          },
+        ],
       },
     ]);
 
     expect(next.chatList[0].metrics?.status).toBe("SUCCESS");
     expect(next.chatList[0].loading).toBe(false);
     expect(autoResumes).toHaveLength(0);
+  });
+
+  it("RESUMING 不再重复派发 resume（后端会 409），且源轮不被标成运行中", () => {
+    const conversation = {
+      id: "c1",
+      sessionId: "s1",
+      title: "t",
+      productType: "html",
+      deepThink: true,
+      role: null,
+      createdAt: 1,
+      updatedAt: 1,
+      chatList: [emptyChat("r1"), emptyChat("resume_running")],
+      dataChatList: [],
+    } as unknown as CHAT.ConversationHistory;
+
+    const { conversation: next, autoResumes } = mergePendingAskUserQuestions(conversation, [
+      {
+        questionId: "uq_6",
+        sessionId: "s1",
+        requestId: "r1",
+        status: "answered",
+        persistenceStatus: "RESUMING",
+        resumeRequestId: "resume_running",
+        answers: { "选哪个？": "A" },
+        questions: [
+          {
+            question: "选哪个？",
+            header: "方向",
+            options: [{ label: "A" }],
+          },
+        ],
+      },
+    ]);
+
+    // 续跑在飞时重发 resume 会撞后端「续跑已在进行中」
+    expect(autoResumes).toHaveLength(0);
+    // 运行中标记必须落在续跑轮，而不是源轮
+    expect(next.chatList[0].loading).toBe(false);
+    expect(next.chatList[0].metrics?.status).toBe("SUCCESS");
+    expect(next.chatList[1].loading).toBe(true);
+    expect(next.chatList[1].metrics?.status).toBe("RUNNING");
+    expect(next.chatList[1].tip).toBe("正在推进任务…");
+  });
+
+  it("RESUMING 但续跑轮不在快照里时回退标源轮，保证仍有在跑指示", () => {
+    const conversation = {
+      id: "c1",
+      sessionId: "s1",
+      title: "t",
+      productType: "html",
+      deepThink: true,
+      role: null,
+      createdAt: 1,
+      updatedAt: 1,
+      chatList: [emptyChat("r1")],
+      dataChatList: [],
+    } as unknown as CHAT.ConversationHistory;
+
+    const { conversation: next, autoResumes } = mergePendingAskUserQuestions(conversation, [
+      {
+        questionId: "uq_7",
+        sessionId: "s1",
+        requestId: "r1",
+        status: "answered",
+        persistenceStatus: "RESUMING",
+        resumeRequestId: "resume_not_loaded",
+        questions: [
+          {
+            question: "选哪个？",
+            header: "方向",
+            options: [{ label: "A" }],
+          },
+        ],
+      },
+    ]);
+
+    expect(autoResumes).toHaveLength(0);
+    expect(next.chatList[0].loading).toBe(true);
+    expect(next.chatList[0].metrics?.status).toBe("RUNNING");
+  });
+
+  it("RESUME_PENDING 仍然补发 resume", () => {
+    const conversation = {
+      id: "c1",
+      sessionId: "s1",
+      title: "t",
+      productType: "html",
+      deepThink: true,
+      role: null,
+      createdAt: 1,
+      updatedAt: 1,
+      chatList: [emptyChat("r1")],
+      dataChatList: [],
+    } as unknown as CHAT.ConversationHistory;
+
+    const { conversation: next, autoResumes } = mergePendingAskUserQuestions(conversation, [
+      {
+        questionId: "uq_8",
+        sessionId: "s1",
+        requestId: "r1",
+        status: "answered",
+        persistenceStatus: "RESUME_PENDING",
+        resumeRequestId: "resume_pending_1",
+        answers: { "选哪个？": "A" },
+        questions: [
+          {
+            question: "选哪个？",
+            header: "方向",
+            options: [{ label: "A" }],
+          },
+        ],
+      },
+    ]);
+
+    expect(autoResumes).toHaveLength(1);
+    expect(autoResumes[0]?.resumeRequestId).toBe("resume_pending_1");
+    expect(next.chatList[0].loading).toBe(true);
+    expect(next.chatList[0].metrics?.status).toBe("RUNNING");
+  });
+
+  it("resolveHitlResumeIntent 三态判定", () => {
+    expect(resolveHitlResumeIntent("")).toBe("submit");
+    expect(resolveHitlResumeIntent(undefined)).toBe("submit");
+    expect(resolveHitlResumeIntent("RESUME_PENDING")).toBe("submit");
+    expect(resolveHitlResumeIntent("RESUMING")).toBe("observe");
+    expect(resolveHitlResumeIntent("resuming")).toBe("observe");
+    expect(resolveHitlResumeIntent("ANSWERED")).toBe("none");
+    expect(resolveHitlResumeIntent("CANCELLED")).toBe("none");
   });
 
   it("updates an existing history card by toolCallId when questionId is missing", () => {

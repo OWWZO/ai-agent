@@ -86,4 +86,37 @@ describe("planApprovalRestore", () => {
     ]);
     expect(result.conversation.chatList[0].metrics?.status).toBe("RUNNING");
   });
+
+  it("does not dispatch resume while the continuation is already resuming", () => {
+    const base = conversation();
+    base.chatList.push({
+      sessionId: "session-1",
+      requestId: "resume-running",
+      query: "执行任务",
+      files: [],
+      forceStop: false,
+      loading: false,
+      tasks: [],
+      multiAgent: { tasks: [] },
+      metrics: { status: "RUNNING" },
+    } as unknown as CHAT.ChatItem);
+
+    const result = mergePendingPlanApprovals(base, [
+      {
+        approvalId: "approval-1",
+        requestId: "request-1",
+        status: "decided",
+        persistenceStatus: "RESUMING",
+        resumeRequestId: "resume-running",
+      },
+    ]);
+
+    expect(result.autoResumes).toHaveLength(0);
+    // 源轮收口，避免续跑结束后它成为唯一可 follow 的轮
+    expect(result.conversation.chatList[0].metrics?.status).toBe("SUCCESS");
+    expect(result.conversation.chatList[0].loading).toBe(false);
+    // 运行中标记落在续跑轮
+    expect(result.conversation.chatList[1].metrics?.status).toBe("RUNNING");
+    expect(result.conversation.chatList[1].loading).toBe(true);
+  });
 });

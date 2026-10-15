@@ -5,6 +5,11 @@ import {
 } from "@/services/askUser";
 import { buildConversationTaskData, combineData } from "@/utils/chat";
 import { applyWaitingUserInputState } from "@/components/ChatView/streamState";
+import {
+  markChatResuming,
+  markChatSettled,
+  resolveHitlResumeIntent,
+} from "@/utils/hitlResumeIntent";
 
 function chatHasQuestion(
   chat: CHAT.ChatItem,
@@ -165,30 +170,39 @@ export function mergePendingAskUserQuestions(
     if (clientStatus === "pending") {
       chat = applyWaitingUserInputState(chat);
     } else if (clientStatus === "answered") {
-      const resumePending =
-        !persistenceStatus ||
-        persistenceStatus === "RESUME_PENDING" ||
-        persistenceStatus === "RESUMING";
-      chat = {
-        ...chat,
-        loading: resumePending,
-        tip: resumePending ? "正在推进任务…" : "",
-        metrics: {
-          ...(chat.metrics || {}),
-          status: resumePending ? "RUNNING" : "SUCCESS",
-        },
-      };
       const resumeRequestId = String(payload.resumeRequestId || "");
-      if (resumeRequestId && resumePending) {
-        autoResumes.push({
-          resumeRequestId,
-          sessionId: String(payload.sessionId || conversation.sessionId || ""),
-          questionId,
-          answers:
-            payload.answers && typeof payload.answers === "object"
-              ? (payload.answers as Record<string, string>)
-              : undefined,
-        });
+      const intent = resolveHitlResumeIntent(persistenceStatus);
+      if (intent === "submit") {
+        // 答案已落库但续跑未发出：补发 resume。resumeHitlRun 会把源轮原地替换成
+        // requestId = resumeRequestId，不会留下僵尸源轮，所以标源轮是安全的。
+        chat = markChatResuming(chat);
+        if (resumeRequestId) {
+          autoResumes.push({
+            resumeRequestId,
+            sessionId: String(payload.sessionId || conversation.sessionId || ""),
+            questionId,
+            answers:
+              payload.answers && typeof payload.answers === "object"
+                ? (payload.answers as Record<string, string>)
+                : undefined,
+          });
+        }
+      } else if (intent === "observe") {
+        // 续跑正在飞：绝不能重发 resume（后端会 409「续跑已在进行中」）。
+        // 同时「运行中」必须标在续跑轮上而不是源轮——否则续跑收口后源轮会成为
+        // 唯一可 follow 的轮，观察流挂到一个早已没有投影的 requestId 上。
+        const resumeIndex = resumeRequestId
+          ? chatList.findIndex((item) => item.requestId === resumeRequestId)
+          : -1;
+        if (resumeIndex >= 0 && resumeIndex !== index) {
+          chat = markChatSettled(chat);
+          chatList[resumeIndex] = markChatResuming(chatList[resumeIndex]);
+        } else {
+          // 历史分页里还没有续跑轮：退回标源轮，保证界面上仍有「在跑」的指示
+          chat = markChatResuming(chat);
+        }
+      } else {
+        chat = markChatSettled(chat);
       }
     }
 
