@@ -306,6 +306,12 @@ public class AgentContext {
     String subAgentDescription;
 
     /**
+     * 子 Agent 对应的真实子会话 ID（{@code sub_{agentId}}）。
+     * 仅 SubAgentContextFactory 写入；用于把子帧路由到独立子会话流（Phase 3）。
+     */
+    String subAgentChildSessionId;
+
+    /**
      * 当前请求的执行账本写入器。
      * 根节点初始化后挂入，LLM / BaseAgent / Summary 等运行时统一复用。
      */

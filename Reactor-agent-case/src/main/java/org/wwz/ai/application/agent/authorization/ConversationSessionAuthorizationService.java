@@ -9,6 +9,7 @@ import org.wwz.ai.domain.agent.ledger.IExecutionLedgerWriteRepository;
 import org.wwz.ai.domain.agent.ledger.entity.DialogueSession;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionUpsertRecord;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
+import org.wwz.ai.domain.agent.ledger.model.SessionKind;
 import org.wwz.ai.domain.agent.memory.ltm.LtmManager;
 
 import java.time.LocalDateTime;
@@ -26,14 +27,39 @@ public class ConversationSessionAuthorizationService {
     private final ObjectProvider<LtmManager> ltmManagerProvider;
 
     /**
-     * 首次访问时绑定 session 归属，已有归属时校验是否仍属于当前用户。
+     * 交互入口：校验归属，且会话必须是可交互的用户会话。
+     * <p>
+     * 子智能体隐藏会话（{@code session_kind=subagent}）为只读，禁止提交新 query / 继续对话 / 上传附件。
      */
     public DialogueSession ensureSessionAccessible(String userId, String sessionId, String queryText) {
         return ensureSessionAccessible(userId, sessionId, queryText, true);
     }
 
     /**
-     * 只校验既有会话的归属，不允许因为探测或详情请求自动创建空会话。
+     * 续跑入口：校验归属，且会话必须是可交互的用户会话。
+     * <p>
+     * 与 {@link #ensureExistingSessionAccessible} 的区别在于：本方法拒绝只读会话。
+     * resume（计划审批 / 追问 / 桌面控制）属于交互行为，子会话不可参与。
+     */
+    public DialogueSession ensureInteractiveSessionAccessible(String userId, String sessionId) {
+        if (StringUtils.isAnyBlank(userId, sessionId)) {
+            throw new IllegalArgumentException("userId 和 sessionId 不能为空");
+        }
+        DialogueSession session = executionLedgerReadRepository.querySessionEntity(sessionId);
+        if (session == null) {
+            throw new SessionOwnershipDeniedException("当前会话不存在");
+        }
+        assertInteractive(session);
+        if (!StringUtils.equals(session.getUserId(), userId)) {
+            throw new SessionOwnershipDeniedException("当前用户无权访问该会话");
+        }
+        return session;
+    }
+
+    /**
+     * 只读访问：owner 可读取 history / stream，包含子智能体隐藏会话。
+     * <p>
+     * 不允许因为探测或详情请求自动创建空会话。
      */
     public DialogueSession ensureExistingSessionAccessible(String userId, String sessionId) {
         if (StringUtils.isAnyBlank(userId, sessionId)) {
@@ -98,6 +124,8 @@ public class ConversationSessionAuthorizationService {
             notifyLtmNewSession(sessionId);
             return executionLedgerWriteRepository.querySessionBySessionId(sessionId);
         }
+        // 只读会话（子智能体隐藏会话）不得作为交互会话继续使用
+        assertInteractive(existing);
         if (StringUtils.isBlank(existing.getUserId())) {
             executionLedgerWriteRepository.upsertSession(DialogueSessionUpsertRecord.builder()
                     .sessionId(existing.getSessionId())
@@ -119,6 +147,20 @@ public class ConversationSessionAuthorizationService {
             throw new SessionOwnershipDeniedException("当前用户无权访问该会话");
         }
         return existing;
+    }
+
+    /**
+     * 断言会话可交互。未知/缺失类型按 fail-closed 处理（见 {@link SessionKind#fromCode}）。
+     */
+    private static void assertInteractive(DialogueSession session) {
+        if (session == null) {
+            return;
+        }
+        SessionKind kind = SessionKind.fromCode(session.getSessionKind());
+        if (kind != SessionKind.CONVERSATION) {
+            throw new SessionNotInteractiveException(
+                    "该会话为只读会话（" + kind.code() + "），不支持继续对话或续跑");
+        }
     }
 
     /**

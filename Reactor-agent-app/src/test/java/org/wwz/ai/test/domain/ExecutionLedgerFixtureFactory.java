@@ -18,6 +18,7 @@ import org.wwz.ai.domain.agent.ledger.model.DialogueSessionUpsertRecord;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionView;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationStartRecord;
+import org.wwz.ai.domain.agent.ledger.model.SessionKind;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputPersistCommand;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputView;
@@ -530,6 +531,9 @@ public final class ExecutionLedgerFixtureFactory {
                 session = DialogueSession.builder()
                         .id(store.nextSessionId++)
                         .sessionId(record.getSessionId())
+                        // 身份列仅在建行时写入，与生产 SQL 的 ON DUPLICATE 语义一致
+                        .sessionKind(defaultSessionKind(record.getSessionKind()))
+                        .parentSessionId(record.getParentSessionId())
                         .createTime(LocalDateTime.now())
                         .deleted(0)
                         .build();
@@ -565,6 +569,8 @@ public final class ExecutionLedgerFixtureFactory {
                 session = DialogueSession.builder()
                         .id(store.nextSessionId++)
                         .sessionId(record.getSessionId())
+                        .sessionKind(defaultSessionKind(record.getSessionKind()))
+                        .parentSessionId(record.getParentSessionId())
                         .runCount(1)
                         .finishedRunCount(0)
                         .failedRunCount(0)
@@ -638,6 +644,7 @@ public final class ExecutionLedgerFixtureFactory {
                     .id(session.getId())
                     .sessionId(session.getSessionId())
                     .userId(session.getUserId())
+                    .sessionKind(session.getSessionKind())
                     .deleted(session.getDeleted())
                     .build();
         }
@@ -657,6 +664,7 @@ public final class ExecutionLedgerFixtureFactory {
         public List<DialogueSessionView> queryRecentSessions(int limit) {
             return store.sessions.values().stream()
                     .filter(item -> item.getDeleted() == 0)
+                    .filter(ExecutionLedgerFixtureFactory::isListableSession)
                     .sorted(Comparator.comparing(DialogueSession::getLastActiveAt, Comparator.nullsLast(Comparator.reverseOrder()))
                             .thenComparing(DialogueSession::getId, Comparator.reverseOrder()))
                     .limit(limit)
@@ -677,6 +685,7 @@ public final class ExecutionLedgerFixtureFactory {
         public List<DialogueSessionView> queryRecentSessionsByUserId(String userId, int limit) {
             return store.sessions.values().stream()
                     .filter(item -> item.getDeleted() == 0 && equalsNullable(userId, item.getUserId()))
+                    .filter(ExecutionLedgerFixtureFactory::isListableSession)
                     .sorted(Comparator.comparing(DialogueSession::getLastActiveAt, Comparator.nullsLast(Comparator.reverseOrder()))
                             .thenComparing(DialogueSession::getId, Comparator.reverseOrder()))
                     .limit(limit)
@@ -691,6 +700,7 @@ public final class ExecutionLedgerFixtureFactory {
                                                                           int limit) {
             return store.sessions.values().stream()
                     .filter(item -> item.getDeleted() == 0 && equalsNullable(userId, item.getUserId()))
+                    .filter(ExecutionLedgerFixtureFactory::isListableSession)
                     .filter(item -> isAfterSessionCursor(item, afterLastActiveAt, afterId))
                     .sorted(Comparator.comparing(DialogueSession::getLastActiveAt,
                                     Comparator.nullsLast(Comparator.reverseOrder()))
@@ -1101,6 +1111,8 @@ public final class ExecutionLedgerFixtureFactory {
                 .id(session.getId())
                 .sessionId(session.getSessionId())
                 .userId(session.getUserId())
+                .sessionKind(session.getSessionKind())
+                .parentSessionId(session.getParentSessionId())
                 .title(session.getTitle())
                 .status(session.getStatus())
                 .latestRequestId(session.getLatestRequestId())
@@ -1224,6 +1236,17 @@ public final class ExecutionLedgerFixtureFactory {
         return value == null || value.isBlank();
     }
 
+    private static String defaultSessionKind(String kind) {
+        return isBlank(kind) ? "conversation" : kind;
+    }
+
+    /**
+     * 与生产 SQL 的 {@code session_kind = 'conversation'} 白名单对齐：只有用户会话进侧栏列表。
+     */
+    private static boolean isListableSession(DialogueSession session) {
+        return session != null && SessionKind.isListableCode(session.getSessionKind());
+    }
+
     private static DialogueRunView toRunView(DialogueRun run) {
         return DialogueRunView.builder()
                 .id(run.getId())
@@ -1255,6 +1278,8 @@ public final class ExecutionLedgerFixtureFactory {
                 .id(session.getId())
                 .sessionId(session.getSessionId())
                 .userId(session.getUserId())
+                .sessionKind(session.getSessionKind())
+                .parentSessionId(session.getParentSessionId())
                 .title(session.getTitle())
                 .status(session.getStatus())
                 .latestRequestId(session.getLatestRequestId())

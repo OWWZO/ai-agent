@@ -40,6 +40,8 @@ public class RuntimeBackgroundTask {
     /** 子 Agent id（local_agent） */
     private String agentId;
     private String agentType;
+    /** 子 Agent 对应的真实子会话 ID（{@code sub_{agentId}}）；前端据此打开只读详情 */
+    private String childSessionId;
     private String prompt;
 
     /** 终态输出 / 错误 */

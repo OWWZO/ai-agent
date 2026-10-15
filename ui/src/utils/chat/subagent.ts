@@ -19,6 +19,11 @@ export type SubAgentDisplay = {
   prompt: string;
   status: "running" | "completed" | "failed" | "unknown";
   agentId: string;
+  /**
+   * 真实子会话 ID（`sub_{agentId}`）。
+   * 非空表示该子 Agent 已落库为独立隐藏会话，右侧详情面板可据此订阅真实子会话流。
+   */
+  childSessionId: string;
   content: string;
   totalToolUseCount?: number;
   totalDurationMs?: number;
@@ -245,6 +250,7 @@ export function parseAgentObservation(text?: string) {
       status: "" as string,
       agentType: "",
       agentId: "",
+      childSessionId: "",
       totalToolUseCount: undefined as number | undefined,
       totalDurationMs: undefined as number | undefined,
       content: "",
@@ -277,6 +283,7 @@ export function parseAgentObservation(text?: string) {
       status: meta.status || "",
       agentType: meta.agentType || "",
       agentId: meta.agentId || "",
+      childSessionId: meta.childSessionId || "",
       totalToolUseCount: Number.isFinite(count) ? count : undefined,
       totalDurationMs: Number.isFinite(duration) ? duration : undefined,
       content: body || (meta.status ? "" : raw),
@@ -292,6 +299,7 @@ export function parseAgentObservation(text?: string) {
         status: asText(parsed.status),
         agentType: asText(parsed.agentType),
         agentId: asText(parsed.agentId),
+        childSessionId: asText(parsed.childSessionId),
         totalToolUseCount:
           typeof parsed.totalToolUseCount === "number" ? parsed.totalToolUseCount : undefined,
         totalDurationMs:
@@ -308,6 +316,7 @@ export function parseAgentObservation(text?: string) {
     status: "",
     agentType: "",
     agentId: "",
+    childSessionId: "",
     totalToolUseCount: undefined,
     totalDurationMs: undefined,
     content: raw,
@@ -364,6 +373,12 @@ export function resolveSubAgentDisplay(
       ? resultMap.subAgentElapsedMs
       : undefined;
 
+  // childSessionId 可能来自 observation 文本，也可能来自 resultMap（后台任务投影）
+  const childSessionId =
+    parsed.childSessionId ||
+    asText(resultMap.childSessionId) ||
+    asText(nested?.childSessionId);
+
   return {
     isAgent: isSubAgentParentTask(task),
     description,
@@ -371,6 +386,7 @@ export function resolveSubAgentDisplay(
     prompt,
     status,
     agentId: parsed.agentId,
+    childSessionId,
     content: parsed.content,
     totalToolUseCount: parsed.totalToolUseCount,
     totalDurationMs: parsed.totalDurationMs,

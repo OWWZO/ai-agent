@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.wwz.ai.domain.agent.adapter.port.SubAgentSessionPort;
 import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
 import org.wwz.ai.domain.agent.memory.WorkingMemoryScopes;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
@@ -151,36 +152,38 @@ public class SubAgentRunner {
         }
         String effectiveType = subagentType;
         SubAgentDefinition definition = registry.resolveOrDefault(effectiveType);
+        // 确定性子会话 ID：续跑复用同一个，首跑由 agentId 派生（见 SubAgentContextFactory#newChildSessionId）
+        String childSessionId = SubAgentContextFactory.newChildSessionId(agentId);
 
         if (parentContext == null) {
-            return failed(agentId, definition, description, prompt, start, "parent AgentContext 为空");
+            return failed(agentId, childSessionId, definition, description, prompt, start, "parent AgentContext 为空");
         }
         if (StringUtils.isBlank(prompt)) {
-            return failed(agentId, definition, description, prompt, start, "prompt 不能为空");
+            return failed(agentId, childSessionId, definition, description, prompt, start, "prompt 不能为空");
         }
         if (parentContext.getToolCollection() == null
                 && parentContext.getSubAgentToolCollection() == null) {
-            return failed(agentId, definition, description, prompt, start, "父 Agent 工具池为空");
+            return failed(agentId, childSessionId, definition, description, prompt, start, "父 Agent 工具池为空");
         }
 
         if (resume && sessionWorkingMemoryService == null) {
-            return failed(agentId, definition, description, prompt, start,
+            return failed(agentId, childSessionId, definition, description, prompt, start,
                     "无法唤醒子 Agent：SessionWorkingMemoryService 未注入");
         }
 
         try {
             SubAgentResult gated = concurrencyGate.runWithPermit(() ->
-                    runUnlocked(parentContext, description, prompt, definition, agentId, start, resume,
+                    runUnlocked(parentContext, description, prompt, definition, agentId, childSessionId, start, resume,
                             cancellationOverride, explicitParentToolUseId));
             if (gated == null) {
-                return failed(agentId, definition, description, prompt, start,
+                return failed(agentId, childSessionId, definition, description, prompt, start,
                         "子 Agent 并发已达上限(" + concurrencyGate.getMaxConcurrent()
                                 + ")，等待 " + concurrencyGate.getAcquireTimeoutSeconds() + "s 仍无空闲许可");
             }
             return gated;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return failed(agentId, definition, description, prompt, start, "子 Agent 等待并发许可被中断");
+            return failed(agentId, childSessionId, definition, description, prompt, start, "子 Agent 等待并发许可被中断");
         }
     }
 
@@ -189,6 +192,7 @@ public class SubAgentRunner {
                                        String prompt,
                                        SubAgentDefinition definition,
                                        String agentId,
+                                       String childSessionId,
                                        long start,
                                        boolean resume,
                                        RunCancellation cancellationOverride,
@@ -203,6 +207,12 @@ public class SubAgentRunner {
         if (StringUtils.isBlank(parentToolUseId)) {
             log.warn("{} subagent spawn without parentToolUseId type={} id={} — nested tools will not attach to Agent card",
                     parentContext.getRequestId(), definition.getAgentType(), agentId);
+        }
+        // 先落库后运行：子会话身份行必须在 child run 启动前写入（对齐 ZCode「持久化早于 Spawned 广播」）。
+        // 落库失败即中止，避免无主运行与不可查询的孤儿会话；端口缺失时降级放行（仅告警）。
+        if (!ensureChildSessionPersisted(parentContext, childSessionId, description, definition)) {
+            return failed(agentId, childSessionId, definition, description, prompt, start,
+                    "子会话身份落库失败，已中止子 Agent 启动");
         }
         AgentContext childContext = SubAgentContextFactory.create(
                 parentContext, prompt, description, childTools, agentId, definition.getAgentType(), parentToolUseId);
@@ -220,7 +230,7 @@ public class SubAgentRunner {
         // resume：每次运行需要唯一 requestId，否则 working_memory persist 幂等跳过
         if (resume) {
             if (isSubAgentStillRunning(parentContext, sessionKey, agentId)) {
-                return failed(agentId, definition, description, prompt, start,
+                return failed(agentId, childSessionId, definition, description, prompt, start,
                         "子 Agent 仍在运行，请用 TaskOutput 等待后再 resume",
                         null, false);
             }
@@ -230,7 +240,7 @@ public class SubAgentRunner {
             List<Message> prior = sessionWorkingMemoryService.loadReadyMessages(
                     parentContext.getSessionId(), memoryScope, resumeRequestId);
             if (prior == null || prior.isEmpty()) {
-                return failed(agentId, definition, description, prompt, start,
+                return failed(agentId, childSessionId, definition, description, prompt, start,
                         "无法唤醒子 Agent：未找到 agentId=" + agentId + " 的工作记忆（可能已过期或从未成功结束）",
                         null, false);
             }
@@ -287,6 +297,7 @@ public class SubAgentRunner {
                     return SubAgentResult.builder()
                             .status(SubAgentResult.STATUS_FAILED)
                             .agentId(agentId)
+                            .childSessionId(childSessionId)
                             .agentType(definition.getAgentType())
                             .description(description)
                             .prompt(prompt)
@@ -304,6 +315,7 @@ public class SubAgentRunner {
                 return SubAgentResult.builder()
                         .status(SubAgentResult.STATUS_COMPLETED)
                         .agentId(agentId)
+                        .childSessionId(childSessionId)
                         .agentType(definition.getAgentType())
                         .description(description)
                         .prompt(prompt)
@@ -324,9 +336,42 @@ public class SubAgentRunner {
             String content = buildResumeHintContent(
                     "Terminated: subagent failed: " + err, agentId, memoryPersisted);
             content = emitSubAgentFinalReply(childContext, agent, content);
-            return failed(agentId, definition, description, prompt, start, err, content, memoryPersisted);
+            return failed(agentId, childSessionId, definition, description, prompt, start, err, content, memoryPersisted);
         } finally {
             SessionAgentMailboxHub.markActive(sessionKey, agentId, false);
+        }
+    }
+
+    /**
+     * 确保子会话身份行已落库（幂等）。端口缺失时降级放行并告警，不阻断子 Agent。
+     *
+     * @return true 表示可以继续启动 child run
+     */
+    private static boolean ensureChildSessionPersisted(AgentContext parentContext,
+                                                       String childSessionId,
+                                                       String description,
+                                                       SubAgentDefinition definition) {
+        SubAgentSessionPort port = parentContext == null || parentContext.getRuntimeDependencies() == null
+                ? null
+                : parentContext.getRuntimeDependencies().getOptionalSubAgentSessionPort();
+        if (port == null) {
+            log.warn("{} subagent child session port absent, skip persist childSessionId={}",
+                    parentContext == null ? "-" : parentContext.getRequestId(), childSessionId);
+            return true;
+        }
+        String title = StringUtils.defaultIfBlank(description,
+                definition == null ? null : definition.getAgentType());
+        try {
+            port.ensureChildSession(
+                    childSessionId,
+                    parentContext.getSessionId(),
+                    parentContext.getUserId(),
+                    title);
+            return true;
+        } catch (Exception e) {
+            log.error("{} subagent child session persist failed childSessionId={} parentSessionId={}",
+                    parentContext.getRequestId(), childSessionId, parentContext.getSessionId(), e);
+            return false;
         }
     }
 
@@ -600,15 +645,17 @@ public class SubAgentRunner {
     }
 
     private static SubAgentResult failed(String agentId,
+                                         String childSessionId,
                                          SubAgentDefinition definition,
                                          String description,
                                          String prompt,
                                          long start,
                                          String errorMsg) {
-        return failed(agentId, definition, description, prompt, start, errorMsg, "", null);
+        return failed(agentId, childSessionId, definition, description, prompt, start, errorMsg, "", null);
     }
 
     private static SubAgentResult failed(String agentId,
+                                         String childSessionId,
                                          SubAgentDefinition definition,
                                          String description,
                                          String prompt,
@@ -619,6 +666,7 @@ public class SubAgentRunner {
         return SubAgentResult.builder()
                 .status(SubAgentResult.STATUS_FAILED)
                 .agentId(agentId)
+                .childSessionId(childSessionId)
                 .agentType(definition == null ? null : definition.getAgentType())
                 .description(description)
                 .prompt(prompt)

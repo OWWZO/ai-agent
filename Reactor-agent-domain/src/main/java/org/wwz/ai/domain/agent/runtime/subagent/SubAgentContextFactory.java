@@ -93,6 +93,8 @@ public final class SubAgentContextFactory {
                 .subAgentId(agentId)
                 .subAgentType(agentType)
                 .subAgentDescription(description)
+                // 确定性子会话 ID：与 SubAgentRunner 落库用的 childSessionId 必须一致
+                .subAgentChildSessionId(newChildSessionId(agentId))
                 .build();
         // 显式再钉一次，避免 builder 默认值路径漏传 skipMemory
         child.setSkipMemory(Boolean.TRUE);
@@ -134,6 +136,19 @@ public final class SubAgentContextFactory {
         String aid = StringUtils.defaultIfBlank(agentId, "unknown").trim();
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
         String id = "sub:" + aid + ":" + suffix;
+        return id.length() <= 64 ? id : id.substring(0, 64);
+    }
+
+    /**
+     * 子会话 ID（<b>确定性</b>，可由 agentId 反推）：{@code sub_{agentId}}。
+     * <p>
+     * 对齐 ZCode「子会话是协议层真实会话、ID 可由 agentId 派生」的做法：
+     * 冷恢复时无需额外映射表即可定位子会话。确定性也要求<b>续跑必须复用同一 childSessionId</b>，
+     * 否则同一次 SendMessage 唤醒会被拆成两个子会话（agentId 全局唯一，见 {@link #newAgentId()}）。
+     */
+    public static String newChildSessionId(String agentId) {
+        String aid = StringUtils.defaultIfBlank(agentId, "unknown").trim();
+        String id = "sub_" + aid;
         return id.length() <= 64 ? id : id.substring(0, 64);
     }
 }

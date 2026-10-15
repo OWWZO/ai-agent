@@ -14,6 +14,7 @@ import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteStreamPort;
+import org.wwz.ai.domain.agent.adapter.port.SubAgentSessionPort;
 import org.wwz.ai.domain.agent.runtime.llm.LlmCompletionPort;
 import org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog;
 import org.wwz.ai.domain.agent.runtime.llm.StreamResponseHandler;
@@ -113,6 +114,7 @@ public class ReactorRuntimeAutoConfiguration {
                                                                    ObjectProvider<BackgroundReviewService> backgroundReviewServiceProvider,
                                                                    ObjectProvider<LtmProperties> ltmPropertiesProvider,
                                                                    ObjectProvider<TasklistPersistencePort> tasklistPersistencePortProvider,
+                                                                   ObjectProvider<SubAgentSessionPort> subAgentSessionPortProvider,
                                                                    AgentExecutorProperties agentExecutorProperties) {
         // SessionContextCompactionService 是接口，@Lazy 可走 JDK 代理；
         // 反向依赖用 ObjectProvider，避免对 final 的 ReactorRuntimeDependencies 做 CGLIB 代理。
@@ -144,6 +146,7 @@ public class ReactorRuntimeAutoConfiguration {
                 .memoryFlushService(memoryFlushServiceProvider.getIfAvailable())
                 .backgroundReviewService(backgroundReviewServiceProvider.getIfAvailable())
                 .tasklistPersistencePort(tasklistPersistencePortProvider.getIfAvailable())
+                .subAgentSessionPort(subAgentSessionPortProvider.getIfAvailable())
                 .ltmFlushMinTurns(ltmPropertiesProvider.getIfAvailable() == null
                         ? 6
                         : ltmPropertiesProvider.getIfAvailable().getFlushMinTurns())

@@ -17,6 +17,7 @@ describe("subagent display", () => {
         "status=completed",
         "agentType=Explore",
         "agentId=abc123",
+        "childSessionId=sub_abc123",
         "totalToolUseCount=5",
         "totalDurationMs=1200",
         "",
@@ -27,9 +28,43 @@ describe("subagent display", () => {
     expect(parsed.status).toBe("completed");
     expect(parsed.agentType).toBe("Explore");
     expect(parsed.agentId).toBe("abc123");
+    expect(parsed.childSessionId).toBe("sub_abc123");
     expect(parsed.totalToolUseCount).toBe(5);
     expect(parsed.totalDurationMs).toBe(1200);
     expect(parsed.content).toContain("REST");
+  });
+
+  it("parses childSessionId from json observation", () => {
+    const parsed = parseAgentObservation(
+      JSON.stringify({
+        status: "running",
+        agentType: "Explore",
+        agentId: "abc123",
+        childSessionId: "sub_abc123",
+        run_in_background: true,
+      })
+    );
+
+    expect(parsed.childSessionId).toBe("sub_abc123");
+  });
+
+  it("falls back to resultMap childSessionId when observation is kv only", () => {
+    const task = {
+      messageType: "tool_result",
+      resultMap: {
+        toolName: "Agent",
+        toolCallId: "parent-agent-call",
+        childSessionId: "sub_agent-fixed",
+      },
+      toolResult: {
+        toolName: "Agent",
+        toolParam: { description: "搜索 API", prompt: "find endpoints" },
+        toolResult: "status=running\nagentType=Explore\n",
+      },
+    } as unknown as CHAT.Task;
+
+    const display = resolveSubAgentDisplay(task);
+    expect(display.childSessionId).toBe("sub_agent-fixed");
   });
 
   it("detects Agent tool tasks", () => {

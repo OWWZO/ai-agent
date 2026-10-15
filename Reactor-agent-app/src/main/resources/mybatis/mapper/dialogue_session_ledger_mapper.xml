@@ -151,7 +151,9 @@
     </select>
 
     <select id="querySessionOwnership" resultMap="DialogueSessionMap">
-        SELECT id, session_id, user_id, deleted
+        <!-- session_kind 一并取回：读取路径（history / stream attach）拿到的实体需要能判类型，
+             否则调用方对身份列只能看到 null。deleted/归属判定的最小集之一列不多。 -->
+        SELECT id, session_id, user_id, session_kind, deleted
         FROM ai_agent_dialogue_session
         WHERE session_id = #{sessionId}
           AND deleted = 0

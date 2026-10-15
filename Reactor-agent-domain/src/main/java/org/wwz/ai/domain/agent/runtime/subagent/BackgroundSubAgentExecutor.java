@@ -70,6 +70,10 @@ public final class BackgroundSubAgentExecutor {
                 ? resumeAgentId.trim()
                 : SubAgentContextFactory.newAgentId();
         task.setAgentId(preferredAgentId);
+        // childSessionId 由 agentId 确定性派生，与 SubAgentRunner 落库使用的完全一致；
+        // 先写入 task，运行中/终态投影即可带上它，无需等待子会话行真正落库。
+        final String childSessionId = SubAgentContextFactory.newChildSessionId(preferredAgentId);
+        task.setChildSessionId(childSessionId);
         registry.bindAgentId(task.getId(), preferredAgentId);
 
         final String desc = description;
@@ -102,24 +106,24 @@ public final class BackgroundSubAgentExecutor {
                     });
                     persistLedgerSettlement(parent, parentToolUseId, toolName,
                             registry.get(taskId).orElse(task));
-                    emitBackgroundSettlement(parent, parentToolUseId, toolName, desc, pmt, type, result, false, runRegistry);
+                    emitBackgroundSettlement(parent, parentToolUseId, toolName, desc, pmt, type, result, false, runRegistry, childSessionId);
                     return;
                 }
                 if (result.isCompleted()) {
                     registry.complete(taskId, result);
                     persistLedgerSettlement(parent, parentToolUseId, toolName,
                             registry.get(taskId).orElse(task));
-                    emitBackgroundSettlement(parent, parentToolUseId, toolName, desc, pmt, type, result, true, runRegistry);
+                    emitBackgroundSettlement(parent, parentToolUseId, toolName, desc, pmt, type, result, true, runRegistry, childSessionId);
                 } else {
                     registry.fail(taskId, result);
                     persistLedgerSettlement(parent, parentToolUseId, toolName,
                             registry.get(taskId).orElse(task));
-                    emitBackgroundSettlement(parent, parentToolUseId, toolName, desc, pmt, type, result, false, runRegistry);
+                    emitBackgroundSettlement(parent, parentToolUseId, toolName, desc, pmt, type, result, false, runRegistry, childSessionId);
                 }
             } catch (Exception e) {
                 log.error("{} background subagent failed taskId={}", parent.getRequestId(), taskId, e);
                 if (taskCancel.isCancelled()) {
-                    emitBackgroundSettlement(parent, parentToolUseId, toolName, desc, pmt, type, null, false, runRegistry);
+                    emitBackgroundSettlement(parent, parentToolUseId, toolName, desc, pmt, type, null, false, runRegistry, childSessionId);
                     return;
                 }
                 String err = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
@@ -134,7 +138,7 @@ public final class BackgroundSubAgentExecutor {
                         .build();
                 persistLedgerSettlement(parent, parentToolUseId, toolName,
                         registry.get(taskId).orElse(task));
-                emitBackgroundSettlement(parent, parentToolUseId, toolName, desc, pmt, type, failed, false, runRegistry);
+                emitBackgroundSettlement(parent, parentToolUseId, toolName, desc, pmt, type, failed, false, runRegistry, childSessionId);
             }
         });
         registry.bindFuture(taskId, future);
@@ -145,6 +149,7 @@ public final class BackgroundSubAgentExecutor {
         data.put("status", RuntimeBackgroundTask.STATUS_RUNNING);
         data.put("task_id", taskId);
         data.put("agentId", preferredAgentId);
+        data.put("childSessionId", childSessionId);
         data.put("task_type", RuntimeBackgroundTask.TYPE_LOCAL_AGENT);
         data.put("description", description);
         data.put("agentType", StringUtils.defaultIfBlank(subagentType, SubAgentRegistry.TYPE_GENERAL_PURPOSE));
@@ -222,6 +227,9 @@ public final class BackgroundSubAgentExecutor {
         data.put("status", task.getStatus());
         data.put("agentId", task.getAgentId());
         data.put("agentType", task.getAgentType());
+        if (StringUtils.isNotBlank(task.getChildSessionId())) {
+            data.put("childSessionId", task.getChildSessionId());
+        }
         data.put("description", task.getDescription());
         data.put("content", task.getOutput());
         data.put("totalToolUseCount", task.getTotalToolUseCount());
@@ -265,7 +273,8 @@ public final class BackgroundSubAgentExecutor {
                                                  String subagentType,
                                                  SubAgentResult result,
                                                  boolean completed,
-                                                 ActiveAgentRunRegistry runRegistry) {
+                                                 ActiveAgentRunRegistry runRegistry,
+                                                 String childSessionId) {
         if (parent == null) {
             return;
         }
@@ -288,6 +297,9 @@ public final class BackgroundSubAgentExecutor {
                             : SubAgentResult.STATUS_FAILED);
                     data.put("description", description);
                     data.put("agentType", subagentType);
+                    if (StringUtils.isNotBlank(childSessionId)) {
+                        data.put("childSessionId", childSessionId);
+                    }
                 } else if (!completed && StringUtils.isBlank(String.valueOf(data.get("status")))) {
                     data.put("status", SubAgentResult.STATUS_FAILED);
                 }
@@ -332,6 +344,9 @@ public final class BackgroundSubAgentExecutor {
         body.put("status", result.getStatus());
         body.put("agentId", result.getAgentId());
         body.put("agentType", result.getAgentType());
+        if (StringUtils.isNotBlank(result.getChildSessionId())) {
+            body.put("childSessionId", result.getChildSessionId());
+        }
         body.put("description", result.getDescription());
         body.put("content", result.getContent());
         body.put("totalToolUseCount", result.getTotalToolUseCount());

@@ -18,6 +18,11 @@ public class SubAgentResult {
     private String agentType;
     private String description;
     private String prompt;
+    /**
+     * 子 Agent 对应的真实子会话 ID（{@code sub_{agentId}}）。
+     * 落库失败时可能为 null —— 前端据此判断是否可打开只读子会话详情。
+     */
+    private String childSessionId;
     /** 回传主 Agent 的结论文本 */
     private String content;
     private int totalToolUseCount;

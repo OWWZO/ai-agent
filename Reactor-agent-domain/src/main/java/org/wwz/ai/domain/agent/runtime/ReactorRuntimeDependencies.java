@@ -9,6 +9,7 @@ import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteStreamPort;
+import org.wwz.ai.domain.agent.adapter.port.SubAgentSessionPort;
 import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
 import org.wwz.ai.domain.agent.runtime.tool.codemode.CodeModeExecutorPort;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.port.McpToolExecutor;
@@ -108,6 +109,12 @@ public class ReactorRuntimeDependencies {
 
     /** 可选：会话 Todo / 后台任务持久化 */
     TasklistPersistencePort tasklistPersistencePort;
+
+    /**
+     * 可选：子智能体隐藏会话身份落库端口。
+     * 缺失时子 Agent 退化为不落子会话（仅日志告警），不阻断运行。
+     */
+    SubAgentSessionPort subAgentSessionPort;
 
     public ReactorConfig requireReactorConfig() {
         return Objects.requireNonNull(reactorConfig, "ReactorConfig must not be null");
@@ -217,6 +224,10 @@ public class ReactorRuntimeDependencies {
 
     public TasklistPersistencePort getOptionalTasklistPersistencePort() {
         return tasklistPersistencePort;
+    }
+
+    public SubAgentSessionPort getOptionalSubAgentSessionPort() {
+        return subAgentSessionPort;
     }
 
     /**

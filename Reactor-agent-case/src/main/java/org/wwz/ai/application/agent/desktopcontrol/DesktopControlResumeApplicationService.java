@@ -76,7 +76,7 @@ public class DesktopControlResumeApplicationService {
         }
 
         try {
-            conversationSessionAuthorizationService.ensureExistingSessionAccessible(
+            conversationSessionAuthorizationService.ensureInteractiveSessionAccessible(
                     userId, record.getSessionId());
         } catch (SessionOwnershipDeniedException e) {
             throw new IllegalArgumentException(e.getMessage(), e);

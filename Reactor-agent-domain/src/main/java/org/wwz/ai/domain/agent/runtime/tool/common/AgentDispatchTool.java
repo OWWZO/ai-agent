@@ -192,6 +192,9 @@ public class AgentDispatchTool implements BaseTool {
         body.put("status", result.getStatus());
         body.put("agentId", result.getAgentId());
         body.put("agentType", result.getAgentType());
+        if (StringUtils.isNotBlank(result.getChildSessionId())) {
+            body.put("childSessionId", result.getChildSessionId());
+        }
         body.put("description", result.getDescription());
         body.put("content", result.getContent());
         body.put("totalToolUseCount", result.getTotalToolUseCount());
