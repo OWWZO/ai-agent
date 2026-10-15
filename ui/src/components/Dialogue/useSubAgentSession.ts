@@ -10,6 +10,8 @@ import {
   shouldFetchChildSessionReplay,
   type ChildSessionRun,
 } from "@/utils/chat/subAgentChildSession";
+import querySSE from "@/utils/querySSE";
+import { parseAgentAnswer } from "@/utils/sseParsers";
 
 /**
  * 子会话实时订阅 + 历史回放。
@@ -106,7 +108,12 @@ export function subscribeSubAgentSession(
 
   let frameCount = 0;
   let replayRequested = false;
-  let streamEnded = false;
+  /**
+   * 流已收口（follow_idle / 关闭 / 报错）。
+   * 必须独立记录而不是只在回调里判断：follow_idle 可能早于 history 响应到达，
+   * 那时 run 还没解析出来，回放兜底会静默落空。
+   */
+  let streamSettled = false;
   let run: ChildSessionRun = undefined;
 
   /** 终态 / 收流后无帧时的账本回放兜底。一次订阅只拉一次。 */
@@ -144,6 +151,15 @@ export function subscribeSubAgentSession(
     loadReplay(run?.requestId);
   };
 
+  /**
+   * 流收口。若 history 还没回来，只记标记；history 落地时会再补一次兜底，
+   * 否则 follow_idle 先到时这次订阅就再也拿不到回放了。
+   */
+  const settleStream = () => {
+    streamSettled = true;
+    loadReplayIfNoLiveFrames();
+  };
+
   // 1) 先拉子会话 history（owner 只读校验由后端 GET /conversation/sessions/{id} 保证）
   conversationHistoryApi
     .getSessionDetail(childSessionId, { limit: 50 })
@@ -157,7 +173,7 @@ export function subscribeSubAgentSession(
         history: page,
         source: "history"
       });
-      if (streamEnded) {
+      if (streamSettled) {
         loadReplayIfNoLiveFrames();
         return;
       }
@@ -172,26 +188,21 @@ export function subscribeSubAgentSession(
       onState({ error: toMessage(error) });
     });
 
-  // 2) 订阅子会话流：运行中实时追加，结束后仅保留回放
-  void (async () => {
-    try {
-      const reader = await fetch(buildAgentSessionStreamUrl({
-        sessionId: childSessionId,
-        lastEventSeq: 0,
-      }), {
-        method: "GET",
-        headers: { Accept: "text/event-stream" },
-        signal: controller.signal,
-      }).then((response) => {
-        if (!response.ok || !response.body) {
-          throw new Error(`子会话流响应异常: ${response.status}`);
-        }
-        return response.body.getReader();
-      });
-      await readStream(reader, controller, (frame) => {
+  // 2) 订阅子会话流：运行中实时追加，结束后仅保留回放。
+  //    必须走 querySSE —— 它统一注入 Authorization 并在 401 时刷新 token 重试；
+  //    裸 fetch 不带凭证会被 AuthenticationFilter 直接挡成 401。
+  querySSE(
+    {
+      method: "GET",
+      body: null,
+      signal: controller.signal,
+      // GET 观察流不重发：断线恢复由调用方重新打开详情面板承担
+      retryOnError: false,
+      parser: parseAgentAnswer,
+      handleMessage: (frame) => {
         if (isControlFrame(frame)) {
           if (isFollowIdleFrame(frame)) {
-            loadReplayIfNoLiveFrames();
+            settleStream();
           }
           return;
         }
@@ -204,18 +215,26 @@ export function subscribeSubAgentSession(
           source: "live",
           frames: [frame]
         });
-      });
-      streamEnded = true;
-      loadReplayIfNoLiveFrames();
-    } catch (error: unknown) {
-      if (controller.signal.aborted) {
-        return;
-      }
-      streamEnded = true;
-      onState({ error: toMessage(error) });
-      loadReplayIfNoLiveFrames();
-    }
-  })();
+      },
+      handleError: (error) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        onState({ error: toMessage(error) });
+        settleStream();
+      },
+      handleClose: () => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        settleStream();
+      },
+    },
+    buildAgentSessionStreamUrl({
+      sessionId: childSessionId,
+      lastEventSeq: 0,
+    })
+  );
 
   return () => controller.abort();
 }
@@ -252,48 +271,6 @@ function mergePatch(
     next.source = next.source === "idle" ? "history" : next.source;
   }
   return next;
-}
-
-/**
- * SSE 读取：按行切分，仅透出 data: 负载（JSON 或纯文本）。
- * 不维护 offset 状态机——子会话面板不需要断点续传语义，lastEventSeq 由调用方在
- * 重新打开时从 0 开始回放。
- */
-async function readStream(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-  controller: AbortController,
-  onFrame: (frame: unknown) => void
-): Promise<void> {
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (!controller.signal.aborted) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith(":")) {
-        continue;
-      }
-      if (!trimmed.startsWith("data:")) {
-        continue;
-      }
-      const raw = trimmed.slice(5).trim();
-      if (!raw) {
-        continue;
-      }
-      try {
-        onFrame(JSON.parse(raw) as unknown);
-      } catch {
-        onFrame(raw);
-      }
-    }
-  }
 }
 
 export default useSubAgentSession;

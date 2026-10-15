@@ -3,7 +3,7 @@ import { subscribeSubAgentSession } from "./useSubAgentSession";
 
 const mockGetSessionDetail = vi.fn();
 const mockGetRunReplay = vi.fn();
-const mockFetch = vi.fn();
+const mockQuerySSE = vi.fn();
 
 vi.mock("@/services/agentConversation", () => ({
   conversationHistoryApi: {
@@ -19,49 +19,51 @@ vi.mock("@/services/agentRun", () => ({
     }`,
 }));
 
-function makeSseBody(chunks: string[]) {
-  const encoder = new TextEncoder();
-  let index = 0;
-  return {
-    getReader() {
-      return {
-        read: async () => {
-          if (index >= chunks.length) {
-            return { done: true, value: undefined };
-          }
-          const value = encoder.encode(chunks[index]);
-          index += 1;
-          return { done: false, value };
-        },
-        cancel: async () => undefined,
-      };
-    },
-  } as unknown as ReadableStream<Uint8Array>;
-}
+vi.mock("@/utils/querySSE", () => ({default: (...args: unknown[]) => mockQuerySSE(...args),}));
 
 type Patch = Parameters<Parameters<typeof subscribeSubAgentSession>[2]>[0];
+
+type SseConfig = {
+  method?: string;
+  body?: unknown;
+  signal?: AbortSignal;
+  retryOnError?: boolean;
+  handleMessage: (frame: unknown) => void;
+  handleError: (error: Error) => void;
+  handleClose: () => void;
+};
 
 function collect() {
   const patches: Patch[] = [];
   const push = (patch: Patch) => patches.push(patch);
-  return { patches, push };
+  return {
+    patches,
+    push
+  };
+}
+
+/** 取本次订阅传给 querySSE 的配置与 URL */
+function lastSseCall() {
+  const call = mockQuerySSE.mock.calls[mockQuerySSE.mock.calls.length - 1];
+  return {
+    config: call?.[0] as SseConfig,
+    url: String(call?.[1])
+  };
 }
 
 describe("subscribeSubAgentSession", () => {
   beforeEach(() => {
     mockGetSessionDetail.mockReset();
     mockGetRunReplay.mockReset();
-    mockFetch.mockReset();
-    mockGetSessionDetail.mockResolvedValue({ sessionId: "sub_agent-1", runs: [] });
-    mockGetRunReplay.mockResolvedValue({ requestId: "req-1", replayFrames: [] });
-    mockFetch.mockResolvedValue({
-      ok: true,
-      body: makeSseBody([
-        'data: {"messageType":"tool_call","resultMap":{}}\n\n',
-        'data: {"messageType":"subagent_progress"}\n\n',
-      ]),
+    mockQuerySSE.mockReset();
+    mockGetSessionDetail.mockResolvedValue({
+      sessionId: "sub_agent-1",
+      runs: []
     });
-    vi.stubGlobal("fetch", mockFetch);
+    mockGetRunReplay.mockResolvedValue({
+      requestId: "req-1",
+      replayFrames: []
+    });
   });
 
   afterEach(() => {
@@ -74,8 +76,11 @@ describe("subscribeSubAgentSession", () => {
     subscribeSubAgentSession("sub_agent-1", false, push);
 
     expect(patches).toHaveLength(1);
-    expect(patches[0]).toMatchObject({ ready: false, source: "idle" });
-    expect(mockFetch).not.toHaveBeenCalled();
+    expect(patches[0]).toMatchObject({
+      ready: false,
+      source: "idle"
+    });
+    expect(mockQuerySSE).not.toHaveBeenCalled();
     expect(mockGetSessionDetail).not.toHaveBeenCalled();
   });
 
@@ -85,74 +90,73 @@ describe("subscribeSubAgentSession", () => {
     subscribeSubAgentSession("", true, push);
 
     expect(patches).toHaveLength(1);
-    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockQuerySSE).not.toHaveBeenCalled();
     expect(mockGetSessionDetail).not.toHaveBeenCalled();
   });
 
-  it("enabled 时订阅子会话流并按序推送帧", async () => {
-    const { patches, push } = collect();
+  it("enabled 时按 GET 订阅子会话流", () => {
+    const { push } = collect();
 
     subscribeSubAgentSession("sub_agent-1", true, push);
 
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(String(mockFetch.mock.calls[0]?.[0])).toContain(
-      "/api/agent/session/sub_agent-1/stream"
-    );
+    const { config, url } = lastSseCall();
+    expect(mockQuerySSE).toHaveBeenCalledTimes(1);
+    expect(url).toContain("/api/agent/session/sub_agent-1/stream");
+    expect(config.method).toBe("GET");
+    expect(config.signal).toBeInstanceOf(AbortSignal);
     expect(mockGetSessionDetail).toHaveBeenCalledTimes(1);
+  });
+
+  it("子会话流必须走带鉴权的 SSE 客户端，不得直连 fetch", () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const { push } = collect();
+
+    subscribeSubAgentSession("sub_agent-1", true, push);
+
+    // 裸 fetch 不带 Authorization，会被后端 AuthenticationFilter 挡成 401
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mockQuerySSE).toHaveBeenCalledTimes(1);
+  });
+
+  it("实时帧按序推送，控制帧不进轨迹缓冲", async () => {
+    const { patches, push } = collect();
+
+    subscribeSubAgentSession("sub_agent-1", true, push);
+    const { config } = lastSseCall();
+
+    config.handleMessage({ packageType: "heartbeat" });
+    config.handleMessage({ packageType: "follow_pending" });
+    config.handleMessage({
+      packageType: "result",
+      resultMap: { eventData: {} }
+    });
 
     await vi.waitFor(() => {
       expect(patches.some((patch) => patch.source === "live")).toBe(true);
     });
-
     const livePatches = patches.filter((patch) => patch.source === "live");
-    expect(livePatches).toHaveLength(2);
-    expect(livePatches[0]?.frames?.[0]).toMatchObject({ messageType: "tool_call" });
-    expect(livePatches[1]?.frames?.[0]).toMatchObject({ messageType: "subagent_progress" });
-  });
-
-  it("返回的 abort 句柄会中断订阅", async () => {
-    const { push } = collect();
-
-    const abort = subscribeSubAgentSession("sub_agent-1", true, push);
-    await vi.waitFor(() => expect(mockFetch).toHaveBeenCalled());
-    abort();
-
-    expect(mockFetch.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
-  });
-
-  it("history 失败不阻断流订阅", async () => {
-    mockGetSessionDetail.mockRejectedValue(new Error("会话不存在"));
-    const { patches, push } = collect();
-
-    subscribeSubAgentSession("sub_agent-1", true, push);
-
-    await vi.waitFor(() => {
-      expect(patches.some((patch) => patch.error?.includes("会话不存在"))).toBe(true);
-    });
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-  });
-
-  it("流响应异常时上报错误且不抛", async () => {
-    mockFetch.mockResolvedValue({ ok: false, status: 403, body: null });
-    const { patches, push } = collect();
-
-    subscribeSubAgentSession("sub_agent-1", true, push);
-
-    await vi.waitFor(() => {
-      expect(patches.some((patch) => patch.error?.includes("403"))).toBe(true);
-    });
+    expect(livePatches).toHaveLength(1);
+    expect(livePatches[0]?.frames?.[0]).toMatchObject({ packageType: "result" });
   });
 
   it("终态 run 走账本 replay，不依赖实时帧", async () => {
     mockGetSessionDetail.mockResolvedValue({
       sessionId: "sub_agent-1",
       latestRequestId: "req-1",
-      runs: [{ requestId: "req-1", status: "SUCCESS", hasReplay: true }],
+      runs: [{
+        requestId: "req-1",
+        status: "SUCCESS",
+        hasReplay: true
+      }],
     });
     mockGetRunReplay.mockResolvedValue({
       requestId: "req-1",
       status: "SUCCESS",
-      replayFrames: [{ reqId: "req-1", resultMap: { eventData: {} } }],
+      replayFrames: [{
+        reqId: "req-1",
+        resultMap: { eventData: {} }
+      }],
     });
     const { patches, push } = collect();
 
@@ -168,17 +172,25 @@ describe("subscribeSubAgentSession", () => {
     ).toBe(true);
   });
 
-  it("运行中 run 不拉 replay，避免与实时回放重复", async () => {
+  it("运行中 run 拿到实时帧后不拉 replay，避免与回放重复", async () => {
     mockGetSessionDetail.mockResolvedValue({
       sessionId: "sub_agent-1",
       latestRequestId: "req-1",
-      runs: [{ requestId: "req-1", status: "RUNNING", hasReplay: true }],
+      runs: [{
+        requestId: "req-1",
+        status: "RUNNING",
+        hasReplay: true
+      }],
     });
     const { patches, push } = collect();
 
     subscribeSubAgentSession("sub_agent-1", true, push);
+    const { config } = lastSseCall();
+    config.handleMessage({
+      packageType: "result",
+      resultMap: { eventData: {} }
+    });
 
-    // 等实时帧确实到达（SSE 已给出轨迹），此时不应再补拉账本回放
     await vi.waitFor(() => {
       expect(patches.some((patch) => patch.source === "live")).toBe(true);
     });
@@ -189,37 +201,68 @@ describe("subscribeSubAgentSession", () => {
     mockGetSessionDetail.mockResolvedValue({
       sessionId: "sub_agent-1",
       latestRequestId: "req-1",
-      runs: [{ requestId: "req-1", status: "RUNNING", hasReplay: true }],
-    });
-    mockFetch.mockResolvedValue({
-      ok: true,
-      body: makeSseBody(['data: {"packageType":"follow_idle","finished":false}\n\n']),
+      runs: [{
+        requestId: "req-1",
+        status: "RUNNING",
+        hasReplay: true
+      }],
     });
     const { patches, push } = collect();
 
     subscribeSubAgentSession("sub_agent-1", true, push);
+    const { config } = lastSseCall();
+    config.handleMessage({
+      packageType: "follow_idle",
+      finished: true
+    });
 
     await vi.waitFor(() => expect(mockGetRunReplay).toHaveBeenCalledWith("req-1"));
     expect(patches.some((patch) => patch.source === "live")).toBe(false);
   });
 
-  it("控制帧不进轨迹缓冲", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      body: makeSseBody([
-        'data: {"packageType":"heartbeat"}\n\n',
-        'data: {"messageType":"tool_call","resultMap":{}}\n\n',
-      ]),
-    });
+  it("返回的 abort 句柄会中断订阅", () => {
+    const { push } = collect();
+
+    const abort = subscribeSubAgentSession("sub_agent-1", true, push);
+    const { config } = lastSseCall();
+    abort();
+
+    expect(config.signal?.aborted).toBe(true);
+  });
+
+  it("history 失败不阻断流订阅", async () => {
+    mockGetSessionDetail.mockRejectedValue(new Error("会话不存在"));
     const { patches, push } = collect();
 
     subscribeSubAgentSession("sub_agent-1", true, push);
 
     await vi.waitFor(() => {
-      expect(patches.some((patch) => patch.source === "live")).toBe(true);
+      expect(patches.some((patch) => patch.error?.includes("会话不存在"))).toBe(true);
     });
-    const livePatches = patches.filter((patch) => patch.source === "live");
-    expect(livePatches).toHaveLength(1);
-    expect(livePatches[0]?.frames?.[0]).toMatchObject({ messageType: "tool_call" });
+    expect(mockQuerySSE).toHaveBeenCalledTimes(1);
+  });
+
+  it("流异常时上报错误且不抛", async () => {
+    const { patches, push } = collect();
+
+    subscribeSubAgentSession("sub_agent-1", true, push);
+    const { config } = lastSseCall();
+    config.handleError(new Error("SSE 请求失败，状态码: 500"));
+
+    await vi.waitFor(() => {
+      expect(patches.some((patch) => patch.error?.includes("500"))).toBe(true);
+    });
+  });
+
+  it("abort 后的收流回调不再上报错误", () => {
+    const { patches, push } = collect();
+
+    const abort = subscribeSubAgentSession("sub_agent-1", true, push);
+    const { config } = lastSseCall();
+    abort();
+    config.handleClose();
+    config.handleError(new Error("boom"));
+
+    expect(patches.some((patch) => patch.error?.includes("boom"))).toBe(false);
   });
 });
