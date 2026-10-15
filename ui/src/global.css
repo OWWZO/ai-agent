@@ -750,27 +750,42 @@ ol {
   background: oklch(0.55 0.18 260 / 0.2);
 }
 
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+/* 全局滚动条（对齐 ZCode styles.css:757-782，逐值照抄）：
+   轨道 14px、thumb 用 3px 透明 border 内缩 → 视觉 8px 实色胶囊，圆角 9999px，
+   最短 32px（内容很长的列表里 thumb 不会被压成一小点）。
+   ⚠️ 基础态必须保持 `scrollbar-width: auto` —— Chrome 121+ 只要它不是 auto，
+   ::-webkit-scrollbar 全部失效（会回落到不可定制的原生 thin）。
+   这条与下方 `.scrollbar-thin` 是同一套规格：全局默认即为 ZCode 观感，
+   `.scrollbar-thin` 仅作为「显式声明 + 非 webkit 内核兜底」保留。 */
+* {
+  scrollbar-width: auto;
+  scrollbar-color: var(--chat-border) transparent;
 }
 
-::-webkit-scrollbar-track {
+*::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+*::-webkit-scrollbar-track {
   background: transparent;
 }
 
-::-webkit-scrollbar-thumb {
-  background-color: rgba(134, 134, 139, 0.3);
-  border-radius: 100px;
-  border: 2px solid transparent;
+*::-webkit-scrollbar-thumb {
+  min-height: 32px;
+  min-width: 32px;
+  border: 3px solid transparent;
+  border-radius: 9999px;
+  background: var(--chat-border);
   background-clip: padding-box;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(134, 134, 139, 0.5);
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--chat-text-muted) 70%, transparent);
+  background-clip: padding-box;
 }
 
-::-webkit-scrollbar-corner {
+*::-webkit-scrollbar-corner {
   background: transparent;
 }
 
@@ -2236,6 +2251,107 @@ ol {
   cursor: help;
 }
 
+/* 失败原因富提示卡（对齐 ZCode `ToolLayout.tsx:240-293` 的 statusTooltip）：
+   触发词是虚线状态词，悬停后弹出 384px 浮层，错误原文最多 3 行 + 一个复制按钮。
+   Reactor 的 TooltipContent 默认是深色气泡（bg-foreground/text-background），
+   这里整块覆写成浅色内容卡，并隐藏默认箭头（ZCode 的 tooltip 也没有箭头）。 */
+.kimi-tool-fail-tip {
+  display: flex;
+  max-width: 24rem;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+/* Arrow 是 Content 的直接子 svg，直接隐藏 */
+.kimi-tool-fail-tip > svg {
+  display: none;
+}
+
+.kimi-tool-fail-tip-text {
+  display: -webkit-box;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-ui);
+  font-size: var(--text-ui-sm);
+  line-height: 1.6;
+}
+
+.kimi-tool-fail-tip-copy {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-foreground-subtle);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.kimi-tool-fail-tip-copy:hover {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+/* 摘要文案上滚（对齐 ZCode `QueuedSummaryContent`）：
+   内容变化时旧文案上移 0.8em 淡出、新文案自下方 0.8em 升起，300ms 过渡 + 500ms 停留。
+   容器固定 overflow:hidden，滚动过程中不改变摘要行高度。 */
+.kimi-tool-row-roll {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+.kimi-tool-row-roll-item {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 流式期间新出现的工具卡进场淡入（对齐 ZCode styles.css:900-988）：
+   挂 `data-zcode-tool-stream-animate="true"` 播一次 900ms cubic-bezier(0.16, 1, 0.3, 1)
+   的纯 opacity 淡入。去重由 JS 侧 toolEntranceAnimationKeys 负责（上限 800 条），
+   避免历史消息重放 / 虚拟列表重挂时整屏闪。 */
+@keyframes zcode-stream-text-in {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+[data-zcode-tool-stream-animate="true"] {
+  animation: zcode-stream-text-in 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-zcode-tool-stream-animate="true"] {
+    animation: none;
+  }
+}
+
 .kimi-tool-row-body {
   display: grid;
   grid-template-rows: minmax(0, 0fr);
@@ -2778,14 +2894,15 @@ ol {
   word-break: break-word;
 }
 
-/* 失败结果：ZCode `rounded-lg bg-destructive/10 px-3 py-2 text-destructive`，**不描边**。 */
+/* 失败结果：ZCode `rounded-lg bg-destructive/10 px-3 py-2 text-destructive`，**不描边**。
+   文本走 UI sans —— ZCode 那边是个普通 `<p className="text-ui-base">`，不是等宽。 */
 .kimi-tool-mcp-error-box {
   margin: 0;
   padding: 8px 12px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--color-destructive) 10%, transparent);
   color: var(--color-destructive);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--text-ui-base);
   line-height: 1.65;
   white-space: pre-wrap;
