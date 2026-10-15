@@ -106,6 +106,8 @@ export type DockTaskItem = {
   output?: string[];
   runInBackground?: boolean;
   parentToolCallId?: string;
+  /** 真实子会话 ID（sub_{agentId}）：详情面板据此订阅子会话，父卡缺失时也能下钻 */
+  childSessionId?: string;
 };
 
 /**

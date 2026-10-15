@@ -226,8 +226,13 @@ public class AgentSessionPrinter implements Printer {
                 case "data_analysis":
                 case "ui_tree":
                 case "ui_patch":
+                case "subagent_start":
+                case "subagent_end":
                     // 结构化事件统一转为 resultMap；extraResultMap 用于补充父子 Agent
                     // 关联信息，必须在序列化后再合并，防止被 message 内容覆盖。
+                    // subagent_start / subagent_end 是父流里的子代理自包含摘要帧，
+                    // 同样走这条分支，extra 中的 childSessionId / parentToolCallId 才能
+                    // 随帧到达前端（否则只剩 agentType，摘要卡无从下钻子会话）。
                     response.setResultMap(JSON.parseObject(JSON.toJSONString(message)));
                     response.getResultMap().put("agentType", agentType);
                     response.getResultMap().put("messageType", messageType);

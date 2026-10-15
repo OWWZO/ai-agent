@@ -317,6 +317,11 @@ function handleTaskMessageByType(
       // 不进时间线/工作区；进度挂到父 Agent 卡片事实字段，供详情面板投影
       handleSubAgentProgressMessage(eventData, currentChat);
       break;
+    case "subagent_start":
+    case "subagent_end":
+      // 父流只留这两条自包含摘要帧；命中父卡后只写投影字段，不新建卡片
+      handleSubAgentLifecycleMessage(eventData, currentChat);
+      break;
     case "tool_thought":
       // 助手过程 content（有 tool 时），不是思考
       handleToolThoughtMessage(eventData, currentChat, taskIndex, toolIndex);
@@ -449,7 +454,7 @@ function flushPendingSubAgentProgress(
     }
     const leftover: MESSAGE.EventData[] = [];
     for (const event of events) {
-      if (!applySubAgentProgress(event, currentChat)) {
+      if (!applyPendingSubAgentEvent(event, currentChat)) {
         leftover.push(event);
       }
     }
@@ -463,6 +468,23 @@ function flushPendingSubAgentProgress(
 }
 
 /**
+ * 待挂载的子代理事件回灌：progress 与 lifecycle 共用同一 pending 桶，
+ * 按帧自身的 messageType 分流，避免 lifecycle 帧被当成进度心跳写进 progressLines。
+ */
+function applyPendingSubAgentEvent(
+  eventData: MESSAGE.EventData,
+  currentChat: CHAT.ChatItem
+): boolean {
+  const type =
+    asTextField(eventData.resultMap?.messageType) ||
+    asTextField(eventData.messageType);
+  if (type === "subagent_start" || type === "subagent_end") {
+    return applySubAgentLifecycle(eventData, currentChat);
+  }
+  return applySubAgentProgress(eventData, currentChat);
+}
+
+/**
  * 将 subagent_progress 挂到父 Agent 工具卡（按 parentToolUseId），不插入新时间线条目。
  */
 function handleSubAgentProgressMessage(
@@ -472,14 +494,95 @@ function handleSubAgentProgressMessage(
   if (applySubAgentProgress(eventData, currentChat)) {
     return;
   }
+  const parentToolUseId = resolveSubAgentParentId(eventData);
+  if (parentToolUseId) {
+    enqueuePendingSubAgentProgress(currentChat, parentToolUseId, eventData);
+  }
+}
+
+/** 父链路字段兼容 parentToolCallId（Phase 3 摘要帧）与 parentToolUseId（旧子帧）。 */
+function resolveSubAgentParentId(eventData: MESSAGE.EventData): string {
   const resultMap = toNestedResultMap(eventData.resultMap);
   const nested = toNestedResultMap(resultMap.resultMap);
-  const parentToolUseId = asTextField(
-    resultMap.parentToolUseId ||
+  return asTextField(
+    resultMap.parentToolCallId ||
+      nested.parentToolCallId ||
+      resultMap.parentToolUseId ||
       nested.parentToolUseId ||
       resolveParentToolUseId(eventData.resultMap) ||
       resolveParentToolUseId(eventData as unknown as Record<string, unknown>)
   );
+}
+
+function resolveSubAgentEndPhase(status: string): string {
+  if (status === "completed") return "completed";
+  if (status === "failed") return "failed";
+  if (status === "stopped") return "suspended";
+  return "working";
+}
+
+/**
+ * 父流里的 subagent_start / subagent_end 自包含摘要帧。
+ * 只更新父 Agent 卡的事实字段（childSessionId / phase / summary），不进时间线、
+ * 不产生新卡片——否则父时间线会多出两张空卡。
+ */
+function applySubAgentLifecycle(
+  eventData: MESSAGE.EventData,
+  currentChat: CHAT.ChatItem
+): boolean {
+  const resultMap = toNestedResultMap(eventData.resultMap);
+  const nested = toNestedResultMap(resultMap.resultMap);
+  const merged: Record<string, unknown> = { ...resultMap, ...nested };
+  const parentToolUseId = resolveSubAgentParentId(eventData);
+  if (!parentToolUseId || !currentChat.multiAgent?.tasks?.length) {
+    return false;
+  }
+  const subAgentId = asTextField(
+    merged.subAgentId || merged.delegationId || merged.agentId
+  );
+  const slot = findSubAgentProgressTarget(
+    currentChat,
+    parentToolUseId,
+    subAgentId
+  );
+  if (!slot) {
+    return false;
+  }
+  const task = slot.group[slot.index];
+  const prev = (task.resultMap || {}) as MESSAGE.ResultMap;
+  const lifecycle =
+    asTextField(resultMap.messageType) || asTextField(merged.messageType);
+  const status = asTextField(merged.status);
+  const phase =
+    lifecycle === "subagent_start" ? "working" : resolveSubAgentEndPhase(status);
+  const summary = asTextField(merged.summary);
+  const childSessionId = asTextField(merged.childSessionId);
+
+  slot.group[slot.index] = {
+    ...task,
+    resultMap: {
+      ...prev,
+      // 只补子代理投影字段，绝不写 parentToolUseId（会被派生层当子事件踢出时间线）
+      childSessionId: childSessionId || prev.childSessionId,
+      subAgentId: subAgentId || prev.subAgentId,
+      subAgentType: asTextField(merged.subagentType) || prev.subAgentType,
+      subAgentDescription:
+        asTextField(merged.description) || prev.subAgentDescription,
+      subAgentPhase: phase,
+      subAgentSummary: summary || prev.subAgentSummary,
+    },
+  };
+  return true;
+}
+
+function handleSubAgentLifecycleMessage(
+  eventData: MESSAGE.EventData,
+  currentChat: CHAT.ChatItem
+) {
+  if (applySubAgentLifecycle(eventData, currentChat)) {
+    return;
+  }
+  const parentToolUseId = resolveSubAgentParentId(eventData);
   if (parentToolUseId) {
     enqueuePendingSubAgentProgress(currentChat, parentToolUseId, eventData);
   }

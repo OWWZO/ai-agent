@@ -358,6 +358,7 @@ export function projectDockTasks(chat: CHAT.ChatItem): DockTaskItem[] {
       output: display.content ? display.content.split("\n") : undefined,
       runInBackground: true,
       parentToolCallId: id,
+      childSessionId: display.childSessionId || undefined,
     });
   }
 

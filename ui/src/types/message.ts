@@ -246,6 +246,10 @@ declare global {
       toolParam?: Record<string, unknown>
        /** 子 Agent 工具事件挂到父 Agent tool_use 下 */
       parentToolUseId?: string
+      /** Phase 3 父流摘要帧（subagent_start / subagent_end）用的父 tool_call id */
+      parentToolCallId?: string
+      /** 子会话内唯一派发标识（等于 agentId） */
+      delegationId?: string
       subAgentId?: string
       subAgentType?: string
       subAgentDescription?: string
@@ -264,6 +268,10 @@ declare global {
       subAgentElapsedMs?: number
       subAgentLiveText?: string
       subAgentProgressLines?: string[]
+      /** 真实子会话 ID（sub_{agentId}）：父 Agent 卡据此下钻子会话详情面板 */
+      childSessionId?: string
+      /** 父流 subagent_end 帧携带的子代理终态摘要（观察结果之前的占位结论） */
+      subAgentSummary?: string
       /** 工具流式输出行（未来 tool_output / 现有 codeOutput 归一） */
       toolOutputLines?: string[]
       artifactRefs?: ArtifactReference[]

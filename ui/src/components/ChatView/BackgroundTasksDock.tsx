@@ -152,6 +152,26 @@ const BackgroundTasksDock = memo(function BackgroundTasksDock({
     if (projectAgentMemberByToolCallId(host, id)) {
       return;
     }
+    // 父卡缺失（刷新后只剩账本任务行）时，用 childSessionId 兜底开详情：
+    // 真实子会话模式下面板只靠 childSessionId 取数，不依赖父时间线卡片。
+    const childSessionId = matched?.childSessionId;
+    if (!childSessionId) return;
+    onOpenAgent(
+      {
+        messageType: "tool_call",
+        messageId: id,
+        toolCallId: id,
+        resultMap: {
+          toolName: "Agent",
+          childSessionId,
+          subAgentType: matched?.meta,
+          subAgentDescription: matched?.name,
+          runInBackground: true,
+          input: { description: matched?.name, subagent_type: matched?.meta },
+        },
+      } as unknown as CHAT.Task,
+      host
+    );
   };
 
   return (

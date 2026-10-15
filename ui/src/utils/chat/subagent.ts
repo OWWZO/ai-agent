@@ -34,6 +34,8 @@ export type SubAgentDisplay = {
   /** Calling… / heartbeat 进度行 */
   progressLines: string[];
   elapsedMs?: number;
+  /** 父流 subagent_end 帧带来的终态摘要（摘要行动态文案，不是完整结论） */
+  summary: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -379,6 +381,11 @@ export function resolveSubAgentDisplay(
     asText(resultMap.childSessionId) ||
     asText(nested?.childSessionId);
 
+  // 终态摘要：父流 subagent_end 帧先于 observation 到达时用它占位，
+  // 观察结果落地后仍以 observation 的 content 为准（这里只是摘要行文案）。
+  const summary =
+    asText(resultMap.subAgentSummary) || asText(nested?.subAgentSummary);
+
   return {
     isAgent: isSubAgentParentTask(task),
     description,
@@ -395,6 +402,7 @@ export function resolveSubAgentDisplay(
     liveText,
     progressLines,
     elapsedMs,
+    summary,
   };
 }
 

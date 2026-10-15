@@ -47,6 +47,17 @@ export const SubAgentToolCall = memo(function SubAgentToolCall({
   const agentName = sub.subagentType || "";
   const agentColor = agentName ? resolveSubagentColorFromName(agentName) : null;
 
+  // 摘要行动态文案：运行中显示最新过程增量/进度行，结束后用 subagent_end 的摘要，
+  // 都没有时退回静态 description。ToolRow 内部按 arg 变化做上滚动画，这里只给文案。
+  const lastProgressLine =
+    sub.progressLines.length > 0
+      ? sub.progressLines[sub.progressLines.length - 1]
+      : "";
+  const summaryText =
+    sub.status === "running"
+      ? sub.liveText || lastProgressLine || sub.description
+      : sub.summary || sub.description;
+
   const openDetail = () => {
     if (onOpenAgent) {
       onOpenAgent(tool, chat);
@@ -74,8 +85,8 @@ export const SubAgentToolCall = memo(function SubAgentToolCall({
           </span>
         ) : undefined
       }
-      separator={sub.description ? "·" : undefined}
-      arg={sub.description || ""}
+      separator={summaryText ? "·" : undefined}
+      arg={summaryText || ""}
       open={false}
       // ZCode `canToggle={false}`：卡内不可展开，摘要行本身就是打开详情面板的入口。
       expandable={false}
