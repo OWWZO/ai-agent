@@ -27,6 +27,24 @@ pnpm run dev
 
 3. 在浏览器中打开 http://localhost:3000 查看应用。
 
+## 环境变量
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `SERVICE_BASE_URL` | `http://127.0.0.1:8100` | 后端基础路径；生产留空走同源 |
+| `VITE_SUBAGENT_CHILD_SESSION` | 未设置（等同 `0`） | 子智能体真实子会话开关，`1` 开启 |
+
+### 子会话开关必须两端成对
+
+`VITE_SUBAGENT_CHILD_SESSION=1` 只开启前端的「详情面板读真实子会话」；
+后端必须同时把 `autobots.agent.subagent-isolated-session` 置为 `true`
+（`application-{dev,test,prod}.yml`），子 Agent 才会把事件改道到独立子会话流。
+
+- 只开后端：父流已经只剩 start/end 摘要帧，但前端详情面板仍读父时间线 → **面板空白**。
+- 只开前端：拿不到 `childSessionId` 的父卡会自动回退旧的合成投影，不会报错，但也不会生效。
+
+两端默认都是关，灰度时先后端后前端、回滚时先前端后后端。
+
 ## 可用脚本
 
 - `pnpm dev`: 启动开发服务器
