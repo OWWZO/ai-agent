@@ -7,6 +7,7 @@ import {
   planEmptyStreamClose,
   planFollowIdleReplay,
   planObservationClose,
+  planRootResultLoading,
   resolveLatestContextUsage,
   resolveRunReplayState,
 } from "./useConversationStream";
@@ -439,6 +440,39 @@ describe("useConversationStream helpers", () => {
     // 导致 AskUserQuestion 回答后 UI 永久停在「工作中」。
     expect(planEmptyStreamClose({ sawAnyFrame: false })).toBe("replay");
     expect(planEmptyStreamClose({ sawAnyFrame: true })).toBe("reconnect");
+  });
+
+  it("根 result 到达即收口 loading，finished 未到（后台子 Agent 在飞）是 settle", () => {
+    // 回归：主 Agent 派发 run_in_background 子 Agent 后，后端会推迟 finished
+    // （defer projection complete: background tasks still running），实测 6 分钟后
+    // 才发 stream_settle。resume 链路此前只写 conclusion 不收口 loading，
+    // 导致 UI 一直「工作中 X 秒」+ 转圈。
+    expect(
+      planRootResultLoading({
+        isRootResult: true,
+        finished: false,
+      })
+    ).toBe("settle");
+    // 终答 + finished 同帧到达：交给 finished 分支统一收口，不能重复 settle。
+    expect(
+      planRootResultLoading({
+        isRootResult: true,
+        finished: true,
+      })
+    ).toBe("keep");
+    // 子 Agent result 带 parentToolUseId，不能覆盖主对话终答。
+    expect(
+      planRootResultLoading({
+        isRootResult: false,
+        finished: false,
+      })
+    ).toBe("keep");
+    expect(
+      planRootResultLoading({
+        isRootResult: false,
+        finished: true,
+      })
+    ).toBe("keep");
   });
 
   it("空流收口后账本 SUCCESS 会把 loading 归位", () => {

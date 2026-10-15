@@ -179,6 +179,32 @@ export function planFollowIdleReplay(status?: string): FollowIdleReplayPlan {
   return "reconnect";
 }
 
+/**
+ * 根 result 帧（主对话终答）到达时的 `loading` 收口策略。
+ *
+ * 关键背景：主 Agent 派发 `run_in_background` 子 Agent 后，后端
+ * `AgentSessionPrinter` 在 `SessionBackgroundTaskHub.hasRunning()` 为真时
+ * **不会**给 result 帧打 `finish`（日志见
+ * `GptQueryApplicationService - defer projection complete: background tasks still running`），
+ * 要等 `BackgroundSubAgentExecutor.emitBackgroundSettlement` 发 `stream_settle`
+ * 才关流（实测可差 6 分钟以上）。
+ *
+ * 因此「收到根 result 但 finished 未到」是后台任务在飞的正常中间态：
+ * - `settle`：终答已产出，必须收口 `loading`（否则 UI 一直「工作中 X 秒」+ 转圈），
+ *   但 `metrics.status` 保持 RUNNING，让 `tool_result` / `stream_settle`
+ *   结算帧继续走完收口；
+ * - `keep`：还没到终答，继续等。
+ */
+export function planRootResultLoading(input: {
+  isRootResult: boolean;
+  finished: boolean;
+}): "settle" | "keep" {
+  if (!input.isRootResult) {
+    return "keep";
+  }
+  return input.finished ? "keep" : "settle";
+}
+
 function withoutStaleDisconnectTip(chat: CHAT.ChatItem): CHAT.ChatItem {
   if (chat.tip !== CONNECTION_LOST_HINT) {
     return chat;
@@ -1448,12 +1474,17 @@ export function useConversationStream(
         !resolveParentToolUseId(eventData);
       if (isRootResult) {
         currentChat.conclusion = buildTaskFromEventData(eventData) as CHAT.Task;
-        if (!finished) {
-          currentChat.loading = false;
-          currentChat.tip = "";
-          if (streamStillActive) {
-            setLoading(false);
-          }
+      }
+      if (
+        planRootResultLoading({
+          isRootResult,
+          finished: Boolean(finished),
+        }) === "settle"
+      ) {
+        currentChat.loading = false;
+        currentChat.tip = "";
+        if (streamStillActive) {
+          setLoading(false);
         }
       }
       if (streamStillActive && shouldRefreshWorkspaceTask(eventData)) {
@@ -2114,13 +2145,37 @@ export function useConversationStream(
       const eventData = normalizeEventData(resultMap?.eventData);
       if (eventData) {
         currentChat = combineData(eventData, currentChat);
-        if (eventData.resultMap?.messageType === "result") {
+        // 与 sendMessage / followActiveRun 对齐：根 result 一到就收口主对话 loading。
+        // 后台 run_in_background 子 Agent 未完成时后端会推迟 finished
+        // （defer projection complete: background tasks still running），
+        // 但终答已产出，UI 不能一直停在「工作中 X 秒」+ 转圈。
+        const isRootResult =
+          eventData.resultMap?.messageType === "result" &&
+          !resolveParentToolUseId(eventData);
+        if (isRootResult) {
           currentChat.conclusion = buildTaskFromEventData(eventData) as CHAT.Task;
+        }
+        const rootResultLoadingPlan = planRootResultLoading({
+          isRootResult,
+          finished: Boolean(finished),
+        });
+        if (rootResultLoadingPlan === "settle") {
+          currentChat.loading = false;
+          currentChat.tip = "";
+          // 保持 RUNNING：后台结算帧（tool_result / stream_settle）还要继续收口，
+          // 也保证断线后仍能被 runningFollowKey 重新 follow。
+          currentChat.metrics = {
+            ...(currentChat.metrics || {}),
+            status: currentChat.metrics?.status || "RUNNING",
+          };
+          if (isActiveStream()) {
+            setLoading(false);
+          }
         }
         if (isActiveStream() && shouldRefreshWorkspaceTask(eventData)) {
           scheduleWorkspaceStreamTask(currentChat, Boolean(finished));
         }
-        if (!finished && !resumeSettled) {
+        if (!finished && !resumeSettled && rootResultLoadingPlan === "keep") {
           const presence = resolveRunPresence({
             loading: true,
             chat: currentChat,
@@ -2738,17 +2793,21 @@ export function useConversationStream(
         !resolveParentToolUseId(eventData);
       if (isRootResult) {
         currentChat.conclusion = buildTaskFromEventData(eventData) as CHAT.Task;
-        if (!finished) {
-          currentChat.loading = false;
-          currentChat.tip = "";
-          // 保持 RUNNING，供后台 SSE 断线后仍可 follow
-          currentChat.metrics = {
-            ...(currentChat.metrics || {}),
-            status: currentChat.metrics?.status || "RUNNING",
-          };
-          if (streamStillActive) {
-            setLoading(false);
-          }
+      }
+      const rootResultLoadingPlan = planRootResultLoading({
+        isRootResult,
+        finished: Boolean(finished),
+      });
+      if (rootResultLoadingPlan === "settle") {
+        currentChat.loading = false;
+        currentChat.tip = "";
+        // 保持 RUNNING，供后台 SSE 断线后仍可 follow
+        currentChat.metrics = {
+          ...(currentChat.metrics || {}),
+          status: currentChat.metrics?.status || "RUNNING",
+        };
+        if (streamStillActive) {
+          setLoading(false);
         }
       }
       if (streamStillActive && shouldRefreshWorkspaceTask(eventData)) {
