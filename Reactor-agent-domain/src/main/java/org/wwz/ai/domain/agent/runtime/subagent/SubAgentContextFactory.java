@@ -1,6 +1,7 @@
 package org.wwz.ai.domain.agent.runtime.subagent;
 
 import org.apache.commons.lang3.StringUtils;
+import org.wwz.ai.domain.agent.ledger.model.AgentRunState;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanModeState;
@@ -15,6 +16,15 @@ import java.util.concurrent.ConcurrentHashMap;
  * 创建隔离的子 Agent 上下文。
  * 不继承主对话记忆；共享 runtime 依赖、账本、产物登记；
  * printer 包装为 SubAgentPrinter，事件挂到父 Agent tool_use 下。
+ * <p>
+ * 身份隔离（对齐 ZCode「子会话是协议层真实会话」）：
+ * <ul>
+ *   <li>{@code sessionId} 使用确定性 {@code sub_{agentId}}，子 Agent 的 ledger 记账落子会话；</li>
+ *   <li>{@code agentRunState} 使用<b>全新实例</b>，runId / LLM 序号 / toolCallId 映射都与父 run 解耦，
+ *       否则子 Agent 的调用会计进父 run 计数。</li>
+ * </ul>
+ * 注意：executionRecorder 仍共享父实例（无状态账本写入服务），Todo 列表与后台任务注册表
+ * 继续沿用父引用——它们是父会话控制面，TaskStop / TaskOutput 必须能命中子 Agent。
  */
 public final class SubAgentContextFactory {
 
@@ -48,10 +58,13 @@ public final class SubAgentContextFactory {
                 ? explicitParentToolUseId.trim()
                 : resolveParentToolUseId(parent);
         Printer childPrinter = wrapPrinter(parent.getPrinter(), parentToolUseId, agentId, agentType, description);
+        // 确定性子会话 ID：由 agentId 纯函数派生，无需外部传参即可保证三处一致
+        // （落库 / AgentContext / 账本 run）。
+        String childSessionId = newChildSessionId(agentId);
 
         AgentContext child = AgentContext.builder()
                 .requestId(childRequestId)
-                .sessionId(parent.getSessionId())
+                .sessionId(childSessionId)
                 .query(prompt)
                 .task(description)
                 .model(parent.getModel())
@@ -61,7 +74,8 @@ public final class SubAgentContextFactory {
                 .toolCollection(childTools)
                 .runtimeDependencies(parent.getRuntimeDependencies())
                 .executionRecorder(parent.getExecutionRecorder())
-                .agentRunState(parent.getAgentRunState())
+                // 独立 AgentRunState：不传父实例，走 builder 默认值拿到全新 run 级状态
+                .agentRunState(new AgentRunState())
                 .toolArtifactRegistry(parent.getToolArtifactRegistry())
                 // 与主 Agent 共享 todo 列表 / 后台任务注册表；plan mode 只约束主 Agent
                 .sessionTaskList(parent.requireSessionTaskList())

@@ -5,6 +5,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.wwz.ai.domain.agent.adapter.port.SubAgentSessionPort;
+import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
+import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
 import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
 import org.wwz.ai.domain.agent.memory.WorkingMemoryScopes;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
@@ -220,6 +222,14 @@ public class SubAgentRunner {
         if (cancellationOverride != null) {
             childContext.setRunCancellation(cancellationOverride);
         }
+        // 子 Agent 记账落独立 run：LLM / tool / artifact 挂到 childSessionId 的 run，
+        // 父 run 的 llm_call_count / tool_call_count 不再包含子代理调用。
+        // recorder 共享同一无状态实例，run 身份由 AgentRunState 隔离。
+        ExecutionLedgerRunSupport.initializeSubAgentRun(
+                childContext.getExecutionRecorder(),
+                childContext,
+                ExecutionLedgerConstants.ENTRY_AGENT_SUBAGENT,
+                prompt);
         // 主→子 inject 邮箱（SendMessage / 用户指导）；与父 run 的 inject 队列隔离
         String sessionKey = StringUtils.defaultIfBlank(parentContext.getSessionId(), parentContext.getRequestId());
         childContext.bindPendingInjectQueue(SessionAgentMailboxHub.queue(sessionKey, agentId));
@@ -260,6 +270,11 @@ public class SubAgentRunner {
 
         SessionAgentMailboxHub.markActive(sessionKey, agentId, true);
         ReactImplAgent agent = null;
+        // 子 run 终态收口：三条返回路径 + 异常路径都要收敛到同一个 finally，避免漏写导致 run 永挂 RUNNING。
+        java.util.concurrent.atomic.AtomicInteger childRunStatus =
+                new java.util.concurrent.atomic.AtomicInteger(ExecutionLedgerConstants.STATUS_FAILED);
+        java.util.concurrent.atomic.AtomicReference<String> childRunSummary =
+                new java.util.concurrent.atomic.AtomicReference<>("");
         try {
             agent = new ReactImplAgent(childContext);
             agent.setName("subagent:" + definition.getAgentType());
@@ -286,7 +301,7 @@ public class SubAgentRunner {
                 boolean thinkFailed = isThinkFailed(agent, runResult);
                 int toolUseCount = countToolUses(agent);
                 // 成功/think 失败都落库，便于主 Agent resume
-                boolean memoryPersisted = persistSubWorkingMemory(childContext, agent, definition);
+                boolean memoryPersisted = persistSubWorkingMemory(childContext, parentContext, agent, definition);
                 String content;
                 if (thinkFailed) {
                     String reason = StringUtils.defaultIfBlank(
@@ -312,6 +327,8 @@ public class SubAgentRunner {
                 }
                 content = finalizeContent(agent, runResult);
                 content = emitSubAgentFinalReply(childContext, agent, content);
+                childRunStatus.set(ExecutionLedgerConstants.STATUS_SUCCESS);
+                childRunSummary.set(content);
                 return SubAgentResult.builder()
                         .status(SubAgentResult.STATUS_COMPLETED)
                         .agentId(agentId)
@@ -331,13 +348,31 @@ public class SubAgentRunner {
         } catch (Exception e) {
             log.error("{} streaming subagent failed type={} id={}",
                     parentContext.getRequestId(), definition.getAgentType(), agentId, e);
-            boolean memoryPersisted = persistSubWorkingMemory(childContext, agent, definition);
+            boolean memoryPersisted = persistSubWorkingMemory(childContext, parentContext, agent, definition);
             String err = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
             String content = buildResumeHintContent(
                     "Terminated: subagent failed: " + err, agentId, memoryPersisted);
             content = emitSubAgentFinalReply(childContext, agent, content);
+            childRunStatus.set(ExecutionLedgerConstants.STATUS_FAILED);
+            childRunSummary.set(err);
             return failed(agentId, childSessionId, definition, description, prompt, start, err, content, memoryPersisted);
         } finally {
+            // 子 run 终态收口（含取消：/stop 走异常或正常路径都已覆盖）
+            try {
+                if (childContext.isRunCancelled()) {
+                    childRunStatus.set(ExecutionLedgerConstants.STATUS_STOPPED);
+                }
+                ExecutionLedgerRunSupport.finishRun(
+                        childContext,
+                        childRunStatus.get(),
+                        childRunSummary.get(),
+                        null,
+                        null);
+            } catch (Exception ledgerError) {
+                // 子 run 记账失败不得影响子 Agent 结果回传
+                log.warn("{} subagent run finish failed id={}: {}",
+                        parentContext.getRequestId(), agentId, ledgerError.getMessage());
+            }
             SessionAgentMailboxHub.markActive(sessionKey, agentId, false);
         }
     }
@@ -376,9 +411,16 @@ public class SubAgentRunner {
     }
 
     /**
+     * 子 Agent 工作记忆落库。
+     * <p>
+     * 作用域键仍是 <b>父会话 sessionId</b>：{@code sub:{agentId}} 侧链是 resume 的承载，
+     * 而 {@link #hasPersistedMemory} / resume 分支都按父会话寻址。若跟着子 sessionId 走，
+     * 唤醒时会读到空投影。子会话自己的 ledger run 与这条记忆侧链互不相干。
+     *
      * @return true 若成功写入至少一条投影
      */
     private boolean persistSubWorkingMemory(AgentContext childContext,
+                                            AgentContext parentContext,
                                             ReactImplAgent agent,
                                             SubAgentDefinition definition) {
         if (sessionWorkingMemoryService == null || childContext == null || agent == null) {
@@ -387,6 +429,9 @@ public class SubAgentRunner {
                     childContext == null ? "-" : childContext.resolveMemoryScope());
             return false;
         }
+        String workingMemorySessionId = parentContext == null
+                ? childContext.getSessionId()
+                : StringUtils.defaultIfBlank(parentContext.getSessionId(), childContext.getSessionId());
         try {
             List<Message> delta = agent.exportWorkingMemoryDelta();
             List<Message> toPersist = delta;
@@ -412,7 +457,7 @@ public class SubAgentRunner {
             if (fullSnapshot) {
                 String snapRequestId = SubAgentContextFactory.newChildRequestId(childContext.getSubAgentId());
                 sessionWorkingMemoryService.replaceReadyProjection(
-                        childContext.getSessionId(),
+                        workingMemorySessionId,
                         scope,
                         snapRequestId,
                         toPersist);
@@ -421,7 +466,7 @@ public class SubAgentRunner {
                         childContext.getRequestId(), scope, toPersist.size(), snapRequestId);
             } else {
                 sessionWorkingMemoryService.persistTurn(
-                        childContext.getSessionId(),
+                        workingMemorySessionId,
                         scope,
                         childContext.getRequestId(),
                         runId,

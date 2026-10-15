@@ -48,7 +48,13 @@ public class SubAgentChildSessionPersistenceTest {
                 parent, "prompt", "desc", new ToolCollection(), "agent-9", "general-purpose");
 
         Assert.assertEquals("sub_agent-9", child.getSubAgentChildSessionId());
-        Assert.assertEquals("parent-session", child.getSessionId());
+        // Phase 2：子 Agent 记账必须落到子会话，而不是继续共享父 sessionId
+        Assert.assertEquals("sub_agent-9", child.getSessionId());
+        // Phase 2：run 级状态必须是全新实例，否则子调用会计进父 run 计数
+        Assert.assertNotSame(parent.getAgentRunState(), child.getAgentRunState());
+        Assert.assertNull("子 run 尚未初始化", child.getAgentRunState().getRunId());
+        // working memory 侧链仍是父会话键（resume 寻址），由 runner 显式传父 sessionId
+        Assert.assertEquals("parent-session", parent.getSessionId());
     }
 
     @Test

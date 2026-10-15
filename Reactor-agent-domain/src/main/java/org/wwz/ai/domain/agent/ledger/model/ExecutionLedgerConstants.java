@@ -27,6 +27,8 @@ public final class ExecutionLedgerConstants {
 
     public static final String ENTRY_AGENT_REACT = "react";
     public static final String ENTRY_AGENT_PLAN_SOLVE = "plan_solve";
+    /** 子智能体：挂在子会话自己的 run 上，计数不计入父 run。 */
+    public static final String ENTRY_AGENT_SUBAGENT = "subagent";
 
     public static final String ARTIFACT_ROLE_INPUT = "input";
     public static final String ARTIFACT_ROLE_OUTPUT = "output";

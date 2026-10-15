@@ -72,6 +72,34 @@ public final class ExecutionLedgerRunSupport {
                 .build());
     }
 
+    /**
+     * 子智能体独立 run：LLM / tool / artifact 全部挂到子会话自己的 run 上，
+     * 不计入父 run 的 llm_call_count / tool_call_count。
+     * <p>
+     * 与 {@link #initializeRun} 的区别：不走 {@code AgentExecutionCommand}，
+     * 只按已就绪的 AgentContext 落 run，因此复用者只需提供 recorder 与已构建好的子上下文。
+     * recorder 为无状态账本写入服务，父子可安全共享同一实例。
+     */
+    public static void initializeSubAgentRun(AgentExecutionRecorder recorder,
+                                             AgentContext agentContext,
+                                             String entryAgent,
+                                             String queryText) {
+        if (recorder == null || agentContext == null) {
+            return;
+        }
+        Long runId = recorder.createRun(DialogueRunStartRecord.builder()
+                .runUid(agentContext.getRequestId())
+                .requestId(agentContext.getRequestId())
+                .sessionId(agentContext.getSessionId())
+                .userId(agentContext.getUserId())
+                .entryAgent(entryAgent)
+                .queryText(queryText)
+                .build());
+        // runId 为空表示落库失败；此时不激活 run，子 Agent 的 LLM/tool 记账自然跳过
+        // （LLM / ToolExecutionPipeline 均以 hasActiveLedgerRun 为闸门），不会误记到父 run。
+        agentContext.activateLedgerRun(runId, agentContext.getRequestId());
+    }
+
     private static void recordInputArtifacts(AgentExecutionRecorder recorder,
                                               List<AgentExecutionFile> sessionFiles,
                                              Long runId,
