@@ -31,6 +31,9 @@ import org.wwz.ai.domain.agent.runtime.tool.common.docgen.SlidesGenerateTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.docgen.TemplateFillerTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.docgen.ThemeDesignerTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.docread.PdfReaderTool;
+import org.wwz.ai.domain.agent.runtime.tool.codemode.CodeModeTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.mcp.ToolCallTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.mcp.ToolDescribeTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.skill.SkillViewTool;
 import org.wwz.ai.infrastructure.mcp.adapter.RegistryBackedToolCallback;
 import org.wwz.ai.domain.agent.runtime.util.ToolSchemaNormalizer;
@@ -150,6 +153,44 @@ public class ToolSchemaNormalizerTest {
                 new TemplateFillerTool(),
                 new ThemeDesignerTool()
         );
+    }
+
+    /**
+     * code_mode / ToolCall / ToolDescribe 都含「自由 object」参数（inputs、arguments），
+     * 必须显式声明 properties/required，否则每次装配都会刷不完整 schema 告警。
+     */
+    @Test
+    public void test_codeModeAndDeferredBridgeSchemasShouldNotEmitIncompleteSchemaWarning() {
+        assertNoIncompleteSchemaWarning(
+                new CodeModeTool(null),
+                new ToolCallTool(),
+                new ToolDescribeTool()
+        );
+    }
+
+    @Test
+    public void test_codeModeSchemaDeclaresRequiredAndFreeObjectInputs() {
+        Map<?, ?> schema = new CodeModeTool(null).toParams();
+
+        Assert.assertEquals("object", schema.get("type"));
+        Assert.assertEquals(List.of(), schema.get("required"));
+
+        Map<?, ?> inputs = (Map<?, ?>) ((Map<?, ?>) schema.get("properties")).get("inputs");
+        Assert.assertEquals("object", inputs.get("type"));
+        Assert.assertTrue(inputs.get("properties") instanceof Map);
+        Assert.assertEquals(List.of(), inputs.get("required"));
+    }
+
+    @Test
+    public void test_toolCallArgumentsSchemaIsExplicitObject() {
+        Map<?, ?> schema = new ToolCallTool().toParams();
+
+        Assert.assertEquals(List.of("name", "arguments"), schema.get("required"));
+
+        Map<?, ?> arguments = (Map<?, ?>) ((Map<?, ?>) schema.get("properties")).get("arguments");
+        Assert.assertEquals("object", arguments.get("type"));
+        Assert.assertTrue(arguments.get("properties") instanceof Map);
+        Assert.assertEquals(List.of(), arguments.get("required"));
     }
 
     @Test
