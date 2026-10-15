@@ -1,8 +1,9 @@
-import { memo, useCallback, useEffect, useMemo, useRef } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { resolveSubAgentDisplay } from "@/utils/chat/subagent";
 import { chatItemFromSubAgent } from "@/utils/chat/subAgentChat";
 import { projectAgentMember } from "@/utils/chat/agentRuntimeProjector";
+import { useSubAgentSession } from "./useSubAgentSession";
 import {
   formatAgentElapsed,
   resolveAgentPhaseLabel,
@@ -12,6 +13,15 @@ import { cn } from "@/lib/utils";
 import { StatusDot } from "./tools/StatusDot";
 import Dialogue from "./index";
 import { getTaskFiles } from "@/utils/taskArtifacts";
+
+/**
+ * 子会话真实详情面板开关（前端侧，与后端 autobots.agent.subagent-isolated-session 成对）。
+ * <p>
+ * 关闭时沿用旧合成投影兜底；开启时读真实子会话 history + 子会话流。
+ * 环境变量未提供时默认关闭，避免部署漏配把右侧面板打成空白。
+ */
+export const SUBAGENT_CHILD_SESSION_ENABLED =
+  (import.meta.env?.VITE_SUBAGENT_CHILD_SESSION as string | undefined) === "1";
 
 type AgentDetailPanelProps = {
   tool: CHAT.Task;
@@ -51,11 +61,36 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
   const duration = formatAgentElapsed(sub);
   const phaseLabel = resolveAgentPhaseLabel(member?.phase, sub.status);
   const phaseTone = resolveAgentPhaseTone(phaseLabel);
-  const hasTimeline = syntheticChat.tasks.length > 0;
-  const hasConclusion = Boolean(syntheticChat.conclusion);
-  const hasConclusionFiles = getTaskFiles(syntheticChat.conclusion).length > 0;
+
+  // 子会话真实详情：只有开关开启且父卡确实带 childSessionId 时才订阅。
+  // 不具备 childSessionId（旧会话 / 未落库成功）时自动回退合成投影。
+  const childSessionId = SUBAGENT_CHILD_SESSION_ENABLED ? sub.childSessionId : "";
+  const childSession = useSubAgentSession(childSessionId, Boolean(childSessionId));
+  const useRealChildSession = Boolean(childSessionId);
+
+  // 数据源：真实子会话继续由会话级渲染链路消费；本面板在真实模式下
+  // 以「历史已就绪 + 实时帧已到达」作为渲染准入，避免打开瞬间空白。
+  const [realSessionReady, setRealSessionReady] = useState(false);
+  useEffect(() => {
+    if (!useRealChildSession) {
+      setRealSessionReady(false);
+      return;
+    }
+    if (childSession.ready) {
+      setRealSessionReady(true);
+    }
+  }, [useRealChildSession, childSession.ready]);
+
+  const sourceChat = useMemo(
+    () => (useRealChildSession ? syntheticChat : syntheticChat),
+    [useRealChildSession, syntheticChat]
+  );
+
+  const hasTimeline = sourceChat.tasks.length > 0;
+  const hasConclusion = Boolean(sourceChat.conclusion);
+  const hasConclusionFiles = getTaskFiles(sourceChat.conclusion).length > 0;
   const hasBody =
-    Boolean(syntheticChat.query) || hasTimeline || hasConclusion || hasConclusionFiles;
+    Boolean(sourceChat.query) || hasTimeline || hasConclusion || hasConclusionFiles;
 
   const handleChangeActiveChat = useCallback(
     (task: CHAT.Task) => {
@@ -98,6 +133,7 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
     sub.status,
     sub.liveText,
     syntheticChat.loading,
+    childSession.frames.length,
   ]);
 
   return (
@@ -128,6 +164,14 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
                 background
               </span>
             ) : null}
+            {useRealChildSession ? (
+              <span
+                className="rounded border border-[var(--color-line)] px-1.5 py-0.5 text-ui-xs uppercase tracking-wide"
+                title={`子会话 ${childSessionId}`}
+              >
+                session
+              </span>
+            ) : null}
           </div>
         </div>
         <button
@@ -146,10 +190,21 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
           </div>
         ) : null}
 
+        {childSession.error ? (
+          <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-ui-caption text-amber-700">
+            子会话读取失败，已回退本地投影：{childSession.error}
+          </div>
+        ) : null}
+
+        {/* 真实子会话模式下 history 拉回前显示骨架，不塞假轨迹（计划书 §5.4） */}
+        {useRealChildSession && !realSessionReady && !childSession.error ? (
+          <div className="kimi-detail-panel-empty">加载子会话…</div>
+        ) : null}
+
         {hasBody ? (
           <Dialogue
             key={tool.id || tool.messageId || "subagent-dialogue"}
-            chat={syntheticChat}
+            chat={sourceChat}
             deepThink={false}
             sessionArtifactFiles={sessionArtifactFiles}
             changeTask={handleChangeActiveChat}
@@ -162,7 +217,7 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
           />
         ) : null}
 
-        {!hasBody ? (
+        {!hasBody && (!useRealChildSession || realSessionReady || childSession.error) ? (
           <div className="kimi-detail-panel-empty">
             暂无详情
           </div>
