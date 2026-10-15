@@ -241,3 +241,28 @@ export function formatDurationLabel(ms?: number): string {
   const rem = Math.round(sec % 60);
   return `${min}m ${rem}s`;
 }
+
+/**
+ * 工具卡的稳定身份键：用于折叠状态持久化与进场动画去重。
+ *
+ * 后端事件里 `taskId` / `messageId` / `id` 三种字段都可能缺失（历史回放尤其明显），
+ * 按优先级取第一个非空值。返回空串时调用方应视为「无稳定身份」——
+ * 此时不写持久表，否则所有匿名卡会共用同一条开合状态。
+ */
+export function resolveToolKey(tool: CHAT.Task): string {
+  const top = tool as unknown as Record<string, unknown>;
+  const candidates = [
+    tool.taskId,
+    tool.messageId,
+    tool.id,
+    top.toolCallId,
+    top.toolUseId,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+  return "";
+}
+
