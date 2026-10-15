@@ -147,6 +147,22 @@ export function planObservationClose(input: {
   return { writeDisconnectHint: true, reconnect: true };
 }
 
+export type EmptyStreamClosePlan = "replay" | "reconnect";
+
+/**
+ * 一条帧都没收到的「空流」断开后的收口策略。
+ *
+ * 空流拿不到任何 run 状态（`follow_idle` 也没收到），此时盲目重连是错的：
+ * 后端已无投影时每次重挂都会立刻 EOF，前端会按退避无限重挂，且永不回查账本，
+ * UI 会永久停在「工作中」（`loading` 恒为 true）。空流必须走账本回放收口，
+ * 由账本终态决定去留。
+ */
+export function planEmptyStreamClose(input: {
+  sawAnyFrame: boolean;
+}): EmptyStreamClosePlan {
+  return input.sawAnyFrame ? "reconnect" : "replay";
+}
+
 export type FollowIdleReplayPlan = "stop" | "reconnect";
 
 export function planFollowIdleReplay(status?: string): FollowIdleReplayPlan {
@@ -171,7 +187,12 @@ function withoutStaleDisconnectTip(chat: CHAT.ChatItem): CHAT.ChatItem {
 }
 const FOLLOW_RECONNECT_BASE_DELAY = 800;
 const FOLLOW_RECONNECT_MAX_DELAY = 15_000;
-/** RUNNING 期间允许持续退避；不再在 6 次后永久放弃 */
+/**
+ * 连续重连失败的次数上限（每收到一帧就清零）。
+ *
+ * 用尽后不再排 timer，改为按账本终态收口：后端已无投影时每次重挂都会立刻 EOF，
+ * 若只退避不封顶，会话会被永久钉在「工作中」（`loading` 恒为 true）。
+ */
 const FOLLOW_RECONNECT_ATTEMPT_CAP = 20;
 
 /** 每个会话至多一条活 SSE；切走时拆掉非当前会话，同一时刻只观察正在看的那一条。 */
@@ -190,6 +211,9 @@ type FollowReconnectContext = {
   deepThink?: boolean;
   seedChat: CHAT.ChatItem;
 };
+
+/** 重连次数用尽后的兜底收口：按账本终态落 loading=false。 */
+type FollowReconnectSettle = () => Promise<void>;
 
 function useRafThrottle<TValue>(
   initialValue: TValue,
@@ -493,6 +517,15 @@ export function useConversationStream(
   const followReconnectContextsRef = useRef<Map<string, FollowReconnectContext>>(
     new Map()
   );
+  /**
+   * 重连次数用尽时的兜底收口（按账本终态落 loading=false）。
+   *
+   * 由每条 follow 流自己注册：scheduleFollowReconnect 在 attempt 达上限时调用，
+   * 避免「后端已无投影 / 空流」的任何遗漏路径让前端无限重挂、UI 永久停在「工作中」。
+   */
+  const followReconnectSettleRef = useRef<Map<string, FollowReconnectSettle>>(
+    new Map()
+  );
   /** 各会话最新快照，供后台 follow 重连时 draft 使用（避免用前台 conversation 覆盖）。 */
   const conversationSnapshotsRef = useRef<Map<string, CHAT.ConversationHistory>>(
     new Map()
@@ -580,6 +613,7 @@ export function useConversationStream(
     markObservationReleased(entry.controller);
     clearFollowReconnectTimer(entry.requestId);
     followReconnectContextsRef.current.delete(entry.requestId);
+    followReconnectSettleRef.current.delete(entry.requestId);
     liveStreamsRef.current.delete(conversationId);
     if (streamAbortControllerRef.current === entry.controller) {
       streamAbortControllerRef.current = null;
@@ -960,6 +994,14 @@ export function useConversationStream(
 
     let currentChat: CHAT.ChatItem = observedSeed;
     let sawFollowIdle = false;
+    /**
+     * 本条观察流是否真正收到过帧。
+     *
+     * 一条帧都没收到的「空流」在 EOF/error 时不能盲目续绑：后端已无投影时
+     * 前端会按 300ms 空转重挂，UI 永远停在「工作中」且永不回查账本。
+     * 这类断流必须走账本回放收口（applyFollowIdleReplay），由账本终态决定去留。
+     */
+    let sawAnyFrame = false;
 
     const draftBase: CHAT.ConversationHistory =
       conversationSnapshotsRef.current.get(conversationId) ||
@@ -1069,6 +1111,7 @@ export function useConversationStream(
       clearFollowReconnectTimer(requestId);
       followReconnectAttemptsRef.current.delete(requestId);
       followReconnectContextsRef.current.delete(requestId);
+      followReconnectSettleRef.current.delete(requestId);
       clearActiveRun(requestId);
       unbindLiveStream(conversationId, abortController);
       currentChat = {
@@ -1095,8 +1138,14 @@ export function useConversationStream(
     /**
      * follow_idle 表示进程内已无该 requestId。
      * 只补拉当前 run 的 rich replay，不能用整个 session detail 覆盖其它 run 的最新状态。
+     *
+     * `allowReconnect=false` 用于重连次数用尽的兜底：账本说还在跑也不再续绑，
+     * 直接按账本终态收口，否则空转重挂会把 UI 永久钉在「工作中」。
      */
-    const applyFollowIdleReplay = async () => {
+    const applyFollowIdleReplay = async (options?: {
+      allowReconnect?: boolean;
+    }) => {
+      const allowReconnect = options?.allowReconnect !== false;
       sawFollowIdle = true;
       idleResyncRequestIdsRef.current.add(requestId);
       const streamStillActive = isActiveStream();
@@ -1161,7 +1210,7 @@ export function useConversationStream(
         }
 
         const hydratedStatus = String(hydrated.metrics?.status || "").toUpperCase();
-        if (planFollowIdleReplay(hydratedStatus) === "reconnect") {
+        if (allowReconnect && planFollowIdleReplay(hydratedStatus) === "reconnect") {
           const reconnectContext = followReconnectContextsRef.current.get(requestId);
           currentChat = {
             ...hydrated,
@@ -1198,15 +1247,23 @@ export function useConversationStream(
         followReconnectAttemptsRef.current.delete(requestId);
         followReconnectContextsRef.current.delete(requestId);
         clearActiveRun(requestId);
+        // 终态照抄账本。RUNNING/未知只有「重连次数用尽」这条兜底路径才会走到：
+        // 有结论说明活干完了，收口成 SUCCESS；仍无结论时保留 RUNNING（没有证据表明失败，
+        // 不能误标 FAILED），但必须停掉转圈并给出断连提示。
+        const settledStatus = ["SUCCESS", "FAILED", "STOPPED", "TIMEOUT"].includes(
+          hydratedStatus
+        )
+          ? hydratedStatus
+          : hydrated.conclusion || currentChat.conclusion
+            ? "SUCCESS"
+            : "RUNNING";
         currentChat = {
           ...hydrated,
           loading: false,
-          tip: "",
+          tip: settledStatus === "RUNNING" ? CONNECTION_LOST_HINT : "",
           metrics: {
             ...(hydrated.metrics || {}),
-            status: ["SUCCESS", "FAILED", "STOPPED", "TIMEOUT", "RUNNING"].includes(hydratedStatus)
-              ? hydrated.metrics?.status
-              : "SUCCESS",
+            status: settledStatus,
           },
         };
         const nextList = (history.chatList || []).map((item) =>
@@ -1247,6 +1304,11 @@ export function useConversationStream(
       }
     };
 
+    // 重连次数用尽时的兜底：按账本终态收口，不再续绑。
+    followReconnectSettleRef.current.set(requestId, () =>
+      applyFollowIdleReplay({ allowReconnect: false })
+    );
+
     const handleMessage = (data: MESSAGE.Answer) => {
       const live = liveStreamsRef.current.get(conversationId);
       if (!live || live.controller !== abortController) {
@@ -1262,6 +1324,8 @@ export function useConversationStream(
         updateActiveRunSeq(sessionId, eventSeq);
       }
       const { finished, resultMap, packageType } = data;
+      // 到达这里的都是本条流真正投递出来的帧（含控制帧），据此判断「空流」。
+      sawAnyFrame = true;
       const frameRequestId = String(data.reqId || "");
       // 会话控制帧的 reqId 由后端会话级 Hub 填充，可能是 sessionId；
       // 先处理控制语义，不能按普通业务帧的 requestId 规则丢弃。
@@ -1514,6 +1578,12 @@ export function useConversationStream(
             scheduleNonChatFlush(true);
             return;
           }
+          // 一条帧都没收到过就拿不到任何 run 状态：先按账本回放收口，
+          // 否则后端已无投影时前端会无限重挂，UI 永远停在「工作中」。
+          if (planEmptyStreamClose({ sawAnyFrame }) === "replay") {
+            void applyFollowIdleReplay();
+            return;
+          }
           if (closePlan.writeDisconnectHint) {
             currentChat = {
               ...currentChat,
@@ -1556,6 +1626,12 @@ export function useConversationStream(
               }
               pendingConversation = draftController.replaceLastItem({ ...currentChat });
               scheduleNonChatFlush(true);
+              return;
+            }
+            // 空流 EOF：没有收到任何帧（follow_idle 也没收到）就无法判断 run 是否还在跑。
+            // 走账本回放收口，账本说还在跑再退避续绑，避免空转重挂把 UI 永久钉在「工作中」。
+            if (planEmptyStreamClose({ sawAnyFrame }) === "replay") {
+              void applyFollowIdleReplay();
               return;
             }
             // EOF 也可能来自代理/浏览器提前收流；只要没有收到 follow_idle，
@@ -1629,6 +1705,26 @@ export function useConversationStream(
     }
 
     const attempt = followReconnectAttemptsRef.current.get(requestId) ?? 0;
+    /**
+     * 次数用尽：不再续绑，直接按账本终态收口。
+     *
+     * 后端已无投影时每次重挂都会立刻 EOF，若无限重试就会把会话钉在「工作中」
+     * （`loading` 恒为 true），且永远不会再回查账本。这里用账本做最后一次裁决：
+     * 终态就收口，仍在跑也停掉转圈——总比让用户看一个永远不停的球要好。
+     */
+    if (attempt >= FOLLOW_RECONNECT_ATTEMPT_CAP) {
+      clearFollowReconnectTimer(requestId);
+      followReconnectAttemptsRef.current.delete(requestId);
+      followReconnectContextsRef.current.delete(requestId);
+      const settle = followReconnectSettleRef.current.get(requestId);
+      if (settle) {
+        followReconnectSettleRef.current.delete(requestId);
+        void settle();
+        return;
+      }
+      clearActiveRun(requestId);
+      return;
+    }
     const retryDelay =
       delay ??
       Math.min(
@@ -2991,6 +3087,7 @@ export function useConversationStream(
     }
     clearFollowReconnectTimer(requestId);
     followReconnectAttemptsRef.current.delete(requestId);
+    followReconnectSettleRef.current.delete(requestId);
     try {
       const { agentRunApi } = await import("@/services/agentRun");
       await agentRunApi.stop({

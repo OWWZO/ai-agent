@@ -4,6 +4,7 @@ import {
   applyGuardError,
   createConversationDraftController,
   isSessionControlPackage,
+  planEmptyStreamClose,
   planFollowIdleReplay,
   planObservationClose,
   resolveLatestContextUsage,
@@ -431,5 +432,42 @@ describe("useConversationStream helpers", () => {
     expect(planFollowIdleReplay("WAITING_INPUT")).toBe("stop");
     expect(planFollowIdleReplay("RUNNING")).toBe("reconnect");
     expect(planFollowIdleReplay("UNKNOWN")).toBe("reconnect");
+  });
+
+  it("空流断开走账本回放收口，收到过帧才允许续绑重连", () => {
+    // 回归：后端已无投影时前端曾按退避无限重挂，且永不回查账本，
+    // 导致 AskUserQuestion 回答后 UI 永久停在「工作中」。
+    expect(planEmptyStreamClose({ sawAnyFrame: false })).toBe("replay");
+    expect(planEmptyStreamClose({ sawAnyFrame: true })).toBe("reconnect");
+  });
+
+  it("空流收口后账本 SUCCESS 会把 loading 归位", () => {
+    const conversation = {
+      id: "c1",
+      sessionId: "s1",
+      chatList: [
+        {
+          sessionId: "s1",
+          requestId: "resume-b",
+          query: "需要确认",
+          loading: true,
+          multiAgent: { tasks: [] },
+          metrics: { status: "RUNNING" },
+        } as unknown as CHAT.ChatItem,
+      ],
+    } as CHAT.ConversationHistory;
+
+    const { chat, status } = resolveRunReplayState(conversation, {
+      requestId: "resume-b",
+      status: "SUCCESS",
+      queryText: "需要确认",
+      finalSummaryText: "完成",
+      replayFrames: [],
+    });
+
+    expect(planEmptyStreamClose({ sawAnyFrame: false })).toBe("replay");
+    expect(planFollowIdleReplay(status)).toBe("stop");
+    expect(chat?.loading).toBe(false);
+    expect(chat?.metrics?.status).toBe("SUCCESS");
   });
 });
