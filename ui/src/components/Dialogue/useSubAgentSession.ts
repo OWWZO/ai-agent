@@ -24,6 +24,10 @@ import { parseAgentAnswer } from "@/utils/sseParsers";
  *   <li>终态 run：没有活投影，SSE 立刻 follow_idle，改拉单 run replay（账本事件）。</li>
  * </ul>
  * 两者不叠加，否则同一段 agent_stream 增量会被追加两次。
+ * <p>
+ * <b>顺序上先 history 再决定建流</b>：终态 run 根本不开这条连接——既少占一个并发观察位
+ * （后端按 userId 限制观察流条数），也少一次必然立刻 follow_idle 的往返。
+ * 实时流从 {@code lastEventSeq=0} 订阅、投影自带全量回放，所以晚订阅不丢帧。
  */
 export type SubAgentSessionState = {
   /** 详情是否就绪（首帧到达或历史已 hydrate） */
@@ -108,12 +112,6 @@ export function subscribeSubAgentSession(
 
   let frameCount = 0;
   let replayRequested = false;
-  /**
-   * 流已收口（follow_idle / 关闭 / 报错）。
-   * 必须独立记录而不是只在回调里判断：follow_idle 可能早于 history 响应到达，
-   * 那时 run 还没解析出来，回放兜底会静默落空。
-   */
-  let streamSettled = false;
   let run: ChildSessionRun = undefined;
 
   /** 终态 / 收流后无帧时的账本回放兜底。一次订阅只拉一次。 */
@@ -143,7 +141,7 @@ export function subscribeSubAgentSession(
       });
   };
 
-  /** 实时流没有给出任何轨迹时（follow_idle / 断流 / 终态）改用账本回放。 */
+  /** 实时流没有给出任何轨迹时（follow_idle / 断流）改用账本回放。 */
   const loadReplayIfNoLiveFrames = () => {
     if (frameCount > 0) {
       return;
@@ -152,15 +150,65 @@ export function subscribeSubAgentSession(
   };
 
   /**
-   * 流收口。若 history 还没回来，只记标记；history 落地时会再补一次兜底，
-   * 否则 follow_idle 先到时这次订阅就再也拿不到回放了。
+   * 订阅子会话流。必须走 querySSE —— 它统一注入 Authorization 并在 401 时刷新 token 重试；
+   * 裸 fetch 不带凭证会被 AuthenticationFilter 直接挡成 401。
+   * <p>
+   * 从 {@code lastEventSeq=0} 起订阅：投影自带全量回放，因此**晚订阅不会丢帧**，
+   * 这才让「先问 history 再决定开不开流」成为安全的重排。
    */
-  const settleStream = () => {
-    streamSettled = true;
-    loadReplayIfNoLiveFrames();
+  const openLiveStream = () => {
+    if (controller.signal.aborted) {
+      return;
+    }
+    querySSE(
+      {
+        method: "GET",
+        body: null,
+        signal: controller.signal,
+        // GET 观察流不重发：断线恢复由调用方重新打开详情面板承担
+        retryOnError: false,
+        parser: parseAgentAnswer,
+        handleMessage: (frame) => {
+          if (isControlFrame(frame)) {
+            if (isFollowIdleFrame(frame)) {
+              // 流已收口但一帧轨迹都没拿到（订阅晚了 / 终态）：退账本回放。
+              loadReplayIfNoLiveFrames();
+            }
+            return;
+          }
+          frameCount += 1;
+          if (frameCount > MAX_BUFFERED_FRAMES) {
+            return;
+          }
+          onState({
+            ready: true,
+            source: "live",
+            frames: [frame]
+          });
+        },
+        handleError: (error) => {
+          if (controller.signal.aborted) {
+            return;
+          }
+          onState({ error: toMessage(error) });
+          loadReplayIfNoLiveFrames();
+        },
+        handleClose: () => {
+          if (controller.signal.aborted) {
+            return;
+          }
+          loadReplayIfNoLiveFrames();
+        },
+      },
+      buildAgentSessionStreamUrl({
+        sessionId: childSessionId,
+        lastEventSeq: 0,
+      })
+    );
   };
 
-  // 1) 先拉子会话 history（owner 只读校验由后端 GET /conversation/sessions/{id} 保证）
+  // 1) 先拉子会话 history（owner 只读校验由后端 GET /conversation/sessions/{id} 保证）。
+  //    它同时决定「要不要建实时流」，所以必须先落地再决定，不能和流并行起。
   conversationHistoryApi
     .getSessionDetail(childSessionId, { limit: 50 })
     .then((page) => {
@@ -173,68 +221,22 @@ export function subscribeSubAgentSession(
         history: page,
         source: "history"
       });
-      if (streamSettled) {
-        loadReplayIfNoLiveFrames();
-        return;
-      }
+      // 终态 run：账本回放才是权威轨迹，实时流只会立刻 follow_idle。
+      // 不开这条连接 = 少占一个并发观察位；「回看已完成的子 Agent」正是详情面板的主要用法。
       if (shouldFetchChildSessionReplay(run)) {
         loadReplay(run?.requestId);
+        return;
       }
+      openLiveStream();
     })
     .catch((error: unknown) => {
       if (controller.signal.aborted) {
         return;
       }
       onState({ error: toMessage(error) });
+      // 拿不到 run 状态时不能连实时流也放弃，否则面板彻底空白。
+      openLiveStream();
     });
-
-  // 2) 订阅子会话流：运行中实时追加，结束后仅保留回放。
-  //    必须走 querySSE —— 它统一注入 Authorization 并在 401 时刷新 token 重试；
-  //    裸 fetch 不带凭证会被 AuthenticationFilter 直接挡成 401。
-  querySSE(
-    {
-      method: "GET",
-      body: null,
-      signal: controller.signal,
-      // GET 观察流不重发：断线恢复由调用方重新打开详情面板承担
-      retryOnError: false,
-      parser: parseAgentAnswer,
-      handleMessage: (frame) => {
-        if (isControlFrame(frame)) {
-          if (isFollowIdleFrame(frame)) {
-            settleStream();
-          }
-          return;
-        }
-        frameCount += 1;
-        if (frameCount > MAX_BUFFERED_FRAMES) {
-          return;
-        }
-        onState({
-          ready: true,
-          source: "live",
-          frames: [frame]
-        });
-      },
-      handleError: (error) => {
-        if (controller.signal.aborted) {
-          return;
-        }
-        onState({ error: toMessage(error) });
-        settleStream();
-      },
-      handleClose: () => {
-        if (controller.signal.aborted) {
-          return;
-        }
-        settleStream();
-      },
-    },
-    buildAgentSessionStreamUrl({
-      sessionId: childSessionId,
-      lastEventSeq: 0,
-    })
-  );
 
   return () => controller.abort();
 }

@@ -24,6 +24,16 @@ import { getTaskFiles } from "@/utils/taskArtifacts";
 export const SUBAGENT_CHILD_SESSION_ENABLED =
   (import.meta.env?.VITE_SUBAGENT_CHILD_SESSION as string | undefined) === "1";
 
+/**
+ * 429 是后端按 userId 限制观察流条数，只暴露状态码对用户没有可操作性。
+ * 其它错误码原样透出，避免把真实故障伪装成「配额问题」。
+ */
+function resolveChildSessionErrorText(error: string): string {
+  return /状态码: 429/.test(error)
+    ? "并发观察流已达上限，请关闭其它子 Agent 详情面板后重试"
+    : error;
+}
+
 type AgentDetailPanelProps = {
   tool: CHAT.Task;
   chat: CHAT.ChatItem;
@@ -218,7 +228,7 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
 
         {childSession.error ? (
           <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-ui-caption text-amber-700">
-            子会话读取失败，已回退本地投影：{childSession.error}
+            子会话读取失败，已回退本地投影：{resolveChildSessionErrorText(childSession.error)}
           </div>
         ) : null}
 

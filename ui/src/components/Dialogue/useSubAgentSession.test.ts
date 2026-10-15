@@ -51,6 +51,39 @@ function lastSseCall() {
   };
 }
 
+/**
+ * 建流已改为「history 落地之后才决定」：先等流建立再取配置，
+ * 否则拿到的是 undefined。这是契约本身的一部分，不要在测试里绕过。
+ */
+async function waitForStream() {
+  await vi.waitFor(() => expect(mockQuerySSE).toHaveBeenCalledTimes(1));
+  return lastSseCall();
+}
+
+function runningHistory() {
+  return {
+    sessionId: "sub_agent-1",
+    latestRequestId: "req-1",
+    runs: [{
+      requestId: "req-1",
+      status: "RUNNING",
+      hasReplay: true
+    }],
+  };
+}
+
+function terminalHistory() {
+  return {
+    sessionId: "sub_agent-1",
+    latestRequestId: "req-1",
+    runs: [{
+      requestId: "req-1",
+      status: "SUCCESS",
+      hasReplay: true
+    }],
+  };
+}
+
 describe("subscribeSubAgentSession", () => {
   beforeEach(() => {
     mockGetSessionDetail.mockReset();
@@ -94,25 +127,34 @@ describe("subscribeSubAgentSession", () => {
     expect(mockGetSessionDetail).not.toHaveBeenCalled();
   });
 
-  it("enabled 时按 GET 订阅子会话流", () => {
+  it("history 未落地前不建流，避免白占一个并发观察位", () => {
     const { push } = collect();
 
     subscribeSubAgentSession("sub_agent-1", true, push);
 
-    const { config, url } = lastSseCall();
-    expect(mockQuerySSE).toHaveBeenCalledTimes(1);
+    // 建流被显式排在 history 之后（promise 回调只在微任务里跑，此处必然还没建）
+    expect(mockQuerySSE).not.toHaveBeenCalled();
+  });
+
+  it("enabled 时按 GET 订阅子会话流", async () => {
+    const { push } = collect();
+
+    subscribeSubAgentSession("sub_agent-1", true, push);
+
+    const { config, url } = await waitForStream();
     expect(url).toContain("/api/agent/session/sub_agent-1/stream");
     expect(config.method).toBe("GET");
     expect(config.signal).toBeInstanceOf(AbortSignal);
     expect(mockGetSessionDetail).toHaveBeenCalledTimes(1);
   });
 
-  it("子会话流必须走带鉴权的 SSE 客户端，不得直连 fetch", () => {
+  it("子会话流必须走带鉴权的 SSE 客户端，不得直连 fetch", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
     const { push } = collect();
 
     subscribeSubAgentSession("sub_agent-1", true, push);
+    await waitForStream();
 
     // 裸 fetch 不带 Authorization，会被后端 AuthenticationFilter 挡成 401
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -123,7 +165,7 @@ describe("subscribeSubAgentSession", () => {
     const { patches, push } = collect();
 
     subscribeSubAgentSession("sub_agent-1", true, push);
-    const { config } = lastSseCall();
+    const { config } = await waitForStream();
 
     config.handleMessage({ packageType: "heartbeat" });
     config.handleMessage({ packageType: "follow_pending" });
@@ -140,16 +182,8 @@ describe("subscribeSubAgentSession", () => {
     expect(livePatches[0]?.frames?.[0]).toMatchObject({ packageType: "result" });
   });
 
-  it("终态 run 走账本 replay，不依赖实时帧", async () => {
-    mockGetSessionDetail.mockResolvedValue({
-      sessionId: "sub_agent-1",
-      latestRequestId: "req-1",
-      runs: [{
-        requestId: "req-1",
-        status: "SUCCESS",
-        hasReplay: true
-      }],
-    });
+  it("终态 run 走账本 replay，且根本不建实时流", async () => {
+    mockGetSessionDetail.mockResolvedValue(terminalHistory());
     mockGetRunReplay.mockResolvedValue({
       requestId: "req-1",
       status: "SUCCESS",
@@ -170,22 +204,16 @@ describe("subscribeSubAgentSession", () => {
           (patch.replay as { replayFrames: unknown[] }).replayFrames.length === 1
       )
     ).toBe(true);
+    // 终态 run 的实时流只会立刻 follow_idle：这条连接是纯浪费，必须不建
+    expect(mockQuerySSE).not.toHaveBeenCalled();
   });
 
   it("运行中 run 拿到实时帧后不拉 replay，避免与回放重复", async () => {
-    mockGetSessionDetail.mockResolvedValue({
-      sessionId: "sub_agent-1",
-      latestRequestId: "req-1",
-      runs: [{
-        requestId: "req-1",
-        status: "RUNNING",
-        hasReplay: true
-      }],
-    });
+    mockGetSessionDetail.mockResolvedValue(runningHistory());
     const { patches, push } = collect();
 
     subscribeSubAgentSession("sub_agent-1", true, push);
-    const { config } = lastSseCall();
+    const { config } = await waitForStream();
     config.handleMessage({
       packageType: "result",
       resultMap: { eventData: {} }
@@ -198,19 +226,11 @@ describe("subscribeSubAgentSession", () => {
   });
 
   it("follow_idle 且实时帧为空时补拉账本回放", async () => {
-    mockGetSessionDetail.mockResolvedValue({
-      sessionId: "sub_agent-1",
-      latestRequestId: "req-1",
-      runs: [{
-        requestId: "req-1",
-        status: "RUNNING",
-        hasReplay: true
-      }],
-    });
+    mockGetSessionDetail.mockResolvedValue(runningHistory());
     const { patches, push } = collect();
 
     subscribeSubAgentSession("sub_agent-1", true, push);
-    const { config } = lastSseCall();
+    const { config } = await waitForStream();
     config.handleMessage({
       packageType: "follow_idle",
       finished: true
@@ -220,11 +240,11 @@ describe("subscribeSubAgentSession", () => {
     expect(patches.some((patch) => patch.source === "live")).toBe(false);
   });
 
-  it("返回的 abort 句柄会中断订阅", () => {
+  it("返回的 abort 句柄会中断订阅", async () => {
     const { push } = collect();
 
     const abort = subscribeSubAgentSession("sub_agent-1", true, push);
-    const { config } = lastSseCall();
+    const { config } = await waitForStream();
     abort();
 
     expect(config.signal?.aborted).toBe(true);
@@ -239,6 +259,7 @@ describe("subscribeSubAgentSession", () => {
     await vi.waitFor(() => {
       expect(patches.some((patch) => patch.error?.includes("会话不存在"))).toBe(true);
     });
+    // 拿不到 run 状态时不能连流都放弃，否则面板彻底空白
     expect(mockQuerySSE).toHaveBeenCalledTimes(1);
   });
 
@@ -246,7 +267,7 @@ describe("subscribeSubAgentSession", () => {
     const { patches, push } = collect();
 
     subscribeSubAgentSession("sub_agent-1", true, push);
-    const { config } = lastSseCall();
+    const { config } = await waitForStream();
     config.handleError(new Error("SSE 请求失败，状态码: 500"));
 
     await vi.waitFor(() => {
@@ -254,11 +275,11 @@ describe("subscribeSubAgentSession", () => {
     });
   });
 
-  it("abort 后的收流回调不再上报错误", () => {
+  it("abort 后的收流回调不再上报错误", async () => {
     const { patches, push } = collect();
 
     const abort = subscribeSubAgentSession("sub_agent-1", true, push);
-    const { config } = lastSseCall();
+    const { config } = await waitForStream();
     abort();
     config.handleClose();
     config.handleError(new Error("boom"));
