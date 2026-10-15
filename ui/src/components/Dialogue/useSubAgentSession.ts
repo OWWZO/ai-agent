@@ -1,13 +1,27 @@
 import { useEffect, useState } from "react";
 import { buildAgentSessionStreamUrl } from "@/services/agentRun";
 import { conversationHistoryApi } from "@/services/agentConversation";
+import type {
+  ConversationHistoryPage,
+  ConversationRunReplay,
+} from "@/services/agentConversation";
+import {
+  pickChildSessionRun,
+  shouldFetchChildSessionReplay,
+  type ChildSessionRun,
+} from "@/utils/chat/subAgentChildSession";
 
 /**
  * 子会话实时订阅 + 历史回放。
  *
  * 对齐 ZCode「详情打开才订、关闭即断」：enabled=false 时绝不建连，也绝不发请求。
- * 运行中只缓冲 live 帧占位，具体轨迹合并由 AgentDetailPanel 侧按
- * requestId/messageId/toolCallId 去重后按 seq 合并（计划书 Phase 4 任务 2）。
+ *
+ * 两条互斥的数据源（plan §5.4：heartbeat 不能冒充轨迹）：
+ * <ul>
+ *   <li>运行中 run：子会话 SSE 自带全量回放（lastEventSeq=0 起），直接用实时帧。</li>
+ *   <li>终态 run：没有活投影，SSE 立刻 follow_idle，改拉单 run replay（账本事件）。</li>
+ * </ul>
+ * 两者不叠加，否则同一段 agent_stream 增量会被追加两次。
  */
 export type SubAgentSessionState = {
   /** 详情是否就绪（首帧到达或历史已 hydrate） */
@@ -16,6 +30,10 @@ export type SubAgentSessionState = {
   error: string;
   /** 最近一次会话流帧（原始 SSE 事件） */
   frames: unknown[];
+  /** 会话级历史（runs 摘要），决定 query / status / requestId */
+  history: ConversationHistoryPage | null;
+  /** 单 run 回放（终态 run 的轨迹来源） */
+  replay: ConversationRunReplay | null;
   /** 数据源标记：history=历史回放，live=实时流 */
   source: "idle" | "history" | "live";
 };
@@ -25,11 +43,40 @@ const IDLE_STATE: SubAgentSessionState = {
   loading: false,
   error: "",
   frames: [],
+  history: null,
+  replay: null,
   source: "idle",
 };
 
 /** 单次缓冲上限，防止后台长任务时无界增长 */
 const MAX_BUFFERED_FRAMES = 512;
+
+const FOLLOW_IDLE = "follow_idle";
+const SESSION_CONTROL_PACKAGES = new Set([
+  "heartbeat",
+  FOLLOW_IDLE,
+  "follow_pending",
+]);
+
+function isControlFrame(frame: unknown): boolean {
+  if (!frame || typeof frame !== "object") {
+    return false;
+  }
+  return SESSION_CONTROL_PACKAGES.has(
+    String((frame as { packageType?: unknown }).packageType || "")
+  );
+}
+
+function isFollowIdleFrame(frame: unknown): boolean {
+  if (!frame || typeof frame !== "object") {
+    return false;
+  }
+  return String((frame as { packageType?: unknown }).packageType || "") === FOLLOW_IDLE;
+}
+
+function toMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 /**
  * 订阅侧副作用工厂（纯逻辑，便于测试）。
@@ -53,6 +100,41 @@ export function subscribeSubAgentSession(
   const controller = new AbortController();
   onState({ ...IDLE_STATE, loading: true, error: "" });
 
+  let frameCount = 0;
+  let replayRequested = false;
+  let streamEnded = false;
+  let run: ChildSessionRun = undefined;
+
+  /** 终态 / 收流后无帧时的账本回放兜底。一次订阅只拉一次。 */
+  const loadReplay = (requestId?: string) => {
+    if (!requestId || replayRequested || controller.signal.aborted) {
+      return;
+    }
+    replayRequested = true;
+    conversationHistoryApi
+      .getRunReplay(requestId)
+      .then((replay) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        onState({ ready: true, loading: false, replay, source: "history" });
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        onState({ error: toMessage(error) });
+      });
+  };
+
+  /** 实时流没有给出任何轨迹时（follow_idle / 断流 / 终态）改用账本回放。 */
+  const loadReplayIfNoLiveFrames = () => {
+    if (frameCount > 0) {
+      return;
+    }
+    loadReplay(run?.requestId);
+  };
+
   // 1) 先拉子会话 history（owner 只读校验由后端 GET /conversation/sessions/{id} 保证）
   conversationHistoryApi
     .getSessionDetail(childSessionId, { limit: 50 })
@@ -60,8 +142,15 @@ export function subscribeSubAgentSession(
       if (controller.signal.aborted) {
         return;
       }
-      void page;
-      onStatePatch(onState, { ready: true });
+      run = pickChildSessionRun(page);
+      onState({ ready: true, history: page, source: "history" });
+      if (streamEnded) {
+        loadReplayIfNoLiveFrames();
+        return;
+      }
+      if (shouldFetchChildSessionReplay(run)) {
+        loadReplay(run?.requestId);
+      }
     })
     .catch((error: unknown) => {
       if (controller.signal.aborted) {
@@ -71,7 +160,6 @@ export function subscribeSubAgentSession(
     });
 
   // 2) 订阅子会话流：运行中实时追加，结束后仅保留回放
-  let frameCount = 0;
   void (async () => {
     try {
       const reader = await fetch(buildAgentSessionStreamUrl({
@@ -88,32 +176,31 @@ export function subscribeSubAgentSession(
         return response.body.getReader();
       });
       await readStream(reader, controller, (frame) => {
+        if (isControlFrame(frame)) {
+          if (isFollowIdleFrame(frame)) {
+            loadReplayIfNoLiveFrames();
+          }
+          return;
+        }
         frameCount += 1;
         if (frameCount > MAX_BUFFERED_FRAMES) {
           return;
         }
         onState({ ready: true, source: "live", frames: [frame] });
       });
+      streamEnded = true;
+      loadReplayIfNoLiveFrames();
     } catch (error: unknown) {
       if (controller.signal.aborted) {
         return;
       }
+      streamEnded = true;
       onState({ error: toMessage(error) });
+      loadReplayIfNoLiveFrames();
     }
   })();
 
   return () => controller.abort();
-}
-
-function onStatePatch(
-  onState: (patch: Partial<SubAgentSessionState>) => void,
-  patch: Partial<SubAgentSessionState>
-) {
-  onState(patch);
-}
-
-function toMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export function useSubAgentSession(

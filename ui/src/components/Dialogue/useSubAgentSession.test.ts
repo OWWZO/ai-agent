@@ -2,11 +2,13 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { subscribeSubAgentSession } from "./useSubAgentSession";
 
 const mockGetSessionDetail = vi.fn();
+const mockGetRunReplay = vi.fn();
 const mockFetch = vi.fn();
 
 vi.mock("@/services/agentConversation", () => ({
   conversationHistoryApi: {
     getSessionDetail: (...args: unknown[]) => mockGetSessionDetail(...args),
+    getRunReplay: (...args: unknown[]) => mockGetRunReplay(...args),
   },
 }));
 
@@ -48,8 +50,10 @@ function collect() {
 describe("subscribeSubAgentSession", () => {
   beforeEach(() => {
     mockGetSessionDetail.mockReset();
+    mockGetRunReplay.mockReset();
     mockFetch.mockReset();
     mockGetSessionDetail.mockResolvedValue({ sessionId: "sub_agent-1", runs: [] });
+    mockGetRunReplay.mockResolvedValue({ requestId: "req-1", replayFrames: [] });
     mockFetch.mockResolvedValue({
       ok: true,
       body: makeSseBody([
@@ -137,5 +141,85 @@ describe("subscribeSubAgentSession", () => {
     await vi.waitFor(() => {
       expect(patches.some((patch) => patch.error?.includes("403"))).toBe(true);
     });
+  });
+
+  it("终态 run 走账本 replay，不依赖实时帧", async () => {
+    mockGetSessionDetail.mockResolvedValue({
+      sessionId: "sub_agent-1",
+      latestRequestId: "req-1",
+      runs: [{ requestId: "req-1", status: "SUCCESS", hasReplay: true }],
+    });
+    mockGetRunReplay.mockResolvedValue({
+      requestId: "req-1",
+      status: "SUCCESS",
+      replayFrames: [{ reqId: "req-1", resultMap: { eventData: {} } }],
+    });
+    const { patches, push } = collect();
+
+    subscribeSubAgentSession("sub_agent-1", true, push);
+
+    await vi.waitFor(() => expect(mockGetRunReplay).toHaveBeenCalledWith("req-1"));
+    expect(
+      patches.some(
+        (patch) =>
+          patch.replay &&
+          (patch.replay as { replayFrames: unknown[] }).replayFrames.length === 1
+      )
+    ).toBe(true);
+  });
+
+  it("运行中 run 不拉 replay，避免与实时回放重复", async () => {
+    mockGetSessionDetail.mockResolvedValue({
+      sessionId: "sub_agent-1",
+      latestRequestId: "req-1",
+      runs: [{ requestId: "req-1", status: "RUNNING", hasReplay: true }],
+    });
+    const { patches, push } = collect();
+
+    subscribeSubAgentSession("sub_agent-1", true, push);
+
+    // 等实时帧确实到达（SSE 已给出轨迹），此时不应再补拉账本回放
+    await vi.waitFor(() => {
+      expect(patches.some((patch) => patch.source === "live")).toBe(true);
+    });
+    expect(mockGetRunReplay).not.toHaveBeenCalled();
+  });
+
+  it("follow_idle 且实时帧为空时补拉账本回放", async () => {
+    mockGetSessionDetail.mockResolvedValue({
+      sessionId: "sub_agent-1",
+      latestRequestId: "req-1",
+      runs: [{ requestId: "req-1", status: "RUNNING", hasReplay: true }],
+    });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: makeSseBody(['data: {"packageType":"follow_idle","finished":false}\n\n']),
+    });
+    const { patches, push } = collect();
+
+    subscribeSubAgentSession("sub_agent-1", true, push);
+
+    await vi.waitFor(() => expect(mockGetRunReplay).toHaveBeenCalledWith("req-1"));
+    expect(patches.some((patch) => patch.source === "live")).toBe(false);
+  });
+
+  it("控制帧不进轨迹缓冲", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: makeSseBody([
+        'data: {"packageType":"heartbeat"}\n\n',
+        'data: {"messageType":"tool_call","resultMap":{}}\n\n',
+      ]),
+    });
+    const { patches, push } = collect();
+
+    subscribeSubAgentSession("sub_agent-1", true, push);
+
+    await vi.waitFor(() => {
+      expect(patches.some((patch) => patch.source === "live")).toBe(true);
+    });
+    const livePatches = patches.filter((patch) => patch.source === "live");
+    expect(livePatches).toHaveLength(1);
+    expect(livePatches[0]?.frames?.[0]).toMatchObject({ messageType: "tool_call" });
   });
 });

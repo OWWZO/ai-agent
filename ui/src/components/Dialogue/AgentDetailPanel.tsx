@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { resolveSubAgentDisplay } from "@/utils/chat/subagent";
 import { chatItemFromSubAgent } from "@/utils/chat/subAgentChat";
+import { buildChildSessionChat } from "@/utils/chat/subAgentChildSession";
 import { projectAgentMember } from "@/utils/chat/agentRuntimeProjector";
 import { useSubAgentSession } from "./useSubAgentSession";
 import {
@@ -81,9 +82,24 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
     }
   }, [useRealChildSession, childSession.ready]);
 
+  // 真实子会话：history / replay / 实时帧 → 走与主会话同构的渲染链路（不新写 Pane）。
+  const childSessionChat = useMemo(
+    () =>
+      useRealChildSession
+        ? buildChildSessionChat({
+            childSessionId,
+            history: childSession.history,
+            replay: childSession.replay,
+            frames: childSession.frames,
+            fallbackQuery: sub.prompt || sub.description,
+          })
+        : null,
+    [useRealChildSession, childSessionId, childSession.history, childSession.replay, childSession.frames, sub.prompt, sub.description]
+  );
+
   const sourceChat = useMemo(
-    () => (useRealChildSession ? syntheticChat : syntheticChat),
-    [useRealChildSession, syntheticChat]
+    () => (useRealChildSession && childSessionChat ? childSessionChat : syntheticChat),
+    [useRealChildSession, childSessionChat, syntheticChat]
   );
 
   const hasTimeline = sourceChat.tasks.length > 0;
@@ -134,6 +150,8 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
     sub.liveText,
     syntheticChat.loading,
     childSession.frames.length,
+    childSession.replay,
+    childSession.history,
   ]);
 
   return (
@@ -203,7 +221,11 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
 
         {hasBody ? (
           <Dialogue
-            key={tool.id || tool.messageId || "subagent-dialogue"}
+            key={
+              useRealChildSession
+                ? `child-session-${childSessionId}`
+                : tool.id || tool.messageId || "subagent-dialogue"
+            }
             chat={sourceChat}
             deepThink={false}
             sessionArtifactFiles={sessionArtifactFiles}
