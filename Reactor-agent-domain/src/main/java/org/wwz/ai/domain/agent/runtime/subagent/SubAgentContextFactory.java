@@ -178,20 +178,10 @@ public final class SubAgentContextFactory {
     }
 
     /**
-     * 子会话 ID 前缀。{@code sub_}（会话）与 {@code sub:}（requestId）是两个不同命名空间，
-     * 不要混用；外部需要判定「这是不是子会话」时只依赖这里，避免前缀字符串散落多处。
+     * 子会话 ID 前缀。{@code sub_}（会话 ID）与 {@code sub:}（requestId）是两个不同命名空间，
+     * 不要混用。
      */
     public static final String CHILD_SESSION_ID_PREFIX = "sub_";
-
-    /**
-     * 是否为子会话 ID。
-     * <p>
-     * 用于区分「主对话流」与「子会话观察流」——两者的 SSE 配额、生命周期与可降级性都不同，
-     * 但共用同一个 {@code GET /api/agent/session/{sessionId}/stream} 端点，只能靠 ID 判别。
-     */
-    public static boolean isChildSessionId(String sessionId) {
-        return StringUtils.startsWith(sessionId, CHILD_SESSION_ID_PREFIX);
-    }
 
     /**
      * 子会话 ID（<b>确定性</b>，可由 agentId 反推）：{@code sub_{agentId}}。

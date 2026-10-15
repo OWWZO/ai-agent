@@ -25,8 +25,8 @@ import { parseAgentAnswer } from "@/utils/sseParsers";
  * </ul>
  * 两者不叠加，否则同一段 agent_stream 增量会被追加两次。
  * <p>
- * <b>顺序上先 history 再决定建流</b>：终态 run 根本不开这条连接——既少占一个并发观察位
- * （后端按 userId 限制观察流条数），也少一次必然立刻 follow_idle 的往返。
+ * <b>顺序上先 history 再决定建流</b>：终态 run 根本不开这条连接——它唯一的归宿就是
+ * 立刻 follow_idle，建了纯属白跑一次往返、白起一个 emitter 与心跳任务。
  * 实时流从 {@code lastEventSeq=0} 订阅、投影自带全量回放，所以晚订阅不丢帧。
  */
 export type SubAgentSessionState = {
@@ -222,7 +222,7 @@ export function subscribeSubAgentSession(
         source: "history"
       });
       // 终态 run：账本回放才是权威轨迹，实时流只会立刻 follow_idle。
-      // 不开这条连接 = 少占一个并发观察位；「回看已完成的子 Agent」正是详情面板的主要用法。
+      // 「回看已完成的子 Agent」正是详情面板的主要用法，没必要为它白建一条连接。
       if (shouldFetchChildSessionReplay(run)) {
         loadReplay(run?.requestId);
         return;

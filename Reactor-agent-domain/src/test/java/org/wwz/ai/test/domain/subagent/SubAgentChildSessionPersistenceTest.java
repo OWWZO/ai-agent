@@ -34,21 +34,6 @@ public class SubAgentChildSessionPersistenceTest {
         Assert.assertTrue(SubAgentContextFactory.newChildSessionId("x".repeat(200)).length() <= 64);
     }
 
-    /**
-     * SSE 观察流靠这个判据把「子会话观察流」与「主对话流」分到不同配额桶，
-     * 一旦它与 {@link SubAgentContextFactory#newChildSessionId(String)} 的产物脱节，
-     * 子会话就会重新落回对话桶、把用户的对话流挤掉。
-     */
-    @Test
-    public void childSessionPredicateShouldAgreeWithIdGenerator() {
-        String childSessionId = SubAgentContextFactory.newChildSessionId("abc123");
-        Assert.assertTrue(SubAgentContextFactory.isChildSessionId(childSessionId));
-        // requestId 用的是 sub: 前缀，属另一命名空间，不能被判成子会话
-        Assert.assertFalse(SubAgentContextFactory.isChildSessionId("sub:abc123:1"));
-        Assert.assertFalse(SubAgentContextFactory.isChildSessionId("session-1791992779478-7380"));
-        Assert.assertFalse(SubAgentContextFactory.isChildSessionId(null));
-    }
-
     @Test
     public void factoryShouldStampDeterministicChildSessionId() {
         AgentContext parent = AgentContext.builder()

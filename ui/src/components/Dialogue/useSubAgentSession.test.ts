@@ -127,7 +127,7 @@ describe("subscribeSubAgentSession", () => {
     expect(mockGetSessionDetail).not.toHaveBeenCalled();
   });
 
-  it("history 未落地前不建流，避免白占一个并发观察位", () => {
+  it("history 未落地前不建流，避免白建一条注定立刻 follow_idle 的连接", () => {
     const { push } = collect();
 
     subscribeSubAgentSession("sub_agent-1", true, push);

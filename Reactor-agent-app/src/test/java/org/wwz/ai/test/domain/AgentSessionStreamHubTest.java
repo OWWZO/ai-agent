@@ -26,12 +26,19 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * 会话观察流并发槽位回收回归测试。
+ * 会话观察流的连接生命周期回归测试。
+ * <p>
+ * 注意：这里断言的是 <b>connectionCount</b>（连接是否被回收），不是并发配额——
+ * 按 userId 的连接数上限已按需求移除（见 {@link AgentSessionStreamHub} 类注释），
+ * 但「连接该关的时候必须关」仍然是硬要求，否则 emitter 与心跳任务会一直泄漏。
  */
 public class AgentSessionStreamHubTest {
 
+    /** 与旧配额无关，只是「多开几条」的样本量。 */
+    private static final int SAMPLE_CONNECTIONS = 3;
+
     @Test
-    public void shouldReleaseSlotWhenLastSessionProjectionCompletes() {
+    public void shouldCloseStreamWhenLastSessionProjectionCompletes() {
         AgentRunFollowApplicationService followService = mock(AgentRunFollowApplicationService.class);
         when(followService.authorizeAndAttach(anyString(), anyLong(), any()))
                 .thenReturn(FollowAttachResult.ATTACHED);
@@ -45,11 +52,10 @@ public class AgentSessionStreamHubTest {
         ReflectionTestUtils.setField(hub, "agentExecutorProperties", new AgentExecutorProperties());
         ReflectionTestUtils.setField(hub, "heartbeatScheduler", scheduler);
 
-        String ownerKey = "user-serial";
         String sessionId = "session-serial";
         SessionProjectionRegistry projectionRegistry = new SessionProjectionRegistry();
-        for (int i = 0; i < AgentSessionStreamHub.MAX_STREAMS_PER_OWNER; i++) {
-            hub.open(sessionId, hub.reserve(ownerKey, AgentSessionStreamHub.StreamKind.CONVERSATION), 0L);
+        for (int i = 0; i < SAMPLE_CONNECTIONS; i++) {
+            hub.open(sessionId, 0L);
 
             AgentExecutionCommand request = new AgentExecutionCommand();
             request.setRequestId("request-" + i);
@@ -72,12 +78,11 @@ public class AgentSessionStreamHubTest {
             }
         }
 
-        hub.reserve(ownerKey, AgentSessionStreamHub.StreamKind.CONVERSATION).close();
         Assert.assertEquals("最后一个 run 完成后应关闭观察流", 0, hub.connectionCount());
     }
 
     @Test
-    public void shouldReleaseSlotWhenAttachedStreamIsAborted() {
+    public void shouldDropConnectionWhenAttachedStreamIsAborted() {
         AgentRunFollowApplicationService followService = mock(AgentRunFollowApplicationService.class);
         when(followService.authorizeAndAttach(anyString(), anyLong(), any()))
                 .thenReturn(FollowAttachResult.ATTACHED);
@@ -91,14 +96,39 @@ public class AgentSessionStreamHubTest {
         ReflectionTestUtils.setField(hub, "agentExecutorProperties", new AgentExecutorProperties());
         ReflectionTestUtils.setField(hub, "heartbeatScheduler", scheduler);
 
-        String ownerKey = "user-1";
-        for (int i = 0; i < AgentSessionStreamHub.MAX_STREAMS_PER_OWNER; i++) {
-            hub.open("session-" + i, hub.reserve(ownerKey, AgentSessionStreamHub.StreamKind.CONVERSATION), 0L);
+        for (int i = 0; i < SAMPLE_CONNECTIONS; i++) {
+            hub.open("session-" + i, 0L);
             abortLatestStream(hub);
         }
 
-        hub.reserve(ownerKey, AgentSessionStreamHub.StreamKind.CONVERSATION).close();
-        Assert.assertEquals("已断开的观察流不应继续占用连接槽位", 0, hub.connectionCount());
+        Assert.assertEquals("已断开的观察流不应继续占用连接", 0, hub.connectionCount());
+    }
+
+    /**
+     * 不再有配额，所以「同一会话反复订阅」必须每次都真的建出一条新连接，
+     * 不能因为曾经有上限就出现静默失败。
+     */
+    @Test
+    public void shouldOpenEveryConnectionWithoutQuota() {
+        AgentRunFollowApplicationService followService = mock(AgentRunFollowApplicationService.class);
+        when(followService.authorizeAndAttach(anyString(), anyLong(), any()))
+                .thenReturn(FollowAttachResult.ATTACHED);
+
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        when(scheduler.scheduleAtFixedRate(any(Runnable.class), any(Instant.class), any(Duration.class)))
+                .thenReturn(mock(ScheduledFuture.class));
+
+        AgentSessionStreamHub hub = new AgentSessionStreamHub();
+        ReflectionTestUtils.setField(hub, "agentRunFollowApplicationService", followService);
+        ReflectionTestUtils.setField(hub, "agentExecutorProperties", new AgentExecutorProperties());
+        ReflectionTestUtils.setField(hub, "heartbeatScheduler", scheduler);
+
+        int beyondOldLimit = 12;
+        for (int i = 0; i < beyondOldLimit; i++) {
+            hub.open("session-" + i, 0L);
+        }
+
+        Assert.assertEquals("连接数不应再受上限约束", beyondOldLimit, hub.connectionCount());
     }
 
     @SuppressWarnings("unchecked")
