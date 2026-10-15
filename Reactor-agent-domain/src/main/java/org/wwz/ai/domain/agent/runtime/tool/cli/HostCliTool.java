@@ -23,7 +23,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -32,13 +31,6 @@ import java.util.stream.Stream;
 public class HostCliTool implements BaseTool {
 
     public static final String TOOL_NAME = "host_cli";
-    private static final Set<String> TWITTER_WRITE_COMMANDS = Set.of(
-            "bookmark", "delete", "favorite", "follow", "like", "post", "quote",
-            "reply", "retweet", "unbookmark", "unfavorite", "unfollow", "unlike", "unretweet");
-    private static final Set<String> REDDIT_WRITE_COMMANDS = Set.of(
-            "comment", "login", "logout", "save", "subscribe", "upvote");
-    private static final List<String> PROXY_ENVIRONMENT_VARIABLES = List.of(
-            "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy");
 
     private final List<String> availableTools;
     private AgentContext agentContext;
@@ -89,14 +81,14 @@ public class HostCliTool implements BaseTool {
                 ? new LinkedHashMap<>((Map<String, Object>) map)
                 : new LinkedHashMap<>();
         String tool = params.get("tool") == null ? null : String.valueOf(params.get("tool")).trim();
-        List<String> args = stringList(params.get("args"));
+        List<String> args = HostCliPolicy.stringList(params.get("args"));
         if (StringUtils.isBlank(tool)) {
             return ToolResultPayload.failure("tool 不能为空", "tool 不能为空", null, "missing tool");
         }
-        if (!availableTools.contains(tool)) {
+        if (!HostCliPolicy.isAllowed(tool, availableTools)) {
             return ToolResultPayload.failure("不允许的 CLI: " + tool, "不允许的 CLI: " + tool, null, "host_cli_denied");
         }
-        String deniedCommand = deniedSocialCommand(tool, args);
+        String deniedCommand = HostCliPolicy.deniedSocialCommand(tool, args);
         if (deniedCommand != null) {
             return ToolResultPayload.failure(
                     "不允许的只读 CLI 操作: " + tool + " " + deniedCommand,
@@ -115,14 +107,15 @@ public class HostCliTool implements BaseTool {
         }
         String cwd = agentContext.getWorkspaceRoot();
         Set<String> before = snapshot(cwd);
-        long timeoutMs = resolveTimeout(params.get("timeout_ms"), properties);
+        long timeoutMs = HostCliPolicy.resolveTimeout(
+                params.get("timeout_ms"), properties.getDefaultTimeoutMs(), properties.getMaxTimeoutMs());
         String proxy = StringUtils.trimToNull(deps.requireReactorConfig().getWebFetchProxy());
         CliResult result = cli.exec(CliInvocation.builder()
                 .tool(tool)
                 .args(args)
                 .cwd(cwd)
-                .env(proxyEnvironment(proxy))
-                .unsetEnv(proxy == null ? PROXY_ENVIRONMENT_VARIABLES : List.of())
+                .env(HostCliPolicy.proxyEnvironment(proxy))
+                .unsetEnv(HostCliPolicy.proxyUnsetVariables(proxy))
                 .timeoutMs(timeoutMs)
                 .capture("both")
                 .maxOutputChars(properties.getMaxOutputChars())
@@ -143,19 +136,6 @@ public class HostCliTool implements BaseTool {
         return result.isOk()
                 ? ToolResultPayload.okData(TOOL_NAME, fields)
                 : ToolResultPayload.fromData(fields);
-    }
-
-    private static Map<String, String> proxyEnvironment(String proxy) {
-        if (proxy == null) {
-            return Map.of();
-        }
-        return Map.of(
-                "HTTP_PROXY", proxy,
-                "HTTPS_PROXY", proxy,
-                "ALL_PROXY", proxy,
-                "http_proxy", proxy,
-                "https_proxy", proxy,
-                "all_proxy", proxy);
     }
 
     private List<CliArtifact> registerNewFiles(String cwd, Set<String> before) {
@@ -239,49 +219,4 @@ public class HostCliTool implements BaseTool {
         return files;
     }
 
-    private static long resolveTimeout(Object raw, HostCliProperties properties) {
-        long fallback = properties.getDefaultTimeoutMs() <= 0 ? 120_000L : properties.getDefaultTimeoutMs();
-        long max = properties.getMaxTimeoutMs() <= 0 ? 300_000L : properties.getMaxTimeoutMs();
-        if (raw instanceof Number number && number.longValue() > 0) {
-            return Math.min(number.longValue(), max);
-        }
-        return Math.min(fallback, max);
-    }
-
-    private static List<String> stringList(Object raw) {
-        if (!(raw instanceof List<?> list)) {
-            return List.of();
-        }
-        List<String> values = new ArrayList<>(list.size());
-        for (Object item : list) {
-            if (!(item instanceof String text)) {
-                return List.of();
-            }
-            values.add(text);
-        }
-        return values;
-    }
-
-    private static String deniedSocialCommand(String tool, List<String> args) {
-        if (!("twitter".equals(tool) || "rdt".equals(tool))) {
-            return null;
-        }
-        for (String arg : args) {
-            if (arg == null || arg.isBlank()) {
-                continue;
-            }
-            String normalized = arg.toLowerCase(Locale.ROOT);
-            if (normalized.startsWith("-")) {
-                continue;
-            }
-            if ("twitter".equals(tool) && TWITTER_WRITE_COMMANDS.contains(normalized)) {
-                return normalized;
-            }
-            if ("rdt".equals(tool) && REDDIT_WRITE_COMMANDS.contains(normalized)) {
-                return normalized;
-            }
-            return null;
-        }
-        return null;
-    }
 }
