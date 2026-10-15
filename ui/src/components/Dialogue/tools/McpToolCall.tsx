@@ -15,8 +15,10 @@ import {
   resolveTaskToolName,
   resolveTaskToolOutput,
   resolveTaskToolStatus,
+  resolveToolKey,
 } from "./toolTaskAdapter";
 import { isCompactMcpResult, parseMcpToolName } from "./mcpToolName";
+import { useToolCardOpen } from "./useToolCardOpen";
 
 type McpToolCallProps = {
   tool: CHAT.Task;
@@ -54,7 +56,7 @@ export const McpToolCall = memo(function McpToolCall({
   const status = resolveTaskToolStatus(tool);
   const output = resolveTaskToolOutput(tool);
 
-  const [open, setOpen] = useState(Boolean(defaultExpanded));
+  const [open, setOpen] = useToolCardOpen(resolveToolKey(tool), Boolean(defaultExpanded));
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [wrap, , toggleWrap] = useCodePreviewWrap();
@@ -90,6 +92,7 @@ export const McpToolCall = memo(function McpToolCall({
       kindDetail={server ? server : undefined}
       separator={server ? "·" : undefined}
       arg={identity ? toolName : ""}
+      animateSummary={status === "running"}
       open={open}
       expandable={expandable}
       stacked={stackPosition !== "single"}
@@ -158,10 +161,16 @@ export const McpToolCall = memo(function McpToolCall({
               </pre>
             )}
           </section>
+        ) : status === "running" ? (
+          // 运行中且暂无结果（对齐 ZCode 的 pending 分支）：套一个浅色描边卡，
+          // 让「还没结果」和「结果为空」在视觉上区分开。
+          <p className="kimi-tool-mcp-compact" data-testid="mcp-pending-surface">
+            调用中…
+          </p>
         ) : (
-          // 无结果：沿用摘要行的生命周期文案，不另造措辞
+          // 无结果且已结束：一行浅色文本，不套卡片（ZCode 的 else 分支）。
           <p className="kimi-tool-mcp-empty" data-testid="mcp-result-surface">
-            {status === "running" ? "调用中…" : "暂无结果"}
+            暂无结果
           </p>
         )}
 

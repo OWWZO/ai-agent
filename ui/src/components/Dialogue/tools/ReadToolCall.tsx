@@ -74,6 +74,7 @@ export const ReadToolCall = memo(function ReadToolCall({
       icon={<SearchIcon className="size-4" />}
       name={toolLabel(name)}
       arg={summary}
+      animateSummary={status === "running"}
       argNode={
         filePath ? (
           <ToolFileChip

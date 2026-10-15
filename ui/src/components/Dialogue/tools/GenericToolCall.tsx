@@ -1,5 +1,4 @@
-import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
-import {
+import { memo, useEffect, useMemo, useState, type ReactNode } from "react";import {
   AppWindowIcon,
   BotIcon,
   FolderIcon,
@@ -28,7 +27,9 @@ import {
   resolveTaskToolOutput,
   resolveTaskToolPatch,
   resolveTaskToolStatus,
+  resolveToolKey,
 } from "./toolTaskAdapter";
+import { useToolCardOpen } from "./useToolCardOpen";
 import {
   formatToolStreamChip,
   isToolArgStreaming,
@@ -178,8 +179,9 @@ export const GenericToolCall = memo(function GenericToolCall({
     showRawFallback ||
     showArgStream;
 
-  const [open, setOpen] = useState(
-    () => Boolean(defaultExpanded) || showArgStream
+  const [open, setOpen] = useToolCardOpen(
+    resolveToolKey(tool),
+    Boolean(defaultExpanded) || showArgStream
   );
   const [userToggled, setUserToggled] = useState(false);
 
@@ -194,7 +196,7 @@ export const GenericToolCall = memo(function GenericToolCall({
     if (defaultExpanded && canExpand) {
       setOpen(true);
     }
-  }, [showArgStream, canExpand, defaultExpanded, userToggled]);
+  }, [showArgStream, canExpand, defaultExpanded, userToggled, setOpen]);
 
   const stacked = stackPosition !== "single";
   const expandable = showArgStream || canExpand;
@@ -234,8 +236,10 @@ export const GenericToolCall = memo(function GenericToolCall({
       icon={toolGlyph(name)}
       name={toolLabel(name)}
       arg={!open ? summary : ""}
-      // ZCode 的失败状态词带 hover 提示展示报错原文；这里用原生 title 承载同一份文本。
+      // ZCode 的失败状态词带 hover 提示展示报错原文；这里用富提示卡承载同一份文本。
       statusTitle={isError && output.length > 0 ? output.join("\n") : undefined}
+      // 运行期间摘要文案随入参流式刷新，走上滚而不是硬切（对齐 ZCode animateSummaryContent）。
+      animateSummary={status === "running"}
       chipNode={chipNode}
       open={open}
       expandable={expandable}

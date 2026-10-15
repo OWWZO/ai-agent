@@ -1,14 +1,21 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveToolRendererKind } from "./toolRegistry";
 import { buildEditDiffCode, editDiffStats, formatEditDiffChip } from "./toolDiff";
 import { normalizeToolName } from "./toolMeta";
 import { resolveTaskToolOutput } from "./toolTaskAdapter";
+import { resetToolCardOpenState } from "./toolCardOpenState";
 import { GenericToolCall } from "./GenericToolCall";
 import { EditToolCall } from "./EditToolCall";
 import { ReadToolCall } from "./ReadToolCall";
 import { McpToolCall } from "./McpToolCall";
+
+// 折叠状态是模块级持久表（对齐 ZCode toolLayoutOpenState）。
+// 用例里所有工具都复用同一个 id，必须逐条清空，否则前一条的展开态会漏进下一条。
+beforeEach(() => {
+  resetToolCardOpenState();
+});
 
 function toolTask(
   partial: Partial<CHAT.Task> & { resultMap?: Record<string, unknown> }
@@ -183,11 +190,14 @@ describe("toolRegistry", () => {
           },
         }),
         chat: {} as CHAT.ChatItem,
+        // 展开体的内容只在展开后才进 DOM（对齐 ZCode ToolLayout「未展开不渲染 children」），
+        // 所以这里必须显式展开才能断言段标题与结果文本。
+        defaultExpanded: true,
         changeActiveChat: () => undefined,
       })
     );
 
-    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('aria-expanded="true"');
     // 段标题对齐 ZCode `ToolInput` / `ToolOutput`：Parameters / Result
     expect(html).toContain("Parameters");
     expect(html).toContain("found Controller");
@@ -283,11 +293,12 @@ describe("toolRegistry", () => {
           },
         }),
         chat: {} as CHAT.ChatItem,
+        defaultExpanded: true,
         changeActiveChat: () => undefined,
       })
     );
 
-    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('aria-expanded="true"');
     expect(html).toContain("a.ts");
     // 展开体里是内联 diff，不是 toolResult 的 JSON 转储
     // （ZCode `diffToolStrategy` 的 `showOutput: Boolean(errorText)`）
@@ -314,6 +325,7 @@ describe("toolRegistry", () => {
           },
         }),
         chat: {} as CHAT.ChatItem,
+        defaultExpanded: true,
         changeActiveChat: () => undefined,
       })
     );
@@ -685,8 +697,12 @@ describe("Edit 卡内联 diff（对齐 ZCode EditInlineDiffContent）", () => {
 
     expect(html).toContain("kimi-tool-multi-edit-list");
     expect(html).toContain("2 个文件");
-    // 每个文件一张子卡，各自带**自己的** diff 预览
-    expect(html.match(/data-testid="inline-diff-preview"/g)).toHaveLength(2);
+    // 主行 + 每个文件一张子卡。子卡沿用 ZCode `EDIT_CHILD_LAYOUT`（canToggle=true /
+    // forceOpen=false）：默认收起、展开后才渲染自己的 diff —— 所以这里断言的是
+    // 「子卡结构」，不再断言收起态下 DOM 里就有 diff 预览。
+    expect(html.match(/class="kimi-tool-row(?![-\w])/g)).toHaveLength(3);
+    expect(html).toContain("a.ts");
+    expect(html).toContain("c.ts");
   });
 
   it("write 走合成 patch：展开后是整文件新增的 diff", () => {

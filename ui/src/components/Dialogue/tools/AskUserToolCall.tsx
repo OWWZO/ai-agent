@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo } from "react";
 import { HelpCircleIcon } from "lucide-react";
 import { ToolRow, type ToolRowStackPosition } from "./ToolRow";
 import {
@@ -13,7 +13,9 @@ import {
   resolveTaskToolArg,
   resolveTaskToolOutput,
   resolveTaskToolStatus,
+  resolveToolKey,
 } from "./toolTaskAdapter";
+import { useToolCardOpen } from "./useToolCardOpen";
 
 type AskUserToolCallProps = {
   tool: CHAT.Task;
@@ -70,11 +72,14 @@ export const AskUserToolCall = memo(function AskUserToolCall({
   }, [status, hasNoAnswer, noAnswerText, questions.length]);
 
   const canExpand = output.recognized || rawLines.length > 0;
-  const [open, setOpen] = useState(Boolean(defaultExpanded && canExpand));
+  const [open, setOpen] = useToolCardOpen(
+    resolveToolKey(tool),
+    Boolean(defaultExpanded && canExpand)
+  );
 
   useEffect(() => {
     if (defaultExpanded && canExpand) setOpen(true);
-  }, [defaultExpanded, canExpand, rawLines.length, status]);
+  }, [defaultExpanded, canExpand, rawLines.length, status, setOpen]);
 
   return (
     <ToolRow
@@ -83,6 +88,7 @@ export const AskUserToolCall = memo(function AskUserToolCall({
       // ZCode 的 kindLabel 随运行态切换：正在询问 / 已询问
       name={status === "running" ? "正在询问" : "已询问"}
       arg={!open ? summary : ""}
+      animateSummary={status === "running"}
       open={open}
       expandable={canExpand}
       stacked={stackPosition !== "single"}

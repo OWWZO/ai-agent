@@ -1,12 +1,16 @@
 import {
   useCallback,
+  useEffect,
   useRef,
+  useState,
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
 } from "react";
 import { ChevronRightIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { QueuedSummaryContent } from "./QueuedSummaryContent";
+import { ToolFailureTip } from "./ToolFailureTip";
 
 export type ToolRowStackPosition = "single" | "first" | "middle" | "last";
 
@@ -16,14 +20,21 @@ export type ToolRowStatus = "running" | "ok" | "error" | "suspended";
  * 失败 / 停止时追加在摘要行尾的状态词。
  *
  * 对齐 ZCode `ToolLayout`：**成功态与运行中都不显示任何状态标记**，
- * 运行中的活跃感来自类别标签的扫光；只有失败才出现一个带虚线下划线的词
- * （原版还有 hover 提示展示报错原文，这里用原生 `title` 承载同一份文本）。
+ * 运行中的活跃感来自类别标签的扫光；只有失败才出现一个带虚线下划线的词，
+ * 悬停时弹出富提示卡展示报错原文（ZCode `statusTooltip`）。
  * 文案取自 ZCode `chat.toolCall.status.*`。
  */
 const STATUS_WORD: Partial<Record<ToolRowStatus, string>> = {
   error: "执行失败",
   suspended: "已停止",
 };
+
+/**
+ * 收起详情时的延迟卸载窗口（对齐 ZCode `ToolLayout.TOOL_CONTENT_COLLAPSE_UNMOUNT_DELAY_MS`）。
+ * 高度动画还在跑的时候先卸载子内容，0fr 目标高度会瞬间落地，
+ * 详情区会短暂撑成一块空白。300ms 覆盖完整的高度过渡时长。
+ */
+const TOOL_CONTENT_COLLAPSE_UNMOUNT_DELAY_MS = 300;
 
 type ToolRowProps = {
   status: ToolRowStatus;
@@ -58,8 +69,14 @@ type ToolRowProps = {
    * 纯字符串塞不进 FlipMetricValue。给了 chipNode 就优先渲染它，chip 字符串退为兜底。
    */
   chipNode?: ReactNode;
-  /** 失败 / 停止的提示原文（原生 tooltip），仅状态词存在时生效 */
+  /** 失败 / 停止的提示原文；存在时状态词改挂富提示卡（对齐 ZCode `statusTooltip`） */
   statusTitle?: string;
+  /**
+   * 摘要文案上滚（对齐 ZCode `animateSummaryContent`）：
+   * 流式期间主文本频繁刷新时，旧文案上移淡出、新文案自下方升起，而不是硬切。
+   * 展开态不播动画（ZCode `enabled={animateContent && !isExpanded}`）。
+   */
+  animateSummary?: boolean;
   open?: boolean;
   expandable?: boolean;
   stacked?: boolean;
@@ -82,6 +99,7 @@ export function ToolRow({
   chip = "",
   chipNode,
   statusTitle,
+  animateSummary = false,
   open = false,
   expandable = false,
   stacked = false,
@@ -98,6 +116,48 @@ export function ToolRow({
    * 键盘可达性由内部 chip 自己承担；无 argNode 时保持原生的 <button>。
    */
   const headInteractive = !argNode;
+
+  /**
+   * 收起时的延迟卸载：高度动画期间 children 必须还在 DOM 里，
+   * 否则 grid-template-rows 的 0fr 目标会立刻落地，详情区闪出一块空白。
+   */
+  const [shouldRenderContent, setShouldRenderContent] = useState(open);
+  const contentUnmountTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      if (contentUnmountTimerRef.current !== null) {
+        window.clearTimeout(contentUnmountTimerRef.current);
+        contentUnmountTimerRef.current = null;
+      }
+      setShouldRenderContent(true);
+      return;
+    }
+
+    if (!shouldRenderContent) {
+      return;
+    }
+
+    contentUnmountTimerRef.current = window.setTimeout(() => {
+      setShouldRenderContent(false);
+      contentUnmountTimerRef.current = null;
+    }, TOOL_CONTENT_COLLAPSE_UNMOUNT_DELAY_MS);
+
+    return () => {
+      if (contentUnmountTimerRef.current !== null) {
+        window.clearTimeout(contentUnmountTimerRef.current);
+        contentUnmountTimerRef.current = null;
+      }
+    };
+  }, [open, shouldRenderContent]);
+
+  useEffect(() => {
+    return () => {
+      if (contentUnmountTimerRef.current !== null) {
+        window.clearTimeout(contentUnmountTimerRef.current);
+      }
+    };
+  }, []);
 
   const pinScroll = useCallback(() => {
     const el = headRef.current;
@@ -172,6 +232,8 @@ export function ToolRow({
               chipNode={chipNode}
               statusWord={statusWord}
               statusTitle={statusTitle}
+              animateSummary={animateSummary}
+              open={open}
               trailing={trailing}
             />
           </button>
@@ -205,6 +267,8 @@ export function ToolRow({
               chipNode={chipNode}
               statusWord={statusWord}
               statusTitle={statusTitle}
+              animateSummary={animateSummary}
+              open={open}
               trailing={trailing}
             />
           </div>
@@ -231,7 +295,9 @@ export function ToolRow({
         className={cn("kimi-tool-row-body", open && "is-open")}
         inert={!open ? true : undefined}
       >
-        <div className="kimi-tool-row-body-pad">{children}</div>
+        <div className="kimi-tool-row-body-pad">
+          {shouldRenderContent ? children : null}
+        </div>
       </div>
     </div>
   );
@@ -253,6 +319,8 @@ function ToolRowHeadContent({
   chipNode,
   statusWord,
   statusTitle,
+  animateSummary,
+  open,
   trailing,
 }: {
   icon?: ReactNode;
@@ -266,8 +334,13 @@ function ToolRowHeadContent({
   chipNode?: ReactNode;
   statusWord?: string;
   statusTitle?: string;
+  animateSummary: boolean;
+  open: boolean;
   trailing?: ReactNode;
 }) {
+  const primaryContent =
+    argNode ?? (arg ? <span className="kimi-tool-row-arg" title={arg}>{arg}</span> : null);
+
   return (
     <>
       {icon ? <span className="kimi-tool-row-glyph">{icon}</span> : null}
@@ -278,13 +351,20 @@ function ToolRowHeadContent({
       {separator ? (
         <span className="kimi-tool-row-separator">{separator}</span>
       ) : null}
-      {argNode ?? (arg ? <span className="kimi-tool-row-arg" title={arg}>{arg}</span> : null)}
+      {/* 摘要文案上滚：主文本是滚动的部分，次级文本与计数留在快照外（ZCode 同构）。 */}
+      <QueuedSummaryContent
+        contentKey={arg}
+        primaryText={primaryContent}
+        enabled={animateSummary && !open}
+      />
       {secondary}
       {chipNode ?? (chip ? <span className="kimi-tool-row-chip">{chip}</span> : null)}
       {statusWord ? (
-        <span className="kimi-tool-row-status" title={statusTitle || statusWord}>
-          {statusWord}
-        </span>
+        statusTitle ? (
+          <ToolFailureTip label={statusWord} text={statusTitle} />
+        ) : (
+          <span className="kimi-tool-row-status">{statusWord}</span>
+        )
       ) : null}
       {trailing}
     </>

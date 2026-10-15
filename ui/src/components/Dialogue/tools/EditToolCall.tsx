@@ -21,7 +21,9 @@ import {
   resolveTaskToolOutput,
   resolveTaskToolPatch,
   resolveTaskToolStatus,
+  resolveToolKey,
 } from "./toolTaskAdapter";
+import { useToolCardOpen } from "./useToolCardOpen";
 import {
   formatToolStreamChip,
   isToolArgStreaming,
@@ -115,8 +117,9 @@ export const EditToolCall = memo(function EditToolCall({
     <ToolDiffCount added={diffStats.added} removed={diffStats.removed} />
   ) : undefined;
 
-  const [open, setOpen] = useState(
-    () => Boolean(defaultExpanded) || showArgStream
+  const [open, setOpen] = useToolCardOpen(
+    resolveToolKey(tool),
+    Boolean(defaultExpanded) || showArgStream
   );
   const [userToggled, setUserToggled] = useState(false);
 
@@ -131,7 +134,7 @@ export const EditToolCall = memo(function EditToolCall({
     if (defaultExpanded) {
       setOpen(true);
     }
-  }, [showArgStream, defaultExpanded, userToggled]);
+  }, [showArgStream, defaultExpanded, userToggled, setOpen]);
 
   const kind = normalizeToolName(name);
   const icon = <PencilIcon className="size-4" />;
@@ -197,6 +200,7 @@ export const EditToolCall = memo(function EditToolCall({
               />
             )
           }
+          animateSummary={status === "running"}
           secondary={
             firstFile && /[\\/]/.test(firstFile.path) ? (
               <span className="kimi-tool-row-secondary" title={firstFile.path}>
@@ -226,6 +230,7 @@ export const EditToolCall = memo(function EditToolCall({
                 file={file}
                 kindLabel={toolLabel(name)}
                 status={status}
+                persistKey={`${resolveToolKey(tool)}:${index}`}
                 onOpen={
                   onOpenToolDiff
                     ? () => onOpenToolDiff(tool, chat, index)
@@ -269,6 +274,7 @@ export const EditToolCall = memo(function EditToolCall({
         ) : undefined
       }
       statusTitle={isError && errorText ? errorText : undefined}
+      animateSummary={status === "running"}
       chipNode={chipNode}
       open={open}
       expandable={expandable}
@@ -330,14 +336,16 @@ const EditFileSubCard = memo(function EditFileSubCard({
   file,
   kindLabel,
   status,
+  persistKey,
   onOpen,
 }: {
   file: EditFileSummary;
   kindLabel: string;
   status: "running" | "ok" | "error";
+  persistKey?: string;
   onOpen?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useToolCardOpen(persistKey ?? "", false);
   const expandable = Boolean(file.patch);
 
   return (
