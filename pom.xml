@@ -35,6 +35,10 @@
         <java.version>21</java.version>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- GraalJS 同 JVM 执行引擎。23.1.x 是 GraalVM for JDK 21 的对应线，
+             固定版本避免 polyglot / truffle / js-language 三者版本错配。
+             使用 js-community（UPL/MIT），不引入 truffle-enterprise。-->
+        <graalvm.version>23.1.12</graalvm.version>
     </properties>
 
     <developers>
@@ -211,6 +215,19 @@
                 <groupId>cn.bugstack.ai</groupId>
                 <artifactId>Reactor-agent-trigger</artifactId>
                 <version>1.0-SNAPSHOT</version>
+            </dependency>
+            <!-- GraalJS：polyglot 聚合 POM（编译期 API）+ js-community 聚合 POM（运行期语言实现）。
+                 两者必须同版本；不要再单独引入 truffle-api / regex / icu4j。 -->
+            <dependency>
+                <groupId>org.graalvm.polyglot</groupId>
+                <artifactId>polyglot</artifactId>
+                <version>${graalvm.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.graalvm.polyglot</groupId>
+                <artifactId>js-community</artifactId>
+                <version>${graalvm.version}</version>
+                <type>pom</type>
             </dependency>
         </dependencies>
     </dependencyManagement>

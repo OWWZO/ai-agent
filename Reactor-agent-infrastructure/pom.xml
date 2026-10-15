@@ -100,6 +100,17 @@
             <artifactId>javax.annotation-api</artifactId>
         </dependency>
 
+        <!-- GraalJS：仅 infrastructure 可见，domain 只依赖 CodeModeExecutorPort 接口 -->
+        <dependency>
+            <groupId>org.graalvm.polyglot</groupId>
+            <artifactId>polyglot</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.graalvm.polyglot</groupId>
+            <artifactId>js-community</artifactId>
+            <type>pom</type>
+        </dependency>
+
         <!-- 系统模块 -->
         <dependency>
             <groupId>cn.bugstack.ai</groupId>
