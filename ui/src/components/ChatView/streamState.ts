@@ -103,6 +103,34 @@ export function hasRunningBackgroundTask(chat?: CHAT.ChatItem | null): boolean {
   });
 }
 
+/**
+ * 后台子 Agent 父卡的刷新决策（对齐 ZCode「账本权威、流可断」）。
+ * <p>
+ * 后端对齐后：root result 即关父流，后台终态只落 Execution Ledger。父卡不再有
+ * 晚到的 tool_result 帧可依赖，需要前端主动重拉 replay 把卡片刷到终态。
+ * <ul>
+ *   <li>流还在（loading）：等 root result 收口，不轮询；</li>
+ *   <li>流已收口且存在 running 的后台父卡：poll（有界轮询 replay）；</li>
+ *   <li>无 running 后台卡 / HITL 停驻：idle。</li>
+ * </ul>
+ */
+export function planBackgroundCardRefresh(input: {
+  loading: boolean;
+  chat?: CHAT.ChatItem | null;
+}): "idle" | "poll" {
+  if (input.loading) {
+    return "idle";
+  }
+  const chat = input.chat;
+  if (!chat?.requestId) {
+    return "idle";
+  }
+  if (String(chat.metrics?.status || "").toUpperCase() === "WAITING_INPUT") {
+    return "idle";
+  }
+  return hasRunningBackgroundTask(chat) ? "poll" : "idle";
+}
+
 const WORKSPACE_HIDDEN_MESSAGE_TYPES = new Set([
   "task_summary",
   "result",

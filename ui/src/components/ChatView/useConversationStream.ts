@@ -63,6 +63,7 @@ import {
   isChatItemRunning,
   isHitlYieldEvent,
   isParentLoopLive,
+  planBackgroundCardRefresh,
   planSessionObservation,
   markAskUserQuestionsAnswered,
   markDesktopControlCompleted,
@@ -91,6 +92,13 @@ const SESSION_CONTROL_PACKAGES = new Set([
   "follow_idle",
   "follow_pending",
 ]);
+
+/**
+ * 后台父卡刷新节流（对齐 ZCode 最终一致模型）：父流 root result 即关后，
+ * 用低频轮询把 replay 合并回会话。5s × 24 次 ≈ 2 分钟上限，终态即停。
+ */
+const BACKGROUND_CARD_REFRESH_INTERVAL_MS = 5_000;
+const BACKGROUND_CARD_REFRESH_MAX_ATTEMPTS = 24;
 
 export function isSessionControlPackage(packageType?: string): boolean {
   return SESSION_CONTROL_PACKAGES.has(String(packageType || ""));
@@ -785,6 +793,105 @@ export function useConversationStream(
       };
     }
   );
+
+  /**
+   * 后台子 Agent 父卡刷新（对齐 ZCode「账本权威、流可断」）。
+   * <p>
+   * 后端对齐后父流在 root result 即关，后台终态只落 Execution Ledger，父卡没有晚到的
+   * tool_result 帧可依赖。这里用有界轮询把单 run replay 合并回会话，直到父卡全部终态、
+   * 次数耗尽（约 2 分钟）或切会话/卸载。刻意保守：宁可以最终一致换父流解绑。
+   */
+  const backgroundCardRefreshTimerRef = useRef<number | null>(null);
+  const backgroundCardRefreshRequestIdRef = useRef<string | null>(null);
+  const backgroundCardRefreshAttemptsRef = useRef(0);
+
+  const stopBackgroundCardRefresh = useMemoizedFn(() => {
+    if (backgroundCardRefreshTimerRef.current !== null) {
+      window.clearInterval(backgroundCardRefreshTimerRef.current);
+      backgroundCardRefreshTimerRef.current = null;
+    }
+    backgroundCardRefreshRequestIdRef.current = null;
+    backgroundCardRefreshAttemptsRef.current = 0;
+  });
+
+  /** 拉一次单 run replay 合并回会话；返回后台父卡是否已全部终态。 */
+  const refreshBackgroundCardsOnce = useMemoizedFn(
+    async (conversationId: string, requestId: string): Promise<boolean> => {
+      try {
+        const replay = await requestRunReplay(requestId);
+        const snapshot =
+          conversationSnapshotsRef.current.get(conversationId) ||
+          conversationRef.current;
+        const { history, chat } = resolveRunReplayState(snapshot, replay);
+        commitConversation(conversationId, history);
+        return !hasRunningBackgroundTask(chat);
+      } catch (error) {
+        console.warn("background card refresh failed", error);
+        return true;
+      }
+    }
+  );
+
+  const startBackgroundCardRefresh = useMemoizedFn(
+    (conversationId: string, requestId: string) => {
+      stopBackgroundCardRefresh();
+      backgroundCardRefreshRequestIdRef.current = requestId;
+      backgroundCardRefreshAttemptsRef.current = 0;
+      const tick = () => {
+        backgroundCardRefreshAttemptsRef.current += 1;
+        void refreshBackgroundCardsOnce(conversationId, requestId).then(
+          (settled) => {
+            if (
+              settled ||
+              backgroundCardRefreshAttemptsRef.current >=
+                BACKGROUND_CARD_REFRESH_MAX_ATTEMPTS
+            ) {
+              stopBackgroundCardRefresh();
+            }
+          }
+        );
+      };
+      tick();
+      backgroundCardRefreshTimerRef.current = window.setInterval(
+        tick,
+        BACKGROUND_CARD_REFRESH_INTERVAL_MS
+      );
+    }
+  );
+
+  useEffect(() => {
+    const chatList = conversation.chatList || [];
+    const chat = chatList[chatList.length - 1];
+    const requestId = String(chat?.requestId || "").trim();
+    const plan = planBackgroundCardRefresh({
+      loading,
+      chat,
+    });
+    if (plan === "idle" || !requestId) {
+      if (backgroundCardRefreshRequestIdRef.current !== null) {
+        stopBackgroundCardRefresh();
+      }
+      return;
+    }
+    // 同一 run 只维持一个轮询循环：commit 会触发 effect 重跑，不能叠加 interval。
+    if (
+      backgroundCardRefreshRequestIdRef.current === requestId &&
+      backgroundCardRefreshTimerRef.current !== null
+    ) {
+      return;
+    }
+    startBackgroundCardRefresh(conversation.id, requestId);
+    // conversation.chatList 每次 commit 都变：靠 requestId + timer 哨兵去重。
+    // start/stop 为 useMemoizedFn 稳定引用，入 dep 仅为满足 exhaustive-deps。
+  }, [
+    conversation.id,
+    conversation.chatList,
+    loading,
+    startBackgroundCardRefresh,
+    stopBackgroundCardRefresh,
+  ]);
+
+  useEffect(() => stopBackgroundCardRefresh, [stopBackgroundCardRefresh]);
 
   useEffect(() => {
     conversationSnapshotsRef.current.set(conversation.id, conversation);

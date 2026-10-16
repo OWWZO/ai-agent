@@ -11,7 +11,10 @@ import {
   resolveLatestContextUsage,
   resolveRunReplayState,
 } from "./useConversationStream";
-import { resolveActionPanelVisibility } from "./streamState";
+import {
+  planBackgroundCardRefresh,
+  resolveActionPanelVisibility,
+} from "./streamState";
 import { parseAgentAnswer } from "@/utils/sseParsers";
 
 describe("useConversationStream helpers", () => {
@@ -473,6 +476,96 @@ describe("useConversationStream helpers", () => {
         finished: true,
       })
     ).toBe("keep");
+  });
+
+  it("后台父卡刷新：流在飞不轮询，收口后有 running 后台卡才轮询", () => {
+    // 对齐 ZCode「账本权威、流可断」：父流 root result 即关，后台终态只落账本，
+    // 前端用有界轮询 replay 把父卡刷到终态（useConversationStream 的 effect 消费本决策）。
+    const runningChat = {
+      requestId: "req-bg",
+      multiAgent: {
+        tasks: [
+          [
+            {
+              messageType: "tool_result",
+              resultMap: {
+                run_in_background: true,
+                status: "running",
+                toolResult: '{"status":"running"}',
+              },
+            } as unknown as CHAT.Task,
+          ],
+        ],
+      },
+      metrics: { status: "SUCCESS" },
+    } as unknown as CHAT.ChatItem;
+
+    const settledChat = {
+      ...runningChat,
+      multiAgent: {
+        tasks: [
+          [
+            {
+              messageType: "tool_result",
+              resultMap: {
+                run_in_background: true,
+                status: "success",
+                toolResult: '{"status":"success"}',
+              },
+            } as unknown as CHAT.Task,
+          ],
+        ],
+      },
+    } as unknown as CHAT.ChatItem;
+
+    const waitingChat = {
+      ...runningChat,
+      metrics: { status: "WAITING_INPUT" },
+    } as unknown as CHAT.ChatItem;
+
+    const noTaskChat = { multiAgent: { tasks: [] } } as unknown as CHAT.ChatItem;
+
+    // 流还在（loading）：等 root result 收口，不轮询
+    expect(
+      planBackgroundCardRefresh({
+        loading: true,
+        chat: runningChat,
+      })
+    ).toBe("idle");
+    // 收口 + running 后台卡：轮询 replay
+    expect(
+      planBackgroundCardRefresh({
+        loading: false,
+        chat: runningChat,
+      })
+    ).toBe("poll");
+    // 后台卡已终态：停止
+    expect(
+      planBackgroundCardRefresh({
+        loading: false,
+        chat: settledChat,
+      })
+    ).toBe("idle");
+    // HITL 停驻不轮询
+    expect(
+      planBackgroundCardRefresh({
+        loading: false,
+        chat: waitingChat,
+      })
+    ).toBe("idle");
+    // 无 requestId / 无后台卡：不动
+    expect(
+      planBackgroundCardRefresh({
+        loading: false,
+        chat: null,
+      })
+    ).toBe("idle");
+    expect(
+      planBackgroundCardRefresh({
+        loading: false,
+        chat: noTaskChat,
+      })
+    ).toBe("idle");
   });
 
   it("空流收口后账本 SUCCESS 会把 loading 归位", () => {
