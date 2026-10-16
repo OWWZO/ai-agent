@@ -83,11 +83,12 @@ public class ReactorConfig {
     }
 
     /**
-     * 后台子 Agent 结算是否推迟父 SSE 流收口（对齐 ZCode「账本权威、流可断」前的行为开关）。
-     * false（默认）：root result 即 finished、投影即 complete，后台终态只落账本，父卡走 history 重拉；
-     * true：旧行为——后台在飞时父流挂着等 stream_settle。
+     * 后台子 Agent 结算时父 SSE 流的传输层收口策略（业务态 root result 恒 finish 已无条件解绑）。
+     * true（默认）：后台在飞则投影不 complete、父流保持打开直到 stream_settle，
+     * 结算 tool_result 经活连接推送，父卡秒级刷新（对齐 ZCode delta 推送 UX）；
+     * false：root result 即 complete 关流，父卡改由前端冷路径（replay 重拉）刷新。
      */
-    @Value("${autobots.autoagent.stream.defer-background-settle:false}")
+    @Value("${autobots.autoagent.stream.defer-background-settle:true}")
     private boolean deferBackgroundSettle;
 
     public void setDeferBackgroundSettle(boolean deferBackgroundSettle) {

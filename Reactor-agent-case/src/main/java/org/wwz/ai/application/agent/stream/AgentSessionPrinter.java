@@ -11,8 +11,6 @@ import org.wwz.ai.domain.agent.runtime.stream.AgentStreamEvent;
 import org.wwz.ai.domain.agent.runtime.stream.PlanStreamPayload;
 import org.wwz.ai.domain.agent.runtime.stream.ToolResultStreamPayload;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentPrinter;
-import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
-import org.wwz.ai.domain.agent.runtime.tasklist.StreamSettlePolicy;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
 import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
@@ -116,17 +114,11 @@ public class AgentSessionPrinter implements Printer {
             // 不得把主会话投影流标成 finished，否则主 Agent 仍在跑时 SSE 会被提前关闭。
             // plan_approval / ask_user_question 是 HITL 让步终态：信封必须 finished，
             // 否则前端会把随后的 SSE complete 误当成断线 follow。
-            // 后台 run_in_background 任务（对齐 ZCode「账本权威、流可断」，默认）：终态已由
-            // persistLedgerSettlement 无条件落账本，root result 照常 finished，父流不等子；
-            // 仅 deferBackgroundSettle=true 时保持旧行为（推迟 finish 等 stream_settle）。
+            // root result 恒打 finish（业务态与传输层解绑，2026-10-16）：前端据此立即收口
+            // loading，不再等后台子 Agent。传输层挂起（投影不 complete、等 stream_settle 关流）
+            // 由 StreamSettlePolicy 单独控制，保证后台结算 tool_result 有活连接可推。
             boolean nestedSubAgent = isNestedSubAgentEvent(message, extraResultMap);
-            boolean deferSettle = StreamSettlePolicy.deferBackgroundSettle()
-                    && "result".equals(messageType)
-                    && !nestedSubAgent
-                    && SessionBackgroundTaskHub.hasRunning(
-                    request == null ? null : request.getSessionId(),
-                    request == null ? null : request.getRequestId());
-            boolean finish = ("result".equals(messageType) && !nestedSubAgent && !deferSettle)
+            boolean finish = ("result".equals(messageType) && !nestedSubAgent)
                     || "stream_settle".equals(messageType)
                     || isHitlYieldMessageType(messageType);
             Map<String, Object> resultMap = new HashMap<>();

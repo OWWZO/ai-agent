@@ -198,8 +198,9 @@ public final class BackgroundSubAgentExecutor {
     }
 
     public static boolean shouldSettleParentStream(AgentContext parent) {
-        // 对齐 ZCode「账本权威、流可断」（默认）：root result 后父流已关，无需也无处发 settle；
-        // deferBackgroundSettle=true 时才在父回合关闭且后台空闲时补发 stream_settle。
+        // 传输层默认挂起（deferBackgroundSettle=true，对齐 ZCode 推送 UX）：父回合关闭且
+        // 后台空闲时才发 stream_settle 关流——这之前投影一直活着，结算 tool_result
+        // 才能经活连接推送。flag=false 时全解耦：root result 即关流，无需 settle。
         if (parent == null || !parent.isTurnClosed() || !StreamSettlePolicy.deferBackgroundSettle()) {
             return false;
         }

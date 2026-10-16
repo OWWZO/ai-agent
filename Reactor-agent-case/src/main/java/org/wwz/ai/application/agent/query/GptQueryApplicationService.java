@@ -201,8 +201,10 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
     }
 
     public static boolean shouldDeferProjectionComplete(AgentExecutionCommand agentRequest) {
-        // 对齐 ZCode「账本权威、流可断」（默认）：后台终态已由 persistLedgerSettlement 落账本，
-        // root result 即关投影，父卡终态走 history 重拉；deferBackgroundSettle=true 时才保持旧行为。
+        // 传输层默认挂起（deferBackgroundSettle=true）：后台在飞时投影保持打开，
+        // 结算 tool_result / stream_settle 才有活连接推送到前端（ZCode delta 推送的等价物），
+        // 父卡秒级刷新。业务态不受影响——root result 帧恒 finish，前端 loading 已立即收口。
+        // flag=false 时全解耦：root result 即 complete，父卡改由前端冷路径刷新。
         if (agentRequest == null || !StreamSettlePolicy.deferBackgroundSettle()) {
             return false;
         }
