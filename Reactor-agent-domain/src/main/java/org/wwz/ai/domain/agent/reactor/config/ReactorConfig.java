@@ -156,6 +156,13 @@ public class ReactorConfig {
     private String webFetchProxy;
 
     /**
+     * LLM 出站请求代理（聊天补全与图片生成共用），支持 http/https/socks5；
+     * 为空表示直连。与 web_fetch_proxy 同一配置风格，供访问境外模型端点时使用。
+     */
+    @Value("${autobots.autoagent.llm_proxy:}")
+    private String llmProxy;
+
+    /**
      * WebSearch 模式：auto | gpt | grok | exa | tavily | brave | disabled。
      * auto 时优先 Grok/xAI 原生搜索，其次 GPT/OpenAI Responses API、Exa、Tavily、Brave。
      */

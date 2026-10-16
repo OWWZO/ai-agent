@@ -201,6 +201,7 @@ autobots:
     web_fetch_url: "http://reactor-tool:1601"
     multimodalagent_url: "http://127.0.0.1:1601"
     web_fetch_proxy: "${PROXY:http://127.0.0.1:7890}"
+    llm_proxy: "${PROXY:http://127.0.0.1:7890}"
     image_generation:
       base_url: ""
       api_key: ""

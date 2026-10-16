@@ -111,6 +111,7 @@ public class ReactorImageGenerationGateway implements IReactorImageGenerationGat
                 .defaultGrokModel(firstText(reactorConfig.getImageGenerationGrokModel(), "grok-imagine-image-lite"))
                 .previewBaseUrl(reactorConfig.getCodeInterpreterUrl())
                 .timeoutSeconds(timeout)
+                .proxy(reactorConfig.getLlmProxy())
                 .build(), sharedHttpClient);
     }
 

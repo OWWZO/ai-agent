@@ -11,11 +11,10 @@ import org.springframework.stereotype.Component;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpRequest;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpResponse;
+import org.wwz.ai.infrastructure.http.ProxySupport;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.net.Proxy;
-import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -94,28 +93,11 @@ public class OkHttpRemoteHttpAdapter implements RemoteHttpPort {
                 .callTimeout(resolveTimeout(request.getCallTimeoutSeconds(), request.getReadTimeoutSeconds(), DEFAULT_READ_TIMEOUT_SECONDS), TimeUnit.SECONDS)
                 .followRedirects(followRedirects)
                 .followSslRedirects(followRedirects);
-        if (StringUtils.isNotBlank(request.getProxy())) {
-            builder.proxy(parseProxy(request.getProxy()));
+        Proxy proxy = ProxySupport.parse(request.getProxy());
+        if (proxy != null) {
+            builder.proxy(proxy);
         }
         return builder.build();
-    }
-
-    private Proxy parseProxy(String rawProxy) {
-        try {
-            URI uri = URI.create(rawProxy.trim());
-            String scheme = StringUtils.defaultString(uri.getScheme()).toLowerCase();
-            Proxy.Type type = switch (scheme) {
-                case "http", "https" -> Proxy.Type.HTTP;
-                case "socks", "socks5", "socks5h" -> Proxy.Type.SOCKS;
-                default -> throw new IllegalArgumentException("unsupported proxy scheme");
-            };
-            if (StringUtils.isBlank(uri.getHost()) || uri.getPort() <= 0 || uri.getUserInfo() != null) {
-                throw new IllegalArgumentException("proxy must include host and port without credentials");
-            }
-            return new Proxy(type, InetSocketAddress.createUnresolved(uri.getHost(), uri.getPort()));
-        } catch (Exception e) {
-            throw new IllegalArgumentException("invalid request proxy configuration", e);
-        }
     }
 
     private RequestBody buildRequestBody(RemoteHttpRequest request) {

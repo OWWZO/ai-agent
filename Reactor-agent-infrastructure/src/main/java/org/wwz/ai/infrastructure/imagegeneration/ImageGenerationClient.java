@@ -15,9 +15,11 @@ import okhttp3.Response;
 import okhttp3.ResponseBody;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
+import org.wwz.ai.infrastructure.http.ProxySupport;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.net.Proxy;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -94,12 +96,17 @@ public class ImageGenerationClient {
                 ? trimTrailingSlash(config.getPreviewBaseUrl())
                 : null;
         long timeoutSeconds = normalizeTimeoutSeconds(config.getTimeoutSeconds());
-        this.httpClient = Objects.requireNonNull(sharedClient, "sharedClient").newBuilder()
+        OkHttpClient.Builder clientBuilder = Objects.requireNonNull(sharedClient, "sharedClient").newBuilder()
                 .connectTimeout(60, TimeUnit.SECONDS)
                 .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
                 .writeTimeout(timeoutSeconds, TimeUnit.SECONDS)
-                .callTimeout(timeoutSeconds, TimeUnit.SECONDS)
-                .build();
+                .callTimeout(timeoutSeconds, TimeUnit.SECONDS);
+        // llm_proxy 配置的非空时图片生成走代理，与 LLM 聊天补全共用同一份代理配置。
+        Proxy proxy = ProxySupport.parse(config.getProxy());
+        if (proxy != null) {
+            clientBuilder.proxy(proxy);
+        }
+        this.httpClient = clientBuilder.build();
     }
 
     public GenerationResult generate(GenerationRequest request) {
@@ -1056,6 +1063,8 @@ public class ImageGenerationClient {
         private String defaultGrokModel;
         private String previewBaseUrl;
         private Long timeoutSeconds;
+        /** 出站代理（http/https/socks5），为空表示直连；与 LLM 聊天补全共用 llm_proxy。 */
+        private String proxy;
     }
 
     @Data

@@ -8,17 +8,23 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
+import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
 import org.wwz.ai.domain.agent.runtime.llm.LlmChatModelResolver;
 import org.wwz.ai.domain.agent.runtime.llm.LlmCompletionPort;
 import org.wwz.ai.domain.agent.runtime.llm.LlmRequest;
 import org.wwz.ai.domain.agent.runtime.llm.LlmResponse;
 import org.wwz.ai.domain.agent.runtime.llm.LlmStreamEvent;
+import org.wwz.ai.infrastructure.http.ProxySupport;
 
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 
+import java.net.Proxy;
+import java.net.http.HttpClient;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
@@ -33,14 +39,17 @@ public class SpringAiLlmCompletionAdapter implements LlmCompletionPort, LlmChatM
     private final SpringAiMessageMapper messageMapper;
     private final SpringAiOptionsMapper optionsMapper;
     private final SpringAiResponseMapper responseMapper;
+    private final ReactorConfig reactorConfig;
     private final Map<String, OpenAiChatModel> modelCache = new ConcurrentHashMap<>();
 
     public SpringAiLlmCompletionAdapter(SpringAiMessageMapper messageMapper,
                                         SpringAiOptionsMapper optionsMapper,
-                                        SpringAiResponseMapper responseMapper) {
+                                        SpringAiResponseMapper responseMapper,
+                                        ReactorConfig reactorConfig) {
         this.messageMapper = messageMapper;
         this.optionsMapper = optionsMapper;
         this.responseMapper = responseMapper;
+        this.reactorConfig = reactorConfig;
     }
 
     @Override
@@ -77,7 +86,8 @@ public class SpringAiLlmCompletionAdapter implements LlmCompletionPort, LlmChatM
                 StringUtils.defaultString(settings.getBaseUrl()),
                 StringUtils.defaultString(settings.getInterfaceUrl()),
                 StringUtils.defaultString(settings.getApiKey()),
-                JSON.toJSONString(settings.getExtParams()));
+                JSON.toJSONString(settings.getExtParams()),
+                StringUtils.defaultString(reactorConfig.getLlmProxy()));
     }
 
     private OpenAiChatModel createModel(LLMSettings settings) {
@@ -88,18 +98,38 @@ public class SpringAiLlmCompletionAdapter implements LlmCompletionPort, LlmChatM
         String completionsPath = StringUtils.isNotBlank(settings.getInterfaceUrl())
                 ? settings.getInterfaceUrl().trim()
                 : "/v1/chat/completions";
-        OpenAiApi api = OpenAiApi.builder()
+        String proxy = StringUtils.trimToNull(reactorConfig.getLlmProxy());
+        OpenAiApi.Builder apiBuilder = OpenAiApi.builder()
                 .baseUrl(baseUrl)
                 .apiKey(StringUtils.defaultString(settings.getApiKey()))
-                .completionsPath(completionsPath)
-                .build();
+                .completionsPath(completionsPath);
+        if (proxy != null) {
+            apiBuilder.restClientBuilder(buildProxiedRestClientBuilder(proxy));
+        }
+        OpenAiApi api = apiBuilder.build();
         OpenAiChatModel chatModel = OpenAiChatModel.builder()
                 .openAiApi(api)
                 .defaultOptions(OpenAiChatOptions.builder().model(settings.getModel()).build())
                 .build();
-        log.info("初始化 Spring AI ChatModel: model={}, baseUrl={}, completionsPath={}",
-                settings.getModel(), baseUrl, completionsPath);
+        log.info("初始化 Spring AI ChatModel: model={}, baseUrl={}, completionsPath={}, proxy={}",
+                settings.getModel(), baseUrl, completionsPath, proxy == null ? "direct" : proxy);
         return chatModel;
+    }
+
+    /**
+     * 为 OpenAiApi 构造走代理的 RestClient.Builder：JDK HttpClient 的请求经 ProxySelector
+     * 全部转发到代理（https 目标自动走 CONNECT 隧道）。OpenAiApi 会在其之上叠加
+     * baseUrl、鉴权 header 与错误处理，序列化行为与直连路径一致。
+     */
+    private RestClient.Builder buildProxiedRestClientBuilder(String proxy) {
+        Proxy parsed = ProxySupport.parse(proxy);
+        if (parsed == null) {
+            return RestClient.builder();
+        }
+        HttpClient httpClient = HttpClient.newBuilder()
+                .proxy(ProxySupport.proxySelector(parsed))
+                .build();
+        return RestClient.builder().requestFactory(new JdkClientHttpRequestFactory(httpClient));
     }
 
     private static final class SpringAiStreamCall implements StreamCall {
