@@ -30,8 +30,8 @@ public class TaskOutputTool implements BaseTool {
 
     @Override
     public String getDescription() {
-        return "获取后台任务（Agent / SendMessage 续跑 / shell 等）的输出。"
-                + "block=true（默认）时等到 completed/failed/stopped；block=false 立即返回当前状态（可反复调用）。"
+        return                 "获取后台任务（Agent / SendMessage 续跑 / shell 等）的输出。"
+                + "block=true（默认）时等到 completed/failed/stopped/lost；block=false 立即返回当前状态（可反复调用）。"
                 + "task_id 来自 Agent 后台派发或 SendMessage 续跑返回值。"
                 + "等待或查看子 Agent 结果必须用本工具，不要用 workspace_list 轮询文件。";
     }
@@ -158,6 +158,9 @@ public class TaskOutputTool implements BaseTool {
         }
         if (RuntimeBackgroundTask.STATUS_FAILED.equals(task.getStatus())) {
             return "任务失败：" + StringUtils.defaultString(task.getErrorMsg());
+        }
+        if (RuntimeBackgroundTask.STATUS_LOST.equals(task.getStatus())) {
+            return "任务已丢失：" + StringUtils.defaultString(task.getErrorMsg(), "服务端重启");
         }
         return "ok";
     }

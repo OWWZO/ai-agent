@@ -25,4 +25,14 @@ public interface IToolInvocationLedgerDao {
 
     List<ToolInvocationView> queryRecentByToolName(@Param("toolName") String toolName,
                                                    @Param("limit") int limit);
+
+    /**
+     * 启动对账：扫「父 run 已终态、自身仍 running 且未结束」的工具孤儿。
+     * <p>
+     * 典型来源是 {@code run_in_background} 的后台子 Agent：父回合已结束并落终态，
+     * 但 {@code persistLedgerSettlement} 因进程被杀从未被调到，工具行永远 running。
+     * 父 run 仍 RUNNING 的工具不在此列（可能只是本轮尚未收尾），避免误伤。
+     */
+    List<ToolInvocation> queryOrphanedRunningToolInvocations(@Param("startedBefore") java.time.LocalDateTime startedBefore,
+                                                             @Param("limit") int limit);
 }

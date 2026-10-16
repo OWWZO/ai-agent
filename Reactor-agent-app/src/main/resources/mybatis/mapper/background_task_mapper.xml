@@ -41,6 +41,16 @@
         LIMIT 1
     </select>
 
+    <select id="selectOrphanedRunning" resultMap="BackgroundTaskMap">
+        SELECT *
+        FROM ai_agent_background_task
+        WHERE status = 'running'
+          AND deleted = 0
+          AND started_at_ms &lt; #{startedBeforeMs}
+        ORDER BY started_at_ms ASC, id ASC
+        LIMIT #{limit}
+    </select>
+
     <insert id="upsert" parameterType="org.wwz.ai.infrastructure.dao.reactor.po.BackgroundTaskPO">
         INSERT INTO ai_agent_background_task (
             session_id, task_id, type, status, description, command,

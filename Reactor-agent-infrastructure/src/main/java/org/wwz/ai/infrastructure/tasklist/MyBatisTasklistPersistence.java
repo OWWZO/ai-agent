@@ -175,7 +175,10 @@ public class MyBatisTasklistPersistence implements TasklistPersistencePort {
         return po;
     }
 
-    private static RuntimeBackgroundTask toBackgroundTask(BackgroundTaskPO row) {
+    /**
+     * PO → 领域任务。包外复用（启动对账器扫出的孤儿行也要走同一套映射），故对包外可见。
+     */
+    public static RuntimeBackgroundTask toBackgroundTask(BackgroundTaskPO row) {
         if (row == null) {
             return null;
         }

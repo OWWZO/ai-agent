@@ -51,6 +51,29 @@ public class TaskOutputToolTest {
     }
 
     @Test
+    public void lostTaskReturnsExplicitRestartMessage() {
+        RuntimeBackgroundTaskRegistry registry = new RuntimeBackgroundTaskRegistry();
+        RuntimeBackgroundTask task = registry.registerLocalAgent("lost", "general-purpose", "p");
+        task.setStatus(RuntimeBackgroundTask.STATUS_LOST);
+        task.setErrorMsg("server restarted");
+        TaskOutputTool tool = new TaskOutputTool();
+        tool.setAgentContext(AgentContext.builder()
+                .requestId("req-to-lost")
+                .sessionId("sess-to-lost")
+                .backgroundTasks(registry)
+                .build());
+
+        ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of(
+                "task_id", task.getId(),
+                "block", false));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) payload.getLlmData();
+        Assert.assertEquals("success", data.get("retrieval_status"));
+        Assert.assertEquals(RuntimeBackgroundTask.STATUS_LOST, data.get("status"));
+        Assert.assertEquals("任务已丢失：server restarted", data.get("message"));
+    }
+
+    @Test
     public void blockTrueReturnsAfterComplete() throws Exception {
         RuntimeBackgroundTaskRegistry registry = new RuntimeBackgroundTaskRegistry();
         RuntimeBackgroundTask task = registry.registerLocalAgent("block", "general-purpose", "p");

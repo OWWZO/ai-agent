@@ -69,6 +69,15 @@ autobots:
     # 单次 LLM 工具调用业务超时，单位秒；10 分钟响应建议至少配置为 1200
     llm-timeout-seconds: 1200
 
+    background:
+      # 启动对账：把进程消亡（kill -9 / OOM / 滚动发布）留下的运行态孤儿收敛到终态
+      #   dialogue_run.status=RUNNING / tool_invocation 仍 running / background_task 仍 running
+      # 多实例或滚动发布部署必须置 false——新实例的启动对账会把老实例在跑的任务判成孤儿
+      reconcile-on-start: true
+      # 宽限窗：只扫 started_at 早于「启动时刻 - 宽限窗」的行，容忍上一实例优雅退出拖尾
+      reconcile-grace-ms: 60000
+      reconcile-batch-size: 500
+
     # 兼容旧字段；实际上游凭证见 image_generation.*
     image_generation_url: ""
     image_generation:

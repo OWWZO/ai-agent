@@ -89,6 +89,8 @@
             update_time = NOW()
         WHERE id = #{id}
           AND deleted = 0
+          AND status = 0
+          AND finished_at IS NULL
     </update>
 
     <select id="queryByRunId" resultMap="ToolInvocationMap">
@@ -119,6 +121,23 @@
             #{llmInvocationId}
         </foreach>
         ORDER BY llm_invocation_id ASC, dispatch_index ASC, id ASC
+    </select>
+
+    <select id="queryOrphanedRunningToolInvocations" resultMap="ToolInvocationMap">
+        SELECT t.id, t.run_id, t.llm_invocation_id, t.tool_call_id, t.parent_tool_call_id,
+               t.sub_agent_id, t.sub_agent_type, t.sub_agent_description, t.dispatch_index,
+               t.agent_name, t.step_no, t.tool_name, t.tool_provider, t.input_json,
+               t.llm_oberserve, t.status, t.error_msg, t.started_at, t.finished_at,
+               t.duration_ms, t.create_time, t.update_time, t.deleted
+        FROM ai_agent_tool_invocation t
+        INNER JOIN ai_agent_dialogue_run r ON r.id = t.run_id AND r.deleted = 0
+        WHERE t.status = 0
+          AND t.finished_at IS NULL
+          AND t.deleted = 0
+          AND r.status IN (1, 2, 3, 4)
+          AND t.started_at &lt; #{startedBefore}
+        ORDER BY t.started_at ASC, t.id ASC
+        LIMIT #{limit}
     </select>
 
     <select id="queryRecentByToolName" resultMap="ToolInvocationViewMap">

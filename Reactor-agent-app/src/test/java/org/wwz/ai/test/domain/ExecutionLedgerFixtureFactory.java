@@ -455,6 +455,11 @@ public final class ExecutionLedgerFixtureFactory {
         }
 
         @Override
+        public List<DialogueRun> queryOrphanedRunningRuns(LocalDateTime startedBefore, int limit) {
+            return List.of();
+        }
+
+        @Override
         public DialogueRun queryByRequestId(String requestId) {
             store.queryRunByRequestIdCount++;
             return store.runs.values().stream()
@@ -852,6 +857,11 @@ public final class ExecutionLedgerFixtureFactory {
             existing.setDurationMs(duration(existing.getStartedAt(), invocation.getFinishedAt()));
             existing.setUpdateTime(LocalDateTime.now());
             return 1;
+        }
+
+        @Override
+        public List<ToolInvocation> queryOrphanedRunningToolInvocations(LocalDateTime startedBefore, int limit) {
+            return List.of();
         }
 
         @Override

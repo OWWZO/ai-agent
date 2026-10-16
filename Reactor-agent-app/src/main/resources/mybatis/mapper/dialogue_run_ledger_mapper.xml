@@ -152,6 +152,16 @@
         LIMIT #{offset}, #{limit}
     </select>
 
+    <select id="queryOrphanedRunningRuns" resultMap="DialogueRunMap">
+        SELECT <include refid="dialogueRunColumns"/>
+        FROM ai_agent_dialogue_run
+        WHERE status = 0
+          AND deleted = 0
+          AND started_at &lt; #{startedBefore}
+        ORDER BY started_at ASC, id ASC
+        LIMIT #{limit}
+    </select>
+
     <select id="queryBySessionIdAfter" resultMap="DialogueRunViewMap">
         SELECT <include refid="dialogueRunSummaryViewColumns"/>
         FROM ai_agent_dialogue_run

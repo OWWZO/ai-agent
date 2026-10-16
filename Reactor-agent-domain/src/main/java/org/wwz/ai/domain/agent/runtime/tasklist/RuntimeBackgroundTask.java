@@ -24,6 +24,13 @@ public class RuntimeBackgroundTask {
     public static final String STATUS_COMPLETED = "completed";
     public static final String STATUS_STOPPED = "stopped";
     public static final String STATUS_FAILED = "failed";
+    /**
+     * 执行体随进程消亡、永远等不到终态回调的孤儿（进程重启 / OOM / 滚动发布）。
+     * <p>
+     * 与 {@link #STATUS_FAILED} 区分：failed 是任务自己跑失败了，lost 是「没人知道结果」。
+     * 对齐参照仓库把 lost 做成一等终态的做法。
+     */
+    public static final String STATUS_LOST = "lost";
 
     public static final String TYPE_LOCAL_AGENT = "local_agent";
     public static final String TYPE_LOCAL_SHELL = "local_shell";
