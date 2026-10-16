@@ -104,15 +104,12 @@ export function hasRunningBackgroundTask(chat?: CHAT.ChatItem | null): boolean {
 }
 
 /**
- * 后台子 Agent 父卡的刷新决策（对齐 ZCode「账本权威、流可断」）。
+ * 后台子 Agent 父卡的刷新决策。
  * <p>
- * 后端对齐后：root result 即关父流，后台终态只落 Execution Ledger。父卡不再有
- * 晚到的 tool_result 帧可依赖，需要前端主动重拉 replay 把卡片刷到终态。
- * <ul>
- *   <li>流还在（loading）：等 root result 收口，不轮询；</li>
- *   <li>流已收口且存在 running 的后台父卡：poll（有界轮询 replay）；</li>
- *   <li>无 running 后台卡 / HITL 停驻：idle。</li>
- * </ul>
+ * 注意：传输层默认挂起（deferBackgroundSettle=true）时，后台结算 tool_result 经活连接
+ * 推送、stream_settle 关流，父卡天然秒级刷新，本函数暂无消费方；仅全解耦模式
+ * （flag=false，父流 root result 即关）才需要它驱动冷路径重拉。保留作模式切换时的
+ * 现成积木，默认路径不走轮询。
  */
 export function planBackgroundCardRefresh(input: {
   loading: boolean;
