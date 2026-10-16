@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { combineData, handleTaskData } from "../chat";
 import {
   projectAgentMember,
-  projectDockTasks,
+  projectSubAgentItems,
   projectTurnBlocks,
   turnBlockSignature,
 } from "./agentRuntimeProjector";
@@ -149,7 +149,7 @@ describe("agentRuntimeProjector", () => {
         ],
       ],
     });
-    const dock = projectDockTasks(chat);
+    const dock = projectSubAgentItems(chat);
     expect(dock).toHaveLength(1);
     expect(dock[0].kind).toBe("subagent");
     expect(dock[0].state).toBe("run");
@@ -173,7 +173,7 @@ describe("agentRuntimeProjector", () => {
       multiAgent: { tasks: [[sendTask as unknown as MESSAGE.Task]] },
       tasks: [[{ messageType: "task", children: [sendTask] } as CHAT.Task]],
     });
-    const dock = projectDockTasks(chat);
+    const dock = projectSubAgentItems(chat);
     expect(dock).toHaveLength(1);
     expect(dock[0].id).toBe("tc-sm");
     expect(dock[0].runInBackground).toBe(true);

@@ -28,6 +28,13 @@ type AgentDetailPanelProps = {
   tool: CHAT.Task;
   chat: CHAT.ChatItem;
   onClose?: () => void;
+  /**
+   * 作为右侧工作区 tab 内容渲染（而非独占面板）。
+   *
+   * tab 条本身已经有标题与关闭按钮，所以嵌入态不再画自己的关闭按钮，
+   * 避免同一个面板出现两个 X。
+   */
+  embedded?: boolean;
   changeActiveChat?: CHAT.OpenTaskHandler;
   changeFile?: CHAT.OpenFileHandler;
   sessionArtifactFiles?: CHAT.TFile[];
@@ -42,6 +49,7 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
   tool,
   chat,
   onClose,
+  embedded = false,
   changeActiveChat,
   changePlan,
   onOpenToolDiff,
@@ -164,7 +172,7 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
 
   return (
     <div className="kimi-detail-panel">
-      <div className="kimi-detail-panel-head">
+      <div className={cn("kimi-detail-panel-head", embedded && "pt-3")}>
         <div className="min-w-0 flex-1">
           <div className="text-ui-sm text-[var(--color-text-faint)]">子智能体</div>
           <div className="truncate text-ui-base font-medium text-[var(--color-text)]">
@@ -200,14 +208,16 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
             ) : null}
           </div>
         </div>
-        <button
-          type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-sunken)] hover:text-[var(--color-text)]"
-          aria-label="关闭"
-          onClick={onClose}
-        >
-          <X className="h-4 w-4" />
-        </button>
+        {embedded ? null : (
+          <button
+            type="button"
+            className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-sunken)] hover:text-[var(--color-text)]"
+            aria-label="关闭"
+            onClick={onClose}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
       <div ref={bodyRef} className="kimi-detail-panel-body px-3 py-2">
         {sub.errorMsg ? (

@@ -2,8 +2,8 @@ import { BotIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * 输入框内的后台子智能体徽标（移植 ZCode `ConversationBackgroundWorkTrigger` 的智能体分支）。
- * 与右上角「智能体」面板同源：点击一律把面板切成展开态。
+ * 输入框内的子智能体徽标（移植 ZCode `ConversationBackgroundWorkTrigger` 的智能体分支）。
+ * 与右上角「智能体」面板同源（同步 + 后台子 Agent 都算），点击一律把面板切成展开态。
  */
 type Props = {
   /** 展示数量：有运行中取运行数，否则取总数 */
@@ -13,7 +13,7 @@ type Props = {
   onOpen?: () => void;
 };
 
-export default function BackgroundAgentsChip({
+export default function SubAgentsChip({
   count,
   runningCount = 0,
   disabled,
@@ -24,8 +24,8 @@ export default function BackgroundAgentsChip({
   }
   const title =
     runningCount > 0
-      ? `${runningCount} 个后台子智能体正在运行，点击查看`
-      : "查看后台子智能体";
+      ? `${runningCount} 个子智能体正在运行，点击查看`
+      : "查看子智能体";
 
   return (
     <button
@@ -37,7 +37,7 @@ export default function BackgroundAgentsChip({
       )}
       title={title}
       aria-label={title}
-      data-testid="background-agents-composer-chip"
+      data-testid="sub-agents-composer-chip"
       onClick={onOpen}
     >
       <BotIcon className="size-3.5 shrink-0 opacity-80" />

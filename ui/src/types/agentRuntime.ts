@@ -95,7 +95,7 @@ export type ChatTurn = {
 
 export type TaskState = "run" | "done" | "fail";
 
-/** 后台任务 Dock / 右上角智能体面板条目（bash / 后台 subagent） */
+/** 子智能体名册条目（右上角「智能体」面板 / 右侧工作区「子智能体目录」共用） */
 export type DockTaskItem = {
   id: string;
   name: string;
@@ -104,12 +104,17 @@ export type DockTaskItem = {
   timing: string;
   meta?: string;
   output?: string[];
+  /** 是否 run_in_background 派发；false 即同步（前台）子 Agent */
   runInBackground?: boolean;
   parentToolCallId?: string;
   /** 真实子会话 ID（sub_{agentId}）：详情面板据此订阅子会话，父卡缺失时也能下钻 */
   childSessionId?: string;
   /** 任务起始时间（ms epoch）：运行中条目据此实时累计「已运行 X 分 X 秒」 */
   startedAtMs?: number;
+  /** 结束时间（ms epoch）：目录里算「刚刚 / X 分前」相对时间 */
+  endedAtMs?: number;
+  /** 终态摘要（subagent_end 帧 / 回传正文首行）：目录行第二行的描述文案 */
+  summary?: string;
 };
 
 /**

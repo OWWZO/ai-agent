@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { ActionViewItemEnum } from "@/utils";
 import querySSE from "@/utils/querySSE";
 import { buildConversationTaskData, getStableTaskIdentity } from "@/utils/chat";
 import {
@@ -17,9 +16,11 @@ import {
 import Dialogue from "@/components/Dialogue";
 import DataDialogue from "@/components/Dialogue/DataDialogue";
 import GeneralInput from "@/components/GeneralInput";
-import ActionView from "@/components/ActionView";
+import ActionView, {
+  type OpenAgentTabPayload,
+  type OpenTaskTabPayload,
+} from "@/components/ActionView";
 import { ThinkingPanel } from "@/components/Dialogue/ThinkingPanel";
-import { ToolPreviewPanel } from "@/components/Dialogue/ToolPreviewPanel";
 import { AgentDetailPanel } from "@/components/Dialogue/AgentDetailPanel";
 import {
   buildToolPreviewSource,
@@ -27,10 +28,20 @@ import {
 } from "@/components/Dialogue/tools/toolPreviewSource";
 import { MoonSpinner } from "@/components/ui/MoonSpinner";
 import SessionTaskComposerBar from "./SessionTaskComposerBar";
-import BackgroundAgentsPanel from "./BackgroundAgentsPanel";
-import type { AgentsPanelVariant } from "./backgroundAgentsModel";
-import { projectDockTasks } from "@/utils/chat/agentRuntimeProjector";
-import { findAgentTaskByToolCallId, findLatestRunningAgentTask } from "@/utils/chat/taskIdentity";
+import SubAgentsPanel from "./SubAgentsPanel";
+import type { AgentsPanelVariant } from "./subAgentsModel";
+import { collectSubAgentRoster } from "@/utils/chat/subAgentRoster";
+import { resolveSubAgentDisplay } from "@/utils/chat/subagent";
+import FilePreview from "@/components/ActionView/FilePreview";
+import { resolvePreviewTitle } from "@/components/ActionView/filePreviewModel";
+import type {
+  WorkspaceAgentTab,
+  WorkspaceTaskTab,
+} from "@/components/ActionView/workspaceFiles";
+import {
+  findAgentTaskByToolCallId,
+  findLatestRunningAgentTask,
+} from "@/utils/chat/taskIdentity";
 import PlanComposerBar from "./PlanComposerBar";
 import AskUserQuestionCard from "@/components/Dialogue/AskUserQuestionCard";
 import DesktopControlCard from "@/components/Dialogue/DesktopControlCard";
@@ -73,6 +84,11 @@ import {
   isCanvasPublishPreviewTask,
 } from "./streamState";
 import { useWorkspacePanels } from "./useWorkspacePanels";
+import {
+  decideWorkspaceTabCountChange,
+  resolveAutoFollowTabKind,
+  shouldAutoFollowWorkspaceTask,
+} from "./workspaceTabSentinel";
 import GenUiActionBridge from "@/components/genui/GenUiActionBridge";
 import { identityKeys, readTaskIdentity } from "@/utils/chat/taskIdentity";
 import {
@@ -83,7 +99,7 @@ import {
   flattenTasksWithFiles,
 } from "@/components/ActionView/workspaceFiles";
 import { collectSessionArtifactFiles } from "@/utils/markdownArtifacts";
-import { getTaskFiles } from "@/utils/taskArtifacts";
+import { getPrimaryTaskFile, getTaskFiles } from "@/utils/taskArtifacts";
 import type { PanelItemType } from "@/components/ActionPanel";
 
 type ChatViewApi = {
@@ -187,6 +203,72 @@ const sameStringList = (previous: string[], next: string[]) =>
   previous.length === next.length &&
   previous.every((value, index) => value === next[index]);
 
+/**
+ * 按稳定身份回找**最新的**任务 —— 任务预览 tab 的渲染数据源。
+ *
+ * tab 只存 `taskKey` + 打开瞬间的兜底快照：流式过程中任务的 `resultMap` /
+ * `artifactRefs` / `children` 一直在补全，用快照渲染会让预览停在打开那一刻
+ * （旧的「动态」跟随没有这个问题，因为它每次都用宿主的最新任务重渲染）。
+ *
+ * 遍历顺序：`chatList` **倒序**（同一个 key 若跨轮重复出现，当前/最新那一轮优先）
+ * → 再退到流式 `taskList`。两处都没有时才由调用方回退 `tab.fallbackTask`。
+ */
+const findTaskByStableKey = (
+  chatList: CHAT.ChatItem[] | null | undefined,
+  liveTaskList: PanelItemType[] | null | undefined,
+  taskKey: string
+): CHAT.Task | undefined => {
+  if (!taskKey) {
+    return undefined;
+  }
+  let hit: CHAT.Task | undefined;
+  const walk = (task?: CHAT.Task | PanelItemType | null) => {
+    if (!task || hit) {
+      return;
+    }
+    if (getTaskStableKey(task as CHAT.Task) === taskKey) {
+      hit = task as CHAT.Task;
+      return;
+    }
+    const children = (task as CHAT.Task).children;
+    if (Array.isArray(children)) {
+      for (const child of children) {
+        walk(child);
+      }
+    }
+  };
+
+  const chats = chatList || [];
+  for (let index = chats.length - 1; index >= 0; index -= 1) {
+    const chat = chats[index];
+    for (const group of chat.tasks || []) {
+      for (const task of group || []) {
+        walk(task);
+      }
+    }
+    for (const group of chat.multiAgent?.tasks || []) {
+      for (const task of group || []) {
+        walk(task);
+      }
+    }
+    if (chat.conclusion) {
+      walk(chat.conclusion);
+    }
+    if (hit) {
+      return hit;
+    }
+  }
+
+  const live = liveTaskList || [];
+  for (let index = live.length - 1; index >= 0; index -= 1) {
+    walk(live[index]);
+    if (hit) {
+      return hit;
+    }
+  }
+  return hit;
+};
+
 type SessionFileTasks = ReturnType<typeof collectSessionFileTasks>;
 
 const ChatView: ReactorType.FC<Props> = (props) => {
@@ -210,7 +292,6 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     onFocusModeChange,
   } = props;
 
-  const [activeTask, setActiveTask] = useState<CHAT.Task>();
   const [workspaceOpenRequested, setWorkspaceOpenRequested] = useState(false);
   /** 打开工作区前缓存要点的文件，避免 ActionView 未挂载时 setFilePreview 丢失 */
   const [pendingPreviewFile, setPendingPreviewFile] = useState<CHAT.TFile>();
@@ -223,23 +304,57 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   const [pendingSourceTab, setPendingSourceTab] = useState<ToolPreviewSource | null>(
     null
   );
-  /** Kimi 右侧互斥 detail：thinking | toolDiff | agent | ActionView */
-  const [thinkingDetail, setThinkingDetail] = useState<string | null>(null);
-  const [toolDiffTask, setToolDiffTask] = useState<CHAT.Task | null>(null);
-  /** 多文件 edit：右侧要展示第几个文件的 patch（undefined = 单文件 / 全部） */
-  const [toolDiffFileIndex, setToolDiffFileIndex] = useState<number | undefined>(
-    undefined
+  /**
+   * 待挂载的子智能体 tab（时间线工具卡 / 右上角「智能体」面板 / 目录推来）。
+   *
+   * 与 `pendingPreviewFile` / `pendingSourceTab` 同一套挂载机制：ActionView 可能
+   * 还没挂载（工作区收起、正显示 thinking / diff 独占面板），先把要开的 tab
+   * 暂存在父级，ActionView 挂载后消费一次再清空。
+   */
+  const [pendingAgentTab, setPendingAgentTab] =
+    useState<OpenAgentTabPayload | null>(null);
+  /** 待挂载的子智能体目录 tab（单例，与 pendingAgentTab 同机制） */
+  const [pendingAgentDirectory, setPendingAgentDirectory] = useState(false);
+  /** 待挂载的任务预览 tab（点工具卡推来，代替旧的「动态」跟随） */
+  const [pendingTaskTab, setPendingTaskTab] = useState<OpenTaskTabPayload | null>(
+    null
   );
-  const [agentDetail, setAgentDetail] = useState<{
-    tool: CHAT.Task;
-    chat: CHAT.ChatItem;
-  } | null>(null);
+  /**
+   * 工作区「最后一个真实 tab 被关掉」的哨兵。
+   *
+   * ActionView 挂载后会立刻上报一次 tab 数，首次必然是 0 —— 因为 pending tab 的
+   * 消费 effect 与上报 effect 在同一次提交里，上报读到的还是旧 state。所以
+   * **首次 0 不能当关闭命令**，只有真的经历过 `>0` 之后再回到 0 才算「关光了」。
+   */
+  const hadWorkspaceTabsRef = useRef(false);
+  /**
+   * 工作区当前是否有真实 tab。
+   *
+   * 用 state 而不是 ref：它是 `hasWorkspaceContent` 的输入 —— 只要还有 tab，
+   * 工作区就必须留着（哪怕流式的 `showAction` 已经翻回 false）。
+   */
+  const [workspaceHasTabs, setWorkspaceHasTabs] = useState(false);
+  /** 流式「自动跟随」已经为哪个任务自动开过 tab：同一个任务只自动开一次 */
+  const lastAutoFollowTaskKeyRef = useRef("");
+  /**
+   * 本轮里用户是否手动关过工作区。
+   *
+   * 关过之后流式自动跟随不再把工作区弹回来（否则用户刚关掉，下一个工具事件就
+   * 又拉开一个面板）；新一轮开始时复位。
+   */
+  const userClosedWorkspaceRef = useRef(false);
+  /**
+   * 右侧**覆盖层** detail：thinking | desktop-preview。
+   *
+   * 只剩这两种：工具 diff / 子智能体详情都已改走 ActionView 的 tab（与文件预览同一套
+   * 挂载机制），不再是独占面板 —— 所以它们不再需要「返回上一屏」的回退路径。
+   */
+  const [thinkingDetail, setThinkingDetail] = useState<string | null>(null);
   /** 右上角「智能体」面板形态：默认 auto（宽屏展开、窄屏胶囊），输入框徽标可强制展开 */
   const [agentsPanelVariant, setAgentsPanelVariant] =
     useState<AgentsPanelVariant>("auto");
-  const [workspaceBackTarget, setWorkspaceBackTarget] =
-    useState<CHAT.AgentDetailTarget | null>(null);
-  const agentPanelClosedRef = useRef(false);
+  /** 已自动开过详情 tab 的子 Agent toolCallId：同一条只自动开一次，不覆盖用户手动关闭 */
+  const autoOpenedAgentRef = useRef("");
   const lastAutoOpenedDesktopControlRef = useRef("");
   const [composerDraft, setComposerDraft] = useState<string | null>(null);
   const {
@@ -337,16 +452,20 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     readOnly,
     onConversationChange,
     onPrepareStreamingWorkspace: () => {
-      // 新一轮请求开始后，工作区恢复自动跟随，避免仍停留在上一轮手动点开的旧任务上。
-      setActiveTask(undefined);
+      // 新一轮开始：清掉上一轮遗留的「待打开」意图，但**不**动已经开着的 tab
+      // （用户的 tab 选择是显式操作，不该被新一轮流式冲掉）。
+      // 旧的「工作区恢复自动跟随」已随「动态」伪模式删除 —— 现在只有用户点工具卡
+      // 才会开任务预览 tab，新一轮不会再自动抢工作区焦点。
       setPendingPreviewFile(undefined);
       setThinkingDetail(null);
-      setToolDiffTask(null);
-      setWorkspaceBackTarget(null);
-      agentPanelClosedRef.current = false;
-      setAgentDetail(null);
+      setPendingAgentTab(null);
+      setPendingAgentDirectory(false);
+      setPendingTaskTab(null);
+      // 新一轮开始，「用户已关闭工作区」的记忆与自动跟随的去重键都归零 ——
+      // 自动跟随按轮生效，上一轮的手动关闭不该管住下一轮。
+      userClosedWorkspaceRef.current = false;
+      lastAutoFollowTaskKeyRef.current = "";
       lastAutoOpenedCanvasPreviewKeyRef.current = "";
-      actionViewRef.current?.changeActionView(ActionViewItemEnum.follow);
     },
     onTokenUseUp: () => {
       modal.info({
@@ -399,52 +518,25 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     setWorkspaceOpenRequested(false);
     setIsRightCollapsed(false);
     setThinkingDetail(null);
-    setToolDiffTask(null);
-    setWorkspaceBackTarget(null);
-    agentPanelClosedRef.current = false;
-    setAgentDetail(null);
+    setPendingAgentTab(null);
+    setPendingAgentDirectory(false);
+    setPendingTaskTab(null);
+    // 「待打开」意图都是**瞬时**的，不跨会话 —— 流式自动跟随会写 pendingPreviewFile，
+    // 不清掉的话切会话时可能把上一个会话的文件带过来。
+    setPendingPreviewFile(undefined);
+    // ActionView 的 key 是 conversation.id，换会话后 tab 全没了 —— 哨兵必须归零，
+    // 否则新会话首次上报 0 会被误判成「最后一个 tab 被关掉」。
+    hadWorkspaceTabsRef.current = false;
+    setWorkspaceHasTabs(false);
+    userClosedWorkspaceRef.current = false;
+    lastAutoFollowTaskKeyRef.current = "";
     lastAutoOpenedCanvasPreviewKeyRef.current = "";
     lastAutoOpenedDesktopControlRef.current = "";
   }, [conversation.id]);
 
-  useEffect(() => {
-    // 任务列表会在流式过程中不断补全字段。保留稳定 key 后用最新任务替换
-    // 当前选中对象，既能更新状态，又不会因为对象引用变化丢失用户选择。
-    const refreshTask = (prev?: CHAT.Task | null) => {
-      if (!prev) return prev ?? null;
-      const key = getTaskStableKey(prev);
-      if (!key) return prev;
-      const matched = taskList.find((task) => getTaskStableKey(task) === key);
-      if (matched) return matched;
-      if (getTaskStableKey(workspaceStreamTask) === key && workspaceStreamTask) {
-        return workspaceStreamTask;
-      }
-      return prev;
-    };
-
-    setActiveTask((prev) => refreshTask(prev) || undefined);
-    setToolDiffTask((prev) => refreshTask(prev));
-    // Agent 详情优先按 toolCallId 从最新 chat 回找：后台 Dock 打开的卡常不在顶层
-    // taskList 身份空间里，仅靠 getTaskStableKey 会一直卡在打开瞬间的快照。
-    setAgentDetail((prev) => {
-      if (!prev) return prev;
-      const latestChatSource =
-        conversation.chatList?.[conversation.chatList.length - 1] || prev.chat;
-      const latestChat = getRenderedChat(latestChatSource, conversation.deepThink);
-      const toolCallId = identityKeys(readTaskIdentity(prev.tool))[0] || "";
-      const fromChat =
-        latestChat && toolCallId
-          ? findAgentTaskByToolCallId(latestChat, toolCallId)
-          : null;
-      const nextTool = fromChat || refreshTask(prev.tool);
-      if (!nextTool) return prev;
-      if (nextTool === prev.tool && latestChat === prev.chat) return prev;
-      return {
-        tool: nextTool,
-        chat: latestChat || prev.chat
-      };
-    });
-  }, [taskList, workspaceStreamTask, conversation.chatList, conversation.deepThink]);
+  // 任务预览 tab 不需要在这里「刷新快照」：tab 只存 `taskKey`，实时任务由
+  // `renderTaskTab` 在渲染时从最新 chatList / taskList 回找（旧实现靠一段
+  // refreshTask 把 activeTask 快照 patch 回来，随「动态」伪模式一起删掉了）。
 
   const commitConversation = useMemoizedFn(
     (conversationId: string, nextConversation: CHAT.ConversationHistory) => {
@@ -493,19 +585,35 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   const openRightWorkspace = useMemoizedFn(() => {
     onEnsureSessionFiles?.();
+    // 用户显式打开 → 解除「本轮已手动关闭」的记忆，自动跟随可以重新生效。
+    userClosedWorkspaceRef.current = false;
     setWorkspaceOpenRequested(true);
     setIsRightCollapsed(false);
     changeActionStatus(true);
   });
 
+  /**
+   * 收起整个工作区（最后一个真实 tab 被关掉 / 用户点关闭）。
+   *
+   * 必须同时复位 `hadWorkspaceTabsRef`：ActionView 会随工作区卸载，下次打开时
+   * 是全新的空 tab 列表，首次上报的 0 不能被当成「又关光了」。
+   *
+   * 并记下「用户手动关过」：本轮内流式自动跟随不再把工作区弹回来。
+   */
+  const collapseWorkspace = useMemoizedFn(() => {
+    hadWorkspaceTabsRef.current = false;
+    userClosedWorkspaceRef.current = true;
+    setWorkspaceOpenRequested(false);
+    changeActionStatus(false);
+    setIsRightCollapsed(true);
+  });
+
   const openThinkingPanel = useMemoizedFn((text: string) => {
     setThinkingDetail(text);
-    setToolDiffTask(null);
-    setAgentDetail(null);
+    setPendingAgentTab(null);
+    setPendingAgentDirectory(false);
     setPendingPreviewFile(undefined);
     setPendingSourceTab(null);
-    setActiveTask(undefined);
-    setWorkspaceBackTarget(null);
     openRightWorkspace();
   });
 
@@ -520,73 +628,55 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   /**
    * 点工具卡文件名 chip 的统一入口（Stage 4）。
    *
-   * 会在侧栏 ActionView 里**新增 / 切换一个 tab**（patch 与文件 tab 共用一条 tab 栏，
-   * 对齐 ZCode 行为），而不是只替换右侧单一面板 —— 这样连开多个 diff 不会互相顶掉。
-   *
-   * `backTarget` 存在时（从子 Agent 详情进来的）仍走独立 `ToolPreviewPanel`，
-   * 因为那条路径需要保留「返回子 Agent」按钮。
+   * 一律在侧栏 ActionView 里**新增 / 切换一个 tab**（patch、文件、子智能体详情
+   * 共用同一条 tab 栏，对齐 ZCode），而不是替换右侧单一面板 —— 这样从子智能体
+   * 详情里点文件不会再顶掉详情，也不需要「返回子 Agent」这条回退路径。
    */
   const openToolDiffPanel = useMemoizedFn(
-    (
-      task: CHAT.Task,
-      chat?: CHAT.ChatItem,
-      backTarget?: CHAT.AgentDetailTarget,
-      fileIndex?: number
-    ) => {
+    (task: CHAT.Task, chat?: CHAT.ChatItem, fileIndex?: number) => {
       const request = buildToolPreviewSource(task, fileIndex);
       if (!request) return;
 
       setThinkingDetail(null);
       setPendingPreviewFile(undefined);
-      setActiveTask(undefined);
       setActiveRunState({
         status: chat?.metrics?.status,
         finishedAt: chat?.finishedAt,
       });
 
-      if (backTarget) {
-        // 详情页返回路径：独立面板 + 返回按钮
-        setToolDiffTask(task);
-        setToolDiffFileIndex(fileIndex);
-        setWorkspaceBackTarget(backTarget);
-        openRightWorkspace();
-        return;
-      }
-
-      // 常规路径：只往侧栏塞一个 tab。`source` 是 file 且能映射到会话产物时，
-      // ActionView 会把它并进同 key 的文件 tab；否则作为独立 source tab 打开。
-      setToolDiffTask(null);
-      setToolDiffFileIndex(undefined);
-      setAgentDetail(null);
-      setWorkspaceBackTarget(null);
+      // `source` 是 file 且能映射到会话产物时，ActionView 会把它并进同 key 的文件
+      // tab；否则作为独立 source tab 打开。
       openRightWorkspace();
       setPendingPreviewFile(undefined);
       setPendingSourceTab(request);
     }
   );
 
-  const closeToolDiffPanel = useMemoizedFn(() => {
-    setToolDiffTask(null);
-    setToolDiffFileIndex(undefined);
-    setWorkspaceBackTarget(null);
-  });
-
+  /**
+   * 打开一个子智能体的详情 tab（时间线工具卡 / 右上角「智能体」面板 / 目录共用）。
+   *
+   * 子智能体详情从「独占面板」改为「工作区 tab」：与文件预览同一套挂载机制，
+   * 多个子智能体可以并存、可来回切，不会再互相顶掉。
+   */
   const openAgentPanel = useMemoizedFn(
-    (
-      task: CHAT.Task,
-      chat: CHAT.ChatItem,
-      backTarget?: CHAT.AgentDetailTarget
-    ) => {
-      setAgentDetail({
+    (task: CHAT.Task, chat: CHAT.ChatItem) => {
+      const toolCallId =
+        identityKeys(readTaskIdentity(task))[0] || task.id || task.messageId || "";
+      if (!toolCallId) {
+        return;
+      }
+      const display = resolveSubAgentDisplay(task);
+      setPendingAgentTab({
+        toolCallId,
+        title: display.description || display.subagentType || "子智能体",
+        subagentType: display.subagentType,
+        runInBackground: display.runInBackground,
         tool: task,
-        chat
+        chat,
       });
       setThinkingDetail(null);
-      setToolDiffTask(null);
       setPendingPreviewFile(undefined);
       setPendingSourceTab(null);
-      setActiveTask(undefined);
-      setWorkspaceBackTarget(backTarget || null);
       openRightWorkspace();
       setActiveRunState({
         status: chat.metrics?.status,
@@ -595,23 +685,18 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     }
   );
 
-  const closeAgentPanel = useMemoizedFn(() => {
-    agentPanelClosedRef.current = true;
-    setAgentDetail(null);
-    setWorkspaceBackTarget(null);
+  /** 打开子智能体目录 tab（右上角「智能体」面板页脚 / 徽标入口） */
+  const openSubAgentDirectory = useMemoizedFn(() => {
+    setThinkingDetail(null);
+    setPendingAgentTab(null);
+    setPendingSourceTab(null);
+    openRightWorkspace();
+    setPendingAgentDirectory(true);
   });
 
   const closeExclusiveDetail = useMemoizedFn(() => {
     if (thinkingDetail != null) {
       closeThinkingPanel();
-      return true;
-    }
-    if (toolDiffTask) {
-      closeToolDiffPanel();
-      return true;
-    }
-    if (agentDetail) {
-      closeAgentPanel();
       return true;
     }
     return false;
@@ -628,56 +713,52 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [closeExclusiveDetail]);
 
-  const changeTask = useMemoizedFn(
-    (
-      task: CHAT.Task,
-      chat?: CHAT.ChatItem,
-      backTarget?: CHAT.AgentDetailTarget
-    ) => {
-      // Structured data / 子智能体 JSON 观察值当前不渲染，禁止打开空白右侧面板。
-      if (!canOpenTaskWorkspacePanel(task)) {
-        return;
-      }
-      // 任务点击同时建立工作区可见性和当前运行快照；先恢复动态跟随，避免
-      // 上一轮打开的文件预览遮住用户刚选择的任务。
-      setThinkingDetail(null);
-      setToolDiffTask(null);
-      setAgentDetail(null);
-      setWorkspaceBackTarget(backTarget || null);
-      openRightWorkspace();
-      // 工具点击回到「动态」预览，避免被已打开的文件 tab 挡住
-      setPendingPreviewFile(undefined);
-      actionViewRef.current?.changeActionView(ActionViewItemEnum.follow);
-      setActiveTask(task);
-      setActiveRunState({
-        status: chat?.metrics?.status,
-        finishedAt: chat?.finishedAt,
-      });
+  /**
+   * 点工具卡 → 开一个「任务预览 tab」（原「动态」跟随）。
+   *
+   * 与文件 / 子智能体详情同一套挂载机制：同一个任务重复点开只切前台不新增 tab，
+   * 且不再有一个叫「动态」的空面板常驻右侧。
+   */
+  const changeTask = useMemoizedFn((task: CHAT.Task, chat?: CHAT.ChatItem) => {
+    // Structured data / 子智能体 JSON 观察值当前不渲染，禁止打开空白右侧面板。
+    if (!canOpenTaskWorkspacePanel(task)) {
+      return;
     }
-  );
+    const taskKey = getTaskStableKey(task);
+    if (!taskKey) {
+      return;
+    }
+    setThinkingDetail(null);
+    setPendingTaskTab({
+      taskKey,
+      // 文件类任务的标题取自 primary file（`resolvePreviewTitle` 的 file 分支
+      // 需要它），工具类任务取工具名 —— 不要直接把 messageType 暴露给用户。
+      title:
+        resolvePreviewTitle(task, getPrimaryTaskFile(task)) ||
+        task.messageType ||
+        "任务",
+      task,
+    });
+    openRightWorkspace();
+    setActiveRunState({
+      status: chat?.metrics?.status,
+      finishedAt: chat?.finishedAt,
+    });
+  });
 
-  const changeFile = useMemoizedFn(
-    (
-      file: CHAT.TFile,
-      chat?: CHAT.ChatItem,
-      backTarget?: CHAT.AgentDetailTarget
-    ) => {
-      // 只打开右侧预览 tab；左侧文件管理仅由「查看当前会话的文件」入口进入
-      setThinkingDetail(null);
-      setToolDiffTask(null);
-      setAgentDetail(null);
-      setWorkspaceBackTarget(backTarget || null);
-      openRightWorkspace();
-      setActiveRunState({
-        status: chat?.metrics?.status,
-        finishedAt: chat?.finishedAt,
-      });
-      // 先写入父状态：工作区未挂载时 ref 调用会丢；挂载后由 ActionView 消费。
-      // 两条路径同时保留是为了覆盖“首次打开工作区”和“工作区已存在”两种时序。
-      setPendingPreviewFile(file);
-      actionViewRef.current?.setFilePreview(file);
-    }
-  );
+  const changeFile = useMemoizedFn((file: CHAT.TFile, chat?: CHAT.ChatItem) => {
+    // 只打开右侧预览 tab；左侧文件管理仅由「查看当前会话的文件」入口进入
+    setThinkingDetail(null);
+    openRightWorkspace();
+    setActiveRunState({
+      status: chat?.metrics?.status,
+      finishedAt: chat?.finishedAt,
+    });
+    // 先写入父状态：工作区未挂载时 ref 调用会丢；挂载后由 ActionView 消费。
+    // 两条路径同时保留是为了覆盖“首次打开工作区”和“工作区已存在”两种时序。
+    setPendingPreviewFile(file);
+    actionViewRef.current?.setFilePreview(file);
+  });
 
   const clearPendingPreviewFile = useMemoizedFn(() => {
     setPendingPreviewFile(undefined);
@@ -716,51 +797,45 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   const changePlan = useMemoizedFn(() => {
     setThinkingDetail(null);
-    setToolDiffTask(null);
-    setAgentDetail(null);
-    setWorkspaceBackTarget(null);
     openRightWorkspace();
     actionViewRef.current?.openPlanView();
   });
 
   const toggleRightPanel = useMemoizedFn(() => {
-    const nextOpen = isRightCollapsed;
-    setWorkspaceOpenRequested(nextOpen);
-    changeActionStatus(isRightCollapsed);
+    // 目前只有「工作区收起时头部那个展开按钮」会走到这里（展开方向）。
+    // 关闭方向统一走 `collapseWorkspace()`，保证 tab 哨兵一起复位 —— 否则下次展开
+    // 时 ActionView 首次上报的 0 会被误判成「刚把最后一个 tab 关掉」。
+    if (!isRightCollapsed) {
+      collapseWorkspace();
+      return;
+    }
+    setWorkspaceOpenRequested(true);
+    changeActionStatus(true);
     toggleWorkspaceRightPanel();
   });
 
   const closeMobileWorkspace = useMemoizedFn(() => {
     setThinkingDetail(null);
-    setToolDiffTask(null);
-    setAgentDetail(null);
-    setWorkspaceBackTarget(null);
-    agentPanelClosedRef.current = true;
-    setWorkspaceOpenRequested(false);
-    changeActionStatus(false);
-    setIsRightCollapsed(true);
+    setPendingAgentTab(null);
+    setPendingAgentDirectory(false);
+    // 手动关闭必须清掉 pending：否则下一次 ActionView 挂载会把这条旧意图
+    // 再消费一遍，工作区「自己」又弹回来。
+    setPendingTaskTab(null);
+    setPendingPreviewFile(undefined);
+    collapseWorkspace();
     if (isFocusMode) {
       exitFocusMode();
     }
   });
 
   const closeActionView = useMemoizedFn(() => {
-    setWorkspaceBackTarget(null);
     if (isFocusMode) {
       exitFocusMode();
       return;
     }
-    setWorkspaceOpenRequested(false);
-    changeActionStatus(false);
-    setIsRightCollapsed(true);
-  });
-
-  const returnToAgentDetail = useMemoizedFn(() => {
-    const target = workspaceBackTarget;
-    if (!target) {
-      return;
-    }
-    openAgentPanel(target.tool, target.chat);
+    setPendingTaskTab(null);
+    setPendingPreviewFile(undefined);
+    collapseWorkspace();
   });
 
   const sendDataMessage = useMemoizedFn((inputInfo: CHAT.TInputInfo) => {
@@ -1036,75 +1111,124 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     return next;
   }, [conversation.id, deferredChatList, sessionFileTasks]);
 
-  /**
-   * 右侧「工具预览」的统一模型（只有从子 Agent 详情返回时才用）。
-   *
-   * 判定逻辑与 `openToolDiffPanel` 共用 `buildToolPreviewSource`，两者不会漂移。
-   */
-  const toolDiffView = useMemo(() => {
-    if (!toolDiffTask) return null;
-    return buildToolPreviewSource(
-      toolDiffTask,
-      toolDiffFileIndex,
-      sessionArtifactFiles
-    );
-  }, [toolDiffTask, toolDiffFileIndex, sessionArtifactFiles]);
-
   const activeChat = conversation.chatList?.[conversation.chatList.length - 1];
   const sessionBusy = loading || isParentLoopLive(activeChat);
-  /** 后台子智能体条目（右上角面板 + 输入框徽标同源） */
-  const backgroundAgentItems = useMemo(() => {
-    const sourceChats = conversation.chatList?.length
-      ? conversation.chatList
-      : activeChat
-        ? [activeChat]
-        : [];
-    const seen = new Set<string>();
-    const items: Array<{ id: string; state: string }> = [];
-    for (const chat of sourceChats) {
-      for (const task of projectDockTasks(chat)) {
-        if (!task.id || seen.has(task.id)) {
-          continue;
-        }
-        seen.add(task.id);
-        items.push(task);
-      }
-    }
-    return items;
-  }, [conversation.chatList, activeChat]);
-  const backgroundAgentCount = backgroundAgentItems.length;
-  const backgroundAgentRunningCount = backgroundAgentItems.filter(
+  /**
+   * 子智能体名册（同步 + 后台）。
+   *
+   * 右上角「智能体」面板、右侧工作区「子智能体目录」tab、输入框徽标三处同源，
+   * 保证「面板里有、目录里没有」这类割裂不会出现。
+   */
+  const subAgentRoster = useMemo(
+    () => collectSubAgentRoster(conversation.chatList, activeChat),
+    [conversation.chatList, activeChat]
+  );
+  const subAgentCount = subAgentRoster.length;
+  const subAgentRunningCount = subAgentRoster.filter(
     (item) => item.state === "run"
   ).length;
-  const liveAgentDetail = useMemo(() => {
-    if (!agentDetail) {
-      return null;
-    }
-    const liveChatSource =
-      conversation.chatList.find(
-        (item) => item.requestId === agentDetail.chat.requestId
-      ) || agentDetail.chat;
-    const liveChat = getRenderedChat(liveChatSource, conversation.deepThink);
-    const toolId = identityKeys(readTaskIdentity(agentDetail.tool))[0] || "";
-    const liveTool =
-      findAgentTaskByToolCallId(liveChat, toolId) || agentDetail.tool;
-    return {
-      tool: liveTool,
-      chat: liveChat
-    };
-  }, [agentDetail, conversation.chatList, conversation.deepThink]);
-  const agentDetailBackTarget = liveAgentDetail
-    ? {
-      tool: liveAgentDetail.tool,
-      chat: liveAgentDetail.chat,
-    }
-    : undefined;
 
+  /**
+   * 子智能体详情 tab 的内容（render prop 给 ActionView）。
+   *
+   * ActionView 只存身份（toolCallId），**实时父卡在这里解析** —— 流式过程中
+   * 父卡每秒在变，把快照存进 tab 会让详情面板停在打开那一刻。
+   * 父卡找不到（历史裁剪 / 后台子 Agent 老会话）时回退 tab 里的兜底快照。
+   */
+  const renderAgentTab = useCallback(
+    (tab: WorkspaceAgentTab) => {
+      let source: { tool: CHAT.Task; chat: CHAT.ChatItem } | null = null;
+      for (const chat of conversation.chatList || []) {
+        const liveChat = getRenderedChat(chat, conversation.deepThink);
+        const liveTool = findAgentTaskByToolCallId(liveChat, tab.toolCallId);
+        if (liveTool) {
+          source = {
+            tool: liveTool,
+            chat: liveChat,
+          };
+          break;
+        }
+      }
+      const resolved = source || {
+        tool: tab.fallbackTool,
+        chat: tab.fallbackChat,
+      };
+      const handleChangeFile = (file: CHAT.TFile) => {
+        changeFile(file, resolved.chat);
+      };
+      return (
+        <AgentDetailPanel
+          key={`agent-tab-${tab.toolCallId}`}
+          tool={resolved.tool}
+          chat={resolved.chat}
+          embedded
+          sessionArtifactFiles={sessionArtifactFiles}
+          changeActiveChat={(task, chat) => changeTask(task, chat)}
+          changePlan={changePlan}
+          changeFile={handleChangeFile}
+          onOpenThinking={openThinkingPanel}
+          onOpenToolDiff={(task, _chat, fileIndex) =>
+            openToolDiffPanel(task, resolved.chat, fileIndex)
+          }
+          onOpenAgent={(task, chat) => openAgentPanel(task, chat)}
+          onOpenWorkspaceFiles={onOpenTaskFiles}
+        />
+      );
+    },
+    [
+      changeFile,
+      changePlan,
+      changeTask,
+      conversation.chatList,
+      conversation.deepThink,
+      onOpenTaskFiles,
+      openAgentPanel,
+      openThinkingPanel,
+      openToolDiffPanel,
+      sessionArtifactFiles,
+    ]
+  );
+
+  /**
+   * 任务预览 tab 的内容（render prop 给 ActionView）。
+   *
+   * 与 `renderAgentTab` 同一个理由：tab 只存 `taskKey`，**实时任务在这里解析** ——
+   * 流式过程中任务的 resultMap / artifactRefs 每秒都在补全，用打开瞬间的快照渲染
+   * 会让预览停住。回找顺序：最新 chatList → 流式 taskList / workspaceStreamTask
+   * → tab 自带的兜底快照（历史裁剪后仍不至于白屏）。
+   *
+   * 渲染复用既有 `FilePreview`（carousel + ActionPanel 路由），**不要**另写一套
+   * 工具预览逻辑。
+   */
+  const renderTaskTab = useCallback(
+    (tab: WorkspaceTaskTab) => {
+      const liveTask =
+        findTaskByStableKey(conversation.chatList, taskList, tab.taskKey) ||
+        (workspaceStreamTask &&
+        getTaskStableKey(workspaceStreamTask) === tab.taskKey
+          ? workspaceStreamTask
+          : undefined) ||
+        tab.fallbackTask;
+      return (
+        <FilePreview
+          key={`task-tab-${tab.taskKey}`}
+          taskItem={liveTask}
+          taskList={sessionFileTasks}
+          className="h-full"
+        />
+      );
+    },
+    [conversation.chatList, sessionFileTasks, taskList, workspaceStreamTask]
+  );
+
+  /**
+   * 新派发的子 Agent 自动开一次详情 tab（保持旧「自动展开」体验）。
+   *
+   * 用 toolCallId 记忆而不是「当前有没有开着的详情 tab」：用户手动关掉 tab 后
+   * 不该被立刻重新弹开，但下一个新子 Agent 仍应自动展开。
+   */
   useEffect(() => {
-    if (agentPanelClosedRef.current || agentDetail) {
-      return;
-    }
-    if (thinkingDetail != null || toolDiffTask) {
+    if (thinkingDetail != null) {
       return;
     }
     if (!(streamLoading || activeChat?.loading)) {
@@ -1114,15 +1238,13 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     if (!tool) {
       return;
     }
+    const toolCallId = identityKeys(readTaskIdentity(tool))[0] || "";
+    if (!toolCallId || autoOpenedAgentRef.current === toolCallId) {
+      return;
+    }
+    autoOpenedAgentRef.current = toolCallId;
     openAgentPanel(tool, activeChat);
-  }, [
-    activeChat,
-    agentDetail,
-    openAgentPanel,
-    streamLoading,
-    thinkingDetail,
-    toolDiffTask,
-  ]);
+  }, [activeChat, openAgentPanel, streamLoading, thinkingDetail]);
   const waitingUserInput =
     String(activeChat?.metrics?.status || "").toUpperCase() === "WAITING_INPUT" ||
     activeChat?.tip === "需要你的帮助" ||
@@ -1153,11 +1275,9 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   const openDesktopPreview = useMemoizedFn(() => {
     if (!pendingDesktopStreamUrl) return;
     setThinkingDetail(null);
-    setToolDiffTask(null);
-    setAgentDetail(null);
+    setPendingAgentTab(null);
+    setPendingAgentDirectory(false);
     setPendingPreviewFile(undefined);
-    setActiveTask(undefined);
-    setWorkspaceBackTarget(null);
     openRightWorkspace();
   });
 
@@ -1183,16 +1303,126 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       );
   }, [openDesktopPreview, pendingDesktopStreamUrl]);
 
-  // 活动桌面控制优先显示在右侧；普通工具不自动拉开空「动态」工作区。
+  /**
+   * 工作区何时占位。
+   *
+   * - `workspaceOpenRequested`：用户显式打开过（点工具卡 / 文件 / 子智能体 / 思考块）；
+   * - `workspaceHasTabs`：还有真实 tab → 工作区必须在，不能因为流结束就消失；
+   * - 覆盖层（thinking / 桌面预览）与待打开意图：内容马上就有。
+   *
+   * 注意**不包含** `showAction`：它只表示「流式里有值得看的任务」，而工作区现在
+   * 「有 tab 才有内容」—— 直接拿它当展开条件就会得到一张空白面板（旧「动态」空态
+   * 卡出现的情形）。流式自动跟随改由下面的 effect 负责：展开的同时**一定**会开一个
+   * 真实任务 tab。
+   */
   const hasWorkspaceContent = Boolean(
-    showAction ||
-      workspaceOpenRequested ||
+    workspaceOpenRequested ||
+      workspaceHasTabs ||
       thinkingDetail ||
-      toolDiffTask ||
-      agentDetail ||
+      pendingTaskTab ||
+      pendingAgentTab ||
+      pendingAgentDirectory ||
       pendingSourceTab ||
       pendingDesktopStreamUrl
   );
+  /** 工作区此刻是否真的占着右侧（收起 / 无内容都算「不可见」）。等价于渲染时的 `hasWorkspaceLayout`。 */
+  const workspaceVisible = hasWorkspaceContent && !isRightCollapsed;
+
+  /**
+   * 流式「自动跟随」（原「动态」模式）现在落成一个**真实 tab**。
+   *
+   * 旧 follow 的行为是：`showAction`（最新任务里有值得看的产物）让工作区自动展开，
+   * 内容区固定渲染当前流式任务。现在内容区必须有 tab，所以这个 effect 负责
+   * 「把工作区拉起来，并给它一个真实 tab」—— 只展开不给 tab 就会退化成空白面板。
+   *
+   * **开哪种 tab 取决于这个任务在展示什么**：
+   * - 有可预览的主产物（工具写出的文件）→ 开**文件 tab**：tab 上是文件名 + 文件类型
+   *   角标，内容与任务 tab 完全一致（`openFileInTab` 的 `task` 就是产它的那个任务），
+   *   而且正是用户点「打开文件」会得到的那一个 —— 身份键一致，天然不会出现两个一样的
+   *   预览；tab 标题也才是用户认的那个「文件名」，而不是工具名。
+   * - 没有产物（纯工具输出 / 深搜阶段面板）→ 退回**任务 tab**，标题用工具名。
+   *
+   * 三条闸门，缺一不可：
+   * - 工作区已经可见（用户开的 / 上次自动跟随开的）→ 一概不动：不抢用户正在看的
+   *   tab，也不会每个工具事件都堆一个新 tab；
+   * - 本轮用户手动关过工作区 → 不再自动弹回（`userClosedWorkspaceRef`）；
+   * - 同一个任务只自动开一次（`lastAutoFollowTaskKeyRef`）。
+   */
+  useEffect(() => {
+    const shouldFollow = shouldAutoFollowWorkspaceTask({
+      workspaceVisible,
+      showAction,
+      hasLiveTask: Boolean(workspaceStreamTask),
+      userClosedWorkspace: userClosedWorkspaceRef.current,
+      hasTabs: workspaceHasTabs,
+    });
+    if (!shouldFollow || !workspaceStreamTask) {
+      return;
+    }
+    const taskKey = getTaskStableKey(workspaceStreamTask);
+    if (!taskKey || lastAutoFollowTaskKeyRef.current === taskKey) {
+      return;
+    }
+    lastAutoFollowTaskKeyRef.current = taskKey;
+
+    // 「跟随」跟的是这个任务**在展示什么**：有可预览主产物就开文件 tab（tab 上是
+    // 文件名 + 文件类型角标，也是用户点「打开文件」会得到的那一个），否则退回任务 tab。
+    const primaryFile = getPrimaryTaskFile(workspaceStreamTask);
+    const tabKind = resolveAutoFollowTabKind({
+      messageType: workspaceStreamTask.messageType,
+      hasPrimaryFile: Boolean(primaryFile),
+    });
+    if (tabKind === "file" && primaryFile) {
+      changeFile(primaryFile, activeChat);
+      return;
+    }
+
+    setPendingTaskTab({
+      taskKey,
+      title:
+        resolvePreviewTitle(workspaceStreamTask) ||
+        workspaceStreamTask.messageType ||
+        "任务",
+      task: workspaceStreamTask,
+    });
+    openRightWorkspace();
+  }, [
+    activeChat,
+    changeFile,
+    openRightWorkspace,
+    showAction,
+    workspaceHasTabs,
+    workspaceStreamTask,
+    workspaceVisible,
+  ]);
+
+  /**
+   * ActionView 上报 tab 数量：**只在 `>0 → 0`** 时收起工作区。
+   *
+   * 首次挂载必然是 0（pending tab 的消费 effect 与上报 effect 同批提交），
+   * 必须忽略；同时如果此刻正有 pending 打开意图（「关最后一个 tab」与「开新 tab」
+   * 并发），也不能收起 —— 否则刚点开的 tab 会被立刻连带关掉。
+   */
+  const handleWorkspaceTabsChange = useMemoizedFn((count: number) => {
+    setWorkspaceHasTabs(count > 0);
+    const decision = decideWorkspaceTabCountChange({
+      hadTabs: hadWorkspaceTabsRef.current,
+      count,
+      hasPendingOpenIntent: Boolean(
+        pendingTaskTab ||
+          pendingAgentTab ||
+          pendingAgentDirectory ||
+          pendingSourceTab ||
+          pendingPreviewFile ||
+          thinkingDetail != null ||
+          pendingDesktopStreamUrl
+      ),
+    });
+    hadWorkspaceTabsRef.current = decision.hadTabs;
+    if (decision.collapse) {
+      collapseWorkspace();
+    }
+  });
 
   const renderWorkspaceReopenTrigger = () =>
     hasWorkspaceContent && isRightCollapsed ? (
@@ -1273,9 +1503,9 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             onDraftChange={onInputDraftChange}
             product={currentProduct}
             deepThink={conversation.deepThink}
-            backgroundAgentCount={backgroundAgentCount}
-            backgroundAgentRunningCount={backgroundAgentRunningCount}
-            onOpenBackgroundAgents={() => setAgentsPanelVariant("panel")}
+            subAgentCount={subAgentCount}
+            subAgentRunningCount={subAgentRunningCount}
+            onOpenSubAgents={() => setAgentsPanelVariant("panel")}
             send={(info) =>
               sendMessage({
                 ...info,
@@ -1370,7 +1600,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             onOpenThinking={openThinkingPanel}
             onSyncThinking={syncThinkingPanel}
             onOpenToolDiff={(task, chat, fileIndex) =>
-              openToolDiffPanel(task, chat, undefined, fileIndex)
+              openToolDiffPanel(task, chat, fileIndex)
             }
             onOpenAgent={openAgentPanel}
             onOpenWorkspaceFiles={onOpenTaskFiles}
@@ -1430,7 +1660,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         {/* Left Panel - Chat Area */}
         <div
           ref={leftPanelRef}
-            className={classNames(
+          className={classNames(
             "reactor-chat-panel-left flex min-h-0 flex-col overflow-hidden bg-background",
             // 双栏时只保留圆角，不加描边 —— 与预览面板的分界由外壳底色差表达。
             hasWorkspaceLayout && "rounded-[var(--workspace-panel-radius)]",
@@ -1532,14 +1762,15 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                     <ConversationScrollButton />
                   </Conversation>
 
-                  {/* 右上角「智能体」浮动面板：后台 run_in_background 子 Agent 的
-                      运行态 / 终态入口（移植 ZCode ConversationStatusPanel） */}
-                  <BackgroundAgentsPanel
+                  {/* 右上角「智能体」浮动面板：全部子智能体（同步 + 后台）的运行态入口
+                      （移植 ZCode ConversationStatusPanel）；已结束的从页脚进目录 tab */}
+                  <SubAgentsPanel
                     chat={activeChat}
                     chats={conversation.chatList}
                     variant={agentsPanelVariant}
                     onVariantChange={setAgentsPanelVariant}
                     onOpenAgent={openAgentPanel}
+                    onOpenDirectory={openSubAgentDirectory}
                   />
 
                   <ConversationTurnNavigator
@@ -1619,89 +1850,63 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
         {hasWorkspaceLayout ? (
           <div
-            className="reactor-workspace-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--workspace-panel-radius)] bg-background"
+            className="reactor-workspace-panel relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--workspace-panel-radius)] bg-background"
             data-workspace-collapsed="false"
           >
+            {/* ActionView 常驻挂载，独占面板改为**覆盖层**。
+                原因：ActionView 持有工作区 tab 列表（文件 / 子智能体详情 / 目录），
+                一旦被独占面板顶掉就会卸载、tab 全部丢失 —— 而从子智能体详情里点
+                思考块恰恰会走 openThinkingPanel，等于自毁当前 tab。 */}
+            <ActionView
+              key={conversation.id}
+              pendingPreviewFile={pendingPreviewFile}
+              onPendingPreviewFileConsumed={clearPendingPreviewFile}
+              pendingSourceTab={pendingSourceTab}
+              onPendingSourceTabConsumed={() => setPendingSourceTab(null)}
+              pendingAgentTab={pendingAgentTab}
+              onPendingAgentTabConsumed={() => setPendingAgentTab(null)}
+              pendingAgentDirectoryTab={pendingAgentDirectory}
+              onPendingAgentDirectoryTabConsumed={() =>
+                setPendingAgentDirectory(false)
+              }
+              pendingTaskTab={pendingTaskTab}
+              onPendingTaskTabConsumed={() => setPendingTaskTab(null)}
+              agentRoster={subAgentRoster}
+              onOpenAgent={openAgentPanel}
+              renderAgentTab={renderAgentTab}
+              renderTaskTab={renderTaskTab}
+              onTabsChange={handleWorkspaceTabsChange}
+              workspaceCaption={workspaceCaption}
+              taskList={sessionFileTasks}
+              plan={plan}
+              isFocusMode={isFocusMode}
+              onToggleFocusMode={toggleFocusMode}
+              ref={actionViewRef}
+              onClose={closeActionView}
+            />
+
             {pendingDesktopStreamUrl ? (
-              <DesktopPreviewPanel
-                streamUrl={pendingDesktopStreamUrl}
-                onClose={closeActionView}
-              />
+              <div className="absolute inset-0 z-20 flex min-h-0 flex-col bg-background">
+                <DesktopPreviewPanel
+                  streamUrl={pendingDesktopStreamUrl}
+                  onClose={closeActionView}
+                />
+              </div>
             ) : thinkingDetail != null ? (
-              <ThinkingPanel
-                text={thinkingDetail}
-                onClose={() => {
-                  closeThinkingPanel();
-                  if (!showAction && !workspaceOpenRequested) {
-                    setIsRightCollapsed(true);
-                  }
-                }}
-              />
-            ) : toolDiffView ? (
-              <ToolPreviewPanel
-                source={toolDiffView.source}
-                fileUrl={toolDiffView.fileUrl}
-                unavailableReason={toolDiffView.unavailableReason}
-                output={toolDiffView.output}
-                status={toolDiffView.status}
-                onBack={workspaceBackTarget ? returnToAgentDetail : undefined}
-                onClose={() => {
-                  closeToolDiffPanel();
-                  if (!showAction && !workspaceOpenRequested) {
-                    setIsRightCollapsed(true);
-                  }
-                }}
-              />
-            ) : liveAgentDetail ? (
-              <AgentDetailPanel
-                key={
-                  identityKeys(readTaskIdentity(liveAgentDetail.tool))[0] ||
-                  liveAgentDetail.tool.id
-                }
-                tool={liveAgentDetail.tool}
-                chat={liveAgentDetail.chat}
-                sessionArtifactFiles={sessionArtifactFiles}
-                changeActiveChat={(task, chat) =>
-                  changeTask(task, chat, agentDetailBackTarget)
-                }
-                changePlan={changePlan}
-                changeFile={(file, chat) =>
-                  changeFile(file, chat, agentDetailBackTarget)
-                }
-                onOpenThinking={openThinkingPanel}
-                onOpenToolDiff={(task, chat, fileIndex) =>
-                  openToolDiffPanel(task, chat, agentDetailBackTarget, fileIndex)
-                }
-                onOpenAgent={(task, chat) =>
-                  openAgentPanel(task, chat, agentDetailBackTarget)
-                }
-                onOpenWorkspaceFiles={onOpenTaskFiles}
-                onClose={() => {
-                  closeAgentPanel();
-                  if (!showAction && !workspaceOpenRequested) {
-                    setIsRightCollapsed(true);
-                  }
-                }}
-              />
-            ) : (
-              <ActionView
-                key={conversation.id}
-                activeTask={activeTask}
-                streamTask={workspaceStreamTask}
-                pendingPreviewFile={pendingPreviewFile}
-                onPendingPreviewFileConsumed={clearPendingPreviewFile}
-                pendingSourceTab={pendingSourceTab}
-                onPendingSourceTabConsumed={() => setPendingSourceTab(null)}
-                workspaceCaption={workspaceCaption}
-                taskList={sessionFileTasks}
-                plan={plan}
-                isFocusMode={isFocusMode}
-                onToggleFocusMode={toggleFocusMode}
-                onBack={workspaceBackTarget ? returnToAgentDetail : undefined}
-                ref={actionViewRef}
-                onClose={closeActionView}
-              />
-            )}
+              <div className="absolute inset-0 z-20 flex min-h-0 flex-col bg-background">
+                <ThinkingPanel
+                  text={thinkingDetail}
+                  onClose={() => {
+                    closeThinkingPanel();
+                    if (!showAction && !workspaceOpenRequested) {
+                      // 走统一的收起入口：tab 哨兵必须一起复位，否则下次打开时
+                      // ActionView 首次上报的 0 会被误判成「刚关掉最后一个 tab」。
+                      collapseWorkspace();
+                    }
+                  }}
+                />
+              </div>
+            ) : null}
           </div>
         ) : null}
 

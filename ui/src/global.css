@@ -3072,32 +3072,15 @@ ol {
   );
 }
 
-/* tab 标题溢出用**渐隐**而不是硬裁切。
-   ZCode `SidePaneTabTrigger.tsx:230-237`：淡出起点由 `--tab-fade-offset` 控制 ——
-   关闭按钮可见时给它留 1.25rem，否则贴到最右（长标题能多显示两个字符）。 */
-.reactor-workspace-tab {
-  --tab-fade-offset: 0px;
-}
-
-.reactor-workspace-tab:hover,
-.reactor-workspace-tab:focus-within,
-.reactor-workspace-tab[data-active="true"] {
-  --tab-fade-offset: 1.25rem;
-}
-
+/* tab 标题溢出用**省略号**。
+   早期照搬 ZCode 的渐隐裁切（`SidePaneTabTrigger.tsx:230-237` 的 `--tab-fade-offset`），
+   但渐隐会把最后一个字符削掉一半（`个人主页.h` 后面的 `t` 只剩个影子），读起来像渲染
+   坏了。改成常规 `text-overflow: ellipsis`：截断点稳定、不随 hover 变化。
+   关闭按钮始终占位（tab 容器 `pr-5`），所以省略号不会压到 X 上。 */
 .reactor-workspace-tab-title {
   overflow: hidden;
   white-space: nowrap;
-  mask-image: linear-gradient(
-    to right,
-    #000 calc(100% - var(--tab-fade-offset) - 0.5rem),
-    transparent calc(100% - var(--tab-fade-offset))
-  );
-  -webkit-mask-image: linear-gradient(
-    to right,
-    #000 calc(100% - var(--tab-fade-offset) - 0.5rem),
-    transparent calc(100% - var(--tab-fade-offset))
-  );
+  text-overflow: ellipsis;
 }
 
 /* Keep split-pane layout and paint work local to each side of the workspace. */

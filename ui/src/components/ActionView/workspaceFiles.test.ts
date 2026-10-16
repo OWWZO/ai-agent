@@ -1,15 +1,25 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AGENT_DIRECTORY_TAB_KEY,
+  agentTabKey,
   buildSessionFileManifestTask,
   buildWorkspaceTree,
   collectSessionFileTasks,
   collectWorkspaceFiles,
   flattenTasksWithFiles,
+  isAgentDirectoryTab,
+  isAgentTab,
   isSourceTab,
+  isTaskTab,
   resolveWorkspacePaneMode,
+  tabPreviewFileKey,
+  taskTabKey,
+  taskTabPrimaryFileKey,
+  upsertWorkspaceTab,
   workspaceTabKey,
   type WorkspaceSourceTab,
+  type WorkspaceTab,
 } from "./workspaceFiles";
 import { isFileListOnlyTask, normalizeSessionArtifactFiles } from "@/utils/taskArtifacts";
 
@@ -345,58 +355,274 @@ describe("workspace tab model (Stage 4)", () => {
 });
 
 describe("resolveWorkspacePaneMode", () => {
-  it("动态模式下无论有没有选中 tab 都回动态流", () => {
-    // 关键回归：点「动态」后 selectedKey 仍指向原 tab，不能被它抢走内容区。
-    expect(
-      resolveWorkspacePaneMode({
-        panelMode: "follow",
-        hasSelectedSource: true,
-        hasSelectedFile: false
-      })
-    ).toBe("follow");
-    expect(
-      resolveWorkspacePaneMode({
-        panelMode: "follow",
-        hasSelectedSource: false,
-        hasSelectedFile: true
-      })
-    ).toBe("follow");
+  it("没有选中的 tab 时是 empty —— 宿主据此收起整个工作区", () => {
+    // 关键回归：旧的「动态」是工作区的一个模式（`panelMode: "follow"`），
+    // 没有 tab 时也占着右侧面板显示一张空态卡。现在没有 tab 就是 empty。
+    expect(resolveWorkspacePaneMode(undefined)).toBe("empty");
   });
 
-  it("file 模式下按选中 tab 的类型分派", () => {
-    expect(
-      resolveWorkspacePaneMode({
-        panelMode: "file",
-        hasSelectedSource: true,
-        hasSelectedFile: false
-      })
-    ).toBe("source");
-    expect(
-      resolveWorkspacePaneMode({
-        panelMode: "file",
-        hasSelectedSource: false,
-        hasSelectedFile: true
-      })
-    ).toBe("file");
+  it("按选中 tab 的类型分派：source / file / task / agent / agent-directory", () => {
+    const source = {
+      kind: "source",
+      key: "patch:src/a.ts:h1",
+      source: {
+        type: "patch",
+        title: "a.ts",
+        patch: "@@ -1 +1 @@"
+      },
+    } as unknown as WorkspaceTab;
+    const file = {
+      name: "report.md",
+      type: "md",
+      url: "https://x/report.md",
+    } as unknown as WorkspaceTab;
+    const task = {
+      kind: "task",
+      key: taskTabKey("tk-1"),
+      taskKey: "tk-1",
+      title: "任务",
+      fallbackTask: {},
+    } as unknown as WorkspaceTab;
+    const agent = {
+      kind: "agent",
+      key: agentTabKey("tc-1"),
+      toolCallId: "tc-1",
+      title: "子智能体",
+      fallbackTool: {},
+      fallbackChat: {},
+    } as unknown as WorkspaceTab;
+    const directory = {
+      kind: "agent-directory",
+      key: AGENT_DIRECTORY_TAB_KEY,
+    } as unknown as WorkspaceTab;
+
+    expect(resolveWorkspacePaneMode(source)).toBe("source");
+    expect(resolveWorkspacePaneMode(file)).toBe("file");
+    expect(resolveWorkspacePaneMode(task)).toBe("task");
+    expect(resolveWorkspacePaneMode(agent)).toBe("agent");
+    expect(resolveWorkspacePaneMode(directory)).toBe("agent-directory");
+  });
+});
+
+describe("子智能体 tab 身份", () => {
+  it("agentTabKey 按 toolCallId 幂等，且与文件 / source tab 不撞键", () => {
+    expect(agentTabKey("tc-1")).toBe(agentTabKey("tc-1"));
+    expect(agentTabKey("tc-1")).not.toBe(agentTabKey("tc-2"));
+
+    const agentTab = {
+      kind: "agent",
+      key: agentTabKey("tc-1"),
+      toolCallId: "tc-1",
+      title: "继续完善 HTML 页面",
+      fallbackTool: {},
+      fallbackChat: {},
+    } as unknown as WorkspaceTab;
+    const directoryTab = {
+      kind: "agent-directory",
+      key: AGENT_DIRECTORY_TAB_KEY,
+    } as unknown as WorkspaceTab;
+
+    expect(isAgentTab(agentTab)).toBe(true);
+    expect(isAgentDirectoryTab(agentTab)).toBe(false);
+    expect(isAgentDirectoryTab(directoryTab)).toBe(true);
+    expect(workspaceTabKey(agentTab)).toBe("agent:tc-1");
+    expect(workspaceTabKey(directoryTab)).toBe("agent-directory");
+  });
+});
+
+describe("任务预览 tab 身份（原「动态」跟随）", () => {
+  const taskTab = (taskKey: string): WorkspaceTab =>
+    ({
+      kind: "task",
+      key: taskTabKey(taskKey),
+      taskKey,
+      title: "任务预览",
+      fallbackTask: {},
+    }) as unknown as WorkspaceTab;
+
+  it("taskTabKey 按任务稳定身份幂等：同一个任务只有一个 tab", () => {
+    expect(taskTabKey("t-1")).toBe(taskTabKey("t-1"));
+    expect(taskTabKey("t-1")).not.toBe(taskTabKey("t-2"));
+    expect(workspaceTabKey(taskTab("t-1"))).toBe("task:t-1");
+    expect(isTaskTab(taskTab("t-1"))).toBe(true);
   });
 
-  it("source tab 优先于 file tab（同一次选中只可能有一个）", () => {
-    expect(
-      resolveWorkspacePaneMode({
-        panelMode: "file",
-        hasSelectedSource: true,
-        hasSelectedFile: true
-      })
-    ).toBe("source");
+  it("任务 tab 与文件 / source / agent / 目录 tab 互不撞键", () => {
+    const fileTab = {
+      name: "a.ts",
+      resourceKey: "workspace/a.ts",
+      task: {},
+    } as unknown as WorkspaceTab;
+    const sourceTab = {
+      kind: "source",
+      key: "patch:src/a.ts:h1",
+      source: {
+        type: "patch",
+        title: "a.ts",
+        patch: "@@ -1 +1 @@"
+      },
+    } as unknown as WorkspaceTab;
+    const agentTab = {
+      kind: "agent",
+      key: agentTabKey("t-1"),
+      toolCallId: "t-1",
+      title: "子智能体",
+      fallbackTool: {},
+      fallbackChat: {},
+    } as unknown as WorkspaceTab;
+
+    const keys = [
+      workspaceTabKey(fileTab),
+      workspaceTabKey(sourceTab),
+      workspaceTabKey(agentTab),
+      workspaceTabKey(taskTab("t-1")),
+      AGENT_DIRECTORY_TAB_KEY,
+    ];
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(isTaskTab(fileTab)).toBe(false);
+    expect(isTaskTab(sourceTab)).toBe(false);
+    expect(isTaskTab(agentTab)).toBe(false);
+  });
+});
+
+describe("upsertWorkspaceTab：同一个文件只留一个预览 tab", () => {
+  /** 产出 `out/page.html` 的工具任务（自动跟随会为它开一个任务 tab） */
+  const htmlTask = (id: string) =>
+    ({
+      id,
+      messageType: "tool_result",
+      resultMap: {
+        toolName: "Write",
+        fileInfo: [
+          {
+            fileName: "page.html",
+            relativePath: "out/page.html",
+            resourceKey: "workspace/out/page.html",
+            domainUrl: "http://x/preview/s/out/page.html",
+            ossUrl: "http://x/download/s/out/page.html",
+          },
+        ],
+      },
+    }) as unknown as CHAT.Task;
+
+  const taskTab = (id: string): WorkspaceTab =>
+    ({
+      kind: "task",
+      key: taskTabKey(id),
+      taskKey: id,
+      title: "page.html",
+      fallbackTask: htmlTask(id),
+    }) as unknown as WorkspaceTab;
+
+  const fileTab = (openedAt: number): WorkspaceTab =>
+    ({
+      name: "page.html",
+      type: "html",
+      url: "http://x/preview/s/out/page.html",
+      resourceKey: "workspace/out/page.html",
+      relativePath: "out/page.html",
+      openedAt,
+    }) as unknown as WorkspaceTab;
+
+  it("任务 tab 正预览同一文件时，文件 tab 就地顶替它（不新增、不跳位）", () => {
+    // 关键回归：打开会话时流式自动跟随开了任务 tab 展示刚产出的文件，用户再点
+    // 「打开文件」不该出现两个内容相同的 tab。
+    const other = {
+      name: "a.md",
+      resourceKey: "workspace/a.md",
+    } as unknown as WorkspaceTab;
+    const next = upsertWorkspaceTab([taskTab("t-1"), other], fileTab(1));
+
+    expect(next).toHaveLength(2);
+    expect(next.map((tab) => workspaceTabKey(tab))).toEqual([
+      "workspace/out/page.html",
+      "workspace/a.md",
+    ]);
+    expect(isTaskTab(next[0])).toBe(false);
   });
 
-  it("没有选中项时回动态流，不渲染空面板", () => {
+  it("反过来也成立：文件 tab 已开着时，任务 tab 顶替它（同样只剩一个预览）", () => {
+    const next = upsertWorkspaceTab([fileTab(1)], taskTab("t-1"));
+    expect(next).toHaveLength(1);
+    expect(isTaskTab(next[0])).toBe(true);
+    expect(workspaceTabKey(next[0])).toBe("task:t-1");
+  });
+
+  it("预览别的文件的任务 tab 与文件 tab 并存", () => {
+    const otherTask = {
+      kind: "task",
+      key: taskTabKey("t-2"),
+      taskKey: "t-2",
+      title: "other",
+      fallbackTask: {
+        id: "t-2",
+        messageType: "tool_result"
+      },
+    } as unknown as WorkspaceTab;
+    expect(upsertWorkspaceTab([otherTask], fileTab(1))).toHaveLength(2);
+  });
+
+  it("同一个文件重复打开仍然只有一个 tab（幂等）", () => {
+    const once = upsertWorkspaceTab([], fileTab(1));
+    const twice = upsertWorkspaceTab(once, fileTab(2));
+    expect(twice).toHaveLength(1);
+    expect(workspaceTabKey(twice[0])).toBe("workspace/out/page.html");
+  });
+
+  it("同一个任务重复打开仍然只有一个 tab（幂等）", () => {
+    const first = upsertWorkspaceTab([], {
+      ...taskTab("t-1"),
+      openedAt: 111,
+    } as WorkspaceTab);
+    const second = upsertWorkspaceTab(first, {
+      ...taskTab("t-1"),
+      openedAt: 222,
+    } as WorkspaceTab);
+    expect(second).toHaveLength(1);
+    expect(workspaceTabKey(second[0])).toBe("task:t-1");
+    // 本函数只做「位置合并」：tab 对象整体用最新的那个。
+    // 「重开不刷新 openedAt」由 ActionView 的 `openedAtFor` 负责。
+    expect((second[0] as { openedAt?: number }).openedAt).toBe(222);
+  });
+
+  it("source tab 不受影响：补丁是另一种视图，允许与文件 tab 并存", () => {
+    const patch = {
+      kind: "source",
+      key: "patch:out/page.html:h1",
+      source: {
+        type: "patch",
+        title: "page.html",
+        patch: "@@ -1 +1 @@"
+      },
+    } as unknown as WorkspaceTab;
+    const next = upsertWorkspaceTab([patch], fileTab(1));
+    expect(next).toHaveLength(2);
+    expect(isSourceTab(next[0])).toBe(true);
+  });
+
+  it("tabPreviewFileKey：文件 tab 是它自己，任务 tab 是主产物，其余为空串", () => {
+    expect(tabPreviewFileKey(fileTab(1))).toBe("workspace/out/page.html");
+    expect(tabPreviewFileKey(taskTab("t-1"))).toBe("workspace/out/page.html");
+    expect(tabPreviewFileKey({
+      kind: "agent-directory",
+      key: "agent-directory"
+    } as WorkspaceTab)).toBe("");
+  });
+
+  it("taskTabPrimaryFileKey 只对任务 tab 生效，拿不到文件时是空串", () => {
+    expect(taskTabPrimaryFileKey(taskTab("t-1"))).toBe("workspace/out/page.html");
+    expect(taskTabPrimaryFileKey(fileTab(1))).toBe("");
     expect(
-      resolveWorkspacePaneMode({
-        panelMode: "file",
-        hasSelectedSource: false,
-        hasSelectedFile: false
-      })
-    ).toBe("follow");
+      taskTabPrimaryFileKey({
+        kind: "task",
+        key: taskTabKey("t-9"),
+        taskKey: "t-9",
+        title: "无产物任务",
+        fallbackTask: {
+          id: "t-9",
+          messageType: "tool_result"
+        },
+      } as unknown as WorkspaceTab)
+    ).toBe("");
   });
 });

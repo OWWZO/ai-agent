@@ -366,9 +366,65 @@ export function projectAgentMemberByToolCallId(
 }
 
 /**
- * Dock 后台任务：run_in_background 的 Agent，以及将来可扩展的后台 bash。
+ * 解析任务结束时间（ms）：timing.finishedAt / resultMap.finishedAt /
+ * startedAt + totalDurationMs 依次兜底。目录的「刚刚 / X 分」相对时间要用它。
  */
-export function projectDockTasks(chat: CHAT.ChatItem): DockTaskItem[] {
+function resolveTaskEndedAtMs(task: CHAT.Task): number | undefined {
+  const top = task as unknown as Record<string, unknown>;
+  const resultMap = (task.resultMap || {}) as Record<string, unknown>;
+  const nested = isRecord(resultMap.resultMap)
+    ? (resultMap.resultMap as Record<string, unknown>)
+    : {};
+  const parseMs = (value: unknown): number | undefined => {
+    if (value == null || value === "") return undefined;
+    if (typeof value === "number") {
+      return Number.isFinite(value) && value > 0
+        ? value < 1e12
+          ? value * 1000
+          : value
+        : undefined;
+    }
+    if (typeof value !== "string") return undefined;
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return numeric < 1e12 ? numeric * 1000 : numeric;
+    }
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
+  const sources: Array<Record<string, unknown>> = [
+    isRecord(top.timing) ? (top.timing as Record<string, unknown>) : {},
+    top,
+    resultMap,
+    nested,
+  ];
+  for (const source of sources) {
+    const finishedAt = parseMs(source.finishedAt ?? source.finished_at);
+    if (finishedAt != null) return finishedAt;
+  }
+  const startedAt = resolveTaskStartedAtMs(task);
+  const duration =
+    typeof resultMap.subAgentElapsedMs === "number"
+      ? resultMap.subAgentElapsedMs
+      : typeof top.totalDurationMs === "number"
+        ? (top.totalDurationMs as number)
+        : undefined;
+  if (startedAt != null && duration != null && duration > 0) {
+    return startedAt + duration;
+  }
+  return undefined;
+}
+
+/**
+ * 子智能体名册：**同步（前台）与后台（run_in_background）统一投影**。
+ *
+ * 右上角「智能体」面板、右侧工作区「子智能体目录」tab、输入框徽标三处同源，
+ * 必须是同一份名册，否则会出现「面板里有、目录里没有」的割裂。
+ *
+ * `runInBackground` 只是条目属性（面板据此决定是否显示实时计时、目录据此分组），
+ * **不再作为过滤条件** —— 旧实现只收 run_in_background，导致同步子 Agent 在面板里查无此人。
+ */
+export function projectSubAgentItems(chat: CHAT.ChatItem): DockTaskItem[] {
   const seen = new Set<string>();
   const items: DockTaskItem[] = [];
   const candidates = [
@@ -377,7 +433,7 @@ export function projectDockTasks(chat: CHAT.ChatItem): DockTaskItem[] {
   ];
 
   for (const task of candidates) {
-    if (!isRunInBackgroundAgent(task)) {
+    if (!isSubAgentParentTask(task)) {
       continue;
     }
     const id =
@@ -401,10 +457,12 @@ export function projectDockTasks(chat: CHAT.ChatItem): DockTaskItem[] {
       timing: formatSubAgentDuration(display.totalDurationMs) || "",
       meta: display.subagentType,
       output: display.content ? display.content.split("\n") : undefined,
-      runInBackground: true,
+      runInBackground: isRunInBackgroundAgent(task),
       parentToolCallId: id,
       childSessionId: display.childSessionId || undefined,
       startedAtMs: resolveTaskStartedAtMs(task),
+      summary: display.summary || undefined,
+      endedAtMs: resolveTaskEndedAtMs(task),
     });
   }
 

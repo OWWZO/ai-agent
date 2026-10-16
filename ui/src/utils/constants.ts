@@ -1,5 +1,5 @@
 /**
- * 预览状态的tab选项
+ * 图标类型映射。
  */
 import csvIcon from "@/assets/icon/CSV.png";
 import docxIcon from "@/assets/icon/docx.png";
@@ -12,8 +12,6 @@ import demo2 from "@/assets/icon/demo2.png";
 import demo3 from "@/assets/icon/demo3.png";
 import demo4 from "@/assets/icon/demo4.png";
 
-import { ActionViewItemEnum } from "./enums";
-
 export const iconType: Record<string, string> = {
   doc: docxIcon,
   docx: docxIcon,
@@ -24,19 +22,9 @@ export const iconType: Record<string, string> = {
   html: htmlIcon,
 };
 
-export const actionViewOptions = [
-  {
-    label: "动态",
-    value: ActionViewItemEnum.follow,
-    split: false,
-  },
-  {
-    label: "文件",
-    value: ActionViewItemEnum.file,
-  },
-];
-
-export const defaultActiveActionView = actionViewOptions[0].value;
+// 注意：旧的 `actionViewOptions` / `defaultActiveActionView` / `ActionViewItemEnum`
+// 已删除 —— 它们是「动态」伪模式（`panelMode: "follow"`）的 tab 选项，全仓已无消费者。
+// 工作区现在只有一种东西：用户打开的 tab（见 ActionView/workspaceFiles.ts）。
 
 export type SuggestedQuestionIcon =
   | "youtube"

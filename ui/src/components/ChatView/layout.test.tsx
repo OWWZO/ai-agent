@@ -35,11 +35,17 @@ vi.mock("@/components/ActionView", () => ({
   default: Object.assign(
     () => <div data-action-view="true">action-view</div>,
     {
+      // 真实 ref 的 API：工作区已无「切模式」（changeActionView）这一说，
+      // 内容区完全由选中的 tab 决定。
       useActionView: () => ({
         current: {
-          changeActionView: vi.fn(),
           setFilePreview: vi.fn(),
           openPlanView: vi.fn(),
+          openSourceTab: vi.fn(),
+          openAgentTab: vi.fn(),
+          openAgentDirectoryTab: vi.fn(),
+          openTaskTab: vi.fn(),
+          closeWorkspaceTab: vi.fn(),
         },
       }),
     }
@@ -174,7 +180,7 @@ describe("ChatView layout", () => {
         }}
         product={product}
         conversation={conversation}
-         onConversationChange={vi.fn()}
+        onConversationChange={vi.fn()}
       />
     );
 
@@ -195,8 +201,8 @@ describe("ChatView layout", () => {
     generalInputMock.mockClear();
 
     const product: CHAT.Product = {
-       type: "task",
-       name: "通用任务",
+      type: "task",
+      name: "通用任务",
       placeholder: "请输入问题",
       img: "icon-html",
       color: "text-[#29CC29]",
@@ -206,7 +212,7 @@ describe("ChatView layout", () => {
       id: "conversation-2",
       sessionId: "session-2",
       title: "深度思考会话",
-       productType: "task",
+      productType: "task",
       deepThink: false,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -235,7 +241,7 @@ describe("ChatView layout", () => {
         }}
         product={product}
         conversation={conversation}
-         onConversationChange={vi.fn()}
+        onConversationChange={vi.fn()}
       />
     );
 
@@ -243,7 +249,7 @@ describe("ChatView layout", () => {
     expect(lastCall).toMatchObject({
       product: expect.objectContaining({ type: "task" }),
       deepThink: false,
-       showBtn: false,
+      showBtn: false,
     });
   });
 
@@ -251,8 +257,8 @@ describe("ChatView layout", () => {
     generalInputMock.mockClear();
 
     const product: CHAT.Product = {
-       type: "task",
-       name: "通用任务",
+      type: "task",
+      name: "通用任务",
       placeholder: "请输入问题",
       img: "icon-docs",
       color: "text-brand",
@@ -262,7 +268,7 @@ describe("ChatView layout", () => {
       id: "conversation-3",
       sessionId: "session-3",
       title: "深度研究会话",
-       productType: "task",
+      productType: "task",
       deepThink: true,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -291,7 +297,7 @@ describe("ChatView layout", () => {
         }}
         product={product}
         conversation={conversation}
-         onConversationChange={vi.fn()}
+        onConversationChange={vi.fn()}
       />
     );
 
@@ -299,7 +305,7 @@ describe("ChatView layout", () => {
     expect(lastCall).toMatchObject({
       product: expect.objectContaining({ type: "task" }),
       deepThink: true,
-       showBtn: false,
+      showBtn: false,
     });
   });
 
@@ -307,8 +313,8 @@ describe("ChatView layout", () => {
     generalInputMock.mockClear();
 
     const product: CHAT.Product = {
-       type: "task",
-       name: "通用任务",
+      type: "task",
+      name: "通用任务",
       placeholder: "请输入问题",
       img: "icon-chat",
       color: "text-brand",
@@ -318,7 +324,7 @@ describe("ChatView layout", () => {
       id: "conversation-1",
       sessionId: "session-1",
       title: "测试会话",
-       productType: "task",
+      productType: "task",
       deepThink: false,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -347,7 +353,7 @@ describe("ChatView layout", () => {
         }}
         product={product}
         conversation={conversation}
-         onConversationChange={vi.fn()}
+        onConversationChange={vi.fn()}
       />
     );
 
@@ -367,8 +373,8 @@ describe("ChatView layout", () => {
 
     try {
       const product: CHAT.Product = {
-         type: "task",
-         name: "通用任务",
+        type: "task",
+        name: "通用任务",
         placeholder: "请输入问题",
         img: "icon-chat",
         color: "text-brand",
@@ -378,7 +384,7 @@ describe("ChatView layout", () => {
         id: "conversation-collapsed-workspace",
         sessionId: "session-collapsed-workspace",
         title: "折叠工作区会话",
-         productType: "task",
+        productType: "task",
         deepThink: false,
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -395,7 +401,7 @@ describe("ChatView layout", () => {
           }}
           product={product}
           conversation={conversation}
-           onConversationChange={vi.fn()}
+          onConversationChange={vi.fn()}
         />
       );
 
@@ -476,8 +482,8 @@ describe("ChatView layout", () => {
     generalInputMock.mockClear();
 
     const product: CHAT.Product = {
-       type: "task",
-       name: "通用任务",
+      type: "task",
+      name: "通用任务",
       placeholder: "请输入问题",
       img: "icon-chat",
       color: "text-brand",
@@ -487,7 +493,7 @@ describe("ChatView layout", () => {
       id: "conversation-readonly-1",
       sessionId: "session-readonly-1",
       title: "只读会话",
-       productType: "task",
+      productType: "task",
       deepThink: false,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -516,8 +522,8 @@ describe("ChatView layout", () => {
         }}
         product={product}
         conversation={conversation}
-         readOnly
-         onConversationChange={vi.fn()}
+        readOnly
+        onConversationChange={vi.fn()}
       />
     );
 

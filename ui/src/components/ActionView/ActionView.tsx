@@ -15,28 +15,37 @@ import {
   ChevronRightIcon,
   Download,
   ExternalLink,
-  ArrowLeft,
   Link2,
   Maximize2,
   Minimize2,
+  MoreHorizontalIcon,
   RefreshCw,
   Star,
   X,
 } from "lucide-react";
 import { useMemoizedFn } from "ahooks";
-import FilePreview from "./FilePreview";
 import FileList from "./FileList";
 import { PlanView, PlanViewAction } from "../PlanView";
 import { PanelItemType } from "../ActionPanel";
-import { ActionViewItemEnum, copyText, downloadFile, showMessage } from "@/utils";
+import { copyText, downloadFile, showMessage } from "@/utils";
 import { iconType } from "@/utils/constants";
 import {
+  AGENT_DIRECTORY_TAB_KEY,
+  agentTabKey,
   collectWorkspaceFiles,
   findWorkspaceFileByPath,
+  isAgentDirectoryTab,
+  isAgentTab,
   isSourceTab,
+  isTaskTab,
   resolveWorkspacePaneMode,
+  taskTabKey,
+  upsertWorkspaceTab,
   workspaceFileKey,
   workspaceTabKey,
+  workspaceTabOpenedAt,
+  type WorkspaceAgentTab,
+  type WorkspaceTaskTab,
   type WorkspaceFileItem,
   type WorkspaceSourceTab,
   type WorkspaceTab,
@@ -44,10 +53,22 @@ import {
 import {
   pathBreadcrumb,
   sourceTabKey,
-  sourceTabMeta,
   type CodeViewerSource,
 } from "@/lib/codeViewerSource";
 import { ToolPreviewPanel } from "../Dialogue/ToolPreviewPanel";
+import { FilePreviewHeaderSlotContext } from "../ActionPanel/filePreviewHeaderSlot";
+import { SubAgentDirectoryPanel } from "../Dialogue/SubAgentDirectoryPanel";
+import { WorkspaceTabOverview } from "./WorkspaceTabOverview";
+import { WorkspaceTabIcon } from "./WorkspaceTabIcon";
+import { TabTitleTooltip } from "./TabTitleTooltip";
+import { resolveWorkspaceTabDisplay } from "./workspaceTabDisplay";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import type { SubAgentRosterItem } from "@/utils/chat/subAgentRoster";
 import {
   resolveFilePreviewKind,
   shouldShowPreviewHeaderDivider,
@@ -64,9 +85,34 @@ import { isTextCopyableFileLike } from "@/utils/taskArtifacts";
 const iconBtnClass =
   "reactor-action-icon flex h-7 w-7 items-center justify-center rounded-lg text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground";
 
-type ActionViewRef = PlanViewAction & {
+/**
+ * 新 tab 的打开时刻。
+ *
+ * 命中已有 tab 时**沿用原值** —— 时间语义是「什么时候开的」，
+ * 反复点同一个文件不应该把「标签页列表」里的时间一直刷成「刚刚」。
+ */
+function openedAtFor(prev: WorkspaceTab[], key: string): number {
+  const existing = prev.find((item) => workspaceTabKey(item) === key);
+  return (existing && workspaceTabOpenedAt(existing)) || Date.now();
+}
+
+/**
+ * 打开一个子智能体 tab 的入参。
+ *
+ * `toolCallId` 是身份键（`agentTabKey`）；`tool/chat` 只是**打开瞬间的兜底快照**，
+ * 真正的渲染数据由宿主在渲染时按 `toolCallId` 重新解析（流式父卡每秒在变）。
+ */
+export type OpenAgentTabPayload = {
+  toolCallId: string;
+  title: string;
+  subagentType?: string;
+  runInBackground?: boolean;
+  tool: CHAT.Task;
+  chat: CHAT.ChatItem;
+};
+
+export type ActionViewRef = PlanViewAction & {
   setFilePreview: (file?: CHAT.TFile) => void;
-  changeActionView: (item: ActionViewItemEnum) => void;
   /**
    * 打开一个 `CodeViewerSource` tab（Stage 4）。
    * 会话产物文件仍走 `setFilePreview`；patch / 内联文本 / 无 URL 的 file 走这里。
@@ -78,6 +124,26 @@ type ActionViewRef = PlanViewAction & {
     output?: string[];
     status?: "running" | "ok" | "error";
   }) => void;
+  /** 打开（或激活）一个子智能体详情 tab —— 与文件预览同一套挂载机制 */
+  openAgentTab: (payload: OpenAgentTabPayload) => void;
+  /** 打开（或激活）子智能体目录 tab（单例） */
+  openAgentDirectoryTab: () => void;
+  /** 打开（或激活）一个任务预览 tab（原「动态」跟随） */
+  openTaskTab: (payload: OpenTaskTabPayload) => void;
+  /** 按身份键关闭一个 tab（子智能体详情面板自己的关闭按钮走这条） */
+  closeWorkspaceTab: (key: string) => void;
+};
+
+/**
+ * 打开一个任务预览 tab 的入参。
+ *
+ * `taskKey` 是身份键（任务的稳定身份），`task` 只是**打开瞬间的兜底快照** ——
+ * 流式过程中任务字段不断补全，真正的渲染数据由宿主在渲染时按 `taskKey` 回找。
+ */
+export type OpenTaskTabPayload = {
+  taskKey: string;
+  title: string;
+  task: CHAT.Task;
 };
 
 const useActionView = () => {
@@ -89,8 +155,6 @@ type ActionViewProps = {
   title?: React.ReactNode;
   className?: string;
   taskList?: PanelItemType[];
-  activeTask?: CHAT.Task;
-  streamTask?: CHAT.Task;
   /** 父级待打开文件（ActionView 未挂载时 changeFile 会先写入这里） */
   pendingPreviewFile?: CHAT.TFile;
   onPendingPreviewFileConsumed?: () => void;
@@ -103,11 +167,38 @@ type ActionViewProps = {
     status?: "running" | "ok" | "error";
   } | null;
   onPendingSourceTabConsumed?: () => void;
+  /** 父级待打开的子智能体 tab（时间线 / 智能体面板点来的） */
+  pendingAgentTab?: OpenAgentTabPayload | null;
+  onPendingAgentTabConsumed?: () => void;
+  /** 父级待打开的子智能体目录 tab（右上角面板页脚点来的） */
+  pendingAgentDirectoryTab?: boolean;
+  onPendingAgentDirectoryTabConsumed?: () => void;
+  /** 父级待打开的任务预览 tab（点工具卡推来，代替旧的「动态」跟随） */
+  pendingTaskTab?: OpenTaskTabPayload | null;
+  onPendingTaskTabConsumed?: () => void;
+  /** 子智能体名册：目录 tab 的数据源（与右上角面板同源） */
+  agentRoster?: SubAgentRosterItem[];
+  /** 目录行点击：由宿主解析并打开对应子智能体 tab */
+  onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  /**
+   * 子智能体详情 tab 的内容。
+   *
+   * 用 render prop 而不是把 tool/chat 塞进 tab：详情面板要跟着流式父卡实时刷新，
+   * 而宿主（ChatView）才持有最新的 chatList 与回调集合。ActionView 只负责
+   * 「哪个 tab 在前台」，内容由宿主给。
+   */
+  renderAgentTab?: (tab: WorkspaceAgentTab) => React.ReactNode;
+  /** 任务预览 tab 的内容（原「动态」），同样由宿主按 taskKey 回找最新任务 */
+  renderTaskTab?: (tab: WorkspaceTaskTab) => React.ReactNode;
+  /**
+   * tab 数量变化（含初始挂载）。宿主据此在**最后一个 tab 被关掉时收起整个工作区** ——
+   * 旧的「动态」空态卡已删掉，没有 tab 就不该有工作区。
+   */
+  onTabsChange?: (count: number) => void;
   workspaceCaption?: string;
   plan?: CHAT.Plan;
   isFocusMode?: boolean;
   onToggleFocusMode?: () => void;
-  onBack?: () => void;
   onClose?: () => void;
   ref?: React.Ref<ActionViewRef>;
 };
@@ -116,17 +207,25 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
   const {
     className,
     onClose,
-    activeTask,
-    streamTask,
     taskList,
     plan,
     isFocusMode,
     onToggleFocusMode,
-    onBack,
     pendingPreviewFile,
     onPendingPreviewFileConsumed,
     pendingSourceTab,
     onPendingSourceTabConsumed,
+    pendingAgentTab,
+    onPendingAgentTabConsumed,
+    pendingAgentDirectoryTab,
+    onPendingAgentDirectoryTabConsumed,
+    pendingTaskTab,
+    onPendingTaskTabConsumed,
+    agentRoster,
+    onOpenAgent,
+    renderAgentTab,
+    renderTaskTab,
+    onTabsChange,
   } = props;
 
   const planRef = useRef<PlanViewAction>(null);
@@ -135,8 +234,6 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
   const [selectedKey, setSelectedKey] = useState<string>("");
   const [refreshToken, setRefreshToken] = useState(0);
   const [viewMode, setViewMode] = useState<"preview" | "source">("preview");
-  /** follow=工具动态预览；file=文件 tab 预览。点工具切 follow，点文件切 file */
-  const [panelMode, setPanelMode] = useState<"follow" | "file">("follow");
   /**
    * tab 条左右是否还有可滚动内容 —— 决定边缘渐隐遮罩挂哪一侧。
    * 对齐 ZCode `AnimatedSidePanePanel.tsx:968-984` 的 `tabsScrollMaskEdges`。
@@ -145,6 +242,17 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
     left: false,
     right: false,
   });
+
+  /**
+   * 文件预览头部的插槽节点（给 renderer 用 portal 挂「预览专属」按钮）。
+   *
+   * 典型是 HTML 预览的「选择网页元素」：picker 要挂 iframe 内部，逻辑只能在
+   * `HTMLRenderer` 里；但按钮要和「预览 / 源码 / 复制链接 / 刷新 / 下载」同列，
+   * 所以由这里出一个空节点 + Context（见 `filePreviewHeaderSlot.tsx`）。
+   * 用 state 而不是 ref：节点挂上/卸载要让消费方重渲染一次。
+   */
+  const [headerSlotNode, setHeaderSlotNode] = useState<HTMLElement | null>(null);
+  const fileHeaderSlot = useMemo(() => ({ node: headerSlotNode }), [headerSlotNode]);
 
   // 全量产物仅作数据源；tab 只展示用户点开过的文件。动态流持续增加文件时
   // 不强行改变用户当前预览，用户选择才是 openTabs 的生命周期入口。
@@ -161,9 +269,16 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
   const files = useMemo(() => {
     // tab 优先保留用户刚点击时的 URL/文件信息，catalog 只补充任务等元数据；
     // 这是应对流式产物后续补全、但同一资源 key 已在预览中的合并边界。
-    // source tab 不参与 catalog 合并（它没有产物身份），原样透传。
+    // source / agent / task / directory tab 不参与 catalog 合并（它们没有产物身份），原样透传。
     return openTabs.map((tab) => {
-      if (isSourceTab(tab)) return tab;
+      if (
+        isSourceTab(tab) ||
+        isAgentTab(tab) ||
+        isAgentDirectoryTab(tab) ||
+        isTaskTab(tab)
+      ) {
+        return tab;
+      }
       const key = workspaceFileKey(tab);
       const catalogHit = catalogMap.get(key);
       if (!catalogHit) return tab;
@@ -195,7 +310,8 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
       const next: WorkspaceSourceTab = {
         ...tab,
         kind: "source",
-        key
+        key,
+        openedAt: openedAtFor(prev, key),
       };
       if (existing >= 0) {
         const copy = [...prev];
@@ -206,7 +322,91 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
     });
     setSelectedKey(key);
     setViewMode("preview");
-    setPanelMode("file");
+  });
+
+  /**
+   * 打开 / 激活一个子智能体详情 tab。
+   *
+   * 与 `openFileInTab` 平行：身份键是 `agentTabKey(toolCallId)`，同一子智能体
+   * 重复点开只切前台、不新增 tab（ZCode `openSubagentSessionSidePane` 同款幂等）。
+   * 命中已有 tab 时**刷新兜底快照**，避免历史裁剪后旧快照一直生效。
+   */
+  const openAgentInTab = useMemoizedFn((payload: OpenAgentTabPayload) => {
+    if (!payload.toolCallId) {
+      return;
+    }
+    const key = agentTabKey(payload.toolCallId);
+    setOpenTabs((prev) => {
+      const existing = prev.findIndex((item) => workspaceTabKey(item) === key);
+      const next: WorkspaceAgentTab = {
+        kind: "agent",
+        key,
+        toolCallId: payload.toolCallId,
+        title: payload.title || "子智能体",
+        subagentType: payload.subagentType,
+        runInBackground: payload.runInBackground,
+        fallbackTool: payload.tool,
+        fallbackChat: payload.chat,
+        openedAt: openedAtFor(prev, key),
+      };
+      if (existing >= 0) {
+        const copy = [...prev];
+        copy[existing] = next;
+        return copy;
+      }
+      return [...prev, next];
+    });
+    setSelectedKey(key);
+  });
+
+  /** 打开 / 激活子智能体目录 tab（单例） */
+  const openAgentDirectoryInTab = useMemoizedFn(() => {
+    setOpenTabs((prev) => {
+      const existing = prev.findIndex(
+        (item) => workspaceTabKey(item) === AGENT_DIRECTORY_TAB_KEY
+      );
+      if (existing >= 0) {
+        return prev;
+      }
+      return [
+        ...prev,
+        {
+          kind: "agent-directory",
+          key: AGENT_DIRECTORY_TAB_KEY,
+          openedAt: Date.now(),
+        },
+      ];
+    });
+    setSelectedKey(AGENT_DIRECTORY_TAB_KEY);
+  });
+
+  /**
+   * 打开 / 激活一个任务预览 tab（原「动态」跟随）。
+   *
+   * 身份键是 `taskTabKey(taskKey)`：同一个任务重复点开只切前台、不新增 tab。
+   * tab **只存身份**，实时任务由宿主在渲染时回找 —— 流式过程中任务字段不断补全，
+   * 存快照会让预览停在打开那一刻。
+   *
+   * 另外会顶替「已经以文件 tab 打开着的同一主产物」：两者渲染的是同一份内容
+   * （见 `upsertWorkspaceTab`），留着就是两个一模一样的预览 tab。
+   */
+  const openTaskInTab = useMemoizedFn((payload: OpenTaskTabPayload) => {
+    if (!payload.taskKey) {
+      return;
+    }
+    const key = taskTabKey(payload.taskKey);
+    setOpenTabs((prev) => {
+      const next: WorkspaceTaskTab = {
+        kind: "task",
+        key,
+        taskKey: payload.taskKey,
+        title: payload.title || "任务",
+        fallbackTask: payload.task,
+        openedAt: openedAtFor(prev, key),
+      };
+      return upsertWorkspaceTab(prev, next);
+    });
+    setSelectedKey(key);
   });
 
   const closeTab = useMemoizedFn((key: string) => {
@@ -222,6 +422,25 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
       });
       return next;
     });
+  });
+
+  /**
+   * 关闭除 `keepKey` 外的所有 tab（右键菜单「关闭其他标签」）。
+   *
+   * 关完一定把选中项钉回 `keepKey` —— 被保留的那个 tab 如果在列表尾部，
+   * `closeTab` 的「右邻优先」落点会把它自己顶掉，出现「关了其他的，结果当前这个也没选中」。
+   */
+  const closeOtherTabs = useMemoizedFn((keepKey: string) => {
+    setOpenTabs((prev) =>
+      prev.filter((item) => workspaceTabKey(item) === keepKey)
+    );
+    setSelectedKey(keepKey);
+  });
+
+  /** 关闭全部 tab。全关光之后由宿主（`onTabsChange` → 0）收起整个工作区。 */
+  const closeAllTabs = useMemoizedFn(() => {
+    setOpenTabs([]);
+    setSelectedKey("");
   });
 
   const openFileInTab = useMemoizedFn((file: CHAT.TFile) => {
@@ -254,19 +473,16 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
 
     setOpenTabs((prev) => {
       const nextKey = workspaceFileKey(resolved);
-      const existing = prev.findIndex(
-        (item) => workspaceTabKey(item) === nextKey
-      );
-      if (existing >= 0) {
-        const copy = [...prev];
-        copy[existing] = resolved;
-        return copy;
-      }
-      return [...prev, resolved];
+      const next = {
+        ...resolved,
+        openedAt: openedAtFor(prev, nextKey),
+      };
+      // 同一个文件只留一个预览 tab（详见 `upsertWorkspaceTab` 的注释）：
+      // 任务 tab 与文件 tab 身份键不同，但渲染的是同一份内容。
+      return upsertWorkspaceTab(prev, next);
     });
     setSelectedKey(workspaceFileKey(resolved));
     setViewMode("preview");
-    setPanelMode("file");
   });
 
   // ChatView 可能先收到文件点击、后挂载 ActionView，因此 pending 文件必须在
@@ -306,15 +522,68 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
     onPendingSourceTabConsumed?.();
   }, [pendingSourceTab, catalog, openFileInTab, openSourceInTab, onPendingSourceTabConsumed]);
 
-  // 没有任务产物时认为会话工作区已清空，关闭旧 tab；有产物时保留用户已打开
-  // 的 tab，避免每次流式 taskList 更新都重置预览位置。
+  // 时间线 / 右上角「智能体」面板推来的子智能体 tab。同样「挂载后消费一次」。
   useEffect(() => {
-    if (!taskList?.length && !catalog.length) {
-      setOpenTabs([]);
-      setSelectedKey("");
-      setPanelMode("follow");
+    if (!pendingAgentTab) return;
+    openAgentInTab(pendingAgentTab);
+    onPendingAgentTabConsumed?.();
+  }, [pendingAgentTab, openAgentInTab, onPendingAgentTabConsumed]);
+
+  useEffect(() => {
+    if (!pendingAgentDirectoryTab) return;
+    openAgentDirectoryInTab();
+    onPendingAgentDirectoryTabConsumed?.();
+  }, [
+    pendingAgentDirectoryTab,
+    openAgentDirectoryInTab,
+    onPendingAgentDirectoryTabConsumed,
+  ]);
+
+  useEffect(() => {
+    if (!pendingTaskTab) return;
+    openTaskInTab(pendingTaskTab);
+    onPendingTaskTabConsumed?.();
+  }, [pendingTaskTab, openTaskInTab, onPendingTaskTabConsumed]);
+
+  // tab 数量上报宿主：最后一个 tab 被关掉时由宿主收起整个工作区。
+  //
+  // 宿主可能每轮渲染都传新的回调，所以用 ref 固定住，让这个 effect 只在
+  // **数量真的变化**时触发（否则每次父级重渲染都会重复上报同一个数字）。
+  const onTabsChangeRef = useRef(onTabsChange);
+  useEffect(() => {
+    onTabsChangeRef.current = onTabsChange;
+  }, [onTabsChange]);
+  useEffect(() => {
+    onTabsChangeRef.current?.(openTabs.length);
+  }, [openTabs.length]);
+
+  // 没有任务产物时认为会话工作区已清空，关闭旧**文件** tab；有产物时保留用户已打开
+  // 的 tab，避免每次流式 taskList 更新都重置预览位置。
+  //
+  // 子智能体 tab / 目录 tab / 任务预览 tab 不受这条规则影响：它们的生命周期跟会话与
+  // 用户操作走，跟「这轮有没有产物文件」无关（否则纯子 Agent 任务一结束、或某个
+  // 无产物的工具任务关掉产物列表，tab 就被清掉）。
+  useEffect(() => {
+    if (taskList?.length || catalog.length) {
+      return;
     }
-  }, [taskList, catalog.length]);
+    const kept = openTabs.filter(
+      (tab) => isAgentTab(tab) || isAgentDirectoryTab(tab) || isTaskTab(tab)
+    );
+    if (kept.length === openTabs.length) {
+      return;
+    }
+    setOpenTabs(kept);
+    setSelectedKey((current) => {
+      if (!current) {
+        return current;
+      }
+      if (kept.some((tab) => workspaceTabKey(tab) === current)) {
+        return current;
+      }
+      return kept.length ? workspaceTabKey(kept[kept.length - 1]) : "";
+    });
+  }, [taskList, catalog.length, openTabs]);
 
   useEffect(() => {
     setViewMode("preview");
@@ -361,7 +630,6 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
    * 只做「刚好露出 + 8px 余量」，不做居中，避免每次点击都大幅跳动。
    */
   useEffect(() => {
-    if (panelMode !== "file") return;
     const strip = tabsRef.current;
     if (!strip) return;
     const active = strip.querySelector<HTMLElement>('[data-active="true"]');
@@ -373,11 +641,12 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
     } else if (tabRect.right > stripRect.right) {
       strip.scrollLeft += tabRect.right - stripRect.right + 8;
     }
-  }, [selectedKey, panelMode, files.length]);
+  }, [selectedKey, files.length]);
 
   useImperativeHandle(ref, () => {
     // 暴露给 ChatView 的命令只改变 ActionView 自己的视图状态，不把文件目录
-    // 逻辑泄漏到父组件；follow/file 两种模式对应动态流和用户文件预览边界。
+    // 逻辑泄漏到父组件。工作区没有「模式」之分：旧的 `changeActionView(follow)`
+    // 已随「动态」伪模式一起删掉，内容区完全由选中的 tab 决定。
     return {
       ...planRef.current!,
       setFilePreview: (file) => {
@@ -386,19 +655,22 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
         }
         openFileInTab(file);
       },
-      changeActionView: (item) => {
-        if (item === ActionViewItemEnum.follow) {
-          setPanelMode("follow");
-          return;
-        }
-        if (item === ActionViewItemEnum.file || item === ActionViewItemEnum.browser) {
-          setPanelMode("file");
-        }
-      },
       openSourceTab: (tab) => {
         // parent 的 chat 轮次尚未挂载时，tab 也得先落盘，因此复用 pending 通道：
         // 这里直接写 state（ActionView 已挂载才会被调用），无需父级缓存。
         openSourceInTab(tab);
+      },
+      openAgentTab: (payload) => {
+        openAgentInTab(payload);
+      },
+      openAgentDirectoryTab: () => {
+        openAgentDirectoryInTab();
+      },
+      openTaskTab: (payload) => {
+        openTaskInTab(payload);
+      },
+      closeWorkspaceTab: (key) => {
+        closeTab(key);
       },
     };
   });
@@ -410,19 +682,28 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
     return files.find((f) => workspaceTabKey(f) === selectedKey) || files[files.length - 1];
   }, [files, selectedKey]);
 
-  // file tab 与 source tab 分流：前者走产物预览，后者走工具预览面板。
-  const selectedFile: WorkspaceFileItem | undefined =
-    selectedTab && !isSourceTab(selectedTab) ? selectedTab : undefined;
+  // 五种 tab 分流：产物文件 / 工具 source / 任务预览 / 子智能体详情 / 子智能体目录。
+  const isFileTabSelected = Boolean(
+    selectedTab && !isSourceTab(selectedTab) && !isTaskTab(selectedTab) && !isAgentTab(selectedTab) && !isAgentDirectoryTab(selectedTab)
+  );
+  const selectedFile: WorkspaceFileItem | undefined = isFileTabSelected
+    ? (selectedTab as WorkspaceFileItem)
+    : undefined;
   const selectedSource: WorkspaceSourceTab | undefined =
     selectedTab && isSourceTab(selectedTab) ? selectedTab : undefined;
+  const selectedTask: WorkspaceTaskTab | undefined =
+    selectedTab && isTaskTab(selectedTab) ? selectedTab : undefined;
+  const selectedAgent: WorkspaceAgentTab | undefined =
+    selectedTab && isAgentTab(selectedTab) ? selectedTab : undefined;
 
-  const showFileBrowser = panelMode === "file" && files.length > 0;
-  /** 内容区分派：follow（动态流）/ source（工具推来的 patch·text·image）/ file（产物文件）。 */
-  const paneMode = resolveWorkspacePaneMode({
-    panelMode,
-    hasSelectedSource: Boolean(selectedSource),
-    hasSelectedFile: Boolean(selectedFile),
-  });
+  const showFileBrowser = files.length > 0;
+  /**
+   * 内容区分派：**只看选中的 tab**。
+   *
+   * 没有第二套「模式」了 —— 旧的 `panelMode: "follow"`（动态跟随）已删掉，
+   * 空态卡随之消失；`empty` 的含义是「宿主该把整个工作区收起」。
+   */
+  const paneMode = resolveWorkspacePaneMode(selectedTab);
   const previewUrl =
     selectedFile?.previewUrl || selectedFile?.url || "";
   const downloadUrl =
@@ -507,22 +788,25 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
         ease: EASE_OUT,
       }}
     >
-      {/* 顶栏：「动态」+ 已打开文件 pill；点工具回动态，点文件进文件预览。
+      {/* 顶栏：最左「标签页列表」+ 已打开 tab；内容区完全由选中的 tab 决定。
           ZCode `AnimatedSidePanePanel.tsx:946` 的 TabsList 是
           `border-b border-border/50 bg-transparent` —— **半透明分隔线 + 无底色**。
           全量 `border-border` 配 `bg-surface/30` 会把这一行画成一条明显的横杠。 */}
       <div className="reactor-workspace-toolbar flex h-10 shrink-0 items-center px-3">
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          {onBack ? (
-            <button
-              type="button"
-              className={iconBtnClass}
-              title="返回子 Agent"
-              aria-label="返回子 Agent"
-              onClick={onBack}
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-            </button>
+          {/* 最左固定位：标签页列表浮层（对齐 ZCode `AnimatedSidePanePanel.tsx:957-960`
+              的 `p-2` 固定槽）。放在滚动容器**之外**，溢出时也不会跟着滚走。 */}
+          {files.length > 0 ? (
+            <div className="flex shrink-0 items-center">
+              <WorkspaceTabOverview
+                tabs={files}
+                activeKey={workspaceTabKey(selectedTab || files[0])}
+                onActivate={(key) => {
+                  setSelectedKey(key);
+                }}
+                onCloseTab={closeTab}
+              />
+            </div>
           ) : null}
           {files.length > 0 ? (
             <div
@@ -540,48 +824,14 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                       : ""
               )}
             >
-              <button
-                type="button"
-                onClick={() => setPanelMode("follow")}
-                className={classNames(
-                  // ZCode 选中态走 bg-selected + text-foreground，未选中只有 hover 才上底色，
-                  // 不再给每个 pill 挂 shadow-xs（DESIGN.md：阴影只留给菜单/浮层）。
-                  "inline-flex h-7 shrink-0 items-center rounded-lg px-2 text-ui-sm font-medium transition-colors",
-                  panelMode === "follow"
-                    ? "bg-selected text-foreground"
-                    : "text-foreground-subtle hover:bg-surface-hover hover:text-foreground"
-                )}
-              >
-                动态
-              </button>
-              {files.length > 1 ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOpenTabs([]);
-                    setSelectedKey("");
-                    setPanelMode("follow");
-                  }}
-                  className="inline-flex h-7 shrink-0 items-center rounded-lg px-2 text-ui-sm text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground"
-                  title="关闭全部标签页"
-                >
-                  全部关闭
-                </button>
-              ) : null}
+              {/* 没有「动态」按钮了：旧的动态跟随模式（`panelMode: "follow"`）已删掉，
+                  点工具卡现在开一个真实的「任务预览 tab」，和文件 tab 同一条 tab 栏。 */}
               {files.map((tab) => {
-                const isSource = isSourceTab(tab);
                 const key = workspaceTabKey(tab);
-                const active =
-                  panelMode === "file" && key === workspaceTabKey(selectedTab || files[0]);
-                const meta = isSource
-                  ? sourceTabMeta(tab.source)
-                  : {
-                    title: (tab as WorkspaceFileItem).name,
-                    kind: "file" as const
-                  };
-                const kind = isSource
-                  ? resolveFileKind(meta.kind === "patch" ? "diff" : undefined, meta.title)
-                  : resolveFileKind((tab as WorkspaceFileItem).type, (tab as WorkspaceFileItem).name);
+                const active = key === workspaceTabKey(selectedTab || files[0]);
+                // 图标 / 标题 / diff 徽章统一由 workspaceTabDisplay 解析 —— 与
+                // 「标签页列表」浮层共用同一份，加 tab 类型时不会漏改一处。
+                const display = resolveWorkspaceTabDisplay(tab);
                 return (
                   // 分组容器：tab 主体与关闭按钮是两个动作，不能嵌套在同一个 button 里。
                   // 对齐 ZCode `SidePaneTabTrigger.tsx:147-162`：
@@ -601,33 +851,31 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                       closeTab(key);
                     }}
                     className={classNames(
-                      "reactor-workspace-tab group relative flex h-7 max-w-[156px] min-w-[110px] flex-[0_1_9.75rem] items-center overflow-hidden rounded-lg border border-transparent pl-2 pr-1 transition-colors",
+                      // `pr-5` 给右侧关闭按钮**固定**留位（X 是 absolute，size-4 @ right-1）：
+                      // 标题用 `text-overflow: ellipsis` 截断，留位固定，省略号不会压到 X 上，
+                      // 也不会因为 hover 时 X 浮出而重新截断。
+                      "reactor-workspace-tab group relative flex h-7 max-w-[156px] min-w-[110px] flex-[0_1_9.75rem] items-center overflow-hidden rounded-lg border border-transparent pl-2 pr-5 transition-colors",
                       active
                         ? "bg-selected text-foreground"
                         : "text-foreground-subtle hover:bg-surface-hover hover:text-foreground"
                     )}
                   >
-                    <button
-                      type="button"
-                      onClick={() => {
+                    <TabTitleTooltip
+                      label={display.title}
+                      onActivate={() => {
                         setSelectedKey(key);
-                        setPanelMode("file");
                       }}
-                      className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-                      title={meta.title}
                     >
-                      <span
-                        className={classNames(
-                          "flex size-4 shrink-0 items-center justify-center rounded-sm text-ui-xs font-bold leading-none",
-                          FILE_KIND_TONE
-                        )}
-                      >
-                        {fileKindBadge(kind)}
-                      </span>
+                      <WorkspaceTabIcon spec={display.icon} />
                       <span className="reactor-workspace-tab-title min-w-0 text-ui-sm font-medium">
-                        {meta.title}
+                        {display.title}
                       </span>
-                    </button>
+                    </TabTitleTooltip>
+                    {display.diffBadge ? (
+                      <span className="shrink-0 pl-1 text-ui-xs tabular-nums text-foreground-subtlest">
+                        {display.diffBadge}
+                      </span>
+                    ) : null}
                     <button
                       type="button"
                       onPointerDown={(event) => event.stopPropagation()}
@@ -644,7 +892,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                           : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
                       )}
                       title="关闭标签页"
-                      aria-label={`关闭 ${meta.title}`}
+                      aria-label={`关闭 ${display.title}`}
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -652,11 +900,44 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                 );
               })}
             </div>
-          ) : (
-            <div className="min-w-0 flex-1 truncate px-1 text-ui-base text-foreground-subtle">
-              动态
-            </div>
-          )}
+          ) : null}
+
+          {/* tab 条最右的批量操作菜单。ZCode 用的是 tab 右键菜单
+              （`SidePaneTabTrigger.tsx:189-195`），但 Web 上右键没有任何视觉提示、
+              且用户预期是浏览器原生菜单，所以换成同款三项的可见 `…` 入口。 */}
+          {files.length > 0 ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="flex size-7 shrink-0 items-center justify-center rounded-lg text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground"
+                  aria-label="标签页操作"
+                  title="标签页操作"
+                  data-testid="workspace-tab-actions"
+                >
+                  <MoreHorizontalIcon className="size-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                side="bottom"
+                sideOffset={6}
+                className="w-44 rounded-lg border border-popover-border bg-popover p-1 shadow-md"
+              >
+                <DropdownMenuItem
+                  disabled={files.length < 2}
+                  onSelect={() =>
+                    closeOtherTabs(workspaceTabKey(selectedTab || files[0]))
+                  }
+                >
+                  关闭其他标签
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => closeAllTabs()}>
+                  关闭所有标签
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
 
           <div className="flex shrink-0 items-center gap-0.5">
             {onToggleFocusMode ? (
@@ -701,7 +982,24 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
       {/* 工作区内容：工具条 + 预览。
           ZCode PreviewPane.tsx:1729 —— 内容区不套内缩卡片，直接 min-h-0 flex-1 铺满面板。 */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
-        {paneMode === "source" && selectedSource ? (
+        {paneMode === "agent-directory" ? (
+          // 子智能体目录：与右上角「智能体」面板同源的名册，按「正在运行 / 已结束」分段。
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <SubAgentDirectoryPanel items={agentRoster || []} onOpen={onOpenAgent} />
+          </div>
+        ) : paneMode === "agent" && selectedAgent ? (
+          // 子智能体详情：内容由宿主给（它持有最新 chatList 与回调），
+          // ActionView 只决定「哪个 tab 在前台」。
+          <div className="min-h-0 flex-1 overflow-hidden">
+            {renderAgentTab?.(selectedAgent)}
+          </div>
+        ) : paneMode === "task" && selectedTask ? (
+          // 任务预览 tab（原「动态」）：内容由宿主给 —— 流式过程中任务字段不断补全，
+          // 必须按稳定身份回找最新任务，不能把打开瞬间的快照存进 tab。
+          <div className="min-h-0 flex-1 overflow-hidden">
+            {renderTaskTab?.(selectedTask)}
+          </div>
+        ) : paneMode === "source" && selectedSource ? (
           // source tab（patch / text / image）：直接复用工具预览面板，渲染契约与
           // 右侧工具 diff 完全一致（TASKS.md §1.2 验收：与现有 diff 一模一样）。
           <div className="min-h-0 flex-1 overflow-hidden">
@@ -715,7 +1013,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
             />
           </div>
         ) : paneMode === "file" && showFileBrowser && selectedFile ? (
-          <>
+          <FilePreviewHeaderSlotContext.Provider value={fileHeaderSlot}>
             {/* 文件预览头：单行 h-10 面包屑 + ghost 操作区（对齐 ZCode
                 PreviewPane.tsx:1531-1570）。旧版这里是「预览/源码 带框分段控件 +
                 badge + 两行文件名 + 6 个图标」，一行信息被摊成三层。
@@ -793,6 +1091,15 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                   </div>
                 ) : null}
 
+                {/* 预览专属操作的插槽：HTML 预览的「选择网页元素」由 HTMLRenderer
+                    用 portal 渲染到这里，和这一排按钮同列（空着时 `empty:hidden`
+                    不占位、也不多吃一个 gap）。 */}
+                <div
+                  ref={setHeaderSlotNode}
+                  className="flex shrink-0 items-center gap-0.5 empty:hidden"
+                  data-testid="workspace-file-header-slot"
+                />
+
                 <div className="flex shrink-0 items-center gap-0.5">
                   {selectedKind !== "pdf" ? (
                     <button
@@ -853,16 +1160,8 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                 />
               </div>
             </div>
-          </>
-        ) : (
-          <div className="min-h-0 flex-1 overflow-hidden">
-            <FilePreview
-              taskItem={activeTask || streamTask}
-              taskList={taskList}
-              className="h-full"
-            />
-          </div>
-        )}
+          </FilePreviewHeaderSlotContext.Provider>
+        ) : null}
       </div>
 
       <PlanView plan={plan} ref={planRef} />

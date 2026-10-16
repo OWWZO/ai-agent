@@ -1,32 +1,29 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BotIcon, EllipsisIcon, Minimize2Icon } from "lucide-react";
+import {
+  BotIcon,
+  ChevronRightIcon,
+  EllipsisIcon,
+  Minimize2Icon,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { findAgentTaskByToolCallId } from "@/utils/chat/taskIdentity";
-import { projectDockTasks } from "@/utils/chat/agentRuntimeProjector";
-import type { DockTaskItem } from "@/types/agentRuntime";
+import {
+  collectSubAgentRoster,
+  resolveRosterAgentTool,
+  selectEndedSubAgents,
+  selectRunningSubAgents,
+  type SubAgentRosterItem,
+} from "@/utils/chat/subAgentRoster";
 import {
   AGENTS_PANEL_VARIANT_LABELS,
-  formatBackgroundAgentElapsed,
+  formatSubAgentElapsed,
+  useNowTicker,
   type AgentsPanelVariant,
-} from "./backgroundAgentsModel";
-
-/** 运行中条目每秒走时的时钟；无运行中任务时不建 interval */
-function useNowTicker(active: boolean): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!active) {
-      return;
-    }
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [active]);
-  return now;
-}
+} from "./subAgentsModel";
 
 /** 视口 ≥1280px 才允许 auto 展开（与 ZCode `@min-[1280px]/conversation` 同阈值） */
 function useIsWideViewport(): boolean {
@@ -44,77 +41,31 @@ function useIsWideViewport(): boolean {
   return isWide;
 }
 
-type RowItem = DockTaskItem & {
-  /** 条目对应的真实会话（跨 chatList 去重后保留宿主，点击下钻用） */
-  hostChat: CHAT.ChatItem;
-};
-
-function collectAgentItems(
-  chats: CHAT.ChatItem[],
-  activeChat?: CHAT.ChatItem
-): RowItem[] {
-  const host =
-    activeChat ??
-    (chats.length ? chats[chats.length - 1] : undefined);
-  const sourceChats = host ? [host, ...chats.filter((item) => item !== host)] : chats;
-  const seen = new Set<string>();
-  const items: RowItem[] = [];
-  for (const chat of sourceChats) {
-    for (const task of projectDockTasks(chat)) {
-      if (!task.id || seen.has(task.id)) {
-        continue;
-      }
-      seen.add(task.id);
-      items.push({
-        ...task,
-        hostChat: chat,
-      });
-    }
-  }
-  // 运行中优先，其余按出现顺序
-  return items.sort((a, b) => Number(b.state === "run") - Number(a.state === "run"));
-}
-
 function AgentRow({
   item,
   now,
   onOpen,
 }: {
-  item: RowItem;
+  item: SubAgentRosterItem;
   now: number;
-  onOpen: (item: RowItem) => void;
+  onOpen: (item: SubAgentRosterItem) => void;
 }) {
-  const running = item.state === "run";
-  const failed = item.state === "fail";
   const startedAtMs = item.startedAtMs;
-  const elapsedLabel = running
-    ? startedAtMs != null
-      ? formatBackgroundAgentElapsed(Math.max(0, now - startedAtMs))
-      : "已运行 1 秒"
-    : failed
-      ? "已失败"
-      : item.timing
-        ? `已完成 · ${item.timing}`
-        : "已完成";
+  const elapsedLabel =
+    startedAtMs != null
+      ? formatSubAgentElapsed(Math.max(0, now - startedAtMs))
+      : "已运行 1 秒";
 
   return (
     <button
       type="button"
-      className={cn(
-        "flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-hover",
-        !running && "opacity-75"
-      )}
+      className="flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-hover"
       onClick={() => onOpen(item)}
-      data-testid="background-agent-row"
+      data-testid="sub-agent-row"
     >
       <BotIcon className="mt-0.5 size-4 shrink-0 text-foreground-subtle" />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span
-          className={cn(
-            "line-clamp-2 text-ui-base leading-5 text-foreground",
-            !running && !failed && "line-through"
-          )}
-        >
+        <span className="line-clamp-2 text-ui-base leading-5 text-foreground">
           {item.name}
         </span>
         <span className="text-ui-xs leading-4 tabular-nums text-foreground-subtle">
@@ -133,36 +84,43 @@ function AgentRow({
  * - `panel`：展开面板（点头条胶囊 / 输入框徽标都是切到这个态）
  * - `mini`：收起为胶囊
  *
- * 数据源与旧底部 Dock 相同（`projectDockTasks`：run_in_background 的 Agent 派发卡）。
+ * **同步与后台子 Agent 同列**（名册来自 `collectSubAgentRoster`，不再只收 run_in_background）：
+ * 正文只放**运行中**条目（回答「现在有谁在跑」），已结束的收进页脚一行
+ * 「已结束 N」，点开右侧工作区的「子智能体目录」tab —— 与 ZCode 同构，
+ * 避免面板被历史条目撑长。
+ *
  * 不移植 ZCode 的「停止」按钮 —— 子 Agent 停止走 TaskStop 工具 / 父回合停止。
  */
-const BackgroundAgentsPanel = memo(function BackgroundAgentsPanel({
+const SubAgentsPanel = memo(function SubAgentsPanel({
   chat,
   chats,
   variant,
   onVariantChange,
   onOpenAgent,
+  onOpenDirectory,
 }: {
   chat?: CHAT.ChatItem;
   chats?: CHAT.ChatItem[];
   variant: AgentsPanelVariant;
   onVariantChange: (variant: AgentsPanelVariant) => void;
   onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  onOpenDirectory?: () => void;
 }) {
   const isWide = useIsWideViewport();
   const items = useMemo(
-    () => collectAgentItems(chats?.length ? chats : chat ? [chat] : [], chat),
+    () => collectSubAgentRoster(chats?.length ? chats : chat ? [chat] : [], chat),
     [chats, chat]
   );
-  const runningCount = items.filter((item) => item.state === "run").length;
-  const hasRunning = runningCount > 0;
+  const runningItems = useMemo(() => selectRunningSubAgents(items), [items]);
+  const endedItems = useMemo(() => selectEndedSubAgents(items), [items]);
+  const hasRunning = runningItems.length > 0;
   const now = useNowTicker(hasRunning);
   const [menuOpen, setMenuOpen] = useState(false);
   // startedAtMs 缺失时（旧事件没有 timing）：首次见到的时间兜底，保证计时单调
   const fallbackStartedAtRef = useRef(new Map<string, number>());
   const resolvedItems = useMemo(
     () =>
-      items.map((item) => {
+      runningItems.map((item) => {
         if (item.startedAtMs != null) {
           return item;
         }
@@ -176,39 +134,20 @@ const BackgroundAgentsPanel = memo(function BackgroundAgentsPanel({
           startedAtMs: fallback,
         };
       }),
-    [items]
+    [runningItems]
   );
 
   const expanded = variant === "panel" || (variant === "auto" && isWide);
   const countLabel = hasRunning
-    ? `${runningCount} 运行`
+    ? `${runningItems.length} 运行`
     : `${items.length} 个智能体`;
 
   const handleOpen = useCallback(
-    (item: RowItem) => {
+    (item: SubAgentRosterItem) => {
       if (!onOpenAgent) {
         return;
       }
-      const toolId = item.id;
-      const tool =
-        findAgentTaskByToolCallId(item.hostChat, toolId) ||
-        ({
-          messageType: "tool_call",
-          messageId: item.id,
-          toolCallId: item.id,
-          resultMap: {
-            toolName: "Agent",
-            childSessionId: item.childSessionId,
-            subAgentType: item.meta,
-            subAgentDescription: item.name,
-            runInBackground: true,
-            input: {
-              description: item.name,
-              subagent_type: item.meta,
-            },
-          },
-        } as unknown as CHAT.Task);
-      onOpenAgent(tool, item.hostChat);
+      onOpenAgent(resolveRosterAgentTool(item), item.hostChat);
     },
     [onOpenAgent]
   );
@@ -230,7 +169,7 @@ const BackgroundAgentsPanel = memo(function BackgroundAgentsPanel({
           )}
           onClick={() => onVariantChange("panel")}
           aria-label={`智能体 · ${countLabel}`}
-          data-testid="background-agents-pill"
+          data-testid="sub-agents-pill"
         >
           <BotIcon className="size-4 shrink-0" />
           <span className="tabular-nums">{countLabel}</span>
@@ -239,12 +178,13 @@ const BackgroundAgentsPanel = memo(function BackgroundAgentsPanel({
     );
   }
 
-  // 展开态：面板（截图 2）—— 头部「智能体 N 运行」+ … + 收起，随后是运行/已结束条目
+  // 展开态：面板（截图 2）—— 头部「智能体 N 运行」+ … + 收起，随后是运行中条目，
+  // 页脚一行「已结束 N」进目录（ZCode `EndedSubagentDirectoryRow`）。
   return (
     <div className="pointer-events-none absolute right-4 top-4 z-20">
       <div
         className="pointer-events-auto w-80 max-w-[calc(100%-2rem)] overflow-hidden rounded-2xl border border-border bg-popover shadow-md"
-        data-testid="background-agents-panel"
+        data-testid="sub-agents-panel"
       >
         <div className="flex items-center gap-1.5 px-3.5 pb-1 pt-2.5">
           <span className="min-w-0 flex-1 truncate text-ui-base font-semibold text-foreground-subtle">
@@ -298,19 +238,36 @@ const BackgroundAgentsPanel = memo(function BackgroundAgentsPanel({
             <Minimize2Icon className="size-4" />
           </button>
         </div>
-        <div className="flex max-h-[min(50vh,360px)] flex-col gap-0.5 overflow-y-auto px-1.5 pb-2">
-          {resolvedItems.map((item) => (
-            <AgentRow
-              key={item.id}
-              item={item}
-              now={now}
-              onOpen={handleOpen}
-            />
-          ))}
-        </div>
+
+        {resolvedItems.length > 0 ? (
+          <div className="flex max-h-[min(50vh,360px)] flex-col gap-0.5 overflow-y-auto px-1.5 pb-1">
+            {resolvedItems.map((item) => (
+              <AgentRow key={item.id} item={item} now={now} onOpen={handleOpen} />
+            ))}
+          </div>
+        ) : null}
+
+        {endedItems.length > 0 ? (
+          <div className="px-1.5 pb-2 pt-0.5">
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-hover"
+              onClick={onOpenDirectory}
+              data-testid="sub-agents-ended-row"
+            >
+              <span className="min-w-0 flex-1 truncate text-ui-base text-foreground-subtle">
+                已结束
+              </span>
+              <span className="shrink-0 text-ui-base tabular-nums text-foreground-subtle">
+                {endedItems.length}
+              </span>
+              <ChevronRightIcon className="size-4 shrink-0 text-foreground-subtlest" />
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );
 });
 
-export default BackgroundAgentsPanel;
+export default SubAgentsPanel;

@@ -304,15 +304,9 @@ export function editDiffStats(
     backendPatch,
   });
   if (code) {
-    let added = 0;
-    let removed = 0;
-    for (const line of code.split("\n")) {
-      if (line.startsWith("+++") || line.startsWith("---")) continue;
-      if (line.startsWith("+")) added += 1;
-      else if (line.startsWith("-")) removed += 1;
-    }
-    if (added || removed) {
-      return { added, removed };
+    const stats = patchDiffStats(code);
+    if (stats) {
+      return stats;
     }
   }
 
@@ -330,6 +324,29 @@ export function editDiffStats(
   }
 
   return null;
+}
+
+/**
+ * 从 unified patch 文本统计 `+A −B`。
+ *
+ * 与 `editDiffStats` **同一套计数规则**（`+++` / `---` 文件头不计入），
+ * 抽出来给「tab 条 diff 徽章」用 —— 那条路径只有 patch 文本，
+ * 拿不到 tool name / arg，走不了 `editDiffStats`。
+ */
+export function patchDiffStats(
+  patch: string
+): { added: number; removed: number } | null {
+  if (!patch) {
+    return null;
+  }
+  let added = 0;
+  let removed = 0;
+  for (const line of patch.split("\n")) {
+    if (line.startsWith("+++") || line.startsWith("---")) continue;
+    if (line.startsWith("+")) added += 1;
+    else if (line.startsWith("-")) removed += 1;
+  }
+  return added || removed ? { added, removed } : null;
 }
 
 export function formatEditDiffChip(name: string, arg: string): string {

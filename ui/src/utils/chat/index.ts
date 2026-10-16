@@ -84,7 +84,7 @@ export {
   projectAgentMember,
   projectAgentMemberByToolCallId,
   projectAssistantChatTurn,
-  projectDockTasks,
+  projectSubAgentItems,
   projectTurnBlocks,
   taskToToolCall,
   turnBlockSignature,

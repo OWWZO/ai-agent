@@ -15,37 +15,6 @@ import {
   resolvePreviewTaskSelection,
 } from "./filePreviewModel";
 
-// 空状态动画组件
-const EmptyState = () => {
-  const { reduce, loop } = useMotionConfig();
-
-  return (
-    <div className="flex h-full items-center justify-center">
-      <Card className="w-64 border-dashed">
-        <CardContent className="flex flex-col items-center justify-center py-8 text-center">
-          <motion.div
-            className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-hover"
-            animate={reduce ? { opacity: 1 } : { opacity: [0.75, 1, 0.75] }}
-            transition={
-              reduce
-                ? { duration: 0 }
-                : {
-                  duration: 2,
-                  repeat: loop > 0 ? loop : 0,
-                  ease: "easeInOut",
-                }
-            }
-          >
-            <Clock className="h-5 w-5 text-foreground-subtle" />
-          </motion.div>
-          <p className="text-ui-base font-medium text-foreground">动态</p>
-          <p className="mt-1 text-ui-sm text-foreground-subtle">任务执行过程将在这里实时展示</p>
-        </CardContent>
-      </Card>
-    </div>
-  );
-};
-
 const MissingArtifactState = ({ reason }: { reason?: string }) => (
   <div className="flex h-full items-center justify-center">
     <Card className="w-72 border-dashed bg-muted/15 shadow-none">
@@ -104,9 +73,13 @@ const FilePreview: React.FC<{
     ease: EASE_OUT,
   } as const;
 
-  // Empty State
+  // 没有任务时**什么都不渲染**。
+  //
+  // 旧版这里是一张「动态 / 任务执行过程将在这里实时展示」的空态卡：那是工作区
+  // 「动态」伪模式（`panelMode: "follow"`）的占位。伪模式已删，任务预览现在是
+  // 真实的 tab —— 没有任务就意味着这个 tab 不该存在，宿主负责收起工作区。
   if (!taskItem) {
-    return <EmptyState />;
+    return null;
   }
 
   return (

@@ -272,12 +272,10 @@ const CompactStepRow: FC<{
     );
   }
 
-  // 前台子 Agent：时间线内联卡；后台 run_in_background 只进 Dock。
-  // 子工具轨迹只在右侧 AgentDetailPanel，不泄漏进主时间线。
+  // 子 Agent：时间线只渲染 Bot 摘要行（同步 / 后台同卡）。
+  // 运行细节统一从右上角「智能体」面板与右侧工作区的子智能体 tab 看，
+  // 主时间线不再铺第二层过程卡。
   if (isAgentStep(step)) {
-    if (isRunInBackgroundAgent(step.tool)) {
-      return null;
-    }
     return (
       <div className="py-0.5">
         <ToolCallView

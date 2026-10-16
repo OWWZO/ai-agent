@@ -27,6 +27,7 @@ type SubAgentToolCallProps = {
  * 因此这里既不自动展开，也不提供手动展开入口。」
  *
  * 所以这里没有入参段也没有结果段 —— 子代理的 prompt 与输出都归 `AgentDetailPanel`。
+ * 同步与后台（run_in_background）共用这一张卡，后台仅多一个「后台」chip。
  */
 export const SubAgentToolCall = memo(function SubAgentToolCall({
   tool,
@@ -57,6 +58,12 @@ export const SubAgentToolCall = memo(function SubAgentToolCall({
     sub.status === "running"
       ? sub.liveText || lastProgressLine || sub.description
       : sub.summary || sub.description;
+  /**
+   * 同步 / 后台是**同一张卡**（用户口径：异步不要另起一套视觉）。
+   * 后台只在摘要行尾部挂一个静态 chip 做区分，运行细节统一走右上角「智能体」面板
+   * 与右侧工作区的子智能体 tab —— 不在时间线里再铺一层过程盒子。
+   */
+  const backgroundChip = sub.runInBackground ? "后台" : "";
 
   const openDetail = () => {
     if (onOpenAgent) {
@@ -87,6 +94,9 @@ export const SubAgentToolCall = memo(function SubAgentToolCall({
       }
       separator={summaryText ? "·" : undefined}
       arg={summaryText || ""}
+      chip={backgroundChip}
+      // 失败原因走 ToolRow 的富提示卡（悬停「执行失败」看原文），不再往时间线里塞错误行
+      statusTitle={sub.errorMsg || undefined}
       open={false}
       // ZCode `canToggle={false}`：卡内不可展开，摘要行本身就是打开详情面板的入口。
       expandable={false}

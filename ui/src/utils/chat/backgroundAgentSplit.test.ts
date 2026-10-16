@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { combineData, handleTaskData } from "../chat";
-import { projectDockTasks, projectTurnBlocks } from "./agentRuntimeProjector";
+import { projectSubAgentItems, projectTurnBlocks } from "./agentRuntimeProjector";
 import { isRunInBackgroundAgent } from "./subagent";
 
 function emptyChat(): CHAT.ChatItem {
@@ -39,7 +39,7 @@ function taskEvent(
 }
 
 describe("foreground vs background agent split", () => {
-  it("puts run_in_background agents into dock projection", () => {
+  it("puts run_in_background agents into the roster", () => {
     let chat = emptyChat();
     chat = combineData(
       taskEvent("tool_call", {
@@ -61,7 +61,7 @@ describe("foreground vs background agent split", () => {
     const agent = chat.multiAgent.tasks[0][0] as CHAT.Task;
     expect(isRunInBackgroundAgent(agent)).toBe(true);
 
-    const dock = projectDockTasks(chat);
+    const dock = projectSubAgentItems(chat);
     expect(dock).toHaveLength(1);
     expect(dock[0].id).toBe("tc-bg");
     expect(dock[0].kind).toBe("subagent");
@@ -72,7 +72,9 @@ describe("foreground vs background agent split", () => {
     );
   });
 
-  it("keeps foreground agents out of dock", () => {
+  it("前台（同步）agent 同样进名册，只是 runInBackground=false", () => {
+    // 名册是「全部子 Agent」：面板 / 目录要能看到同步派发的子 Agent，
+    // runInBackground 只作为条目属性（面板据此决定是否实时计时），不再是过滤条件。
     let chat = emptyChat();
     chat = combineData(
       taskEvent("tool_call", {
@@ -90,7 +92,13 @@ describe("foreground vs background agent split", () => {
     );
     handleTaskData(chat, true, chat.multiAgent);
 
-    expect(projectDockTasks(chat)).toHaveLength(0);
+    const roster = projectSubAgentItems(chat);
+    expect(roster).toHaveLength(1);
+    expect(roster[0].id).toBe("tc-fg");
+    expect(roster[0].kind).toBe("subagent");
+    expect(roster[0].runInBackground).toBe(false);
+
+    // 主时间线仍然保留这张卡（名册是附加视图，不替代时间线）
     const blocks = projectTurnBlocks(chat);
     expect(blocks.some((b) => b.kind === "tool" && b.tool.id === "tc-fg")).toBe(
       true
@@ -126,7 +134,7 @@ describe("foreground vs background agent split", () => {
       ],
     ];
 
-    const dock = projectDockTasks(chat);
+    const dock = projectSubAgentItems(chat);
     expect(dock).toHaveLength(1);
     expect(dock[0].id).toBe("tc-sm");
     expect(dock[0].kind).toBe("subagent");
@@ -153,6 +161,6 @@ describe("foreground vs background agent split", () => {
     );
     handleTaskData(chat, true, chat.multiAgent);
 
-    expect(projectDockTasks(chat)).toHaveLength(0);
+    expect(projectSubAgentItems(chat)).toHaveLength(0);
   });
 });
