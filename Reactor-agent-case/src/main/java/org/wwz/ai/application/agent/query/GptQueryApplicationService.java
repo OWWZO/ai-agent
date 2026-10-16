@@ -22,6 +22,7 @@ import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.runtime.handler.AgentStreamEventHandler;
 import org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
+import org.wwz.ai.domain.agent.runtime.tasklist.StreamSettlePolicy;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
 import org.wwz.ai.types.agent.exception.AgentExecutorBusyException;
 import org.wwz.ai.types.agent.user.UserRequestContext;
@@ -200,7 +201,9 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
     }
 
     public static boolean shouldDeferProjectionComplete(AgentExecutionCommand agentRequest) {
-        if (agentRequest == null) {
+        // 对齐 ZCode「账本权威、流可断」（默认）：后台终态已由 persistLedgerSettlement 落账本，
+        // root result 即关投影，父卡终态走 history 重拉；deferBackgroundSettle=true 时才保持旧行为。
+        if (agentRequest == null || !StreamSettlePolicy.deferBackgroundSettle()) {
             return false;
         }
         return SessionBackgroundTaskHub.hasRunning(

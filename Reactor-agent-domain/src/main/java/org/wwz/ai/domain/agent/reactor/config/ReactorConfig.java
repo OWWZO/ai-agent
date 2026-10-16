@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.util.StringUtils;
 import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
+import org.wwz.ai.domain.agent.runtime.tasklist.StreamSettlePolicy;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -79,6 +80,19 @@ public class ReactorConfig {
 
     public void setMcpToolSearchAutoThreshold(Integer mcpToolSearchAutoThreshold) {
         this.mcpToolSearchAutoThreshold = mcpToolSearchAutoThreshold;
+    }
+
+    /**
+     * 后台子 Agent 结算是否推迟父 SSE 流收口（对齐 ZCode「账本权威、流可断」前的行为开关）。
+     * false（默认）：root result 即 finished、投影即 complete，后台终态只落账本，父卡走 history 重拉；
+     * true：旧行为——后台在飞时父流挂着等 stream_settle。
+     */
+    @Value("${autobots.autoagent.stream.defer-background-settle:false}")
+    private boolean deferBackgroundSettle;
+
+    public void setDeferBackgroundSettle(boolean deferBackgroundSettle) {
+        this.deferBackgroundSettle = deferBackgroundSettle;
+        StreamSettlePolicy.setDeferBackgroundSettle(deferBackgroundSettle);
     }
 
     /**

@@ -12,6 +12,7 @@ import org.wwz.ai.domain.agent.runtime.stream.PlanStreamPayload;
 import org.wwz.ai.domain.agent.runtime.stream.ToolResultStreamPayload;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentPrinter;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
+import org.wwz.ai.domain.agent.runtime.tasklist.StreamSettlePolicy;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
 import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
@@ -113,14 +114,19 @@ public class AgentSessionPrinter implements Printer {
 
             // 子 Agent 终答也走 messageType=result，但带 parentToolUseId/subAgentId；
             // 不得把主会话投影流标成 finished，否则主 Agent 仍在跑时 SSE 会被提前关闭。
-            // 后台 run_in_background 任务未完成时同样不能 finished，否则后续子事件全部丢失。
             // plan_approval / ask_user_question 是 HITL 让步终态：信封必须 finished，
             // 否则前端会把随后的 SSE complete 误当成断线 follow。
+            // 后台 run_in_background 任务（对齐 ZCode「账本权威、流可断」，默认）：终态已由
+            // persistLedgerSettlement 无条件落账本，root result 照常 finished，父流不等子；
+            // 仅 deferBackgroundSettle=true 时保持旧行为（推迟 finish 等 stream_settle）。
             boolean nestedSubAgent = isNestedSubAgentEvent(message, extraResultMap);
-            boolean backgroundRunning = SessionBackgroundTaskHub.hasRunning(
+            boolean deferSettle = StreamSettlePolicy.deferBackgroundSettle()
+                    && "result".equals(messageType)
+                    && !nestedSubAgent
+                    && SessionBackgroundTaskHub.hasRunning(
                     request == null ? null : request.getSessionId(),
                     request == null ? null : request.getRequestId());
-            boolean finish = ("result".equals(messageType) && !nestedSubAgent && !backgroundRunning)
+            boolean finish = ("result".equals(messageType) && !nestedSubAgent && !deferSettle)
                     || "stream_settle".equals(messageType)
                     || isHitlYieldMessageType(messageType);
             Map<String, Object> resultMap = new HashMap<>();

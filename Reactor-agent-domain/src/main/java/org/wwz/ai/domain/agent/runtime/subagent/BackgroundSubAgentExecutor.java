@@ -14,6 +14,7 @@ import org.wwz.ai.domain.agent.runtime.tasklist.RuntimeBackgroundTask;
 import org.wwz.ai.domain.agent.runtime.tasklist.RuntimeBackgroundTaskRegistry;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionAgentMailboxHub;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
+import org.wwz.ai.domain.agent.runtime.tasklist.StreamSettlePolicy;
 import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.common.AgentDispatchTool;
@@ -197,7 +198,9 @@ public final class BackgroundSubAgentExecutor {
     }
 
     public static boolean shouldSettleParentStream(AgentContext parent) {
-        if (parent == null || !parent.isTurnClosed()) {
+        // 对齐 ZCode「账本权威、流可断」（默认）：root result 后父流已关，无需也无处发 settle；
+        // deferBackgroundSettle=true 时才在父回合关闭且后台空闲时补发 stream_settle。
+        if (parent == null || !parent.isTurnClosed() || !StreamSettlePolicy.deferBackgroundSettle()) {
             return false;
         }
         return !SessionBackgroundTaskHub.hasRunning(

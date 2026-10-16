@@ -12,6 +12,7 @@ import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.runtime.cancel.RunCancellation;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
+import org.wwz.ai.domain.agent.runtime.tasklist.StreamSettlePolicy;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -76,8 +77,11 @@ public class AgentRunStopApplicationService {
         }
 
         AgentMessageStream stream = run.getStream();
-        boolean backgroundRunning = SessionBackgroundTaskHub.hasRunning(
-                SessionBackgroundTaskHub.keyFor(run.getSessionId(), requestId));
+        // 对齐 ZCode「账本权威、流可断」（默认）：停止即关流，后台子 Agent 终态只落账本；
+        // deferBackgroundSettle=true 时保持旧行为：后台在飞则留着流等 stream_settle。
+        boolean backgroundRunning = StreamSettlePolicy.deferBackgroundSettle()
+                && SessionBackgroundTaskHub.hasRunning(
+                        SessionBackgroundTaskHub.keyFor(run.getSessionId(), requestId));
         if (stream != null && !backgroundRunning) {
             try {
                 stream.complete();
