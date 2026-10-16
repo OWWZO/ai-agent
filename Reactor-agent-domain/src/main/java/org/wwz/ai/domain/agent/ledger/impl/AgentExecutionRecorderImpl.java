@@ -275,12 +275,14 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
         }
         try {
             // 工具主表先记录通用状态；结构化输出随后按工具类型写入专用表，二者共享同一个 invocationId。
+            // finishedAt 允许为 null：后台派发 ACK 是 provisional 写（子 Agent 仍在跑），
+            // 必须保持 finished_at IS NULL，否则真正结算时过不了 mapper 守卫。
             executionLedgerWriteRepository.updateToolInvocationFinish(ToolInvocation.builder()
                     .id(record.getToolInvocationId())
                     .status(record.getStatus())
                     .llmObservation(record.getLlmObservation())
                     .errorMsg(trimText(record.getErrorMsg(), 2000))
-                    .finishedAt(defaultNow(record.getFinishedAt()))
+                    .finishedAt(record.getFinishedAt())
                     .build());
             persistStructuredOutput(record);
             markSuccess("finishToolInvocation", null);

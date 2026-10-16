@@ -811,6 +811,17 @@ final class ToolExecutionPipeline {
         LocalDateTime finishedAt = timing == null || timing.getFinishedAt() == null
                 ? LocalDateTime.now()
                 : timing.getFinishedAt();
+        String observation = outcome == null ? null : StringUtils.defaultIfBlank(
+                outcome.getLedgerObservation(), outcome.getLlmObservation());
+        // 后台 ACK 不是工具完成：子 Agent 还在后台跑。此时必须保持 status=RUNNING、
+        // finished_at=null，否则 settle（persistLedgerSettlement）的终态更新会被
+        // updateToolInvocationFinish 的守卫（status=0 AND finished_at IS NULL）挡掉，
+        // 结算 observation 静默丢失，历史回放把陈旧 ACK 当"运行中"展示。
+        boolean backgroundAck =
+                (AgentDispatchTool.NAME.equals(toolName) || TaskToolNames.SEND_MESSAGE.equals(toolName))
+                        && BackgroundSubAgentExecutor.isBackgroundAckObservation(observation);
+        int ledgerStatus = backgroundAck ? ExecutionLedgerConstants.STATUS_RUNNING : ledgerStatus(outcome);
+        LocalDateTime ledgerFinishedAt = backgroundAck ? null : finishedAt;
         context.getExecutionRecorder().finishToolInvocation(ToolInvocationFinishRecord.builder()
                 .toolInvocationId(toolInvocationId)
                 .runId(context.getAgentRunState().getRunId())
@@ -818,12 +829,11 @@ final class ToolExecutionPipeline {
                 .sessionId(context.getSessionId())
                 .toolCallId(command.getId())
                 .toolName(toolName)
-                .status(ledgerStatus(outcome))
-                    .llmObservation(outcome == null ? null : StringUtils.defaultIfBlank(
-                            outcome.getLedgerObservation(), outcome.getLlmObservation()))
+                .status(ledgerStatus)
+                    .llmObservation(observation)
                 .structuredOutput(outcome == null ? null : outcome.getStructuredOutput())
                 .errorMsg(outcome == null ? null : outcome.getErrorMsg())
-                .finishedAt(finishedAt)
+                .finishedAt(ledgerFinishedAt)
                 .build());
         if (command.getFunction() != null
                 && (AgentDispatchTool.NAME.equals(command.getFunction().getName())

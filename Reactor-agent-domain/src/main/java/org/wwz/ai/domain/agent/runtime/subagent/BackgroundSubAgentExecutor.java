@@ -168,6 +168,25 @@ public final class BackgroundSubAgentExecutor {
         return ToolResultPayload.fromData(data);
     }
 
+    /**
+     * 判断字符串是否为后台派发 ACK 回执：{@code "run_in_background":true} 说明子 Agent
+     * 仍在后台运行，父侧工具调用尚未真正完成。回执格式的知识归本类所有（submit 的产物），
+     * 账本管线据此不写终态（保持 running + finished_at=null），
+     * 让 {@link #settleLedgerIfTerminal} / {@link #persistLedgerSettlement} 的终态更新
+     * 能过 mapper 守卫（status=0 AND finished_at IS NULL）。
+     */
+    public static boolean isBackgroundAckObservation(String llmObservation) {
+        if (StringUtils.isBlank(llmObservation)) {
+            return false;
+        }
+        try {
+            Map<?, ?> parsed = JSON.parseObject(llmObservation, Map.class);
+            return parsed != null && Boolean.TRUE.equals(parsed.get("run_in_background"));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public static void settleLedgerIfTerminal(AgentContext parent,
                                               String parentToolUseId,
                                               String runningObservation) {
