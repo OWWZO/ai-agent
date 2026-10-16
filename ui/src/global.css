@@ -3686,55 +3686,6 @@ ol {
   border-color: var(--color-line-strong);
 }
 
-/* 底部后台任务 Dock：表面对齐 kimi-ui-card，布局仍用 React 结构 */
-.kimi-dock-card {
-  overflow: hidden;
-  margin: 0 0 var(--space-2);
-  border: 1px solid var(--color-line);
-  border-radius: var(--kimi-radius-md);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-xs);
-  font-family: var(--font-ui);
-}
-.kimi-dock-card__head {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  text-align: left;
-  transition: background var(--duration-fast) var(--ease-out);
-}
-.kimi-dock-card__head:hover {
-  background: var(--color-surface-sunken);
-}
-.kimi-dock-card__body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  border-top: 1px solid var(--color-line);
-  padding: 8px;
-}
-.kimi-dock-card__row {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 8px;
-  border-radius: var(--kimi-radius-sm);
-  padding: 6px 10px;
-  text-align: left;
-  transition: background var(--duration-fast) var(--ease-out);
-}
-.kimi-dock-card__row:hover {
-  background: var(--color-surface-sunken);
-}
-.kimi-dock-card__row.is-fail {
-  background: var(--color-danger-soft);
-}
-.kimi-dock-card__row.is-done {
-  opacity: 0.75;
-}
-
 /* Kimi attention cards (AskUser / PlanApproval) */
 .kimi-ui-card {
   background: var(--color-surface);

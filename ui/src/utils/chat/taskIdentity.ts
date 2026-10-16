@@ -1,4 +1,4 @@
-import { isSubAgentParentTask } from "./subagent";
+import { isSubAgentParentTask, resolveSubAgentDisplay } from "./subagent";
 import {
   pickFirstText,
   resolveTaskToolCallId,
@@ -187,4 +187,46 @@ export function findBestAgentTask(
 
 export function resolvedStreamKey(task?: TaskLike): string {
   return resolveToolCallStreamKey(task as Partial<CHAT.Task>);
+}
+
+/** 按 toolCallId（或 messageId/id 兜底）在当前会话里找 Agent 父卡 */
+export function findAgentTaskByToolCallId(
+  chat: CHAT.ChatItem,
+  key: string
+): CHAT.Task | undefined {
+  return findBestAgentTask(chat, key);
+}
+
+/** 当前会话最近一张运行中的 Agent 父卡（前台/后台通用） */
+export function findLatestRunningAgentTask(
+  chat?: CHAT.ChatItem
+): CHAT.Task | null {
+  if (!chat) return null;
+  let latest: CHAT.Task | null = null;
+  const visit = (task?: CHAT.Task) => {
+    if (!task) {
+      return;
+    }
+    if (
+      isSubAgentParentTask(task) &&
+      resolveSubAgentDisplay(task).status === "running"
+    ) {
+      latest = task;
+    }
+    for (const child of task.children || []) {
+      visit(child);
+    }
+  };
+  for (const group of chat.tasks || []) {
+    for (const container of group || []) {
+      visit(container as CHAT.Task);
+    }
+  }
+  if (latest) return latest;
+  for (const group of chat.multiAgent?.tasks || []) {
+    for (const task of group || []) {
+      visit(task as CHAT.Task);
+    }
+  }
+  return latest;
 }

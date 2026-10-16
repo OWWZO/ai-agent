@@ -52,6 +52,7 @@ import ModelPicker from "./ModelPicker";
 import ThinkingToggle, { type ThinkingEffort } from "./ThinkingToggle";
 import BrowserRelayChip from "./BrowserRelayChip";
 import AgentBrowserChip from "./AgentBrowserChip";
+import BackgroundAgentsChip from "./BackgroundAgentsChip";
 import { buildSubmitPayload } from "./inputMode";
 import { useAttachmentUploads } from "./useAttachmentUploads";
 import PromptContextChips from "./PromptContextChips";
@@ -89,6 +90,12 @@ type Props = {
   onDraftChange?: (value: string) => void;
   /** 推荐模板回填后的选区请求，用于直接覆盖占位词 */
   promptSelectionRequest?: PromptSelectionRequest | null;
+  /** 后台子智能体数量（输入框徽标，与右上角面板联动） */
+  backgroundAgentCount?: number;
+  /** 其中仍在运行的数量（徽标 tooltip 用） */
+  backgroundAgentRunningCount?: number;
+  /** 点击徽标 → 展开右上角智能体面板 */
+  onOpenBackgroundAgents?: () => void;
 };
 
 type InputModeKey = "think" | "research";
@@ -172,6 +179,9 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     draftValue = "",
     onDraftChange,
     promptSelectionRequest = null,
+    backgroundAgentCount = 0,
+    backgroundAgentRunningCount = 0,
+    onOpenBackgroundAgents,
   } = props;
 
   const [question, setQuestion] = useState(() =>
@@ -568,6 +578,12 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
 
               <BrowserRelayChip disabled={disabled} />
               <AgentBrowserChip disabled={disabled} />
+              <BackgroundAgentsChip
+                count={backgroundAgentCount}
+                runningCount={backgroundAgentRunningCount}
+                disabled={disabled}
+                onOpen={onOpenBackgroundAgents}
+              />
 
               {showPlanToggle ? (
                 <button

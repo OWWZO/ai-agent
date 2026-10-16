@@ -27,10 +27,10 @@ import {
 } from "@/components/Dialogue/tools/toolPreviewSource";
 import { MoonSpinner } from "@/components/ui/MoonSpinner";
 import SessionTaskComposerBar from "./SessionTaskComposerBar";
-import BackgroundTasksDock, {
-  findAgentTaskByToolCallId,
-  findLatestRunningAgentTask,
-} from "./BackgroundTasksDock";
+import BackgroundAgentsPanel from "./BackgroundAgentsPanel";
+import type { AgentsPanelVariant } from "./backgroundAgentsModel";
+import { projectDockTasks } from "@/utils/chat/agentRuntimeProjector";
+import { findAgentTaskByToolCallId, findLatestRunningAgentTask } from "@/utils/chat/taskIdentity";
 import PlanComposerBar from "./PlanComposerBar";
 import AskUserQuestionCard from "@/components/Dialogue/AskUserQuestionCard";
 import DesktopControlCard from "@/components/Dialogue/DesktopControlCard";
@@ -234,6 +234,9 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     tool: CHAT.Task;
     chat: CHAT.ChatItem;
   } | null>(null);
+  /** 右上角「智能体」面板形态：默认 auto（宽屏展开、窄屏胶囊），输入框徽标可强制展开 */
+  const [agentsPanelVariant, setAgentsPanelVariant] =
+    useState<AgentsPanelVariant>("auto");
   const [workspaceBackTarget, setWorkspaceBackTarget] =
     useState<CHAT.AgentDetailTarget | null>(null);
   const agentPanelClosedRef = useRef(false);
@@ -1049,6 +1052,30 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   const activeChat = conversation.chatList?.[conversation.chatList.length - 1];
   const sessionBusy = loading || isParentLoopLive(activeChat);
+  /** 后台子智能体条目（右上角面板 + 输入框徽标同源） */
+  const backgroundAgentItems = useMemo(() => {
+    const sourceChats = conversation.chatList?.length
+      ? conversation.chatList
+      : activeChat
+        ? [activeChat]
+        : [];
+    const seen = new Set<string>();
+    const items: Array<{ id: string; state: string }> = [];
+    for (const chat of sourceChats) {
+      for (const task of projectDockTasks(chat)) {
+        if (!task.id || seen.has(task.id)) {
+          continue;
+        }
+        seen.add(task.id);
+        items.push(task);
+      }
+    }
+    return items;
+  }, [conversation.chatList, activeChat]);
+  const backgroundAgentCount = backgroundAgentItems.length;
+  const backgroundAgentRunningCount = backgroundAgentItems.filter(
+    (item) => item.state === "run"
+  ).length;
   const liveAgentDetail = useMemo(() => {
     if (!agentDetail) {
       return null;
@@ -1200,14 +1227,9 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     return currentProduct?.name || "新任务";
   }, [conversation.chatTitle, conversation.title, currentProduct?.name]);
 
-  /** 底部 Dock：companions 常驻；pending HITL 替换 Composer */
+  /** Composer 堆栈：任务条常驻；pending HITL 替换 Composer（后台子 Agent 入口在右上角面板 + 输入框徽标） */
   const renderComposerStack = (inputKey: string) => (
     <>
-      <BackgroundTasksDock
-        chat={activeChat}
-        chats={conversation.chatList}
-        onOpenAgent={openAgentPanel}
-      />
       <SessionTaskComposerBar chat={activeChat} taskList={taskList} />
       {hitlDockSlot === "desktop" && pendingDesktopTool ? (
         <div className="mb-1" data-testid="hitl-dock-desktop">
@@ -1251,6 +1273,9 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             onDraftChange={onInputDraftChange}
             product={currentProduct}
             deepThink={conversation.deepThink}
+            backgroundAgentCount={backgroundAgentCount}
+            backgroundAgentRunningCount={backgroundAgentRunningCount}
+            onOpenBackgroundAgents={() => setAgentsPanelVariant("panel")}
             send={(info) =>
               sendMessage({
                 ...info,
@@ -1506,6 +1531,16 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                     </ConversationContent>
                     <ConversationScrollButton />
                   </Conversation>
+
+                  {/* 右上角「智能体」浮动面板：后台 run_in_background 子 Agent 的
+                      运行态 / 终态入口（移植 ZCode ConversationStatusPanel） */}
+                  <BackgroundAgentsPanel
+                    chat={activeChat}
+                    chats={conversation.chatList}
+                    variant={agentsPanelVariant}
+                    onVariantChange={setAgentsPanelVariant}
+                    onOpenAgent={openAgentPanel}
+                  />
 
                   <ConversationTurnNavigator
                     chats={turnChatList}

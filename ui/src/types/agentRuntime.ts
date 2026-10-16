@@ -95,7 +95,7 @@ export type ChatTurn = {
 
 export type TaskState = "run" | "done" | "fail";
 
-/** 底部 Dock 后台任务（bash / 后台 subagent） */
+/** 后台任务 Dock / 右上角智能体面板条目（bash / 后台 subagent） */
 export type DockTaskItem = {
   id: string;
   name: string;
@@ -108,6 +108,8 @@ export type DockTaskItem = {
   parentToolCallId?: string;
   /** 真实子会话 ID（sub_{agentId}）：详情面板据此订阅子会话，父卡缺失时也能下钻 */
   childSessionId?: string;
+  /** 任务起始时间（ms epoch）：运行中条目据此实时累计「已运行 X 分 X 秒」 */
+  startedAtMs?: number;
 };
 
 /**

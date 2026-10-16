@@ -32,6 +32,10 @@ function asText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function isUserBriefTask(tool?: CHAT.Task): boolean {
   if (!tool) return false;
   if (tool.messageType === "user_brief") return true;
@@ -253,6 +257,47 @@ function isToolishTask(task: CHAT.Task): boolean {
   return Boolean(resolveTaskToolCallId(task) || task.toolResult?.toolName);
 }
 
+/** 解析任务起始时间（ms）：timing/resultMap/messageTime 依次兜底，运行中计时用 */
+function resolveTaskStartedAtMs(task: CHAT.Task): number | undefined {
+  const top = task as unknown as Record<string, unknown>;
+  const resultMap = (task.resultMap || {}) as Record<string, unknown>;
+  const nested = isRecord(resultMap.resultMap)
+    ? (resultMap.resultMap as Record<string, unknown>)
+    : {};
+  const parseMs = (value: unknown): number | undefined => {
+    if (value == null || value === "") return undefined;
+    if (typeof value === "number") {
+      return Number.isFinite(value) && value >= 0
+        ? value < 1e12
+          ? value * 1000
+          : value
+        : undefined;
+    }
+    if (typeof value !== "string") return undefined;
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric >= 0) {
+      return numeric < 1e12 ? numeric * 1000 : numeric;
+    }
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
+  const sources: Array<Record<string, unknown>> = [
+    isRecord(top.timing) ? (top.timing as Record<string, unknown>) : {},
+    top,
+    resultMap,
+    nested,
+  ];
+  for (const source of sources) {
+    const startedAt = parseMs(source.startedAt ?? source.started_at);
+    if (startedAt != null) return startedAt;
+  }
+  return (
+    parseMs(top.messageTime) ??
+    parseMs(resultMap.messageTime) ??
+    parseMs(nested.messageTime)
+  );
+}
+
 /**
  * 从派生时间线（chat.tasks）投影有序 TurnBlock。
  * 规则：保持事件到达顺序；thinking / text / tool 交错，不把 tools 提到文末。
@@ -359,6 +404,7 @@ export function projectDockTasks(chat: CHAT.ChatItem): DockTaskItem[] {
       runInBackground: true,
       parentToolCallId: id,
       childSessionId: display.childSessionId || undefined,
+      startedAtMs: resolveTaskStartedAtMs(task),
     });
   }
 

@@ -66,6 +66,10 @@ describe("foreground vs background agent split", () => {
     expect(dock[0].id).toBe("tc-bg");
     expect(dock[0].kind).toBe("subagent");
     expect(dock[0].runInBackground).toBe(true);
+    // 运行中实时计时需要 startedAtMs：从 resultMap.messageTime 兜底解析
+    expect(dock[0].startedAtMs).toBe(
+      Date.parse("2026-01-01T00:00:00Z")
+    );
   });
 
   it("keeps foreground agents out of dock", () => {
