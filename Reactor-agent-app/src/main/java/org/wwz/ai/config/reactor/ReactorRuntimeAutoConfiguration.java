@@ -19,6 +19,7 @@ import org.wwz.ai.domain.agent.adapter.port.SubAgentSessionStreamPort;
 import org.wwz.ai.domain.agent.runtime.llm.LlmCompletionPort;
 import org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog;
 import org.wwz.ai.domain.agent.runtime.llm.StreamResponseHandler;
+import org.wwz.ai.domain.agent.runtime.llm.retry.LlmResilientCompletionPort;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.port.McpToolExecutor;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.runtime.ReactorLlmDependencies;
@@ -76,12 +77,18 @@ public class ReactorRuntimeAutoConfiguration {
         return new StreamResponseHandler();
     }
 
+    /**
+     * Domain 侧只认 {@link LlmCompletionPort}，因此在这里统一套一层韧性装饰器：
+     * 空补全重试（200 但无产出时补一次）即对所有出站调用路径生效，无需改动调用编排代码。
+     * 原始 Bean 不受影响（连接测试等仍可直接注入裸端口）。
+     * 可通过 {@code REACTOR_LLM_EMPTY_COMPLETION_RETRY_ENABLED=false} 关闭空补全重试。
+     */
     @Bean
     public ReactorLlmDependencies reactorLlmDependencies(LlmCompletionPort completionPort,
                                                          StreamResponseHandler streamResponseHandler,
                                                          ObjectProvider<LlmModelCatalog> modelCatalogProvider) {
         return ReactorLlmDependencies.builder()
-                .completionPort(completionPort)
+                .completionPort(LlmResilientCompletionPort.wrap(completionPort))
                 .streamResponseHandler(streamResponseHandler)
                 .modelCatalog(modelCatalogProvider.getIfAvailable())
                 .build();
