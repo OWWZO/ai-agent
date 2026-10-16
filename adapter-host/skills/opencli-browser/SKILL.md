@@ -26,7 +26,7 @@ Until `doctor` is green, nothing else will work. Typical failures: Chrome not ru
 
 - `opencli browser *` commands require a `<session>` positional immediately after `browser`. Use the same session name for a multi-step flow; use a different name to isolate parallel browser work.
 - Use a stable session name for any multi-command or human-paced browser workflow. Example: `opencli browser fb-yaya-warmup open https://example.com`, then reuse `opencli browser fb-yaya-warmup state`, `extract`, `click`, etc.
-- Owned browser sessions keep a tab lease alive between calls. Release it with `opencli browser <session> close` or let the idle timeout expire.
+- Owned Browser Bridge sessions keep a tab lease alive between calls; the extension lease is the only owner of the session's default tab. The CLI does not cache a second default target. Release it with `opencli browser <session> close` or let the idle timeout expire.
 - `opencli browser <session> bind` binds the Chrome tab you already have open to that session. Use this for logged-in pages, SSO flows, or pages you manually positioned before handing control to the agent.
 - `--window foreground|background` (or `OPENCLI_WINDOW=foreground|background`) chooses whether OpenCLI creates/focuses a foreground browser window or uses a background browser window for owned sessions.
 
@@ -156,7 +156,7 @@ Error envelope always includes `error.code` and `error.message`. Target errors (
 | command | notes |
 |---------|-------|
 | `browser click <target> [--nth N]` | Returns `{clicked, target, matches_n, match_level}`. If the click opens tabs, also returns `opened_pages` with their `page` target IDs. |
-| `browser click <target> --follow-new-tab` | Selects the first page opened by the click, preferring the active one, and returns `selected_page`. Use this for links/buttons that open a new tab or popup. |
+| `browser click <target> --follow-new-tab` | Selects the first page opened by the click, preferring the active one, and returns `selected_page`. Browser Bridge also promotes it in the extension lease; Direct CDP only returns the target, so pass it again with `--tab`. |
 | `browser click --role button --name Submit` | Semantic click. Write actions require a unique match; ambiguous locators return candidates instead of clicking the first match. |
 | `browser hover [target] [--role R --name N] [--nth N]` | Moves the mouse over an element. Use for hover menus/tooltips before taking `state` or clicking submenu items. Returns `{hovered, target, matches_n, match_level}`. |
 | `browser focus [target] [--role R --name N] [--nth N]` | Focuses an element without typing. Useful before `keys` or when a page reacts to focus/blur. Returns `{focused, target, matches_n, match_level}`. |
@@ -215,7 +215,7 @@ Default output keeps JSON/XML/plain-text and JS-like API responses, then drops o
 |---------|---------|
 | `browser tab list` | JSON array of `{index, page, url, title, active}`. The `page` string is the tab identity you pass as `<targetId>` to `tab select` / `tab close`, or to `--tab <targetId>` on any subcommand. (`--tab`'s placeholder is historical — the value is always `page`.) |
 | `browser tab new [url]` | Open a new tab. Prints the new `page` string. |
-| `browser tab select [targetId]` | Make a tab the default. All subcommands accept `--tab <targetId>` to target one without changing the default. |
+| `browser tab select [targetId]` | Browser Bridge only: update the extension lease's default tab. Direct CDP rejects this operation; use `--tab <targetId>` on each command. |
 | `browser tab close [targetId]` | Close by `page`. |
 | `browser back` | History back on the active tab. |
 | `browser close` | Release the current owned browser session when done. |

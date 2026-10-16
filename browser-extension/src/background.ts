@@ -495,6 +495,25 @@ function sessionOwnsTab(session: TargetLease, tabId: number): boolean {
     : session.preferredTabId === tabId;
 }
 
+function isClaimedByOtherOwnedLease(leaseKey: string, tabId: number): boolean {
+  return [...automationSessions.entries()].some(([otherLease, otherSession]) =>
+    otherLease !== leaseKey && otherSession.owned && sessionOwnsTab(otherSession, tabId),
+  );
+}
+
+async function getLiveDebuggingTabs(tabIds: number[]): Promise<chrome.tabs.Tab[]> {
+  const live: chrome.tabs.Tab[] = [];
+  for (const tabId of [...new Set(tabIds)]) {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (tab.id !== undefined && isDebuggableUrl(tab.url)) live.push(tab);
+    } catch {
+      // A stale registry entry is expected after a tab closes while the worker sleeps.
+    }
+  }
+  return live;
+}
+
 function makeAlarmName(leaseKey: string): string {
   return `${LEASE_IDLE_ALARM_PREFIX}${encodeURIComponent(leaseKey)}`;
 }
@@ -1117,7 +1136,7 @@ async function findReusableOwnedContainerTab(windowId: number, ownedGroupId?: nu
 function initialTabIsAvailable(tabId: number | undefined): tabId is number {
   if (tabId === undefined) return false;
   for (const session of automationSessions.values()) {
-    if (session.owned && session.preferredTabId === tabId) return false;
+    if (session.owned && sessionOwnsTab(session, tabId)) return false;
   }
   return true;
 }
@@ -1225,11 +1244,31 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
     const wasTracked = session.tabIds.includes(tabId);
     session.tabIds = session.tabIds.filter((id) => id !== tabId);
     if (session.preferredTabId === tabId) {
-      if (session.idleTimer) clearTimeout(session.idleTimer);
-      automationSessions.delete(leaseKey);
-      sessionOverrides.delete(leaseKey);
-      scheduleIdleAlarm(leaseKey, IDLE_TIMEOUT_NONE);
-      console.log(`[opencli] Session ${session.session} detached from tab ${tabId} (tab closed)`);
+      let replacement: chrome.tabs.Tab | undefined;
+      for (const candidateId of session.tabIds) {
+        if (isClaimedByOtherOwnedLease(leaseKey, candidateId)) continue;
+        try {
+          const candidate = await chrome.tabs.get(candidateId);
+          if (isDebuggableUrl(candidate.url)) {
+            replacement = candidate;
+            break;
+          }
+        } catch {
+          // The candidate closed concurrently; keep looking for a live tab.
+        }
+      }
+      if (replacement?.id !== undefined) {
+        session.preferredTabId = replacement.id;
+        session.windowId = replacement.windowId;
+        console.log(`[opencli] Session ${session.session} switched from closed tab ${tabId} to ${replacement.id}`);
+        await persistRuntimeState();
+      } else {
+        if (session.idleTimer) clearTimeout(session.idleTimer);
+        automationSessions.delete(leaseKey);
+        sessionOverrides.delete(leaseKey);
+        scheduleIdleAlarm(leaseKey, IDLE_TIMEOUT_NONE);
+        console.log(`[opencli] Session ${session.session} detached from tab ${tabId} (tab closed)`);
+      }
     } else if (wasTracked) {
       await persistRuntimeState();
     }
@@ -2012,6 +2051,7 @@ async function handleTabs(cmd: Command, leaseKey: string): Promise<Result> {
         return pageScopedResult(cmd.id, created.tabId, { url: created.tab?.url });
       }
       const windowId = await getAutomationWindow(leaseKey);
+      const existingSession = automationSessions.get(leaseKey);
       let tab = await chrome.tabs.create({ windowId, url: cmd.url ?? BLANK_PAGE, active: true });
       const tabId = tab.id;
       if (!tabId) return { id: cmd.id, ok: false, error: 'Failed to create tab' };
@@ -2024,8 +2064,10 @@ async function handleTabs(cmd: Command, leaseKey: string): Promise<Result> {
         kind: 'owned',
         windowId: sessionWindowId,
         owned: true,
-        preferredTabId: tabId,
-        tabIds: [...(automationSessions.get(leaseKey)?.tabIds ?? []), tabId],
+        // Creating a tab adds it to the lease without changing the existing
+        // default. The first tab is necessarily the initial default.
+        preferredTabId: existingSession?.preferredTabId ?? tabId,
+        tabIds: [...(existingSession?.tabIds ?? []), tabId],
       });
       resetWindowIdleTimer(leaseKey);
       return pageScopedResult(cmd.id, tabId, { url: tab.url });
@@ -2303,18 +2345,11 @@ async function releaseLease(leaseKey: string, reason: string = 'released'): Prom
   if (session.owned) {
     const tabId = session.preferredTabId;
     if (tabId !== null) {
-      const hasOtherOwnedLease = [...automationSessions.entries()].some(([otherLease, otherSession]) =>
-        otherLease !== leaseKey &&
-        otherSession.owned &&
-        otherSession.windowId === session.windowId &&
-        otherSession.preferredTabId !== null,
-      );
-      await safeDetach(tabId);
-      identity.evictTab(tabId);
-      if (hasOtherOwnedLease) {
-        await chrome.tabs.remove(tabId).catch(() => {});
-        console.log(`[opencli] Released owned tab lease ${tabId} (session=${session.session}, surface=${session.surface}, ${reason})`);
+      if (isClaimedByOtherOwnedLease(leaseKey, tabId)) {
+        console.log(`[opencli] Preserved tab ${tabId} claimed by another owned lease while releasing session=${session.session}`);
       } else {
+        await safeDetach(tabId);
+        identity.evictTab(tabId);
         try {
           const tab = await chrome.tabs.update(tabId, { url: BLANK_PAGE, active: true });
           const group = await ensureOwnedContainerGroup(getOwnedWindowRole(leaseKey), session.windowId, [tab.id ?? tabId]);
@@ -2334,10 +2369,7 @@ async function releaseLease(leaseKey: string, reason: string = 'released'): Prom
     // lease, so one session cannot tear down another session's page.
     for (const childTabId of session.tabIds) {
       if (childTabId === tabId) continue;
-      const claimedElsewhere = [...automationSessions.entries()].some(([otherLease, otherSession]) =>
-        otherLease !== leaseKey && otherSession.owned && otherSession.tabIds.includes(childTabId),
-      );
-      if (claimedElsewhere) continue;
+      if (isClaimedByOtherOwnedLease(leaseKey, childTabId)) continue;
       await safeDetach(childTabId);
       identity.evictTab(childTabId);
       await chrome.tabs.remove(childTabId).catch(() => {});
@@ -2376,22 +2408,35 @@ async function reconcileTargetLeaseRegistry(): Promise<void> {
 
   automationSessions.clear();
   for (const [leaseKey, stored] of Object.entries(registry.leases)) {
-    const tabId = stored.preferredTabId;
-    if (tabId === null) continue;
     try {
-      const tab = await chrome.tabs.get(tabId);
-      if (!isDebuggableUrl(tab.url)) continue;
+      const owned = stored.kind !== 'bound' && stored.owned !== false;
+      const storedTabIds = normalizeTabIds(stored.tabIds, stored.preferredTabId);
+      const candidateIds = owned
+        ? storedTabIds
+        : (stored.preferredTabId === null ? [] : [stored.preferredTabId]);
+      const liveTabs = (await getLiveDebuggingTabs(candidateIds)).filter((candidate) =>
+        candidate.id !== undefined && !isClaimedByOtherOwnedLease(leaseKey, candidate.id),
+      );
+      const preferred = stored.preferredTabId === null
+        ? undefined
+        : liveTabs.find((candidate) => candidate.id === stored.preferredTabId);
+      const tab = preferred ?? liveTabs[0];
+      if (!tab?.id) continue;
+      const tabId = tab.id;
+      const liveTabIds = owned
+        ? liveTabs.map((candidate) => candidate.id).filter((id): id is number => id !== undefined)
+        : [tabId];
       if (stored.lifecycle === 'ephemeral' || stored.lifecycle === 'persistent' || stored.lifecycle === 'pinned') {
         setSessionOverride(leaseKey, { lifecycle: stored.lifecycle });
       }
       const session = makeSession(leaseKey, {
         session: typeof stored.session === 'string' ? stored.session : getSessionFromKey(leaseKey),
         surface: stored.surface === 'adapter' ? 'adapter' : getSurfaceFromKey(leaseKey),
-        kind: stored.kind === 'bound' || stored.owned === false ? 'bound' : 'owned',
+        kind: owned ? 'owned' : 'bound',
         windowId: tab.windowId,
-        owned: stored.owned,
+        owned,
         preferredTabId: tabId,
-        tabIds: normalizeTabIds(stored.tabIds, tabId),
+        tabIds: liveTabIds,
       });
       const timeout = getIdleTimeout(leaseKey);
       automationSessions.set(leaseKey, {

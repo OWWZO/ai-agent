@@ -42,11 +42,13 @@ opencli browser baidu tab close <targetId>
 
 - `opencli browser <session> open <url>` 和 `opencli browser <session> tab new [url]` 都会返回 `targetId`。
 - `opencli browser <session> tab list` 会打印当前已存在 tab 的 `targetId`。
-- `browser click` 会在结果的 `opened_pages` 中返回点击新打开的页面；`--follow-new-tab` 会选择第一个新页面，并优先选择当前 active tab。
+- `browser click` 会在结果的 `opened_pages` 中返回点击新打开的页面；`--follow-new-tab` 会选择第一个新页面，并优先选择当前 active tab，同时通过 Browser Bridge 扩展 lease 更新默认 tab。
 - `--tab <targetId>` 会把单条 browser 命令路由到对应 tab。
 - `tab new` 只会新建 tab，不会改变默认浏览器目标。
-- `tab select <targetId>` 会把该 tab 设为后续未显式指定 target 的 `opencli browser ...` 命令默认目标。
-- `tab close <targetId>` 会关闭该 tab；如果它正好是当前默认目标，会一并清掉这条默认绑定。
+- `tab select <targetId>` 会更新 Browser Bridge 扩展 lease 中的默认 tab，CLI 不会再写第二份默认 target 缓存。
+- `tab close <targetId>` 会关闭该 tab；扩展 lease 会移除已关闭 target，并在有其他存活 session tab 时保留 session。
+
+Direct CDP 使用命令级 target 路由，不使用 lease。`tab list` 返回 CDP 端点中的 target，`--tab <targetId>` 只对当前命令生效，`tab select` 会返回提示要求使用 `--tab`。Direct CDP 的 `--follow-new-tab` 会返回 `selected_page`，但不会为后续命令保存默认 target。
 
 ## Session 生命周期
 

@@ -98,6 +98,6 @@ opencli doctor                    # Verify connection
 opencli bilibili hot --limit 5    # Test a command
 ```
 
-> *Tip: If you provide a standard HTTP/HTTPS CDP endpoint, OpenCLI requests the `/json` target list and picks the most likely inspectable app/page target automatically. If multiple app targets exist, you can further narrow selection with `OPENCLI_CDP_TARGET` (for example `antigravity` or `codex`). The CDP WebSocket attachment is recreated for each CLI command; use `browser tab list`, `--tab <targetId>`, or `tab select <targetId>` when you need deterministic target routing. `targetId` belongs to the browser tab, while the CDP `sessionId` belongs only to the current WebSocket attachment.*
+> *Tip: If you provide a standard HTTP/HTTPS CDP endpoint, OpenCLI requests the `/json` target list and picks the most likely inspectable app/page target automatically. If multiple app targets exist, you can further narrow selection with `OPENCLI_CDP_TARGET` (for example `antigravity` or `codex`). The CDP WebSocket attachment is recreated for each CLI command. Use `browser tab list` to inspect targets, then pass `--tab <targetId>` on every command that should use a specific target. Direct CDP does not persist `tab select`, `--tab`, or `--follow-new-tab` state. `targetId` belongs to the browser tab, while the CDP `sessionId` belongs only to the current WebSocket attachment.*
 
 If you plan to use this setup frequently, you can persist the environment variable by adding the `export` line to your `~/.bashrc` or `~/.zshrc` on the server.

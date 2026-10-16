@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createServer, request, type IncomingMessage, type ServerResponse } from 'node:http';
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseJsonOutput, runCli } from './helpers.js';
@@ -92,6 +91,7 @@ async function startFakeDaemon(): Promise<FakeDaemon> {
     ['tab-1', { page: 'tab-1', url: 'https://one.example/', title: 'tab-one', active: true }],
     ['tab-2', { page: 'tab-2', url: 'https://two.example/', title: 'tab-two', active: false }],
   ]);
+  const preferredPageBySession = new Map<string, string>();
   let nextId = 3;
   let inFlightExec = 0;
   let maxInFlightExec = 0;
@@ -124,6 +124,7 @@ async function startFakeDaemon(): Promise<FakeDaemon> {
       action: string;
       op?: string;
       page?: string;
+      session?: string;
       index?: number;
       url?: string;
       code?: string;
@@ -131,6 +132,15 @@ async function startFakeDaemon(): Promise<FakeDaemon> {
 
     const listTabs = () => [...tabs.values()].map((tab, index) => ({ index, ...tab }));
     const tabByIndex = (index?: number) => index === undefined ? undefined : listTabs()[index];
+    const sessionKey = body.session ?? '';
+    const resolvePage = () => {
+      if (body.page && tabs.has(body.page)) return body.page;
+      const preferred = preferredPageBySession.get(sessionKey);
+      if (preferred) return preferred;
+      const initial = listTabs()[0]?.page;
+      if (initial && sessionKey) preferredPageBySession.set(sessionKey, initial);
+      return initial;
+    };
 
     switch (body.action) {
       case 'tabs': {
@@ -147,6 +157,7 @@ async function startFakeDaemon(): Promise<FakeDaemon> {
               title: page,
               active: true,
             });
+            if (!preferredPageBySession.has(sessionKey)) preferredPageBySession.set(sessionKey, page);
             json(res, 200, { id: body.id, ok: true, page, data: { url } });
             return;
           }
@@ -157,6 +168,11 @@ async function startFakeDaemon(): Promise<FakeDaemon> {
               return;
             }
             tabs.delete(targetPage);
+            if (preferredPageBySession.get(sessionKey) === targetPage) {
+              const fallback = listTabs()[0]?.page;
+              if (fallback) preferredPageBySession.set(sessionKey, fallback);
+              else preferredPageBySession.delete(sessionKey);
+            }
             json(res, 200, { id: body.id, ok: true, data: { closed: targetPage } });
             return;
           }
@@ -166,6 +182,7 @@ async function startFakeDaemon(): Promise<FakeDaemon> {
               json(res, 200, { id: body.id, ok: false, error: 'Tab not found' });
               return;
             }
+            preferredPageBySession.set(sessionKey, targetPage);
             json(res, 200, { id: body.id, ok: true, page: targetPage, data: { selected: true } });
             return;
           }
@@ -175,7 +192,7 @@ async function startFakeDaemon(): Promise<FakeDaemon> {
         }
       }
       case 'navigate': {
-        const targetPage = typeof body.page === 'string' && tabs.has(body.page) ? body.page : 'tab-1';
+        const targetPage = resolvePage() ?? 'tab-1';
         const target = tabs.get(targetPage)!;
         const url = body.url ?? target.url;
         target.url = url;
@@ -189,7 +206,7 @@ async function startFakeDaemon(): Promise<FakeDaemon> {
         return;
       }
       case 'exec': {
-        const targetPage = typeof body.page === 'string' ? body.page : 'tab-1';
+        const targetPage = resolvePage() ?? 'tab-1';
         const target = tabs.get(targetPage);
         if (!target) {
           json(res, 200, { id: body.id, ok: false, error: `Unknown page: ${targetPage}` });
@@ -265,15 +282,11 @@ async function startFakeDaemon(): Promise<FakeDaemon> {
 
 describe('browser tab CLI e2e', () => {
   const daemons: FakeDaemon[] = [];
-  const cacheDirs: string[] = [];
   const browserArgs = (session: string, ...args: string[]) => ['browser', session, ...args];
 
   afterEach(async () => {
     while (daemons.length > 0) {
       await daemons.pop()!.close();
-    }
-    while (cacheDirs.length > 0) {
-      fs.rmSync(cacheDirs.pop()!, { recursive: true, force: true });
     }
   });
 
@@ -334,18 +347,17 @@ describe('browser tab CLI e2e', () => {
   it('keeps untargeted browser commands on the default tab after creating a new tab', async () => {
     const daemon = await startFakeDaemon();
     daemons.push(daemon);
-    const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opencli-browser-tabs-'));
-    cacheDirs.push(cacheDir);
-    const env = {
-      OPENCLI_CACHE_DIR: cacheDir,
-    };
     const session = 'tabs-default-new';
 
-    const created = await runCli(browserArgs(session, 'tab', 'new', 'https://three.example/'), { env });
+    const initial = await runCli(browserArgs(session, 'eval', 'document.title'));
+    expect(initial.code).toBe(0);
+    expect(parseJsonOutput(initial.stdout)).toEqual(expect.objectContaining({ page: 'tab-1', title: 'tab-one' }));
+
+    const created = await runCli(browserArgs(session, 'tab', 'new', 'https://three.example/'));
     expect(created.code).toBe(0);
     expect(parseJsonOutput(created.stdout)).toEqual(expect.objectContaining({ page: 'tab-3' }));
 
-    const untargeted = await runCli(browserArgs(session, 'eval', 'document.title'), { env });
+    const untargeted = await runCli(browserArgs(session, 'eval', 'document.title'));
     expect(untargeted.code).toBe(0);
     expect(parseJsonOutput(untargeted.stdout)).toEqual(expect.objectContaining({ page: 'tab-1', title: 'tab-one' }));
   }, 30_000);
@@ -353,27 +365,21 @@ describe('browser tab CLI e2e', () => {
   it('uses an explicitly selected tab as the default target for later untargeted commands', async () => {
     const daemon = await startFakeDaemon();
     daemons.push(daemon);
-    const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opencli-browser-tabs-'));
-    cacheDirs.push(cacheDir);
-    const env = {
-      OPENCLI_CACHE_DIR: cacheDir,
-    };
     const session = 'tabs-selected-default';
 
-    const selected = await runCli(browserArgs(session, 'tab', 'select', 'tab-2'), { env });
+    const initial = await runCli(browserArgs(session, 'eval', 'document.title'));
+    expect(initial.code).toBe(0);
+
+    const selected = await runCli(browserArgs(session, 'tab', 'select', 'tab-2'));
     expect(selected.code).toBe(0);
     expect(parseJsonOutput(selected.stdout)).toEqual({ selected: 'tab-2' });
 
-    const untargeted = await runCli(browserArgs(session, 'eval', 'document.title'), { env });
+    const untargeted = await runCli(browserArgs(session, 'eval', 'document.title'));
     expect(untargeted.code).toBe(0);
     expect(parseJsonOutput(untargeted.stdout)).toEqual(expect.objectContaining({ page: 'tab-2', title: 'tab-two' }));
 
-    const closed = await runCli(browserArgs(session, 'tab', 'close', 'tab-2'), { env });
-    expect(closed.code).toBe(0);
-    expect(parseJsonOutput(closed.stdout)).toEqual({ closed: 'tab-2' });
-
-    const fallback = await runCli(browserArgs(session, 'eval', 'document.title'), { env });
-    expect(fallback.code).toBe(0);
-    expect(parseJsonOutput(fallback.stdout)).toEqual(expect.objectContaining({ page: 'tab-1', title: 'tab-one' }));
+    const explicit = await runCli(browserArgs(session, 'eval', '--tab', 'tab-1', 'document.title'));
+    expect(explicit.code).toBe(0);
+    expect(parseJsonOutput(explicit.stdout)).toEqual(expect.objectContaining({ page: 'tab-1', title: 'tab-one' }));
   }, 30_000);
 });

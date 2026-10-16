@@ -44,11 +44,13 @@ Key rules:
 
 - `opencli browser <session> open <url>` and `opencli browser <session> tab new [url]` return a `targetId`.
 - `opencli browser <session> tab list` prints the `targetId` values of tabs that already exist.
-- `browser click` reports newly opened pages as `opened_pages`; `--follow-new-tab` selects the first newly opened page, preferring the active tab.
+- `browser click` reports newly opened pages as `opened_pages`; `--follow-new-tab` selects the first newly opened page, preferring the active tab, and promotes it in the Browser Bridge extension lease.
 - `--tab <targetId>` routes a single browser command to that specific tab.
 - `tab new` creates a new tab but does not change the default browser target.
-- `tab select <targetId>` makes that tab the default target for later untargeted `opencli browser ...` commands.
-- `tab close <targetId>` removes the tab; if it was the current default target, the stored default is cleared.
+- `tab select <targetId>` updates the default target in the Browser Bridge extension lease. The CLI does not write a second default-target cache.
+- `tab close <targetId>` removes the tab; the extension lease removes the closed target and keeps a live session target when one is available.
+
+Direct CDP uses command-scoped target routing instead of a lease. `tab list` returns endpoint targets, `--tab <targetId>` attaches only the current command, and `tab select` is rejected with a hint to use `--tab`. A Direct CDP `--follow-new-tab` result returns `selected_page` without persisting it for later commands.
 
 ## Session Lifecycle
 

@@ -47,7 +47,8 @@ import { getBrowserFactory, type BrowserWindowMode, type IBrowserFactory } from 
 const CLI_FILE = fileURLToPath(import.meta.url);
 const BROWSER_TAB_OPTION_DESCRIPTION = 'Target tab/page identity returned by "browser open", "browser tab new", or "browser tab list"';
 const FOLLOW_POLL_MS = 1_000;
-const NEW_TAB_SETTLE_SECONDS = 0.2;
+const NEW_TAB_POLL_SECONDS = 0.1;
+const NEW_TAB_DISCOVERY_ATTEMPTS = 5;
 
 type BrowserNetworkItem = {
   url: string;
@@ -509,11 +510,6 @@ export function renderVerifyPreview(
   return out.join('\n');
 }
 
-type BrowserTargetState = {
-  defaultPage?: string;
-  updatedAt: string;
-};
-
 type BrowserTabSummary = {
   page?: string;
   url?: string;
@@ -542,37 +538,27 @@ function findNewBrowserTabs(before: unknown[], after: unknown[]): BrowserTabSumm
     }));
 }
 
+async function discoverNewBrowserTabs(
+  page: import('./types.js').IPage,
+  beforeTabs: unknown[],
+): Promise<BrowserTabSummary[]> {
+  let openedPages: BrowserTabSummary[] = [];
+  for (let attempt = 0; attempt < NEW_TAB_DISCOVERY_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await new Promise((resolve) => setTimeout(resolve, NEW_TAB_POLL_SECONDS * 1000));
+    }
+    try {
+      openedPages = findNewBrowserTabs(beforeTabs, await page.tabs());
+    } catch {
+      return [];
+    }
+    if (openedPages.length > 0) return openedPages;
+  }
+  return openedPages;
+}
+
 function getBrowserCacheDir(): string {
   return process.env.OPENCLI_CACHE_DIR || path.join(os.homedir(), '.opencli', 'cache');
-}
-
-function getBrowserTargetStatePath(scope: string): string {
-  const safeSession = scope.replace(/[^a-zA-Z0-9_-]+/g, '_');
-  return path.join(getBrowserCacheDir(), 'browser-state', `${safeSession}.json`);
-}
-
-function getCdpTargetStateScope(scope: string): string {
-  return `cdp:${scope}`;
-}
-
-function loadBrowserTargetState(scope: string): BrowserTargetState | null {
-  try {
-    const raw = fs.readFileSync(getBrowserTargetStatePath(scope), 'utf-8');
-    const parsed = JSON.parse(raw) as BrowserTargetState | null;
-    return parsed && typeof parsed === 'object' ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveBrowserTargetState(defaultPage: string | undefined, scope: string): void {
-  const target = getBrowserTargetStatePath(scope);
-  if (!defaultPage) {
-    fs.rmSync(target, { force: true });
-    return;
-  }
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.writeFileSync(target, JSON.stringify({ defaultPage, updatedAt: new Date().toISOString() }), 'utf-8');
 }
 
 function hasBrowserTabTarget(tabs: unknown[], targetPage: string): boolean {
@@ -588,7 +574,6 @@ function hasBrowserTabTarget(tabs: unknown[], targetPage: string): boolean {
 async function resolveBrowserTargetInSession(
   page: import('./types.js').IPage,
   targetPage: string,
-  opts: { scope: string; source: 'explicit' | 'saved' },
 ): Promise<string | undefined> {
   const candidate = targetPage.trim();
   if (!candidate) return undefined;
@@ -597,13 +582,9 @@ async function resolveBrowserTargetInSession(
   try {
     tabs = await page.tabs();
   } catch (err) {
-    if (opts.source === 'saved') {
-      saveBrowserTargetState(undefined, opts.scope);
-      return undefined;
-    }
     throw new Error(
       `Target tab ${candidate} could not be validated in the current browser session. ` +
-      'The Browser Bridge session may have restarted; re-run "opencli browser tab list" and choose a current target.',
+      'The browser session or CDP endpoint may have restarted; re-run "opencli browser tab list" and choose a current target.',
       { cause: err },
     );
   }
@@ -612,25 +593,14 @@ async function resolveBrowserTargetInSession(
     return candidate;
   }
 
-  if (opts.source === 'saved') {
-    saveBrowserTargetState(undefined, opts.scope);
-    return undefined;
-  }
-
   throw new Error(
     `Target tab ${candidate} is not part of the current browser session. ` +
-    'The Browser Bridge session may have restarted; re-run "opencli browser tab list" and choose a current target.',
+    'The browser session or CDP endpoint may have restarted; re-run "opencli browser tab list" and choose a current target.',
   );
 }
 
 function getBrowserScope(session: string, contextId?: string): string {
   return contextId ? `${contextId}:${session}` : session;
-}
-
-async function resolveStoredBrowserTarget(page: import('./types.js').IPage, scope: string): Promise<string | undefined> {
-  const defaultPage = loadBrowserTargetState(scope)?.defaultPage?.trim();
-  if (!defaultPage) return undefined;
-  return resolveBrowserTargetInSession(page, defaultPage, { scope, source: 'saved' });
 }
 
 /** Create a browser page for browser commands. Uses a named browser session for continuity. */
@@ -654,12 +624,9 @@ async function getBrowserPage(
     ...(idleTimeout && idleTimeout > 0 && { idleTimeout }),
     windowMode: opts.windowMode ?? getBrowserWindowMode(undefined, 'foreground'),
   });
-  const targetScope = getBrowserScope(session, profileSelection?.contextId);
   const resolvedTargetPage = targetPage
-    ? await resolveBrowserTargetInSession(page, targetPage, { scope: targetScope, source: 'explicit' })
-    : cdpEndpoint
-      ? await resolveStoredBrowserTarget(page, getCdpTargetStateScope(targetScope))
-      : undefined;
+    ? await resolveBrowserTargetInSession(page, targetPage)
+    : undefined;
   if (resolvedTargetPage) {
     if (cdpEndpoint && page.selectTab) {
       // Direct CDP is attached to exactly one target at a time. Unlike the
@@ -1218,7 +1185,6 @@ Examples:
     .description('Bind the current Chrome tab/window to the browser session named by <session>')
     .action(browserSessionCommandAction(async ({ session, contextId }) => {
       const data = await bindTab(session, { ...(contextId && { contextId }) });
-      saveBrowserTargetState(undefined, getBrowserScope(session, contextId));
       console.log(JSON.stringify({ session, ...((data && typeof data === 'object') ? data as Record<string, unknown> : { data }) }, null, 2));
     }));
 
@@ -1226,7 +1192,6 @@ Examples:
     .description('Detach the bound browser session named by <session> without closing the user tab/window')
     .action(browserSessionCommandAction(async ({ session, contextId }) => {
       await sendCommand('close-window', { session, surface: 'browser', ...(contextId && { contextId }) });
-      saveBrowserTargetState(undefined, getBrowserScope(session, contextId));
       console.log(JSON.stringify({ unbound: true, session }, null, 2));
     }));
 
@@ -1257,16 +1222,20 @@ Examples:
 
   addBrowserTabOption(browserTab.command('select')
     .argument('[targetId]', 'Target tab/page identity returned by "browser open", "browser tab new", or "browser tab list"')
-    .description('Select a tab by target ID and make it the default browser tab'))
+    .description('Select a tab by target ID (Browser Bridge only; Direct CDP uses --tab)'))
     .action(browserAction(async (page, targetId?: string, opts?: { tab?: string } | Command) => {
+      if (process.env.OPENCLI_CDP_ENDPOINT) {
+        throw new BrowserCommandError(
+          'Direct CDP does not support persistent tab selection.',
+          'direct_cdp_tab_select_unsupported',
+          'Use --tab <targetId> on each Direct CDP command; target selection is command-scoped.',
+        );
+      }
       const resolvedTarget = resolveBrowserTabTarget(targetId, opts);
       if (!resolvedTarget) {
         throw new Error('Target tab required. Pass it as an argument or --tab <targetId>.');
       }
       await page.selectTab(resolvedTarget);
-      if (process.env.OPENCLI_CDP_ENDPOINT) {
-        saveBrowserTargetState(resolvedTarget, getCdpTargetStateScope(getPageScope(page)));
-      }
       console.log(JSON.stringify({ selected: resolvedTarget }, null, 2));
     }));
 
@@ -1281,18 +1250,11 @@ Examples:
       if (!resolvedTarget) {
         throw new Error('Target tab required. Pass it as an argument or --tab <targetId>.');
       }
-      const validatedTarget = await resolveBrowserTargetInSession(page, resolvedTarget, {
-        scope: getPageScope(page),
-        source: 'explicit',
-      });
+      const validatedTarget = await resolveBrowserTargetInSession(page, resolvedTarget);
       if (!validatedTarget) {
         throw new Error(`Target tab ${resolvedTarget} is not part of the current browser session.`);
       }
       await page.closeTab(validatedTarget);
-       const scope = getCdpTargetStateScope(getPageScope(page));
-       if (process.env.OPENCLI_CDP_ENDPOINT && loadBrowserTargetState(scope)?.defaultPage === validatedTarget) {
-         saveBrowserTargetState(undefined, scope);
-       }
       console.log(JSON.stringify({ closed: validatedTarget }, null, 2));
     }));
 
@@ -2091,7 +2053,7 @@ Examples:
     addSemanticLocatorOptions(browser.command('click'))
       .argument('[target]', 'Numeric ref (from browser state / find), CSS selector, or omit when using --role/--name/etc.')
       .option('--nth <n>', 'When <target> is a multi-match CSS selector, pick the nth match (0-based)')
-      .option('--follow-new-tab', 'Select the first tab opened by this click and make it the default target')
+      .option('--follow-new-tab', 'Select the first tab opened by this click; Browser Bridge promotes it, Direct CDP returns it')
       .description('Click element — JSON envelope {clicked, target, matches_n, opened_pages?}'),
   )
     .action(browserAction(async (page, target, opts) => {
@@ -2112,22 +2074,13 @@ Examples:
       const { matches_n, match_level, click_method, hit, retargeted } = await page.click(resolvedTarget, parsed.opts);
 
       let openedPages: BrowserTabSummary[] = [];
-      try {
-        await page.sleep(NEW_TAB_SETTLE_SECONDS);
-        if (beforeTabs !== null) openedPages = findNewBrowserTabs(beforeTabs, await page.tabs());
-      } catch {
-        // A click that navigates or closes the source page can invalidate the
-        // observation channel; the click itself already succeeded.
-      }
+      if (beforeTabs !== null) openedPages = await discoverNewBrowserTabs(page, beforeTabs);
 
       let followedPage: string | undefined;
       if (opts?.followNewTab === true && openedPages.length > 0) {
         const candidate = openedPages.find((tab) => tab.active) ?? openedPages[0];
         if (candidate.page) {
           await page.selectTab(candidate.page);
-          if (process.env.OPENCLI_CDP_ENDPOINT) {
-            saveBrowserTargetState(candidate.page, getCdpTargetStateScope(getPageScope(page)));
-          }
           followedPage = candidate.page;
         }
       }

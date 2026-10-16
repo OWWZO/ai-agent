@@ -138,7 +138,7 @@ Agent 在内部自动处理所有 `opencli browser` 命令——你只需用自�
 
 `browser` 可用命令包括：`open`、`state`、`click`、`type`、`fill`、`select`、`keys`、`wait`、`get`、`find`、`extract`、`frames`、`screenshot`、`scroll`、`back`、`eval`、`network`、`tab list`、`tab new`、`tab select`、`tab close`、`init`、`verify`、`close`。
 
-`opencli browser` 命令必须紧跟一个 `<session>` 位置参数。`opencli browser work open <url>` 和 `opencli browser work tab new [url]` 都会返回 target ID。点击可能打开新 tab 的按钮时，`browser click` 会在成功结果中返回 `opened_pages`；也可以使用 `browser click <target> --follow-new-tab` 自动选择新页面，并在结果中返回 `selected_page`。`opencli browser work tab list` 用来查看当前 session 的 tab target ID，再通过 `--tab <targetId>` 把命令明确路由到某个 tab。`tab select <targetId>` 会把该 tab 设为同一 session 后续未指定 target 的默认目标。
+`opencli browser` 命令必须紧跟一个 `<session>` 位置参数。`opencli browser work open <url>` 和 `opencli browser work tab new [url]` 都会返回 target ID。点击可能打开新 tab 的按钮时，`browser click` 会在成功结果中返回 `opened_pages`；也可以使用 `browser click <target> --follow-new-tab` 自动选择新页面，并在结果中返回 `selected_page`。Browser Bridge 的默认 target 由扩展 lease 持有，`tab select <targetId>` 会更新该 lease，CLI 不再维护第二份缓存。Direct CDP 不保存默认 target，应先用 `tab list` 查看 target，再在每条需要固定页面的命令上使用 `--tab <targetId>`；Direct CDP 的 `tab select` 会被拒绝，`--follow-new-tab` 只返回新 target，不会持久化。
 
 ## 为新站点写适配器
 

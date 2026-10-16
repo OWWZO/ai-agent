@@ -1452,6 +1452,56 @@ describe('browser tab targeting commands', () => {
     }
   });
 
+  it('rejects Direct CDP tab select with a command-scoped routing hint', async () => {
+    const previousEndpoint = process.env.OPENCLI_CDP_ENDPOINT;
+    process.env.OPENCLI_CDP_ENDPOINT = 'ws://127.0.0.1:9222/devtools/browser/test';
+    browserState.page = {
+      tabs: vi.fn().mockResolvedValue([{ page: 'tab-1' }, { page: 'tab-2' }]),
+      selectTab: vi.fn().mockResolvedValue(undefined),
+      evaluate: vi.fn().mockResolvedValue('title'),
+    } as unknown as IPage;
+
+    try {
+      const program = createProgram('', '');
+      await program.parseAsync(['node', 'opencli', 'browser', '--session', 'test', 'tab', 'select', 'tab-2']);
+
+      const out = lastJsonLog();
+      expect(out.error).toMatchObject({
+        code: 'direct_cdp_tab_select_unsupported',
+        hint: expect.stringContaining('--tab <targetId>'),
+      });
+      expect(browserState.page?.selectTab).not.toHaveBeenCalled();
+      expect(fs.existsSync(getBrowserStateFile(String(process.env.OPENCLI_CACHE_DIR)))).toBe(false);
+      expect(process.exitCode).toBeDefined();
+    } finally {
+      if (previousEndpoint === undefined) delete process.env.OPENCLI_CDP_ENDPOINT;
+      else process.env.OPENCLI_CDP_ENDPOINT = previousEndpoint;
+    }
+  });
+
+  it('does not reuse a Direct CDP target selected by an earlier command', async () => {
+    const previousEndpoint = process.env.OPENCLI_CDP_ENDPOINT;
+    process.env.OPENCLI_CDP_ENDPOINT = 'ws://127.0.0.1:9222/devtools/browser/test';
+    browserState.page = {
+      tabs: vi.fn().mockResolvedValue([{ page: 'tab-1' }, { page: 'tab-2' }]),
+      selectTab: vi.fn().mockResolvedValue(undefined),
+      evaluate: vi.fn().mockResolvedValue('title'),
+    } as unknown as IPage;
+
+    try {
+      const program = createProgram('', '');
+      await program.parseAsync(['node', 'opencli', 'browser', '--session', 'test', 'eval', '--tab', 'tab-2', 'document.title']);
+      await program.parseAsync(['node', 'opencli', 'browser', '--session', 'test', 'eval', 'document.title']);
+
+      expect(browserState.page?.selectTab).toHaveBeenCalledTimes(1);
+      expect(browserState.page?.selectTab).toHaveBeenCalledWith('tab-2');
+      expect(fs.existsSync(getBrowserStateFile(String(process.env.OPENCLI_CACHE_DIR)))).toBe(false);
+    } finally {
+      if (previousEndpoint === undefined) delete process.env.OPENCLI_CDP_ENDPOINT;
+      else process.env.OPENCLI_CDP_ENDPOINT = previousEndpoint;
+    }
+  });
+
   it('rejects an explicit --tab target that is no longer in the current session', async () => {
     browserState.page = {
       setActivePage: vi.fn(),
@@ -1581,7 +1631,7 @@ describe('browser tab targeting commands', () => {
     expect(consoleLogSpy.mock.calls.flat().join('\n')).toContain('inside frame');
   });
 
-  it('does not promote a newly created tab to the persisted default target', async () => {
+  it('does not let the CLI cache a newly created tab as a default target', async () => {
     const program = createProgram('', '');
 
     await program.parseAsync(['node', 'opencli', 'browser', '--session', 'test', 'tab', 'new', 'https://three.example']);
@@ -1592,24 +1642,25 @@ describe('browser tab targeting commands', () => {
     expect(browserState.page?.evaluate).toHaveBeenCalledWith('document.title');
   });
 
-  it('persists an explicitly selected tab as the default target for later untargeted commands', async () => {
+  it('delegates the Browser Bridge default target to the extension lease', async () => {
     const program = createProgram('', '');
 
     await program.parseAsync(['node', 'opencli', 'browser', '--session', 'test', 'tab', 'select', 'tab-2']);
     await program.parseAsync(['node', 'opencli', 'browser', '--session', 'test', 'eval', 'document.title']);
 
     expect(browserState.page?.selectTab).toHaveBeenCalledWith('tab-2');
-    expect(browserState.page?.setActivePage).toHaveBeenCalledWith('tab-2');
+    expect(browserState.page?.setActivePage).not.toHaveBeenCalled();
     expect(browserState.page?.evaluate).toHaveBeenCalledWith('document.title');
     expect(consoleLogSpy.mock.calls.flat().join('\n')).toContain('"selected": "tab-2"');
+    expect(fs.existsSync(getBrowserStateFile(String(process.env.OPENCLI_CACHE_DIR)))).toBe(false);
   });
 
-  it('clears a saved default target when it is no longer present in the current session', async () => {
+  it('ignores a legacy CLI default-target file instead of using it as a fallback', async () => {
     const cacheDir = String(process.env.OPENCLI_CACHE_DIR);
+    const stateFile = getBrowserStateFile(cacheDir);
+    fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+    fs.writeFileSync(stateFile, JSON.stringify({ defaultPage: 'tab-2', updatedAt: new Date().toISOString() }));
     const program = createProgram('', '');
-
-    await program.parseAsync(['node', 'opencli', 'browser', '--session', 'test', 'tab', 'select', 'tab-2']);
-    expect(fs.existsSync(getBrowserStateFile(cacheDir))).toBe(true);
 
     browserState.page = {
       setActivePage: vi.fn(),
@@ -1623,10 +1674,10 @@ describe('browser tab targeting commands', () => {
 
     expect(browserState.page?.setActivePage).not.toHaveBeenCalled();
     expect(browserState.page?.evaluate).toHaveBeenCalledWith('document.title');
-    expect(fs.existsSync(getBrowserStateFile(cacheDir))).toBe(false);
+    expect(fs.existsSync(stateFile)).toBe(true);
   });
 
-  it('clears the persisted default target when that tab is closed', async () => {
+  it('does not create local target state when a tab is closed', async () => {
     const program = createProgram('', '');
 
     await program.parseAsync(['node', 'opencli', 'browser', '--session', 'test', 'tab', 'select', 'tab-2']);
@@ -1639,6 +1690,7 @@ describe('browser tab targeting commands', () => {
     expect(browserState.page?.closeTab).toHaveBeenCalledWith('tab-2');
     expect(browserState.page?.setActivePage).not.toHaveBeenCalled();
     expect(browserState.page?.evaluate).toHaveBeenCalledWith('document.title');
+    expect(fs.existsSync(getBrowserStateFile(String(process.env.OPENCLI_CACHE_DIR)))).toBe(false);
   });
 
   it('closes a tab by target ID', async () => {
@@ -3100,6 +3152,36 @@ describe('browser click/type commands', () => {
       selected_page: 'tab-2',
       opened_pages: [{ page: 'tab-2', url: 'https://popup.example', title: 'Popup', active: true }],
     });
+  });
+
+  it('returns a Direct CDP followed target without persisting it', async () => {
+    const previousEndpoint = process.env.OPENCLI_CDP_ENDPOINT;
+    process.env.OPENCLI_CDP_ENDPOINT = 'ws://127.0.0.1:9222/devtools/browser/test';
+    browserState.page = {
+      ...browserState.page,
+      tabs: vi.fn()
+        .mockResolvedValueOnce([{ page: 'tab-1', active: true }])
+        .mockResolvedValueOnce([
+          { page: 'tab-1', active: false },
+          { page: 'tab-2', url: 'https://popup.example', title: 'Popup', active: true },
+        ]),
+      selectTab: vi.fn().mockResolvedValue(undefined),
+      click: vi.fn().mockResolvedValue({ matches_n: 1, match_level: 'exact' }),
+    } as unknown as IPage;
+
+    try {
+      const program = createProgram('', '');
+      await program.parseAsync([
+        'node', 'opencli', 'browser', '--session', 'test', 'click', '--follow-new-tab', '#open',
+      ]);
+
+      expect(browserState.page?.selectTab).toHaveBeenCalledWith('tab-2');
+      expect(lastJsonLog()).toMatchObject({ clicked: true, selected_page: 'tab-2' });
+      expect(fs.existsSync(path.join(String(process.env.OPENCLI_CACHE_DIR), 'browser-state', 'test.json'))).toBe(false);
+    } finally {
+      if (previousEndpoint === undefined) delete process.env.OPENCLI_CDP_ENDPOINT;
+      else process.env.OPENCLI_CDP_ENDPOINT = previousEndpoint;
+    }
   });
 
   it('clicks a unique semantic locator without a prior state call', async () => {
