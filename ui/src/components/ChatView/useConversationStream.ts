@@ -96,6 +96,18 @@ export function isSessionControlPackage(packageType?: string): boolean {
   return SESSION_CONTROL_PACKAGES.has(String(packageType || ""));
 }
 
+/** 同一 requestId 的重复 finished 帧只允许触发一次会话文件刷新。 */
+export function claimTurnSettledRefresh(
+  requestId: string,
+  settledRequestIds: Set<string>
+): boolean {
+  if (!requestId || settledRequestIds.has(requestId)) {
+    return false;
+  }
+  settledRequestIds.add(requestId);
+  return true;
+}
+
 type UseConversationStreamOptions = {
   conversation: CHAT.ConversationHistory;
   readOnly?: boolean;
@@ -105,6 +117,7 @@ type UseConversationStreamOptions = {
   ) => void;
   onPrepareStreamingWorkspace?: () => void;
   onTokenUseUp?: () => void;
+  onTurnSettled?: () => void;
 };
 
 type UseConversationStreamResult = {
@@ -518,6 +531,7 @@ export function useConversationStream(
     onConversationChange,
     onPrepareStreamingWorkspace,
     onTokenUseUp,
+    onTurnSettled,
   } = options;
 
   const [taskList, setTaskList] = useState<CHAT.Task[]>([]);
@@ -561,6 +575,13 @@ export function useConversationStream(
     new Map()
   );
   const skipInjectRef = useRef(false);
+  const turnSettledRefreshRef = useRef(new Set<string>());
+
+  const notifyTurnSettled = useMemoizedFn((requestId: string) => {
+    if (claimTurnSettledRefresh(requestId, turnSettledRefreshRef.current)) {
+      onTurnSettled?.();
+    }
+  });
 
   const clearFollowReconnectTimer = useMemoizedFn((requestId?: string) => {
     if (requestId) {
@@ -1445,6 +1466,7 @@ export function useConversationStream(
           followReconnectAttemptsRef.current.delete(requestId);
           clearFollowReconnectTimer(requestId);
           unbindLiveStream(conversationId, abortController);
+          notifyTurnSettled(requestId);
           if (hasPendingAskUserQuestion(currentChat)) {
             currentChat = applyWaitingUserInputState(currentChat);
           } else {
@@ -1503,6 +1525,7 @@ export function useConversationStream(
         followReconnectAttemptsRef.current.delete(requestId);
         clearFollowReconnectTimer(requestId);
         unbindLiveStream(conversationId, abortController);
+        notifyTurnSettled(requestId);
         if (isHitlYieldEvent(eventData) || hasPendingAskUserQuestion(currentChat)) {
           currentChat = applyWaitingUserInputState(currentChat);
         } else {
@@ -1886,6 +1909,7 @@ export function useConversationStream(
       followReconnectContextsRef.current.delete(resumeRequestId);
       clearFollowReconnectTimer(resumeRequestId);
       unbindLiveStream(conversationId, abortController);
+      notifyTurnSettled(resumeRequestId);
       currentChat = {
         ...currentChat,
         loading: false,
@@ -1963,6 +1987,7 @@ export function useConversationStream(
       followReconnectContextsRef.current.delete(resumeRequestId);
       clearFollowReconnectTimer(resumeRequestId);
       unbindLiveStream(conversationId, abortController);
+      notifyTurnSettled(resumeRequestId);
       currentChat = {
         ...nextChat,
         loading: false,
@@ -2200,6 +2225,7 @@ export function useConversationStream(
           clearFollowReconnectTimer(resumeRequestId);
           const streamStillActive = isActiveStream();
           unbindLiveStream(conversationId, abortController);
+          notifyTurnSettled(resumeRequestId);
           if (streamStillActive) {
             setLoading(false);
           }
@@ -2759,6 +2785,7 @@ export function useConversationStream(
           followReconnectAttemptsRef.current.delete(requestId);
           clearFollowReconnectTimer(requestId);
           unbindLiveStream(conversationId, abortController);
+          notifyTurnSettled(requestId);
           if (hasPendingAskUserQuestion(currentChat)) {
             currentChat = applyWaitingUserInputState(currentChat);
           } else {
@@ -2826,6 +2853,7 @@ export function useConversationStream(
         followReconnectAttemptsRef.current.delete(requestId);
         clearFollowReconnectTimer(requestId);
         unbindLiveStream(conversationId, abortController);
+        notifyTurnSettled(requestId);
         // plan_approval / ask_user_question 让步后的 finished 必须进 WAITING_INPUT，不能标 SUCCESS
         if (isHitlYieldEvent(eventData) || hasPendingAskUserQuestion(currentChat)) {
           currentChat = applyWaitingUserInputState(currentChat);

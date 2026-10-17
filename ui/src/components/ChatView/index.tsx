@@ -141,6 +141,7 @@ type Props = {
   ) => void;
   sessionWorkspaceFiles?: CHAT.TFile[];
   onEnsureSessionFiles?: () => void;
+  onRefreshSessionFiles?: () => void;
   onRequestRunReplay?: (requestId: string) => Promise<unknown> | void;
   onLoadMoreHistory?: () => Promise<void> | void;
   historyLoading?: boolean;
@@ -284,6 +285,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     onTaskListChange,
     sessionWorkspaceFiles = [],
     onEnsureSessionFiles,
+    onRefreshSessionFiles,
     onRequestRunReplay,
     onLoadMoreHistory,
     historyLoading = false,
@@ -473,6 +475,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         content: "如需额外申请，请联系 liyang.1236@jd.com",
       });
     },
+    onTurnSettled: () => onRefreshSessionFiles?.(),
   });
 
   const requestReplay = useCallback(

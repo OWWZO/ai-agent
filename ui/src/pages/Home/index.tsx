@@ -350,7 +350,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     files: [],
   });
 
-  const loadSessionWorkspaceFiles = useCallback((sessionId: string) => {
+  const loadSessionWorkspaceFiles = useCallback((sessionId: string, force = false) => {
     const normalizedSessionId = sessionId?.trim();
     if (!normalizedSessionId) {
       return Promise.resolve([] as CHAT.TFile[]);
@@ -363,7 +363,8 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       async (id) => {
         const files = await conversationHistoryApi.getSessionFiles(id);
         return normalizeSessionArtifactFiles(files, id);
-      }
+      },
+      force
     )
       .then((files) => {
         if (currentConversationRef.current.sessionId === normalizedSessionId) {
@@ -390,11 +391,11 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     });
   }, [currentConversation.sessionId]);
 
-  const ensureCurrentSessionWorkspaceFiles = useCallback(() => {
+  const ensureCurrentSessionWorkspaceFiles = useCallback((force = false) => {
     if (!currentConversation.chatList.length) {
       return;
     }
-    void loadSessionWorkspaceFiles(currentConversation.sessionId);
+    void loadSessionWorkspaceFiles(currentConversation.sessionId, force);
   }, [
     currentConversation.chatList.length,
     currentConversation.sessionId,
@@ -1278,6 +1279,9 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
                       onTaskListChange={setWorkspaceTaskList}
                       sessionWorkspaceFiles={visibleSessionWorkspaceFiles}
                       onEnsureSessionFiles={ensureCurrentSessionWorkspaceFiles}
+                      onRefreshSessionFiles={() =>
+                        ensureCurrentSessionWorkspaceFiles(true)
+                      }
                       onRegisterApi={(api) => {
                         chatViewApiRef.current = api;
                       }}

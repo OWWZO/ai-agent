@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyGuardError,
+  claimTurnSettledRefresh,
   createConversationDraftController,
   isSessionControlPackage,
   planEmptyStreamClose,
@@ -18,6 +19,14 @@ import {
 import { parseAgentAnswer } from "@/utils/sseParsers";
 
 describe("useConversationStream helpers", () => {
+  it("同一 requestId 的 finished 只认领一次刷新", () => {
+    const settled = new Set<string>();
+
+    expect(claimTurnSettledRefresh("req-1", settled)).toBe(true);
+    expect(claimTurnSettledRefresh("req-1", settled)).toBe(false);
+    expect(claimTurnSettledRefresh("", settled)).toBe(false);
+  });
+
   it("会话级控制帧不依赖 requestId 路由", () => {
     expect(isSessionControlPackage("heartbeat")).toBe(true);
     expect(isSessionControlPackage("follow_pending")).toBe(true);
