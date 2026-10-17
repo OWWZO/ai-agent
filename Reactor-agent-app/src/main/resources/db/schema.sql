@@ -329,7 +329,8 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_invocation (
     UNIQUE KEY uk_llm_dispatch (llm_invocation_id, dispatch_index),
     KEY idx_tool_run_create (run_id, deleted, create_time DESC),
     KEY idx_tool_name_create (tool_name, deleted, create_time DESC),
-    KEY idx_tool_parent_call (run_id, parent_tool_call_id, deleted)
+    KEY idx_tool_parent_call (run_id, parent_tool_call_id, deleted),
+    KEY idx_tool_parent_call_id (parent_tool_call_id, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工具调用\r\n  账本表';
 
 CREATE TABLE IF NOT EXISTS ai_agent_user_question (
