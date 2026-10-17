@@ -7,6 +7,11 @@ const { mockDownloadMedia, mockFormatCookieHeader } = vi.hoisted(() => ({
 
 vi.mock('@jackwener/opencli/download/media-download', () => ({
     downloadMedia: mockDownloadMedia,
+    // Same pass-through contract as the real helper: keep `files`, drop empty `artifacts`.
+    buildDownloadPayload: (payload) => ({
+        files: payload?.files ?? [],
+        ...(payload?.artifacts?.length ? { artifacts: payload.artifacts } : {}),
+    }),
 }));
 
 vi.mock('@jackwener/opencli/download', () => ({
@@ -46,7 +51,7 @@ describe('rednote note URL identity', () => {
 
     beforeEach(() => {
         mockDownloadMedia.mockReset();
-        mockDownloadMedia.mockResolvedValue([{ index: 1, type: 'image', status: 'success', size: '1 KB' }]);
+        mockDownloadMedia.mockResolvedValue({ files: [{ index: 1, type: 'image', status: 'success', size: '1 KB' }] });
         mockFormatCookieHeader.mockClear();
     });
 

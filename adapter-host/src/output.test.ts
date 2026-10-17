@@ -53,6 +53,28 @@ describe('output TTY detection', () => {
     expect(out).toContain('alice');
   });
 
+  it('renders download files in table output without artifact envelope rows', () => {
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, writable: true });
+    render({
+      files: [{ index: 1, status: 'success' }],
+      artifacts: [{ relativePath: 'downloads/photo.jpg' }],
+    }, { fmt: 'table', fmtExplicit: true, columns: ['index', 'status'] });
+    const out = logSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    expect(out).toContain('success');
+    expect(out).not.toContain('undefined');
+  });
+
+  it('filters artifact envelopes returned as array rows', () => {
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, writable: true });
+    render([
+      { index: 1, status: 'success' },
+      { artifacts: [{ relativePath: 'downloads/photo.jpg' }] },
+    ], { fmt: 'table', fmtExplicit: true, columns: ['index', 'status'] });
+    const out = logSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    expect(out).toContain('success');
+    expect(out).not.toContain('2 items');
+  });
+
   it('prints single markdown payloads without wrapping them in a table', () => {
     render([{ markdown: '# Title\n\nBody' }], { fmt: 'md' });
     const out = logSpy.mock.calls.map((c: unknown[]) => c[0]).join('\n');

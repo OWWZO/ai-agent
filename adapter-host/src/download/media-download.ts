@@ -57,6 +57,34 @@ export interface MediaDownloadResult {
   size: string;
 }
 
+/**
+ * Artifact candidate reported to the host for download-type commands.
+ *
+ * Contract (consumed by Reactor's CliArtifactCandidateParser):
+ * - `relativePath` is relative to the CLI working directory (Agent workspace),
+ *   uses forward slashes, and never contains `..` or an absolute path;
+ * - `size` is the byte count on disk;
+ * - `mime` is the best-effort content type.
+ * Download URLs are NOT produced here: Reactor's file service registers the
+ * file and generates preview/download URLs, so the two systems never maintain
+ * separate URL rules.
+ */
+export interface MediaArtifactCandidate {
+  relativePath: string;
+  size: number;
+  mime: string;
+}
+
+/**
+ * Rows plus artifact candidates in one payload.
+ * `renderJson` prints the whole object, so the `artifacts` key reaches the
+ * host's JSON output without touching the existing table columns.
+ */
+export interface MediaDownloadPayload {
+  files: MediaDownloadResult[];
+  artifacts?: MediaArtifactCandidate[];
+}
+
 // ============================================================
 // Main API
 // ============================================================
@@ -74,7 +102,7 @@ export interface MediaDownloadResult {
 export async function downloadMedia(
   items: MediaItem[],
   options: MediaDownloadOptions,
-): Promise<MediaDownloadResult[]> {
+): Promise<MediaDownloadPayload> {
   const {
     output,
     subdir,
@@ -87,8 +115,13 @@ export async function downloadMedia(
   } = options;
 
   if (!items || items.length === 0) {
-    return [{ index: 0, type: '-', status: 'failed', size: 'No media found' }];
+    return { files: [{ index: 0, type: '-', status: 'failed', size: 'No media found' }] };
   }
+
+  // Only report workspace-internal relative paths as candidates: the CLI cwd is
+  // the Agent workspace, so `process.cwd()` is the correct base for the contract.
+  const cwd = process.cwd();
+  const candidates: MediaArtifactCandidate[] = [];
 
   // Create output directory
   const outputDir = subdir ? path.join(output, subdir) : output;
@@ -149,6 +182,24 @@ export async function downloadMedia(
         }
         tracker.onFileComplete(result.success);
 
+        if (result.success) {
+          // Stat after the write so the candidate size matches what the host will register.
+          let bytes = result.size;
+          try {
+            bytes = fs.statSync(destPath).size;
+          } catch {
+            // fall back to the downloader's reported byte count
+          }
+           const relativePath = toRelativePosixPath(cwd, destPath);
+           if (relativePath) {
+             candidates.push({
+               relativePath,
+               size: bytes,
+               mime: isVideo ? 'video/mp4' : 'image/jpeg',
+             });
+           }
+        }
+
         results.push({
           index: i + 1,
           type: media.type === 'video-tweet' || media.type === 'video-ytdlp' ? 'video' : media.type,
@@ -177,7 +228,44 @@ export async function downloadMedia(
     }
   }
 
-  return results;
+  return { files: results, artifacts: candidates };
+}
+
+/** Workspace-relative POSIX path; empty string when the file escapes the cwd. */
+function toRelativePosixPath(cwd: string, absolutePath: string): string | null {
+  const relative = path.relative(cwd, absolutePath).replace(/\\/g, '/');
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    return null;
+  }
+  return relative;
+}
+
+// ============================================================
+// Artifact envelope
+// ============================================================
+
+/**
+ * Wrap a media download payload so the host can read artifact candidates.
+ *
+ * `renderJson` prints the returned object as-is, while `renderTable` only reads
+ * the declared `columns`, so the legacy table view stays unchanged. Commands
+ * with extra columns append {@link buildArtifactEnvelope} as a trailing row.
+ */
+export function buildDownloadPayload(payload: MediaDownloadPayload): MediaDownloadPayload {
+  return {
+    files: payload.files ?? [],
+    ...(payload.artifacts && payload.artifacts.length > 0
+      ? { artifacts: payload.artifacts }
+      : {}),
+  };
+}
+
+/** Artifact-only row for commands that keep their own business columns. */
+export function buildArtifactEnvelope(payload: MediaDownloadPayload): Record<string, unknown> {
+  if (!payload.artifacts || payload.artifacts.length === 0) {
+    return { artifacts: [] };
+  }
+  return { artifacts: payload.artifacts };
 }
 
 function resolveMediaFilename(filename: string | undefined, prefix: string, index: number, ext: string): string {

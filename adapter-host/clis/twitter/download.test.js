@@ -5,6 +5,12 @@ const { mockDownloadMedia, mockFormatCookieHeader } = vi.hoisted(() => ({
 }));
 vi.mock('@jackwener/opencli/download/media-download', () => ({
     downloadMedia: mockDownloadMedia,
+    // Same pass-through contract as the real helper: keep `files`, drop empty `artifacts`.
+    buildDownloadPayload: (payload) => ({
+        files: payload?.files ?? [],
+        ...(payload?.artifacts?.length ? { artifacts: payload.artifacts } : {}),
+    }),
+    buildArtifactEnvelope: (payload) => ({ artifacts: payload?.artifacts ?? [] }),
 }));
 vi.mock('@jackwener/opencli/download', () => ({
     formatCookieHeader: mockFormatCookieHeader,
@@ -88,7 +94,7 @@ function tweetEntry(id, url = `https://pbs.twimg.com/media/${id}.jpg`) {
 describe('twitter download helpers', () => {
     beforeEach(() => {
         mockDownloadMedia.mockReset();
-        mockDownloadMedia.mockResolvedValue([{ index: 1, type: 'image', status: 'success', size: '1 KB' }]);
+        mockDownloadMedia.mockResolvedValue({ files: [{ index: 1, type: 'image', status: 'success', size: '1 KB' }] });
         mockFormatCookieHeader.mockClear();
     });
 
@@ -310,10 +316,12 @@ describe('twitter download helpers', () => {
 
     it('downloads profile media through UserByScreenName and UserMedia GraphQL payloads', async () => {
         const cmd = getRegistry().get('twitter/download');
-        mockDownloadMedia.mockResolvedValueOnce([
-            { index: 1, type: 'image', status: 'success', size: '1 KB' },
-            { index: 2, type: 'image', status: 'success', size: '2 KB' },
-        ]);
+        mockDownloadMedia.mockResolvedValueOnce({
+            files: [
+                { index: 1, type: 'image', status: 'success', size: '1 KB' },
+                { index: 2, type: 'image', status: 'success', size: '2 KB' },
+            ],
+        });
         const page = createPageMock([
             { queryId: 'UM', features: { a: true }, fieldToggles: {} },
             { queryId: 'UB', features: {}, fieldToggles: {} },

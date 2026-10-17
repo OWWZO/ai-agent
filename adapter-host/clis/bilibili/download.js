@@ -10,7 +10,7 @@
 import { cli, Strategy } from '@jackwener/opencli/registry';
 import { CliError, CommandExecutionError, EXIT_CODES } from '@jackwener/opencli/errors';
 import { checkYtdlp, sanitizeFilename } from '@jackwener/opencli/download';
-import { downloadMedia } from '@jackwener/opencli/download/media-download';
+import { buildArtifactEnvelope, downloadMedia } from '@jackwener/opencli/download/media-download';
 import { apiGet, resolveBvid, parsePageArg, selectVideoPart } from './utils.js';
 
 const PAYMENT_LABELS = {
@@ -160,19 +160,20 @@ cli({
         }
         const videoUrl = watchUrl;
         const filename = selectedPage != null ? `${bvid}_p${selectedPage}_${title}.mp4` : `${bvid}_${title}.mp4`;
-        const results = await downloadMedia([{ type: 'video-ytdlp', url: videoUrl, filename }], {
+        const payload = await downloadMedia([{ type: 'video-ytdlp', url: videoUrl, filename }], {
             output,
             browserCookies,
             filenamePrefix: bvid,
             ytdlpExtraArgs: ['-f', format, '--merge-output-format', 'mp4', '--embed-thumbnail'],
         });
         // Map results to bilibili-specific columns
-        const r = results[0] || { status: 'failed', size: '-' };
+        const r = payload.files[0] || { status: 'failed', size: '-' };
         return [{
                 bvid,
                 title: displayTitle,
                 status: r.status,
                 size: r.size,
-            }];
+            },
+            buildArtifactEnvelope(payload)];
     },
 });

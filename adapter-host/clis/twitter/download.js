@@ -13,7 +13,7 @@
 import { cli, Strategy } from '@jackwener/opencli/registry';
 import { ArgumentError, AuthRequiredError, CliError, CommandExecutionError, EmptyResultError } from '@jackwener/opencli/errors';
 import { formatCookieHeader } from '@jackwener/opencli/download';
-import { downloadMedia } from '@jackwener/opencli/download/media-download';
+import { buildArtifactEnvelope, buildDownloadPayload, downloadMedia } from '@jackwener/opencli/download/media-download';
 import {
     resolveTwitterOperationMetadata,
     normalizeTwitterGraphqlPayload,
@@ -132,8 +132,8 @@ function nextUserMediaFetchCount(limit, downloadedCount) {
 }
 
 async function downloadTwitterMedia(items, options) {
-    const rows = await downloadMedia(items, options);
-    return rows.map((row, index) => {
+    const payload = buildDownloadPayload(await downloadMedia(items, options));
+    const rows = payload.files.map((row, index) => {
         const item = items[index] || {};
         return {
             index: row.index,
@@ -144,6 +144,9 @@ async function downloadTwitterMedia(items, options) {
             size: row.size,
         };
     });
+    return payload.artifacts?.length > 0
+        ? [...rows, buildArtifactEnvelope(payload)]
+        : rows;
 }
 
 function normalizeUserMediaOperation(operation) {

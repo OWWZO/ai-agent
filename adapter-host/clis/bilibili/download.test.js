@@ -19,6 +19,7 @@ vi.mock('@jackwener/opencli/download', () => ({
 
 vi.mock('@jackwener/opencli/download/media-download', () => ({
   downloadMedia: mockDownloadMedia,
+  buildArtifactEnvelope: (payload) => ({ artifacts: payload?.artifacts ?? [] }),
 }));
 
 import { getRegistry } from '@jackwener/opencli/registry';
@@ -43,7 +44,7 @@ describe('bilibili download paid-content pre-check', () => {
     mockDownloadMedia.mockReset();
     mockCheckYtdlp.mockReset();
     mockCheckYtdlp.mockReturnValue(true);
-    mockDownloadMedia.mockResolvedValue([{ status: 'success', size: '10MB' }]);
+    mockDownloadMedia.mockResolvedValue({ files: [{ status: 'success', size: '10MB' }] });
     page.goto.mockClear();
     page.evaluate.mockClear();
   });

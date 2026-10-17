@@ -1,6 +1,6 @@
 import * as path from 'node:path';
 import { formatCookieHeader } from '@jackwener/opencli/download';
-import { downloadMedia } from '@jackwener/opencli/download/media-download';
+import { buildDownloadPayload, downloadMedia } from '@jackwener/opencli/download/media-download';
 import { cli, Strategy } from '@jackwener/opencli/registry';
 import { cleanText } from './shared.js';
 import { extractAssetsForInput } from './assets.js';
@@ -61,14 +61,14 @@ cli({
         const offerId = cleanText(assets.offer_id) || '1688';
         const items = toDownloadItems(offerId, assets);
         const browserCookies = await page.getCookies({ domain: '1688.com' });
-        return downloadMedia(items, {
+        return buildDownloadPayload(await downloadMedia(items, {
             output: String(kwargs.output || './1688-downloads'),
             subdir: offerId,
             cookies: formatCookieHeader(browserCookies),
             browserCookies,
             filenamePrefix: offerId,
             timeout: 60000,
-        });
+        }));
     },
 });
 export const __test__ = {

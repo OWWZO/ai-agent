@@ -22,6 +22,28 @@ function normalizeRows(data: unknown): Record<string, unknown>[] {
   return [{ value: data }];
 }
 
+/**
+ * Download commands keep artifact candidates in JSON payloads, but table-like
+ * output must only render business rows. This also filters Bilibili/Twitter's
+ * artifact envelope when the command returns an array of rows.
+ */
+function normalizeTabularRows(data: unknown): Record<string, unknown>[] {
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const payload = data as Record<string, unknown>;
+    if (Array.isArray(payload.files)) return payload.files as Record<string, unknown>[];
+  }
+  if (Array.isArray(data)) {
+    return data.filter((row) => !isArtifactEnvelope(row)) as Record<string, unknown>[];
+  }
+  return normalizeRows(data);
+}
+
+function isArtifactEnvelope(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const keys = Object.keys(value as Record<string, unknown>);
+  return keys.length === 1 && keys[0] === 'artifacts';
+}
+
 function resolveColumns(rows: Record<string, unknown>[], opts: RenderOptions): string[] {
   return opts.columns ?? Object.keys(rows[0] ?? {});
 }
@@ -47,7 +69,7 @@ export function render(data: unknown, opts: RenderOptions = {}): void {
 }
 
 function renderTable(data: unknown, opts: RenderOptions): void {
-  const rows = normalizeRows(data);
+  const rows = normalizeTabularRows(data);
   if (!rows.length) { console.log('(no data)'); return; }
   const columns = resolveColumns(rows, opts);
 
@@ -81,7 +103,7 @@ function renderJson(data: unknown): void {
   console.log(JSON.stringify(data, null, 2));
 }
 function renderPlain(data: unknown): void {
-  const rows = normalizeRows(data);
+  const rows = normalizeTabularRows(data);
   if (!rows.length) return;
 
   // Single-row single-field shortcuts for chat-style commands.
@@ -108,7 +130,7 @@ function renderPlain(data: unknown): void {
 
 
 function renderMarkdown(data: unknown, opts: RenderOptions): void {
-  const rows = normalizeRows(data);
+  const rows = normalizeTabularRows(data);
   if (!rows.length) return;
   if (rows.length === 1) {
     const entries = Object.entries(rows[0]);
@@ -132,7 +154,7 @@ function renderMarkdown(data: unknown, opts: RenderOptions): void {
 }
 
 function renderCsv(data: unknown, opts: RenderOptions): void {
-  const rows = normalizeRows(data);
+  const rows = normalizeTabularRows(data);
   if (!rows.length) return;
   const columns = resolveColumns(rows, opts);
   console.log(columns.join(','));

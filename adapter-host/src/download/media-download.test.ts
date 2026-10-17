@@ -50,11 +50,65 @@ describe('media downloads', { retry: process.platform === 'win32' ? 2 : 0 }, () 
       verbose: false,
     });
 
-    expect(results).toEqual([
+    expect(results.files).toEqual([
       { index: 1, type: 'image', status: 'success', size: '5.0 B' },
     ]);
     expect(fs.readFileSync(path.join(outputDir, 'escape.jpg'), 'utf8')).toBe('image');
     expect(fs.existsSync(path.join(parentDir, 'escape.jpg'))).toBe(false);
+  });
+
+  it('reports artifact candidates relative to the cli working directory', async () => {
+    const baseUrl = await startServer((_req, res) => {
+      res.statusCode = 200;
+      res.end('image-bytes');
+    });
+    const parentDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'opencli-media-cwd-'));
+    tempDirs.push(parentDir);
+    const outputDir = path.join(parentDir, 'downloads', 'note-1');
+    const previousCwd = process.cwd();
+
+    try {
+      process.chdir(parentDir);
+      const results = await downloadMedia([
+        { type: 'image', url: `${baseUrl}/a.jpg` },
+        { type: 'image', url: `${baseUrl}/b.jpg` },
+      ], {
+        output: 'downloads',
+        subdir: 'note-1',
+        filenamePrefix: 'note-1',
+        verbose: false,
+      });
+
+      // Contract: forward slashes, workspace-relative, no absolute path, no ..
+      expect(results.artifacts).toEqual([
+        { relativePath: 'downloads/note-1/note-1_1.jpg', size: 11, mime: 'image/jpeg' },
+        { relativePath: 'downloads/note-1/note-1_2.jpg', size: 11, mime: 'image/jpeg' },
+      ]);
+      for (const candidate of results.artifacts ?? []) {
+        expect(candidate.relativePath.includes('\\')).toBe(false);
+        expect(candidate.relativePath.startsWith('/')).toBe(false);
+        expect(candidate.relativePath.includes('..')).toBe(false);
+        expect(fs.existsSync(path.join(parentDir, candidate.relativePath))).toBe(true);
+      }
+    } finally {
+      process.chdir(previousCwd);
+    }
+  });
+
+  it('omits the artifacts key when nothing was downloaded', async () => {
+    const parentDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'opencli-media-empty-'));
+    tempDirs.push(parentDir);
+
+    const results = await downloadMedia([], {
+      output: path.join(parentDir, 'downloads'),
+      verbose: false,
+    });
+
+    expect(results.files).toEqual([
+      { index: 0, type: '-', status: 'failed', size: 'No media found' },
+    ]);
+    expect(results.artifacts).toBeUndefined();
+    expect('artifacts' in results).toBe(false);
   });
 
   it('strips nested and absolute path components from custom filenames', async () => {
@@ -76,7 +130,7 @@ describe('media downloads', { retry: process.platform === 'win32' ? 2 : 0 }, () 
       verbose: false,
     });
 
-    expect(results).toEqual([
+    expect(results.files).toEqual([
       { index: 1, type: 'image', status: 'success', size: '5.0 B' },
       { index: 2, type: 'image', status: 'success', size: '5.0 B' },
       { index: 3, type: 'image', status: 'success', size: '5.0 B' },
@@ -109,7 +163,7 @@ describe('media downloads', { retry: process.platform === 'win32' ? 2 : 0 }, () 
       verbose: false,
     });
 
-    expect(results).toEqual([
+    expect(results.files).toEqual([
       { index: 1, type: 'image', status: 'success', size: '5.0 B' },
       { index: 2, type: 'image', status: 'success', size: '5.0 B' },
       { index: 3, type: 'image', status: 'success', size: '5.0 B' },

@@ -5,6 +5,11 @@ const { mockDownloadMedia, mockFormatCookieHeader } = vi.hoisted(() => ({
 }));
 vi.mock('@jackwener/opencli/download/media-download', () => ({
     downloadMedia: mockDownloadMedia,
+    // Same pass-through contract as the real helper: keep `files`, drop empty `artifacts`.
+    buildDownloadPayload: (payload) => ({
+        files: payload?.files ?? [],
+        ...(payload?.artifacts?.length ? { artifacts: payload.artifacts } : {}),
+    }),
 }));
 vi.mock('@jackwener/opencli/download', () => ({
     formatCookieHeader: mockFormatCookieHeader,
@@ -43,7 +48,7 @@ describe('xiaohongshu download', () => {
     beforeEach(() => {
         mockDownloadMedia.mockReset();
         mockFormatCookieHeader.mockClear();
-        mockDownloadMedia.mockResolvedValue([{ index: 1, type: 'video', status: 'success', size: '1 MB' }]);
+        mockDownloadMedia.mockResolvedValue({ files: [{ index: 1, type: 'video', status: 'success', size: '1 MB' }] });
     });
     it('preserves short links for navigation but uses canonical note id for output naming', async () => {
         const page = createPageMock({

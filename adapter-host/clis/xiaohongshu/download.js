@@ -8,7 +8,7 @@
  */
 import { cli, Strategy } from '@jackwener/opencli/registry';
 import { formatCookieHeader } from '@jackwener/opencli/download';
-import { downloadMedia } from '@jackwener/opencli/download/media-download';
+import { buildDownloadPayload, downloadMedia } from '@jackwener/opencli/download/media-download';
 import { CommandExecutionError, EmptyResultError } from '@jackwener/opencli/errors';
 import { readXhsDetailPage } from './risk-control.js';
 import { buildNoteUrl, parseNoteId } from './note-helpers.js';
@@ -243,12 +243,12 @@ export const command = cli({
         const resolvedNoteId = typeof data.noteId === 'string' && data.noteId.trim()
             ? data.noteId.trim()
             : noteId;
-        return downloadMedia(data.media, {
+        return buildDownloadPayload(await downloadMedia(data.media, {
             output,
             subdir: resolvedNoteId,
             cookies,
             filenamePrefix: resolvedNoteId,
             timeout: 60000,
-        });
+        }));
     },
 });
