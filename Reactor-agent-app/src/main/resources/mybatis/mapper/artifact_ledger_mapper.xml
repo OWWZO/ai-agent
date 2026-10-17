@@ -66,6 +66,77 @@
         ORDER BY run_id DESC, create_time ASC, id ASC
     </select>
 
+    <select id="queryByRunIdWithSubagentFold" resultMap="ArtifactRecordMap">
+        SELECT a.id, a.run_id, a.request_id, a.tool_invocation_id, a.tool_call_id, a.artifact_role,
+               a.visibility, a.source_type, a.source_name, a.file_name, a.storage_key, a.download_url,
+               a.preview_url, a.mime_type, a.file_size, a.file_hash, a.metadata_json, a.create_time,
+               a.update_time, a.deleted
+        FROM ai_agent_artifact a
+        WHERE a.run_id = #{runId}
+          AND a.deleted = 0
+          AND a.visibility = 'visible'
+        UNION ALL
+        SELECT a.id, parent.run_id AS run_id, pr.request_id AS request_id,
+               parent.id AS tool_invocation_id, a.tool_call_id, a.artifact_role,
+               a.visibility, a.source_type, a.source_name, a.file_name, a.storage_key,
+               a.download_url, a.preview_url, a.mime_type, a.file_size, a.file_hash,
+               a.metadata_json, a.create_time, a.update_time, a.deleted
+        FROM ai_agent_artifact a
+        INNER JOIN ai_agent_tool_invocation c ON c.id = a.tool_invocation_id
+        INNER JOIN ai_agent_tool_invocation parent ON parent.tool_call_id = c.parent_tool_call_id
+        INNER JOIN ai_agent_dialogue_run pr ON pr.id = parent.run_id
+        WHERE a.deleted = 0
+          AND a.visibility = 'visible'
+          AND a.artifact_role = 'output'
+          AND c.deleted = 0
+          AND parent.deleted = 0
+          AND pr.deleted = 0
+          AND c.sub_agent_id IS NOT NULL
+          AND parent.run_id = #{runId}
+          AND a.run_id &lt;&gt; parent.run_id
+        ORDER BY create_time ASC, id ASC
+    </select>
+
+    <select id="queryByRunIdsWithSubagentFold" resultMap="ArtifactRecordMap">
+        SELECT a.id, a.run_id, a.request_id, a.tool_invocation_id, a.tool_call_id, a.artifact_role,
+               a.visibility, a.source_type, a.source_name, a.file_name, a.storage_key, a.download_url,
+               a.preview_url, a.mime_type, a.file_size, a.file_hash, a.metadata_json, a.create_time,
+               a.update_time, a.deleted
+        FROM ai_agent_artifact a
+        WHERE a.deleted = 0
+          AND a.visibility = 'visible'
+          AND a.run_id IN
+        <foreach collection="runIds" item="runId" open="(" separator="," close=")">
+            #{runId}
+        </foreach>
+        UNION ALL
+        SELECT a.id, parent.run_id AS run_id, pr.request_id AS request_id,
+               parent.id AS tool_invocation_id, a.tool_call_id, a.artifact_role,
+               a.visibility, a.source_type, a.source_name, a.file_name, a.storage_key,
+               a.download_url, a.preview_url, a.mime_type, a.file_size, a.file_hash,
+               a.metadata_json, a.create_time, a.update_time, a.deleted
+        FROM ai_agent_artifact a
+        INNER JOIN ai_agent_tool_invocation c ON c.id = a.tool_invocation_id
+        INNER JOIN ai_agent_tool_invocation parent ON parent.tool_call_id = c.parent_tool_call_id
+        INNER JOIN ai_agent_dialogue_run pr ON pr.id = parent.run_id
+        WHERE a.deleted = 0
+          AND a.visibility = 'visible'
+          AND a.artifact_role = 'output'
+          AND c.deleted = 0
+          AND parent.deleted = 0
+          AND pr.deleted = 0
+          AND c.sub_agent_id IS NOT NULL
+          AND parent.run_id IN
+        <foreach collection="runIds" item="runId" open="(" separator="," close=")">
+            #{runId}
+        </foreach>
+          AND a.run_id NOT IN
+        <foreach collection="runIds" item="runId" open="(" separator="," close=")">
+            #{runId}
+        </foreach>
+        ORDER BY run_id, create_time ASC, id ASC
+    </select>
+
     <select id="queryBySessionId" resultMap="ArtifactRecordMap">
         SELECT a.*
         FROM ai_agent_artifact a
@@ -73,7 +144,32 @@
         WHERE r.session_id = #{sessionId}
           AND a.deleted = 0
           AND a.visibility = 'visible'
-        ORDER BY a.create_time ASC, a.id ASC
+        UNION
+        SELECT a.*
+        FROM ai_agent_artifact a
+        INNER JOIN ai_agent_tool_invocation c ON c.id = a.tool_invocation_id
+        INNER JOIN ai_agent_tool_invocation p ON p.tool_call_id = c.parent_tool_call_id
+        INNER JOIN ai_agent_dialogue_run pr ON pr.id = p.run_id
+        WHERE a.deleted = 0
+          AND a.visibility = 'visible'
+          AND c.deleted = 0
+          AND p.deleted = 0
+          AND pr.deleted = 0
+          AND c.sub_agent_id IS NOT NULL
+          AND pr.session_id = #{sessionId}
+        UNION
+        SELECT a.*
+        FROM ai_agent_artifact a
+        INNER JOIN ai_agent_dialogue_run r ON r.id = a.run_id
+        WHERE a.deleted = 0
+          AND a.visibility = 'visible'
+          AND r.session_id IN (
+              SELECT s.session_id
+              FROM ai_agent_dialogue_session s
+              WHERE s.parent_session_id = #{sessionId}
+                AND s.deleted = 0
+          )
+        ORDER BY create_time ASC, id ASC
     </select>
 
     <select id="queryByToolInvocationIds" resultMap="ArtifactRecordMap">

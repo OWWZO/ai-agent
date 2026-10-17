@@ -463,6 +463,38 @@ public class ReplayProjectorTest {
     }
 
     @Test
+    public void shouldProjectFoldedSubagentArtifactOnParentToolFrame() {
+        ToolInvocationView parentAgentInvocation = ToolInvocationView.builder()
+                .id(701L)
+                .toolCallId("call-parent-agent")
+                .toolName("Agent")
+                .llmObservation("子 Agent 已完成")
+                .build();
+        ArtifactView foldedArtifact = ArtifactView.builder()
+                .toolInvocationId(701L)
+                .toolCallId("call-child-write")
+                .artifactRole(ExecutionLedgerConstants.ARTIFACT_ROLE_OUTPUT)
+                .visibility(ExecutionLedgerConstants.VISIBILITY_VISIBLE)
+                .fileName("agent-report.html")
+                .storageKey("workspace/agent-report.html")
+                .downloadUrl("https://files.test/agent-report.html")
+                .previewUrl("https://files.test/agent-report.html")
+                .metadataJson("{\"relativePath\":\"async-html/agent-report.html\"}")
+                .build();
+
+        List<AgentStreamResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+                .toolInvocations(List.of(parentAgentInvocation))
+                .artifacts(List.of(foldedArtifact))
+                .build());
+
+        Assert.assertEquals(1, frames.size());
+        Assert.assertEquals(1, frameArtifactRefs(frames.get(0)).size());
+        Assert.assertEquals("agent-report.html", frameArtifactRefs(frames.get(0)).get(0).get("fileName"));
+        Assert.assertEquals("async-html/agent-report.html",
+                frameArtifactRefs(frames.get(0)).get(0).get("relativePath"));
+    }
+
+    @Test
     public void shouldShareTaskIdForParallelToolsWithoutProcessText() {
         LocalDateTime now = LocalDateTime.of(2026, 5, 2, 17, 10, 0);
         LlmInvocationView executor = LlmInvocationView.builder()

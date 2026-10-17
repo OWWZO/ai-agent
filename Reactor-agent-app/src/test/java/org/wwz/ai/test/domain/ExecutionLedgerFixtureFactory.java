@@ -979,6 +979,12 @@ public final class ExecutionLedgerFixtureFactory {
         }
 
         @Override
+        public List<ArtifactRecord> queryByRunIdWithSubagentFold(Long runId) {
+            store.queryArtifactsByRunIdCount++;
+            return foldArtifactsByRunIds(List.of(runId));
+        }
+
+        @Override
         public List<ArtifactRecord> queryByRunIds(List<Long> runIds) {
             store.queryArtifactsByRunIdsCount++;
             return store.artifacts.values().stream()
@@ -991,17 +997,108 @@ public final class ExecutionLedgerFixtureFactory {
         }
 
         @Override
+        public List<ArtifactRecord> queryByRunIdsWithSubagentFold(List<Long> runIds) {
+            store.queryArtifactsByRunIdsCount++;
+            return foldArtifactsByRunIds(runIds);
+        }
+
+        private List<ArtifactRecord> foldArtifactsByRunIds(List<Long> runIds) {
+            if (runIds == null || runIds.isEmpty()) {
+                return List.of();
+            }
+            List<ArtifactRecord> folded = new ArrayList<>();
+            for (ArtifactRecord artifact : store.artifacts.values()) {
+                if (artifact.getDeleted() != 0
+                        || !ExecutionLedgerConstants.VISIBILITY_VISIBLE.equals(artifact.getVisibility())) {
+                    continue;
+                }
+                if (runIds.contains(artifact.getRunId())) {
+                    folded.add(cloneArtifact(artifact));
+                    continue;
+                }
+                if (!ExecutionLedgerConstants.ARTIFACT_ROLE_OUTPUT.equals(artifact.getArtifactRole())
+                        || artifact.getToolInvocationId() == null) {
+                    continue;
+                }
+                ToolInvocation child = store.toolInvocations.get(artifact.getToolInvocationId());
+                if (child == null || child.getDeleted() != 0 || child.getSubAgentId() == null) {
+                    continue;
+                }
+                ToolInvocation parent = store.toolInvocations.values().stream()
+                        .filter(candidate -> candidate.getDeleted() == 0
+                                && equalsNullable(candidate.getToolCallId(), child.getParentToolCallId())
+                                && runIds.contains(candidate.getRunId()))
+                        .findFirst()
+                        .orElse(null);
+                if (parent == null) {
+                    continue;
+                }
+                DialogueRun parentRun = store.runs.get(parent.getRunId());
+                folded.add(foldArtifact(artifact, parent, parentRun));
+            }
+            return folded.stream()
+                    .sorted(Comparator.comparing(ArtifactRecord::getRunId)
+                            .thenComparing(ArtifactRecord::getCreateTime)
+                            .thenComparing(ArtifactRecord::getId))
+                    .toList();
+        }
+
+        @Override
         public List<ArtifactRecord> queryBySessionId(String sessionId) {
             store.queryArtifactsBySessionIdCount++;
-            return store.artifacts.values().stream()
-                    .filter(item -> item.getDeleted() == 0
-                            && ExecutionLedgerConstants.VISIBILITY_VISIBLE.equals(item.getVisibility())
-                            && store.runs.containsKey(item.getRunId())
-                            && sessionId.equals(store.runs.get(item.getRunId()).getSessionId()))
+            Map<Long, ArtifactRecord> visible = new LinkedHashMap<>();
+            for (ArtifactRecord artifact : store.artifacts.values()) {
+                if (artifact.getDeleted() != 0
+                        || !ExecutionLedgerConstants.VISIBILITY_VISIBLE.equals(artifact.getVisibility())) {
+                    continue;
+                }
+                DialogueRun artifactRun = store.runs.get(artifact.getRunId());
+                if (artifactRun != null && sessionId.equals(artifactRun.getSessionId())) {
+                    visible.put(artifact.getId(), cloneArtifact(artifact));
+                    continue;
+                }
+
+                ToolInvocation child = artifact.getToolInvocationId() == null
+                        ? null
+                        : store.toolInvocations.get(artifact.getToolInvocationId());
+                if (child != null && child.getDeleted() == 0 && child.getSubAgentId() != null) {
+                    boolean attachedToParentSession = store.toolInvocations.values().stream()
+                            .anyMatch(parent -> parent.getDeleted() == 0
+                                    && equalsNullable(parent.getToolCallId(), child.getParentToolCallId())
+                                    && store.runs.containsKey(parent.getRunId())
+                                    && sessionId.equals(store.runs.get(parent.getRunId()).getSessionId()));
+                    if (attachedToParentSession) {
+                        visible.put(artifact.getId(), cloneArtifact(artifact));
+                        continue;
+                    }
+                }
+
+                if (artifactRun != null) {
+                    DialogueSession childSession = store.sessions.values().stream()
+                            .filter(session -> session.getDeleted() == 0
+                                    && artifactRun.getSessionId().equals(session.getSessionId())
+                                    && sessionId.equals(session.getParentSessionId()))
+                            .findFirst()
+                            .orElse(null);
+                    if (childSession != null) {
+                        visible.put(artifact.getId(), cloneArtifact(artifact));
+                    }
+                }
+            }
+            return visible.values().stream()
                     .sorted(Comparator.comparing(ArtifactRecord::getCreateTime)
-                            .thenComparing(ArtifactRecord::getId))
-                    .map(ExecutionLedgerFixtureFactory::cloneArtifact)
+                    .thenComparing(ArtifactRecord::getId))
                     .toList();
+        }
+
+        private ArtifactRecord foldArtifact(ArtifactRecord artifact,
+                                            ToolInvocation parent,
+                                            DialogueRun parentRun) {
+            ArtifactRecord folded = cloneArtifact(artifact);
+            folded.setRunId(parent.getRunId());
+            folded.setRequestId(parentRun == null ? null : parentRun.getRequestId());
+            folded.setToolInvocationId(parent.getId());
+            return folded;
         }
 
         @Override
@@ -1178,6 +1275,10 @@ public final class ExecutionLedgerFixtureFactory {
                 .runId(invocation.getRunId())
                 .llmInvocationId(invocation.getLlmInvocationId())
                 .toolCallId(invocation.getToolCallId())
+                .parentToolCallId(invocation.getParentToolCallId())
+                .subAgentId(invocation.getSubAgentId())
+                .subAgentType(invocation.getSubAgentType())
+                .subAgentDescription(invocation.getSubAgentDescription())
                 .dispatchIndex(invocation.getDispatchIndex())
                 .agentName(invocation.getAgentName())
                 .stepNo(invocation.getStepNo())

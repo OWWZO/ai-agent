@@ -73,6 +73,11 @@ public class ExecutionLedgerReadRepository implements IExecutionLedgerReadReposi
     }
 
     @Override
+    public List<ArtifactRecord> queryArtifactsByRunIdWithSubagentFold(Long runId) {
+        return artifactLedgerDao.queryByRunIdWithSubagentFold(runId);
+    }
+
+    @Override
     public List<ToolInvocationView> queryRecentToolInvocations(String toolName, int limit) {
         // recent 查询直接返回投影所需视图，仓储不在这里拼装前端事件或改变账本事实。
         return toolInvocationLedgerDao.queryRecentByToolName(toolName, limit);
@@ -152,6 +157,11 @@ public class ExecutionLedgerReadRepository implements IExecutionLedgerReadReposi
     @Override
     public List<ArtifactRecord> queryArtifactsByRunIds(List<Long> runIds) {
         return artifactLedgerDao.queryByRunIds(runIds);
+    }
+
+    @Override
+    public List<ArtifactRecord> queryArtifactsByRunIdsWithSubagentFold(List<Long> runIds) {
+        return artifactLedgerDao.queryByRunIdsWithSubagentFold(runIds);
     }
 
     @Override

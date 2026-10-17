@@ -33,6 +33,11 @@ public interface IExecutionLedgerReadRepository {
 
     List<ArtifactRecord> queryArtifactsByRunId(Long runId);
 
+    /**
+     * 查询父 run 自身产物，并将跨 run 的子 Agent 产物按血缘重键到父 Agent 卡。
+     */
+    List<ArtifactRecord> queryArtifactsByRunIdWithSubagentFold(Long runId);
+
     List<ToolInvocationView> queryRecentToolInvocations(String toolName, int limit);
 
     List<DialogueRunView> queryRecentRunsBySessionId(String sessionId, int limit);
@@ -67,6 +72,11 @@ public interface IExecutionLedgerReadRepository {
     List<DialogueSessionView> queryRecentSessions(String userId, ConversationSessionCursor after, int limit);
 
     List<ArtifactRecord> queryArtifactsByRunIds(List<Long> runIds);
+
+    /**
+     * 批量查询父 runs 的产物，并将跨 run 的子 Agent 产物按血缘重键到父 Agent 卡。
+     */
+    List<ArtifactRecord> queryArtifactsByRunIdsWithSubagentFold(List<Long> runIds);
 
     List<ArtifactRecord> queryArtifactsBySessionId(String sessionId);
 }

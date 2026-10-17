@@ -16,7 +16,17 @@ public interface IArtifactLedgerDao {
 
     List<ArtifactRecord> queryByRunId(@Param("runId") Long runId);
 
+    /**
+     * 子 Agent 产物按血缘重键到父 Agent 卡 invocation 的单 run 查询。
+     */
+    List<ArtifactRecord> queryByRunIdWithSubagentFold(@Param("runId") Long runId);
+
     List<ArtifactRecord> queryByRunIds(@Param("runIds") List<Long> runIds);
+
+    /**
+     * 子 Agent 产物按血缘重键到父 Agent 卡 invocation 的批量查询。
+     */
+    List<ArtifactRecord> queryByRunIdsWithSubagentFold(@Param("runIds") List<Long> runIds);
 
     List<ArtifactRecord> queryBySessionId(@Param("sessionId") String sessionId);
 

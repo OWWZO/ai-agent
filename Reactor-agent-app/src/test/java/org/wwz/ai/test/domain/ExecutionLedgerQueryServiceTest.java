@@ -394,6 +394,211 @@ public class ExecutionLedgerQueryServiceTest {
         Assert.assertEquals(0, ctx.store.readToolOutputByInvocationIdsCount);
     }
 
+    @Test
+    public void shouldExposeVisibleSubagentArtifactsThroughParentSessionLineage() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        SubagentLedgerFixture fixture = seedSubagentArtifact(ctx, true);
+        ctx.store.sessions.values().removeIf(session -> fixture.childSessionId.equals(session.getSessionId()));
+
+        ctx.recorder.recordArtifacts(List.of(
+                ArtifactRecordCommand.builder()
+                        .runId(fixture.childRunId)
+                        .requestId(fixture.childRequestId)
+                        .toolInvocationId(fixture.childToolInvocationId)
+                        .toolCallId("call-child-internal")
+                        .artifactRole(ExecutionLedgerConstants.ARTIFACT_ROLE_OUTPUT)
+                        .visibility(ExecutionLedgerConstants.VISIBILITY_INTERNAL)
+                        .sourceType(ExecutionLedgerConstants.SOURCE_TYPE_TOOL_OUTPUT)
+                        .fileName("internal.md")
+                        .storageKey("workspace/internal.md")
+                        .build()
+        ));
+
+        List<ArtifactView> artifacts = ctx.queryService.querySessionArtifacts(fixture.parentSessionId);
+
+        Assert.assertEquals(1, artifacts.size());
+        Assert.assertTrue(artifacts.get(0).getMetadataJson().contains("async-html/agent-report.html"));
+        Assert.assertEquals("agent-report.html", artifacts.get(0).getFileName());
+    }
+
+    @Test
+    public void shouldExposeChildSessionArtifactsWhenToolCallLineageIsUnavailable() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        SubagentLedgerFixture fixture = seedSubagentArtifact(ctx, true);
+        ctx.store.toolInvocations.get(fixture.childToolInvocationId).setParentToolCallId(null);
+
+        List<ArtifactView> artifacts = ctx.queryService.querySessionArtifacts(fixture.parentSessionId);
+
+        Assert.assertEquals(1, artifacts.size());
+        Assert.assertEquals("agent-report.html", artifacts.get(0).getFileName());
+    }
+
+    @Test
+    public void shouldFoldCrossRunSubagentArtifactToParentInvocationForSingleAndBatchReplay() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        SubagentLedgerFixture fixture = seedSubagentArtifact(ctx, true);
+
+        ExecutionRunDetail single = ctx.queryService.queryRunDetail(fixture.parentRequestId);
+        Assert.assertEquals(1, single.getArtifacts().size());
+        Assert.assertEquals(fixture.parentRunId, single.getArtifacts().get(0).getRunId());
+        Assert.assertEquals(fixture.parentRequestId, single.getArtifacts().get(0).getRequestId());
+        Assert.assertEquals(fixture.parentToolInvocationId, single.getArtifacts().get(0).getToolInvocationId());
+
+        var parentRun = ctx.queryService.querySessionRuns(fixture.parentSessionId, 0, 20).get(0);
+        ExecutionRunDetail batch = ctx.queryService.queryRunDetails(List.of(parentRun)).get(0);
+        Assert.assertEquals(1, batch.getArtifacts().size());
+        Assert.assertEquals(fixture.parentRunId, batch.getArtifacts().get(0).getRunId());
+        Assert.assertEquals(fixture.parentToolInvocationId, batch.getArtifacts().get(0).getToolInvocationId());
+    }
+
+    @Test
+    public void shouldNotDuplicateSameRunSubagentArtifactDuringFold() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        SubagentLedgerFixture fixture = seedSubagentArtifact(ctx, false);
+
+        ExecutionRunDetail detail = ctx.queryService.queryRunDetail(fixture.parentRequestId);
+
+        Assert.assertEquals(1, detail.getArtifacts().size());
+        Assert.assertEquals(1, detail.getToolInvocations().stream()
+                .filter(tool -> fixture.childToolInvocationId.equals(tool.getId()))
+                .findFirst()
+                .orElseThrow()
+                .getArtifactCount()
+                .intValue());
+    }
+
+    private SubagentLedgerFixture seedSubagentArtifact(
+            ExecutionLedgerFixtureFactory.LedgerTestContext ctx,
+            boolean separateRun
+    ) {
+        LocalDateTime now = LocalDateTime.now();
+        String parentSessionId = "session-subagent-lineage";
+        String parentRequestId = "req-subagent-lineage";
+        Long parentRunId = ctx.recorder.createRun(DialogueRunStartRecord.builder()
+                .runUid(parentRequestId)
+                .requestId(parentRequestId)
+                .sessionId(parentSessionId)
+                .userId("user-lineage")
+                .entryAgent(ExecutionLedgerConstants.ENTRY_AGENT_REACT)
+                .queryText("生成子 Agent 文件")
+                .startedAt(now)
+                .build());
+        Long parentToolInvocationId = ctx.recorder.createToolInvocations(ToolInvocationBatchStartRecord.builder()
+                .runId(parentRunId)
+                .requestId(parentRequestId)
+                .llmInvocationId(9001L)
+                .agentName("react")
+                .stepNo(1)
+                .items(List.of(ToolInvocationBatchStartRecord.Item.builder()
+                        .toolCallId("call-parent")
+                        .dispatchIndex(1)
+                        .toolName("Agent")
+                        .toolProvider(ExecutionLedgerConstants.TOOL_PROVIDER_LOCAL)
+                        .inputJson("{}")
+                        .startedAt(now)
+                        .build()))
+                .build())
+                .get("call-parent");
+
+        String childSessionId = "sub_agent-lineage";
+        String childRequestId = "sub:agent-lineage:request";
+        Long childRunId = separateRun
+                ? ctx.recorder.createRun(DialogueRunStartRecord.builder()
+                .runUid(childRequestId)
+                .requestId(childRequestId)
+                .sessionId(childSessionId)
+                .userId("user-lineage")
+                .entryAgent(ExecutionLedgerConstants.ENTRY_AGENT_SUBAGENT)
+                .queryText("子 Agent 生成文件")
+                .startedAt(now.plusSeconds(1))
+                .build())
+                : parentRunId;
+        if (separateRun) {
+            ctx.store.sessions.values().stream()
+                    .filter(session -> childSessionId.equals(session.getSessionId()))
+                    .findFirst()
+                    .orElseThrow()
+                    .setParentSessionId(parentSessionId);
+        }
+
+        Long childToolInvocationId = ctx.recorder.createToolInvocations(ToolInvocationBatchStartRecord.builder()
+                .runId(childRunId)
+                .requestId(separateRun ? childRequestId : parentRequestId)
+                .llmInvocationId(9002L)
+                .agentName("subagent:research")
+                .stepNo(1)
+                .items(List.of(ToolInvocationBatchStartRecord.Item.builder()
+                        .toolCallId("call-child")
+                        .parentToolCallId("call-parent")
+                        .subAgentId("agent-lineage")
+                        .subAgentType("research")
+                        .dispatchIndex(1)
+                        .toolName("workspace_write")
+                        .toolProvider(ExecutionLedgerConstants.TOOL_PROVIDER_LOCAL)
+                        .inputJson("{}")
+                        .startedAt(now.plusSeconds(2))
+                        .build()))
+                .build())
+                .get("call-child");
+
+        ctx.recorder.recordArtifacts(List.of(
+                ArtifactRecordCommand.builder()
+                        .runId(childRunId)
+                        .requestId(separateRun ? childRequestId : parentRequestId)
+                        .toolInvocationId(childToolInvocationId)
+                        .toolCallId("call-child")
+                        .artifactRole(ExecutionLedgerConstants.ARTIFACT_ROLE_OUTPUT)
+                        .visibility(ExecutionLedgerConstants.VISIBILITY_VISIBLE)
+                        .sourceType(ExecutionLedgerConstants.SOURCE_TYPE_TOOL_OUTPUT)
+                        .sourceName("workspace_write")
+                        .fileName("agent-report.html")
+                        .storageKey("workspace/agent-report.html")
+                        .downloadUrl("https://files.test/agent-report.html")
+                        .previewUrl("https://files.test/agent-report.html")
+                        .metadataJson("{\"relativePath\":\"async-html/agent-report.html\"}")
+                        .build()
+        ));
+        return new SubagentLedgerFixture(
+                parentSessionId,
+                parentRequestId,
+                childSessionId,
+                childRequestId,
+                parentRunId,
+                childRunId,
+                parentToolInvocationId,
+                childToolInvocationId
+        );
+    }
+
+    private static final class SubagentLedgerFixture {
+        private final String parentSessionId;
+        private final String parentRequestId;
+        private final String childSessionId;
+        private final String childRequestId;
+        private final Long parentRunId;
+        private final Long childRunId;
+        private final Long parentToolInvocationId;
+        private final Long childToolInvocationId;
+
+        private SubagentLedgerFixture(String parentSessionId,
+                                      String parentRequestId,
+                                      String childSessionId,
+                                      String childRequestId,
+                                      Long parentRunId,
+                                      Long childRunId,
+                                      Long parentToolInvocationId,
+                                      Long childToolInvocationId) {
+            this.parentSessionId = parentSessionId;
+            this.parentRequestId = parentRequestId;
+            this.childSessionId = childSessionId;
+            this.childRequestId = childRequestId;
+            this.parentRunId = parentRunId;
+            this.childRunId = childRunId;
+            this.parentToolInvocationId = parentToolInvocationId;
+            this.childToolInvocationId = childToolInvocationId;
+        }
+    }
+
     private void seedRun(ExecutionLedgerFixtureFactory.LedgerTestContext ctx,
                          String requestId,
                          String sessionId,

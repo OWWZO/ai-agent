@@ -50,7 +50,7 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
         }
         List<LlmInvocation> llmInvocations = executionLedgerReadRepository.queryLlmInvocationsByRunId(run.getId());
         List<ToolInvocation> toolInvocations = executionLedgerReadRepository.queryToolInvocationsByRunId(run.getId());
-        List<ArtifactRecord> artifacts = executionLedgerReadRepository.queryArtifactsByRunId(run.getId());
+        List<ArtifactRecord> artifacts = executionLedgerReadRepository.queryArtifactsByRunIdWithSubagentFold(run.getId());
         List<ToolInvocationView> toolViews = toToolViews(
                 toolInvocations,
                 run.getRequestId(),
@@ -335,7 +335,8 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
         // 批量按 run 查询 artifact，避免会话列表产生 N+1；没有 id 的视图保持原样。
         // 会话摘要列表只需要轻量文件概览，这里统一补到 run 视图上，
         // 避免 controller / UI 再额外扫 artifact 表做第二次拼装。
-        Map<Long, List<ArtifactView>> artifactViewsByRunId = executionLedgerReadRepository.queryArtifactsByRunIds(runIds).stream()
+        Map<Long, List<ArtifactView>> artifactViewsByRunId = executionLedgerReadRepository
+                .queryArtifactsByRunIdsWithSubagentFold(runIds).stream()
                 .collect(Collectors.groupingBy(
                         ArtifactRecord::getRunId,
                         LinkedHashMap::new,
@@ -574,7 +575,7 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
                     .filter(artifact -> artifact != null)
                     .toList();
         } else {
-            artifacts = toArtifactViews(executionLedgerReadRepository.queryArtifactsByRunIds(runIds));
+            artifacts = toArtifactViews(executionLedgerReadRepository.queryArtifactsByRunIdsWithSubagentFold(runIds));
         }
         return artifacts.stream()
                 .filter(artifact -> artifact.getRunId() != null)
