@@ -45,7 +45,8 @@ public class CodeModeTool implements BaseTool {
                 + "source 与 workspaceFile 二选一：source 直接传源码，workspaceFile 执行会话 workspace 内已存在的 .js 脚本（只允许 scripts/ 与 jobs/）。"
                 + "脚本内不能 require / import，不能访问 Java 类、文件系统和进程；"
                 + "浏览器和 CLI 只能经由 browser.command / host.exec 调用，host 只接受白名单 CLI 的 argv。"
-                + "适合需要循环、条件、中间聚合或多文件读写的任务；单步操作请直接用对应工具。";
+                + "已有的 Bash 工具是用来操作云端沙箱的，这个工具是用 JavaScript 来替代 本地Bash 的执行能力，所以本地Bash怎么调用这些CLI，JavaScript就怎么写。"
+                ;
     }
 
     @Override
