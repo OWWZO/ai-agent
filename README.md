@@ -514,6 +514,21 @@ Agent 浏览器使用 Kernel 云端服务。在 Backend 环境中设置 `KERNEL_
 
 启用前，需要在该 API key 所属的 Kernel project 中预置名为 `agent` 的 Profile。服务不会自动创建 Profile；每个用户仍会创建独立的 `rb-<owner-hash>` browser，但新建或重建时统一加载 `agent`，并固定使用 `save_changes: false`。如果需要把登录态写入模板，先用一次性 browser 以 `save_changes: true` 初始化并完成登录，随后删除该 browser 或等待其超时以保存 Profile；正式服务不能使用写入模式。上线时请通过现有 reset/delete 逻辑清理旧 browser 后再让用户重建，不能只删除数据库映射，否则可能留下 Kernel 侧的孤立资源。
 
+#### CLI 文件产物物化（host_cli / browser / agent_browser 共用）
+
+三条 CLI 工具路径产生的文件（exit code 非零时的部分产物也会登记）统一走同一条交付链路：Java 侧校验文件落在 workspace 内、向文件服务登记拿到 `downloadUrl`/`previewUrl`、绑定到当前 `toolCallId`、写入 Execution Ledger 的 `ai_agent_artifact`，再由前端文件卡片下载。产物元数据只含 workspace 相对路径、文件名、大小、MIME 和文件服务 URL，不返回宿主机绝对路径，也不含 relay 地址、visitor id、Cookie 或 CDP URL。
+
+物化优先级：CLI stdout JSON 明确报告的 `artifacts` 候选 > 命令 `--output` 声明的输出目录 > 同一 workspace 的前后快照（仅 `host_cli`）。浏览器链路只做前两种，因为并发调用共享同一个 workspace，全量 diff 会把别人的文件登记到自己名下。
+
+本地文件如何进入文件服务由 `REACTOR_FILE_ARTIFACT_LOCAL_FILE_MODE` 决定（对应 `reactor.file-artifact.local-file-mode`）：
+
+| 值 | 行为 | 适用部署 |
+| --- | --- | --- |
+| `register`（默认） | 只登记元数据，零拷贝 | Backend 与文件服务共享 workspace 目录。Docker Compose 即此模式：`reactor-data` 卷同时挂给 Backend 与 `reactor-tool`，`WORKSPACE_ROOT=/data/skilloutput` 与 `FILE_SAVE_PATH=/data/skilloutput` 一致 |
+| `upload` | multipart 流式上传二进制 | Backend 与文件服务**不**共享目录。单文件上限 200MB，文件名清洗为 basename |
+
+仅当 Backend 与文件服务不在同一台机器、或没有共享卷时才改成 `upload`；共享卷下改成 `upload` 会白白多传一遍文件内容。
+
 ### 5. 启动 React 工作台
 
 ```bash

@@ -112,6 +112,9 @@ services:
       SKILL_DIR: /app/runtime/skills
       REACTOR_OPENCLI_COMMAND: node
       REACTOR_OPENCLI_MAIN: /opt/opencli/dist/src/main.js
+      # backend 与 reactor-tool 共享 reactor-data 卷（/data/skilloutput），
+      # 文件产物走零拷贝 register；若改成不共享目录的部署，改成 upload。
+      REACTOR_FILE_ARTIFACT_LOCAL_FILE_MODE: ${REACTOR_FILE_ARTIFACT_LOCAL_FILE_MODE:-register}
       ADAPTER_HOST_SECRET: ${ADAPTER_HOST_SECRET:?ADAPTER_HOST_SECRET is required}
       KERNEL_API_KEY: ${KERNEL_API_KEY:-}
     volumes:

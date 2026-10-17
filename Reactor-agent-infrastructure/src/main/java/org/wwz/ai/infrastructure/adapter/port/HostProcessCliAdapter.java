@@ -84,16 +84,18 @@ public class HostProcessCliAdapter implements CliExecutionPort {
             int exit = timedOut ? -1 : process.exitValue();
             long duration = System.currentTimeMillis() - started;
             boolean truncated = stdout.truncated || stderr.truncated;
+            String stdoutText = stdout.text();
             return CliResult.builder()
                     .ok(!timedOut && exit == 0)
                     .tool(invocation.getTool())
                     .exitCode(exit)
-                    .stdout(stdout.text())
+                    .stdout(stdoutText)
                     .stderr(stderr.text())
                     .durationMs(duration)
                     .timedOut(timedOut)
                     .truncated(truncated)
-                    .artifacts(List.of())
+                    // CLI 明确报告的产物候选优先于 workspace 前后快照；超时/失败时已有文件仍要上报。
+                    .artifacts(CliArtifactCandidateParser.parse(stdoutText))
                     .build();
         } catch (Exception e) {
             if (process != null && process.isAlive()) {

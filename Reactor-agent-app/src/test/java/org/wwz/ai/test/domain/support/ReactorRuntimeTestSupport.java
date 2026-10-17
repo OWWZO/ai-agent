@@ -32,6 +32,16 @@ public final class ReactorRuntimeTestSupport {
     private ReactorRuntimeTestSupport() {
     }
 
+    /**
+     * 构造带文件服务地址的过渡态配置。
+     * {@code codeInterpreterUrl} 只有 {@code @Value} 注入，没有 setter，测试用反射补齐。
+     */
+    public static ReactorConfig reactorConfigWithFileService(String codeInterpreterUrl) {
+        ReactorConfig reactorConfig = new ReactorConfig();
+        ReflectionTestUtils.setField(reactorConfig, "codeInterpreterUrl", codeInterpreterUrl);
+        return reactorConfig;
+    }
+
     public static ReactorRuntimeDependencies runtimeDependencies(ReactorConfig reactorConfig) {
         return runtimeDependencies(reactorConfig, null, new MockEnvironment(), null);
     }

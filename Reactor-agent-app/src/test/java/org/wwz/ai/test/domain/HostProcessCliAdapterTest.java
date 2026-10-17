@@ -66,6 +66,67 @@ public class HostProcessCliAdapterTest {
     }
 
     @Test
+    public void shouldParseReportedArtifactCandidates() {
+        List<org.wwz.ai.domain.agent.adapter.port.cli.CliArtifact> artifacts =
+                org.wwz.ai.infrastructure.adapter.port.CliArtifactCandidateParser.parse(
+                        "{\"status\":\"ok\",\"artifacts\":["
+                                + "{\"relativePath\":\"xhs/note-1_1.jpg\",\"size\":183421,\"mime\":\"IMAGE/JPEG\"},"
+                                // 绝对路径和 .. 逃逸在协议层直接丢弃
+                                + "{\"path\":\"/etc/passwd\"},"
+                                + "{\"path\":\"../escape.txt\"}]}");
+        Assert.assertEquals(1, artifacts.size());
+        Assert.assertEquals("xhs/note-1_1.jpg", artifacts.get(0).getPath());
+        Assert.assertEquals(Long.valueOf(183421L), artifacts.get(0).getSize());
+        Assert.assertEquals("image/jpeg", artifacts.get(0).getMime());
+    }
+
+    @Test
+    public void shouldIgnoreStdoutWithoutArtifactCandidates() {
+        Assert.assertTrue(org.wwz.ai.infrastructure.adapter.port.CliArtifactCandidateParser
+                .parse("hello-cli").isEmpty());
+        Assert.assertTrue(org.wwz.ai.infrastructure.adapter.port.CliArtifactCandidateParser
+                .parse("{\"status\":\"ok\"}").isEmpty());
+        Assert.assertTrue(org.wwz.ai.infrastructure.adapter.port.CliArtifactCandidateParser
+                .parse(null).isEmpty());
+    }
+
+    @Test
+    public void shouldParseArtifactEnvelopeInsideJsonArrayAfterLogs() {
+        List<org.wwz.ai.domain.agent.adapter.port.cli.CliArtifact> artifacts =
+                org.wwz.ai.infrastructure.adapter.port.CliArtifactCandidateParser.parse(
+                        "adapter log\n[{\"index\":1,\"status\":\"success\"},"
+                                + "{\"artifacts\":[{\"path\":\"downloads\\\\photo..jpg\",\"size\":7}]}]");
+
+        Assert.assertEquals(1, artifacts.size());
+        Assert.assertEquals("downloads/photo..jpg", artifacts.get(0).getPath());
+        Assert.assertEquals(Long.valueOf(7L), artifacts.get(0).getSize());
+    }
+
+    @Test
+    public void shouldRejectWindowsAndUncCandidatePaths() {
+        Assert.assertTrue(org.wwz.ai.infrastructure.adapter.port.CliArtifactCandidateParser
+                .parse("{\"artifacts\":[{\"path\":\"C:\\\\tmp\\\\file.jpg\"}]}").isEmpty());
+        Assert.assertTrue(org.wwz.ai.infrastructure.adapter.port.CliArtifactCandidateParser
+                .parse("{\"artifacts\":[{\"path\":\"\\\\\\\\server\\\\share\\\\file.jpg\"}]}").isEmpty());
+    }
+
+    @Test
+    public void shouldReadArtifactCandidatesFromCliStdout() {
+        HostProcessCliAdapter adapter = new HostProcessCliAdapter();
+        CliResult result = adapter.exec(CliInvocation.builder()
+                .tool("node")
+                .args(List.of("-e",
+                        "process.stdout.write(JSON.stringify({artifacts:[{relativePath:'xhs/a.jpg',size:3}]}))"))
+                .timeoutMs(10_000)
+                .maxOutputChars(4_000)
+                .capture("both")
+                .build());
+        Assert.assertTrue(result.isOk());
+        Assert.assertEquals(1, result.getArtifacts().size());
+        Assert.assertEquals("xhs/a.jpg", result.getArtifacts().get(0).getPath());
+    }
+
+    @Test
     public void shouldUnsetParentSecretsBeforeChildStart() {
         HostProcessCliAdapter adapter = new HostProcessCliAdapter();
         java.util.HashMap<String, String> environment = new java.util.HashMap<>();

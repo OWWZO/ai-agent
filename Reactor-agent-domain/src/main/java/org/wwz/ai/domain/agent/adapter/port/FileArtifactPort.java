@@ -18,8 +18,22 @@ public interface FileArtifactPort {
 
     /**
      * 登记本地已有文件（不传 content），返回预览/下载 URL。
+     * 只在 Java 后端与文件服务共享同一份 workspace 路径时成立。
      */
     FileResponse register(String serviceBaseUrl, FileRequest request) throws IOException;
+
+    /**
+     * 以 multipart 流式上传本地文件二进制内容，返回与 {@link #register} 同形的响应。
+     * 用于 Java 后端与文件服务不共享文件系统的部署。
+     */
+    FileResponse uploadLocalFile(String serviceBaseUrl, FileRequest request) throws IOException;
+
+    /**
+     * 物化本地文件的统一入口：共享卷部署走 {@link #register} 零拷贝，
+     * 非共享部署由适配器改为 {@link #uploadLocalFile}。工具层只需调用本方法，
+     * 不感知部署拓扑。
+     */
+    FileResponse materializeLocalFile(String serviceBaseUrl, FileRequest request) throws IOException;
 
     /**
      * 按文件名获取远端文件信息。

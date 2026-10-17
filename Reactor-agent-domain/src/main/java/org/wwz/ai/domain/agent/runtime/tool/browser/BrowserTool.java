@@ -12,6 +12,14 @@ import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
+import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
+import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactCaptureCoordinator;
+import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactCaptureLease;
+import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactCapturePlan;
+import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactFailure;
+import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactMaterialization;
+import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactMaterializeCommand;
+import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactMaterializer;
 import org.wwz.ai.domain.agent.runtime.tool.cli.OpenCliArgv;
 import org.wwz.ai.types.agent.config.OpenCliProperties;
 
@@ -20,6 +28,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 @Setter
@@ -45,7 +54,7 @@ public class BrowserTool implements BaseTool {
         properties.put("args", Map.of(
                 "type", "array",
                 "items", Map.of("type", "string"),
-                "description", "CLI argv 参数数组。先用 list 查看可用命令，再用 <site> --help 或 <site> <command> --help 查询参数；每项命令行参数分别传入。"
+                "description", "CLI argv 参数数组。先用 list 查看可用命令，再用 <site> --help 或 <site> <command> --help 查询参数；下载命令必须传入当前任务专属的 --output 目录，并行下载使用不同目录；每项命令行参数分别传入。"
         ));
         properties.put("timeout_ms", Map.of(
                 "type", "integer",
@@ -90,6 +99,7 @@ public class BrowserTool implements BaseTool {
         CliResult result = execution.result;
         List<String> rewritten = execution.rewritten;
         Map<String, Object> fields = toFields(result);
+        appendArtifacts(fields, execution.materialization);
         publishViewport(result.getStdout(), fields);
         boolean sensitive = OpenCliArgv.isSensitive(rewritten);
         if (sensitive) {
@@ -98,6 +108,15 @@ public class BrowserTool implements BaseTool {
             redacted.put("exit_code", result.getExitCode());
             redacted.put("stdout_chars", result.getStdout() == null ? 0 : result.getStdout().length());
             redacted.put("timed_out", result.isTimedOut());
+            // 敏感命令也保留文件产物引用：URL 由文件服务生成，不含 Cookie 或 relay 信息。
+            Object artifacts = fields.get("artifacts");
+            if (artifacts != null) {
+                redacted.put("artifacts", artifacts);
+            }
+            Object failures = fields.get("artifact_failures");
+            if (failures != null) {
+                redacted.put("artifact_failures", failures);
+            }
             return ToolResultPayload.builder()
                     .toolResult(JSON.toJSONString(redacted))
                     .llmObservation(JSON.toJSONString(fields))
@@ -138,6 +157,17 @@ public class BrowserTool implements BaseTool {
             }
         }
         processArgs.addAll(rewritten);
+        ToolArtifactSource source = agentContext.getCurrentToolArtifactSource();
+        CliArtifactCapturePlan capturePlan = CliArtifactCaptureCoordinator.plan(
+                TOOL_NAME,
+                args,
+                processArgs,
+                agentContext.getWorkspaceRoot(),
+                source == null ? null : source.getToolCallId(),
+                agentContext.getRequestId());
+        if (!capturePlan.isValid()) {
+            return Execution.failed(captureFailure(capturePlan), rewritten, CliArtifactMaterialization.empty());
+        }
         Map<String, String> env = new LinkedHashMap<>();
         env.put("OPENCLI_RELAY_URL", resolveRelayUrl(properties, deps));
         env.put("OPENCLI_RELAY_VISITOR_ID", userId);
@@ -146,16 +176,37 @@ public class BrowserTool implements BaseTool {
             env.put("OPENCLI_RELAY_SECRET", secret);
         }
         env.put("OPENCLI_CACHE_DIR", resolveCacheDir(properties, userId));
-        CliResult result = cli.exec(CliInvocation.builder()
-                .tool(properties.getCommand())
-                .args(processArgs)
-                .cwd(agentContext.getWorkspaceRoot())
-                .env(env)
-                .timeoutMs(remaining)
-                .capture("both")
-                .maxOutputChars(properties.getMaxOutputChars())
-                .build());
-        return Execution.completed(result, rewritten);
+        try (CliArtifactCaptureLease lease = CliArtifactCaptureCoordinator.acquire(capturePlan)) {
+            Set<String> baseline = capturePlan.requiresCaptureLease()
+                    ? CliArtifactMaterializer.snapshotWorkspace(lease.getCaptureRootAbsolute())
+                    : null;
+            CliResult result;
+            try {
+                result = cli.exec(CliInvocation.builder()
+                        .tool(properties.getCommand())
+                        .args(capturePlan.getRewrittenArgs())
+                        .cwd(agentContext.getWorkspaceRoot())
+                        .env(env)
+                        .timeoutMs(remaining)
+                        .capture("both")
+                        .maxOutputChars(properties.getMaxOutputChars())
+                        .build());
+            } catch (RuntimeException e) {
+                CliArtifactMaterialization materialization = materialize(capturePlan, baseline, List.of());
+                return Execution.failed(cliFailure(materialization), rewritten, materialization);
+            }
+            if (result == null) {
+                CliArtifactMaterialization materialization = materialize(capturePlan, baseline, List.of());
+                return Execution.failed(cliFailure(materialization), rewritten, materialization);
+            }
+            CliArtifactMaterialization materialization = materialize(
+                    capturePlan, baseline, result.getArtifacts());
+            return Execution.completed(result, rewritten, materialization);
+        } catch (CliArtifactCaptureCoordinator.CliArtifactCaptureException e) {
+            return Execution.failed(ToolResultPayload.failure(
+                    "artifact capture 失败", "artifact capture 失败", null, e.getCode()),
+                    rewritten, CliArtifactMaterialization.empty());
+        }
     }
 
     private static ToolResultPayload browserTimeout() {
@@ -171,19 +222,32 @@ public class BrowserTool implements BaseTool {
         private final ToolResultPayload failure;
         private final CliResult result;
         private final List<String> rewritten;
+        private final CliArtifactMaterialization materialization;
 
-        private Execution(ToolResultPayload failure, CliResult result, List<String> rewritten) {
+        private Execution(ToolResultPayload failure,
+                          CliResult result,
+                          List<String> rewritten,
+                          CliArtifactMaterialization materialization) {
             this.failure = failure;
             this.result = result;
             this.rewritten = rewritten;
+            this.materialization = materialization;
         }
 
         private static Execution failed(ToolResultPayload failure) {
-            return new Execution(failure, null, List.of());
+            return failed(failure, List.of(), CliArtifactMaterialization.empty());
         }
 
-        private static Execution completed(CliResult result, List<String> rewritten) {
-            return new Execution(null, result, rewritten);
+        private static Execution failed(ToolResultPayload failure,
+                                        List<String> rewritten,
+                                        CliArtifactMaterialization materialization) {
+            return new Execution(failure, null, rewritten, materialization);
+        }
+
+        private static Execution completed(CliResult result,
+                                           List<String> rewritten,
+                                           CliArtifactMaterialization materialization) {
+            return new Execution(null, result, rewritten, materialization);
         }
     }
 
@@ -207,6 +271,67 @@ public class BrowserTool implements BaseTool {
             fields.remove("imageBase64");
             fields.put("message", "Viewport attached as image media; inspect the screenshot, do not fetch artifactRef.");
         }
+    }
+
+    private static void appendArtifacts(Map<String, Object> fields, CliArtifactMaterialization materialization) {
+        if (materialization == null) {
+            return;
+        }
+        if (!materialization.getArtifacts().isEmpty()) {
+            fields.put("artifacts", materialization.artifactMaps());
+        }
+        if (!materialization.getFailures().isEmpty()) {
+            fields.put("artifact_failures", materialization.failureMaps());
+        }
+    }
+
+    private CliArtifactMaterialization materialize(CliArtifactCapturePlan plan,
+                                                   Set<String> baseline,
+                                                   List<org.wwz.ai.domain.agent.adapter.port.cli.CliArtifact> reported) {
+        try {
+            return CliArtifactMaterializer.materialize(CliArtifactMaterializeCommand.builder()
+                    .agentContext(agentContext)
+                    .workspaceRoot(agentContext.getWorkspaceRoot())
+                    .reportedArtifacts(reported)
+                    .commandLabel("browser 执行产物")
+                    .baselineFiles(baseline)
+                    .outputRoot(plan.getCaptureRoot())
+                    .captureRoot(plan.getCaptureRoot())
+                    .captureRootAbsolute(plan.getCaptureRootAbsolute())
+                    .build());
+        } catch (RuntimeException e) {
+            return CliArtifactMaterialization.builder()
+                    .artifacts(List.of())
+                    .failures(List.of(CliArtifactFailure.builder()
+                            .reason(CliArtifactFailure.CAPTURE_SCAN_FAILED)
+                            .message("capture root 扫描失败")
+                            .build()))
+                    .build();
+        }
+    }
+
+    private static ToolResultPayload captureFailure(CliArtifactCapturePlan plan) {
+        CliArtifactCaptureCoordinator.ToolCaptureFailure failure =
+                CliArtifactCaptureCoordinator.failure(plan);
+        return ToolResultPayload.failureFrom(failure.code(), Map.of("message", failure.message()));
+    }
+
+    private static ToolResultPayload cliFailure(CliArtifactMaterialization materialization) {
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("error", "opencli 执行失败");
+        if (materialization != null && !materialization.getArtifacts().isEmpty()) {
+            detail.put("artifacts", materialization.artifactMaps());
+        }
+        if (materialization != null && !materialization.getFailures().isEmpty()) {
+            detail.put("artifact_failures", materialization.failureMaps());
+        }
+        return ToolResultPayload.builder()
+                .toolResult("opencli 执行失败")
+                .llmObservation(JSON.toJSONString(detail))
+                .llmData(detail)
+                .failed(Boolean.TRUE)
+                .errorMsg("opencli_execution_failed")
+                .build();
     }
 
     private static Map<String, Object> extractViewport(String stdout) {

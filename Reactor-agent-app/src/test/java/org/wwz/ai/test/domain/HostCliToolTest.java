@@ -4,16 +4,25 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
+import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliInvocation;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliResult;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
+import org.wwz.ai.domain.agent.runtime.dto.FileRequest;
+import org.wwz.ai.domain.agent.runtime.dto.FileResponse;
+import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.cli.HostCliTool;
 import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
 import org.wwz.ai.types.agent.config.HostCliProperties;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -105,6 +114,145 @@ public class HostCliToolTest {
         Assert.assertTrue(invocationCaptor.getValue().getUnsetEnv().contains("https_proxy"));
     }
 
+    @Test
+    public void shouldRegisterFilesProducedByCli() throws IOException {
+        Path workspace = Files.createTempDirectory("host-cli-ws");
+        try {
+            FileArtifactPort fileArtifactPort = fakeFileArtifactPort();
+            CliExecutionPort cli = Mockito.mock(CliExecutionPort.class);
+            Mockito.when(cli.isResolvable("git")).thenReturn(true);
+            Mockito.when(cli.exec(Mockito.any())).thenAnswer(invocation -> {
+                Files.write(workspace.resolve("report.csv"), "a,b\n".getBytes(StandardCharsets.UTF_8));
+                return CliResult.builder()
+                        .ok(true)
+                        .tool("git")
+                        .exitCode(0)
+                        .stdout("ok")
+                        .stderr("")
+                        .durationMs(3)
+                        .artifacts(List.of())
+                        .build();
+            });
+            Printer printer = Mockito.mock(Printer.class);
+            HostCliTool tool = new HostCliTool(List.of("git"));
+            AgentContext context = artifactContext(cli, fileArtifactPort, printer, workspace);
+            tool.setAgentContext(context);
+
+            ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of(
+                    "tool", "git",
+                    "args", List.of("status")
+            ));
+
+            Assert.assertFalse(Boolean.TRUE.equals(payload.getFailed()));
+            @SuppressWarnings("unchecked")
+            Map<String, Object> data = (Map<String, Object>) payload.getLlmData();
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> artifacts = (List<Map<String, Object>>) data.get("artifacts");
+            Assert.assertNotNull(artifacts);
+            Assert.assertEquals(1, artifacts.size());
+            Assert.assertEquals("report.csv", artifacts.get(0).get("relativePath"));
+            Assert.assertEquals("http://fs.test/download/report.csv", artifacts.get(0).get("downloadUrl"));
+            Assert.assertEquals("http://fs.test/preview/report.csv", artifacts.get(0).get("previewUrl"));
+            // 绝对路径不能出现在工具结果里
+            Assert.assertFalse(String.valueOf(data).contains(workspace.toString()));
+            Assert.assertEquals(1, context.getArtifactBindingsByToolCallId("call-1").size());
+            ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+            Mockito.verify(printer).send(Mockito.eq("file"), eventCaptor.capture(), Mockito.isNull());
+            Assert.assertTrue(String.valueOf(eventCaptor.getValue()).contains("report.csv"));
+        } finally {
+            deleteRecursively(workspace);
+        }
+    }
+
+    @Test
+    public void shouldRegisterFilesWhenCliFails() throws IOException {
+        Path workspace = Files.createTempDirectory("host-cli-fail-ws");
+        try {
+            FileArtifactPort fileArtifactPort = fakeFileArtifactPort();
+            CliExecutionPort cli = Mockito.mock(CliExecutionPort.class);
+            Mockito.when(cli.isResolvable("git")).thenReturn(true);
+            Mockito.when(cli.exec(Mockito.any())).thenAnswer(invocation -> {
+                Files.write(workspace.resolve("partial.log"), "x".getBytes(StandardCharsets.UTF_8));
+                return CliResult.builder()
+                        .ok(false)
+                        .tool("git")
+                        .exitCode(128)
+                        .stdout("")
+                        .stderr("fatal: not a repository")
+                        .durationMs(3)
+                        .artifacts(List.of())
+                        .build();
+            });
+            HostCliTool tool = new HostCliTool(List.of("git"));
+            AgentContext context = artifactContext(cli, fileArtifactPort, Mockito.mock(Printer.class), workspace);
+            tool.setAgentContext(context);
+
+            ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of(
+                    "tool", "git",
+                    "args", List.of("status")
+            ));
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> data = (Map<String, Object>) payload.getLlmData();
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> artifacts = (List<Map<String, Object>>) data.get("artifacts");
+            Assert.assertNotNull(artifacts);
+            Assert.assertEquals("partial.log", artifacts.get(0).get("relativePath"));
+            Assert.assertEquals(1, context.getArtifactBindingsByToolCallId("call-1").size());
+        } finally {
+            deleteRecursively(workspace);
+        }
+    }
+
+    private static FileArtifactPort fakeFileArtifactPort() {
+        FileArtifactPort port = Mockito.mock(FileArtifactPort.class);
+        try {
+            Mockito.when(port.materializeLocalFile(Mockito.anyString(), Mockito.any(FileRequest.class)))
+                    .thenAnswer(invocation -> {
+                        FileRequest request = invocation.getArgument(1);
+                        return FileResponse.builder()
+                                .ossUrl("http://fs.test/download/" + request.getFileName())
+                                .domainUrl("http://fs.test/preview/" + request.getFileName())
+                                .fileSize(4)
+                                .fileName(request.getFileName())
+                                .build();
+                    });
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+        return port;
+    }
+
+    private AgentContext artifactContext(CliExecutionPort cli,
+                                         FileArtifactPort fileArtifactPort,
+                                         Printer printer,
+                                         Path workspace) {
+        HostCliProperties properties = new HostCliProperties();
+        properties.setEnabled(true);
+        properties.setAllow(List.of("git"));
+        ReactorConfig reactorConfig = ReactorRuntimeTestSupport.reactorConfigWithFileService("http://127.0.0.1:1601");
+        reactorConfig.setWebFetchProxy("http://proxy.test:8080");
+        AgentContext context = AgentContext.builder()
+                .requestId("req-1")
+                .sessionId("session-1")
+                .workspaceRoot(workspace.toString())
+                .printer(printer)
+                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig)
+                        .toBuilder()
+                        .cliExecutionPort(cli)
+                        .hostCliProperties(properties)
+                        .fileArtifactPort(fileArtifactPort)
+                        .build())
+                .build();
+        context.bindCurrentToolArtifactSource(ToolArtifactSource.builder()
+                .sessionId("session-1")
+                .requestId("req-1")
+                .toolCallId("call-1")
+                .toolName("host_cli")
+                .build());
+        return context;
+    }
+
     private AgentContext contextWith(String ignored) {
         return contextWith(Mockito.mock(CliExecutionPort.class));
     }
@@ -122,12 +270,34 @@ public class HostCliToolTest {
         return AgentContext.builder()
                 .requestId("req-1")
                 .sessionId("session-1")
-                .workspaceRoot(System.getProperty("java.io.tmpdir"))
+                .workspaceRoot(tempWorkspace())
                 .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig)
                         .toBuilder()
                         .cliExecutionPort(cli)
                         .hostCliProperties(properties)
                         .build())
                 .build();
+    }
+
+    private static String tempWorkspace() {
+        try {
+            return Files.createTempDirectory("host-cli-plain-ws").toString();
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static void deleteRecursively(Path root) {
+        try (var walk = Files.walk(root)) {
+            walk.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (IOException ignore) {
+                    // 临时目录清理失败不影响断言
+                }
+            });
+        } catch (IOException ignore) {
+            // ignore
+        }
     }
 }

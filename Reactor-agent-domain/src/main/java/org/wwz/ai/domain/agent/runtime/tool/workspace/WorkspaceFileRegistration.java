@@ -1,5 +1,7 @@
 package org.wwz.ai.domain.agent.runtime.tool.workspace;
 
+import lombok.Builder;
+import lombok.Value;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +24,9 @@ import java.util.Map;
 /**
  * 工作区文件 → 文件服务登记（不重复上传 content）。
  * 本地已写入 skilloutput/{sessionId}/... 后，只 register 元数据并返回 preview URL。
+ * <p>
+ * 本地文件统一走 {@link FileArtifactPort#materializeLocalFile}：共享卷部署走零拷贝 register，
+ * 非共享部署由基础设施适配器改为二进制 upload，工具层不需要感知网络拓扑。
  */
 public final class WorkspaceFileRegistration {
 
@@ -29,6 +34,13 @@ public final class WorkspaceFileRegistration {
 
     private WorkspaceFileRegistration() {
     }
+
+    /** 登记失败原因：运行时或文件服务不可用。 */
+    public static final String REASON_UNAVAILABLE = "artifact_port_unavailable";
+    /** 登记失败原因：本地文件不存在。 */
+    public static final String REASON_FILE_MISSING = "file_not_found";
+    /** 登记失败原因：文件服务返回空响应。 */
+    public static final String REASON_EMPTY_RESPONSE = "artifact_register_failed";
 
     /**
      * 本地 workspace 文件登记预览 URL，建立工具产物关联，并同步到会话文件列表。
@@ -40,22 +52,35 @@ public final class WorkspaceFileRegistration {
      * @param relativePath 工作区内相对路径（可含目录）
      * @param absolutePath 本地绝对路径
      * @param commandLabel 前端 file 卡片 command 文案
+     * @return 结构化登记结果，失败时携带原因
      */
-    public static void registerLocalFile(AgentContext agentContext,
-                                         String relativePath,
-                                         Path absolutePath,
-                                         String commandLabel) {
+    public static LocalFileRegistrationResult registerLocalFile(AgentContext agentContext,
+                                                                String relativePath,
+                                                                Path absolutePath,
+                                                                String commandLabel) {
+        return registerLocalFile(agentContext, relativePath, absolutePath, commandLabel, true);
+    }
+
+    /**
+     * @param emitFileEvent 是否由本方法单独发送 {@code file} 事件；
+     *                      批量物化场景设为 false，由调用方聚合后发一条事件。
+     */
+    public static LocalFileRegistrationResult registerLocalFile(AgentContext agentContext,
+                                                                String relativePath,
+                                                                Path absolutePath,
+                                                                String commandLabel,
+                                                                boolean emitFileEvent) {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            return;
+            return LocalFileRegistrationResult.failure(REASON_UNAVAILABLE);
         }
         if (absolutePath == null || !Files.isRegularFile(absolutePath)) {
-            return;
+            return LocalFileRegistrationResult.failure(REASON_FILE_MISSING);
         }
         try {
             ReactorConfig reactorConfig = agentContext.getRuntimeDependencies().requireReactorConfig();
             FileArtifactPort fileArtifactPort = agentContext.getRuntimeDependencies().requireFileArtifactPort();
             if (reactorConfig == null || StringUtils.isBlank(reactorConfig.getCodeInterpreterUrl())) {
-                return;
+                return LocalFileRegistrationResult.failure(REASON_UNAVAILABLE);
             }
 
             String uploadName = normalizeWorkspaceRelativePath(relativePath, absolutePath);
@@ -68,16 +93,18 @@ public final class WorkspaceFileRegistration {
             }
 
             long size = Files.size(absolutePath);
+            String requestId = StringUtils.defaultIfBlank(
+                    agentContext.getSessionId(), agentContext.getRequestId());
             FileRequest fileRequest = FileRequest.builder()
-                    .requestId(agentContext.getSessionId())
+                    .requestId(requestId)
                     .fileName(uploadName)
                     .description("workspace:" + uploadName)
                     .localPath(absolutePath.toAbsolutePath().normalize().toString())
                     .build();
-            FileResponse fileResponse = fileArtifactPort.register(
+            FileResponse fileResponse = fileArtifactPort.materializeLocalFile(
                     reactorConfig.getCodeInterpreterUrl(), fileRequest);
             if (fileResponse == null) {
-                return;
+                return LocalFileRegistrationResult.failure(REASON_EMPTY_RESPONSE);
             }
             if (fileResponse.getFileSize() == null) {
                 fileResponse.setFileSize((int) Math.min(size, Integer.MAX_VALUE));
@@ -98,36 +125,50 @@ public final class WorkspaceFileRegistration {
                 agentContext.registerGeneratedArtifact(artifactSource, file);
             }
 
-            if (agentContext.getPrinter() != null) {
-                Map<String, Object> resultMap = new HashMap<>();
-                resultMap.put("command", StringUtils.defaultIfBlank(commandLabel, "写入文件"));
-                resultMap.put("requestId", agentContext.getSessionId());
-                resultMap.put("sessionId", agentContext.getSessionId());
-                resultMap.put("relativePath", uploadName);
-                resultMap.put("fileListOnly", true);
-                if (artifactSource != null) {
-                    resultMap.put("toolCallId", artifactSource.getToolCallId());
-                    resultMap.put("toolName", artifactSource.getToolName());
-                }
-                List<CodeInterpreterResponse.FileInfo> fileInfo = new ArrayList<>();
-                fileInfo.add(CodeInterpreterResponse.FileInfo.builder()
-                        .fileName(baseName)
-                        .relativePath(uploadName)
-                        .ossUrl(fileResponse.getOssUrl())
-                        .domainUrl(fileResponse.getDomainUrl())
-                        .fileSize(fileResponse.getFileSize())
-                        .build());
-                resultMap.put("fileInfo", fileInfo);
-                agentContext.getPrinter().send("file", resultMap, null);
+            if (emitFileEvent && agentContext.getPrinter() != null) {
+                agentContext.getPrinter().send("file",
+                        buildFileEvent(agentContext, artifactSource, baseName, uploadName, fileResponse, commandLabel),
+                        null);
             }
 
             if (log.isDebugEnabled()) {
                 log.debug("workspace file registered, command={}, path={}, domainUrl={}",
                         commandLabel, absolutePath, fileResponse.getDomainUrl());
             }
+            return LocalFileRegistrationResult.success(uploadName, size, fileResponse);
         } catch (Exception e) {
             log.warn("workspace file register failed, path={}", absolutePath, e);
+            return LocalFileRegistrationResult.failure(REASON_EMPTY_RESPONSE);
         }
+    }
+
+    private static Map<String, Object> buildFileEvent(AgentContext agentContext,
+                                                      ToolArtifactSource artifactSource,
+                                                      String baseName,
+                                                      String uploadName,
+                                                      FileResponse fileResponse,
+                                                      String commandLabel) {
+        Map<String, Object> resultMap = new HashMap<>();
+        resultMap.put("command", StringUtils.defaultIfBlank(commandLabel, "写入文件"));
+        resultMap.put("requestId", StringUtils.defaultIfBlank(
+                agentContext.getSessionId(), agentContext.getRequestId()));
+        resultMap.put("sessionId", agentContext.getSessionId());
+        resultMap.put("relativePath", uploadName);
+        resultMap.put("fileListOnly", true);
+        if (artifactSource != null) {
+            resultMap.put("toolCallId", artifactSource.getToolCallId());
+            resultMap.put("toolName", artifactSource.getToolName());
+        }
+        List<CodeInterpreterResponse.FileInfo> fileInfo = new ArrayList<>();
+        fileInfo.add(CodeInterpreterResponse.FileInfo.builder()
+                .fileName(baseName)
+                .relativePath(uploadName)
+                .ossUrl(fileResponse.getOssUrl())
+                .domainUrl(fileResponse.getDomainUrl())
+                .fileSize(fileResponse.getFileSize())
+                .build());
+        resultMap.put("fileInfo", fileInfo);
+        return resultMap;
     }
 
     static String normalizeWorkspaceRelativePath(String relativePath, Path absolutePath) {
@@ -157,5 +198,38 @@ public final class WorkspaceFileRegistration {
         return absolutePath == null || absolutePath.getFileName() == null
                 ? "workspace-file"
                 : absolutePath.getFileName().toString();
+    }
+
+    /**
+     * 单个本地文件的登记结果。
+     * 调用方据此决定是否把文件放进工具结果，不要把失败项当作 artifact。
+     */
+    @Value
+    @Builder
+    public static class LocalFileRegistrationResult {
+
+        boolean success;
+        /** 失败原因，取本类外层常量；成功时为空。 */
+        String reason;
+        /** 归一化后的 workspace 相对路径。 */
+        String relativePath;
+        long fileSize;
+        FileResponse response;
+
+        public static LocalFileRegistrationResult failure(String reason) {
+            return LocalFileRegistrationResult.builder()
+                    .success(false)
+                    .reason(reason)
+                    .build();
+        }
+
+        public static LocalFileRegistrationResult success(String relativePath, long fileSize, FileResponse response) {
+            return LocalFileRegistrationResult.builder()
+                    .success(true)
+                    .relativePath(relativePath)
+                    .fileSize(fileSize)
+                    .response(response)
+                    .build();
+        }
     }
 }

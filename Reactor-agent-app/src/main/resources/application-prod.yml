@@ -2,6 +2,11 @@ server:
   port: 8100
 
 reactor:
+  # 本地文件产物物化模式：
+  #   register = 后端与文件服务共享 workspace 目录（docker-compose 的 reactor-data 卷），零拷贝登记；
+  #   upload   = 后端与文件服务不共享目录，改走 multipart 二进制上传。
+  file-artifact:
+    local-file-mode: ${REACTOR_FILE_ARTIFACT_LOCAL_FILE_MODE:register}
   opencli:
     enabled: true
     command: ${REACTOR_OPENCLI_COMMAND:node}

@@ -75,7 +75,7 @@ public class WorkspaceWriteSyncTest {
                 .build());
         writeTool.setAgentContext(agentContext);
 
-        Mockito.when(fileArtifactPort.register(Mockito.eq("http://127.0.0.1:1601"), Mockito.any(FileRequest.class)))
+        Mockito.when(fileArtifactPort.materializeLocalFile(Mockito.eq("http://127.0.0.1:1601"), Mockito.any(FileRequest.class)))
                 .thenReturn(FileResponse.builder()
                         .fileName("report.md")
                         .ossUrl("http://127.0.0.1:1601/v1/file_tool/download/session-write-001/report.md")
@@ -100,7 +100,7 @@ public class WorkspaceWriteSyncTest {
         Assert.assertEquals("hello sync", Files.readString(workspaceRoot.resolve("out/report.md"), StandardCharsets.UTF_8));
 
         ArgumentCaptor<FileRequest> captor = ArgumentCaptor.forClass(FileRequest.class);
-        Mockito.verify(fileArtifactPort).register(Mockito.eq("http://127.0.0.1:1601"), captor.capture());
+        Mockito.verify(fileArtifactPort).materializeLocalFile(Mockito.eq("http://127.0.0.1:1601"), captor.capture());
         Mockito.verify(fileArtifactPort, Mockito.never()).upload(Mockito.anyString(), Mockito.any());
         Assert.assertEquals("out/report.md", captor.getValue().getFileName());
         Assert.assertNull(captor.getValue().getContent());

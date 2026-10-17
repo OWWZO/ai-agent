@@ -2,30 +2,19 @@ package org.wwz.ai.domain.agent.runtime.tool.cli;
 
 import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
-import org.wwz.ai.domain.agent.adapter.port.cli.CliArtifact;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliInvocation;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliResult;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
-import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
-import org.wwz.ai.domain.agent.runtime.dto.File;
-import org.wwz.ai.domain.agent.runtime.dto.FileRequest;
-import org.wwz.ai.domain.agent.runtime.dto.FileResponse;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.types.agent.config.HostCliProperties;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Stream;
 
 @Setter
 public class HostCliTool implements BaseTool {
@@ -106,21 +95,56 @@ public class HostCliTool implements BaseTool {
             return ToolResultPayload.failure("CLI 不可用: " + tool, "CLI 不可用: " + tool, null, "host_cli_unavailable");
         }
         String cwd = agentContext.getWorkspaceRoot();
-        Set<String> before = snapshot(cwd);
         long timeoutMs = HostCliPolicy.resolveTimeout(
                 params.get("timeout_ms"), properties.getDefaultTimeoutMs(), properties.getMaxTimeoutMs());
         String proxy = StringUtils.trimToNull(deps.requireReactorConfig().getWebFetchProxy());
-        CliResult result = cli.exec(CliInvocation.builder()
-                .tool(tool)
-                .args(args)
-                .cwd(cwd)
-                .env(HostCliPolicy.proxyEnvironment(proxy))
-                .unsetEnv(HostCliPolicy.proxyUnsetVariables(proxy))
-                .timeoutMs(timeoutMs)
-                .capture("both")
-                .maxOutputChars(properties.getMaxOutputChars())
-                .build());
-        List<CliArtifact> artifacts = registerNewFiles(cwd, before);
+        String captureId = StringUtils.defaultIfBlank(agentContext.getRequestId(), "host-cli");
+        try (CliArtifactCaptureLease ignored =
+                     CliArtifactCaptureCoordinator.acquireWorkspaceDiffLease(cwd, captureId)) {
+            // 前后快照只是 host_cli 的兼容兜底；workspace 级 lease 防止并发调用互相捕获文件。
+            Set<String> before = CliArtifactMaterializer.snapshotWorkspace(cwd);
+            CliResult result;
+            try {
+                result = cli.exec(CliInvocation.builder()
+                        .tool(tool)
+                        .args(args)
+                        .cwd(cwd)
+                        .env(HostCliPolicy.proxyEnvironment(proxy))
+                        .unsetEnv(HostCliPolicy.proxyUnsetVariables(proxy))
+                        .timeoutMs(timeoutMs)
+                        .capture("both")
+                        .maxOutputChars(properties.getMaxOutputChars())
+                        .build());
+            } catch (RuntimeException e) {
+                CliArtifactMaterialization partial = CliArtifactMaterializer.materialize(
+                        CliArtifactMaterializeCommand.builder()
+                                .agentContext(agentContext)
+                                .workspaceRoot(cwd)
+                                .commandLabel("host_cli 执行产物")
+                                .baselineFiles(before)
+                                .build());
+                return cliFailure(partial);
+            }
+            if (result == null) {
+                return ToolResultPayload.failure("CLI 未返回结果", "CLI 未返回结果", null, "host_cli_execution_failed");
+            }
+            CliArtifactMaterialization materialization = CliArtifactMaterializer.materialize(
+                    CliArtifactMaterializeCommand.builder()
+                            .agentContext(agentContext)
+                            .workspaceRoot(cwd)
+                            .reportedArtifacts(result.getArtifacts())
+                            .commandLabel("host_cli 执行产物")
+                            .baselineFiles(before)
+                            .build());
+            return buildResult(tool, result, materialization);
+        } catch (CliArtifactCaptureCoordinator.CliArtifactCaptureException e) {
+            return ToolResultPayload.failure("artifact capture 失败", "artifact capture 失败", null, e.getCode());
+        }
+    }
+
+    private static ToolResultPayload buildResult(String tool,
+                                                 CliResult result,
+                                                 CliArtifactMaterialization materialization) {
         Map<String, Object> fields = new LinkedHashMap<>();
         fields.put("ok", result.isOk());
         fields.put("tool", tool);
@@ -130,93 +154,32 @@ public class HostCliTool implements BaseTool {
         fields.put("duration_ms", result.getDurationMs());
         fields.put("timed_out", result.isTimedOut());
         fields.put("truncated", result.isTruncated());
-        if (!artifacts.isEmpty()) {
-            fields.put("artifacts", artifacts);
+        if (!materialization.getArtifacts().isEmpty()) {
+            fields.put("artifacts", materialization.artifactMaps());
+        }
+        if (!materialization.getFailures().isEmpty()) {
+            fields.put("artifact_failures", materialization.failureMaps());
         }
         return result.isOk()
                 ? ToolResultPayload.okData(TOOL_NAME, fields)
                 : ToolResultPayload.fromData(fields);
     }
 
-    private List<CliArtifact> registerNewFiles(String cwd, Set<String> before) {
-        if (StringUtils.isBlank(cwd) || agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            return List.of();
+    private static ToolResultPayload cliFailure(CliArtifactMaterialization materialization) {
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("error", "opencli 执行失败");
+        if (materialization != null && !materialization.getArtifacts().isEmpty()) {
+            detail.put("artifacts", materialization.artifactMaps());
         }
-        FileArtifactPort fileArtifactPort;
-        try {
-            fileArtifactPort = agentContext.getRuntimeDependencies().requireFileArtifactPort();
-        } catch (RuntimeException ignore) {
-            return List.of();
+        if (materialization != null && !materialization.getFailures().isEmpty()) {
+            detail.put("artifact_failures", materialization.failureMaps());
         }
-        List<CliArtifact> artifacts = new ArrayList<>();
-        List<Map<String, Object>> eventFileInfo = new ArrayList<>();
-        for (String path : snapshot(cwd)) {
-            if (before.contains(path)) {
-                continue;
-            }
-            Path file = Path.of(path);
-            if (!Files.isRegularFile(file)) {
-                continue;
-            }
-            try {
-                String serviceUrl = agentContext.getRuntimeDependencies().requireReactorConfig().getCodeInterpreterUrl();
-                FileRequest request = FileRequest.builder()
-                        .requestId(StringUtils.defaultIfBlank(agentContext.getSessionId(), agentContext.getRequestId()))
-                        .fileName(file.getFileName().toString())
-                        .description(file.getFileName().toString())
-                        .localPath(file.toAbsolutePath().toString())
-                        .build();
-                FileResponse response = fileArtifactPort.register(serviceUrl, request);
-                if (response == null) {
-                    continue;
-                }
-                ToolArtifactSource source = agentContext.getCurrentToolArtifactSource();
-                if (source != null) {
-                    agentContext.registerGeneratedArtifact(source, File.builder()
-                            .fileName(file.getFileName().toString())
-                            .ossUrl(response.getOssUrl())
-                            .domainUrl(response.getDomainUrl())
-                            .fileSize(response.getFileSize())
-                            .description(file.getFileName().toString())
-                            .isInternalFile(false)
-                            .build());
-                }
-                artifacts.add(CliArtifact.builder()
-                        .path(file.toAbsolutePath().toString())
-                        .size(response.getFileSize() == null ? Files.size(file) : response.getFileSize().longValue())
-                        .mime(Files.probeContentType(file))
-                        .build());
-                Map<String, Object> eventFile = new LinkedHashMap<>();
-                eventFile.put("fileName", file.getFileName().toString());
-                eventFile.put("ossUrl", response.getOssUrl());
-                eventFile.put("domainUrl", response.getDomainUrl());
-                eventFileInfo.add(eventFile);
-            } catch (Exception ignore) {
-            }
-        }
-        if (!eventFileInfo.isEmpty() && agentContext.getPrinter() != null) {
-            Map<String, Object> event = new LinkedHashMap<>();
-            event.put("command", "host_cli 执行产物");
-            event.put("fileInfo", eventFileInfo);
-            agentContext.getPrinter().send("file", event, null);
-        }
-        return artifacts;
-    }
-
-    private static Set<String> snapshot(String cwd) {
-        if (StringUtils.isBlank(cwd)) {
-            return Set.of();
-        }
-        Path root = Path.of(cwd);
-        if (!Files.isDirectory(root)) {
-            return Set.of();
-        }
-        Set<String> files = new LinkedHashSet<>();
-        try (Stream<Path> walk = Files.walk(root, 4)) {
-            walk.filter(Files::isRegularFile).forEach(path -> files.add(path.toAbsolutePath().normalize().toString()));
-        } catch (Exception ignore) {
-        }
-        return files;
+        return ToolResultPayload.builder()
+                .toolResult("opencli 执行失败")
+                .llmData(detail)
+                .failed(Boolean.TRUE)
+                .errorMsg("opencli_execution_failed")
+                .build();
     }
 
 }
