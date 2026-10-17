@@ -203,6 +203,27 @@ describe("toolRegistry", () => {
     expect(html).toContain("found Controller");
   });
 
+  it("默认折叠：不传 defaultExpanded 时收起，入参/出参不进 DOM", () => {
+    const html = renderToStaticMarkup(
+      createElement(GenericToolCall, {
+        tool: toolTask({
+          resultMap: {
+            toolName: "workspace_grep",
+            input: { pattern: "Controller" },
+            toolResult: "found Controller",
+          },
+        }),
+        chat: {} as CHAT.ChatItem,
+        changeActiveChat: () => undefined,
+      })
+    );
+
+    // 时间线不再传 defaultExpanded（此前是 step.active），卡片一律从收起态开始。
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain("Parameters");
+    expect(html).not.toContain("found Controller");
+  });
+
   it("renders canvas_publish as a previewable tool card", () => {
     const html = renderToStaticMarkup(
       createElement(GenericToolCall, {
@@ -727,6 +748,28 @@ describe("Edit 卡内联 diff（对齐 ZCode EditInlineDiffContent）", () => {
     expect(html).toContain("kimi-inline-diff");
     expect(html).toContain("alpha");
     expect(html).toContain("beta");
+  });
+
+  it("默认折叠：write 卡不展开时 diff 不渲染", () => {
+    const html = renderToStaticMarkup(
+      createElement(EditToolCall, {
+        tool: toolTask({
+          resultMap: {
+            toolName: "Write",
+            input: {
+              path: "new.ts",
+              content: "alpha\nbeta"
+            },
+            toolResult: "written"
+          }
+        }),
+        chat: {} as CHAT.ChatItem,
+        changeActiveChat: () => undefined
+      })
+    );
+
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain("kimi-inline-diff");
   });
 
   it("失败态只渲染错误文本，不渲染 diff 也不渲染 Parameters", () => {

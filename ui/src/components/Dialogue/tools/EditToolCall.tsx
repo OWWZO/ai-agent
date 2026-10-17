@@ -117,24 +117,22 @@ export const EditToolCall = memo(function EditToolCall({
     <ToolDiffCount added={diffStats.added} removed={diffStats.removed} />
   ) : undefined;
 
+  // 默认折叠：入参流分支提前 return 自己的预览面板、不看 `open`，所以不能拿
+  // `showArgStream` 当展开种子 —— 否则参数流结束切回常规卡片时 diff 是摊开的。
   const [open, setOpen] = useToolCardOpen(
     resolveToolKey(tool),
-    Boolean(defaultExpanded) || showArgStream
+    Boolean(defaultExpanded)
   );
   const [userToggled, setUserToggled] = useState(false);
 
   useEffect(() => {
-    if (userToggled && !showArgStream) {
-      return;
-    }
-    if (showArgStream) {
-      setOpen(true);
+    if (userToggled) {
       return;
     }
     if (defaultExpanded) {
       setOpen(true);
     }
-  }, [showArgStream, defaultExpanded, userToggled, setOpen]);
+  }, [defaultExpanded, userToggled, setOpen]);
 
   const kind = normalizeToolName(name);
   const icon = <PencilIcon className="size-4" />;

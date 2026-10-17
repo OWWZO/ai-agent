@@ -179,24 +179,27 @@ export const GenericToolCall = memo(function GenericToolCall({
     showRawFallback ||
     showArgStream;
 
+  /**
+   * 默认折叠：种子只认 `defaultExpanded`，**不再把 `showArgStream` 也算进去**。
+   * 入参流分支在上面提前 return 了自己的预览面板，根本不看 `open`；旧逻辑却把它
+   * 种成 `open=true` 并写进持久表，于是参数流一结束卡片就带着入参/出参摊开，
+   * 而且再也不会自己收起来（时间线此前还额外传了 `defaultExpanded={step.active}`）。
+   */
   const [open, setOpen] = useToolCardOpen(
     resolveToolKey(tool),
-    Boolean(defaultExpanded) || showArgStream
+    Boolean(defaultExpanded)
   );
   const [userToggled, setUserToggled] = useState(false);
 
   useEffect(() => {
-    if (userToggled && !showArgStream) {
-      return;
-    }
-    if (showArgStream) {
-      setOpen(true);
+    // 用户手动开合过就不再自动展开，避免把用户的操作顶掉。
+    if (userToggled) {
       return;
     }
     if (defaultExpanded && canExpand) {
       setOpen(true);
     }
-  }, [showArgStream, canExpand, defaultExpanded, userToggled, setOpen]);
+  }, [canExpand, defaultExpanded, userToggled, setOpen]);
 
   const stacked = stackPosition !== "single";
   const expandable = showArgStream || canExpand;
