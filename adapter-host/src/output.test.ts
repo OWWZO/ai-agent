@@ -59,7 +59,8 @@ describe('output TTY detection', () => {
       files: [{ index: 1, status: 'success' }],
       artifacts: [{ relativePath: 'downloads/photo.jpg' }],
     }, { fmt: 'table', fmtExplicit: true, columns: ['index', 'status'] });
-    const out = logSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    // renderTable 会先 console.log() 打一个空行（无参调用），c[0] 为 undefined，需兜底成空串。
+    const out = logSpy.mock.calls.map((c: unknown[]) => String(c[0] ?? '')).join('\n');
     expect(out).toContain('success');
     expect(out).not.toContain('undefined');
   });
@@ -70,7 +71,7 @@ describe('output TTY detection', () => {
       { index: 1, status: 'success' },
       { artifacts: [{ relativePath: 'downloads/photo.jpg' }] },
     ], { fmt: 'table', fmtExplicit: true, columns: ['index', 'status'] });
-    const out = logSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    const out = logSpy.mock.calls.map((c: unknown[]) => String(c[0] ?? '')).join('\n');
     expect(out).toContain('success');
     expect(out).not.toContain('2 items');
   });
