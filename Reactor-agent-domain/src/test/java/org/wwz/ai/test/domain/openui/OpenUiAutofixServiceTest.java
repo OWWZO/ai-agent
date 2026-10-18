@@ -28,12 +28,13 @@ public class OpenUiAutofixServiceTest {
     @Before
     public void setUp() {
         http = Mockito.mock(RemoteHttpPort.class);
-        service = new OpenUiAutofixService(http, true, "test-key", URL, 30L);
+        // 整段链路测试不关心意图链路：completionPort / modelCatalog 传 null（fixWithIntent 会报"未装配"）
+        service = new OpenUiAutofixService(http, null, null, true, false, "test-key", URL, 30L);
     }
 
     @Test
     public void shouldReportDisabledWithoutApiKey() {
-        OpenUiAutofixService withoutKey = new OpenUiAutofixService(http, true, "", URL, 30L);
+        OpenUiAutofixService withoutKey = new OpenUiAutofixService(http, null, null, true, false, "", URL, 30L);
         Assert.assertFalse(withoutKey.isAvailable());
         Assert.assertEquals(OpenUiFixResult.DISABLED, withoutKey.fix("root = Col([])", List.of()).status());
         Mockito.verifyNoInteractions(http);

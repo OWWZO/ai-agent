@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.infrastructure.dao.IOpenuiRepairIntentDao">
+
+    <resultMap id="OpenuiRepairIntentMap" type="org.wwz.ai.infrastructure.dao.po.OpenuiRepairIntentPO">
+        <id column="id" property="id"/>
+        <result column="session_id" property="sessionId"/>
+        <result column="message_id" property="messageId"/>
+        <result column="program_hash" property="programHash"/>
+        <result column="intent_index" property="intentIndex"/>
+        <result column="search_text" property="searchText"/>
+        <result column="replace_text" property="replaceText"/>
+        <result column="model" property="model"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, session_id, message_id, program_hash, intent_index,
+        search_text, replace_text, model, created_at
+    </sql>
+
+    <delete id="deleteByProgram">
+        DELETE FROM ai_agent_openui_repair_intent
+        WHERE session_id = #{sessionId}
+          AND message_id = #{messageId}
+          AND program_hash = #{programHash}
+    </delete>
+
+    <insert id="insert" parameterType="org.wwz.ai.infrastructure.dao.po.OpenuiRepairIntentPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_agent_openui_repair_intent (
+            session_id, message_id, program_hash, intent_index,
+            search_text, replace_text, model, created_at
+        ) VALUES (
+            #{sessionId}, #{messageId}, #{programHash}, #{intentIndex},
+            #{searchText}, #{replaceText}, #{model}, #{createdAt}
+        )
+    </insert>
+
+    <select id="listByProgram" resultMap="OpenuiRepairIntentMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM ai_agent_openui_repair_intent
+        WHERE session_id = #{sessionId}
+          AND message_id = #{messageId}
+          AND program_hash = #{programHash}
+        ORDER BY intent_index ASC
+    </select>
+</mapper>
