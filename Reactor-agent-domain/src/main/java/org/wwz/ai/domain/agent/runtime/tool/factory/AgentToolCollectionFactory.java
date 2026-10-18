@@ -38,6 +38,8 @@ import org.wwz.ai.domain.agent.runtime.tool.common.docgen.DocumentTemplateTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.docgen.ExcelGeneratorTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.docgen.SlidesGenerateTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.docgen.TemplateFillerTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.openui.GetUiComponentsTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.openui.OpenUiToolNames;
 import org.wwz.ai.domain.agent.runtime.tool.common.docgen.ThemeDesignerTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.dataprep.DataAggregateTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.dataprep.DataCleanTool;
@@ -225,8 +227,11 @@ public class AgentToolCollectionFactory {
             registerHostCliTool(toolCollection, agentContext);
             registerCodeModeTool(toolCollection, agentContext);
 
+            // 注意：`autobots.autoagent.tool_list` 未配置时用这里的默认串。application-*.yml 里的
+            // `task.tool_list` 层级与 @Value 不一致（历史上一直没生效），所以新增能力要同时改这里，
+            // 只改 yml 是无效的。
             List<String> agentToolList = parseToolNames(reactorConfig.getMultiAgentToolListMap()
-                            .getOrDefault("default", "search,web_fetch,web_search,code_execution,docgen,docread,dataprep,canvas,image_generation,data_analysis")
+                            .getOrDefault("default", "search,web_fetch,web_search,code_execution,docgen,docread,dataprep,canvas,image_generation,data_analysis,openui")
                     );
 
             if (agentToolList.contains("docgen")
@@ -305,6 +310,12 @@ public class AgentToolCollectionFactory {
 
                 EmitUiPatchTool emitUiPatchTool = new EmitUiPatchTool();
                 addTool(toolCollection, emitUiPatchTool, agentContext, EmitUiPatchTool::setAgentContext);
+            }
+            // openui-lang 扩展组件目录（与上面的 genui canvas 链路相互独立）。
+            if (agentToolList.contains("openui")
+                    || agentToolList.contains(OpenUiToolNames.GET_UI_COMPONENTS)) {
+                GetUiComponentsTool getUiComponentsTool = new GetUiComponentsTool();
+                addTool(toolCollection, getUiComponentsTool, agentContext, GetUiComponentsTool::setAgentContext);
             }
             if (agentToolList.contains("search")) {
                 DeepSearchTool deepSearchTool = new DeepSearchTool();

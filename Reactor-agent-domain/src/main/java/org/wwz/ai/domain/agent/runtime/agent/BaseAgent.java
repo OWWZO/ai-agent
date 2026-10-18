@@ -615,6 +615,18 @@ public abstract class BaseAgent {
     }
 
     /**
+     * 在当前 system prompt 尾部追加 openui 输出通道（语法协议 + 核心组件签名）。
+     *
+     * <p>扩展组件的定义不进提示词，留在 {@code get_ui_components} 工具里按需取，
+     * 所以这里注入的是固定约 2.5k tokens 的协议本体，不是全量组件库。</p>
+     *
+     * <p>幂等：{@link AgentPrompt#ensureOpenUiProtocol} 靠 OPENUI_PROTOCOL_V1 marker 判断是否已注入。</p>
+     */
+    public void applyOpenUiProtocol() {
+        setSystemPrompt(AgentPrompt.ensureOpenUiProtocol(getSystemPrompt()));
+    }
+
+    /**
      * 为单次工具结果追加当前 toolCall 的文件摘要。
      */
     protected String attachToolArtifactSummary(String result, String toolCallId) {

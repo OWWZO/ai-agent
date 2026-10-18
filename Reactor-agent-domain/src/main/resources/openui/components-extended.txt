@@ -1,0 +1,125 @@
+# generated from library.ts@c6a1f6e52408 — regenerate with npm run openui:build
+
+Additional components and @functions beyond the core set already in your system prompt.
+Same syntax as the core set: positional arguments, `?` marks optional ones.
+
+## Components
+
+### Layout
+
+Carousel(children: Node[], itemWidth?: number, gap?: number) — Horizontal row that scrolls and snaps, each child an item itemWidth px wide (default 240): photos, cards, options, days.
+Popover(trigger: string | Node[], content: string | Node[]) — Shows content in a small panel when the trigger is clicked: a definition, a source, details behind an Icon("info", "sm").
+Divider()
+Spacer() — Fills the free space in a Row.
+- gap and padding count 4px steps. Length is px or a CSS length like "50%". Radius is "sm", "md", "lg", "xl", "full" or px.
+- Color is "ink", "muted", "faint", "surface", "info", "success", "warning", "danger", "purple", "pink", "chart1" to "chart6", or a CSS color. As a background, status colors are soft tints.
+
+### Text
+
+Label(text: string) — Field or group label.
+Link(text: string, url: string) — Opens an http(s) URL in a new tab.
+List(items: (string | ListItem)[], marker?: "bullet" | "number" | "none", timeline?: boolean) — timeline joins the markers with a line.
+ListItem(title: string, description?: string, marker?: string, children?: Node[]) — marker replaces the bullet or number, e.g. a time or an emoji.
+Markdown(text: string) — Prose with headings, lists, quotes, code and tables.
+Quote(text: string, cite?: string) — A quotation or a callout with a side rule; cite names the source.
+Code(code: string, language?: string) — Code block with a copy button.
+Math(tex: string, inline?: boolean) — LaTeX formula, e.g. Math("E = mc^2"); inline true to sit in a Text list.
+
+### Inputs
+
+IconButton(icon: string, action?: ActionExpression, label?: string, variant?: "outline" | "ghost" | "solid") — Round icon-only button; label is read aloud.
+Pressable(children: Node[], action?: ActionExpression, selected?: boolean, padding?: number, background?: Color, radius?: Radius) — Makes any content clickable, such as a tile or a swatch.
+TextArea(value: $binding<string>, label?: string, placeholder?: string, rows?: number)
+Select(value: $binding<string>, options: (string | {value: string, label: string})[], label?: string, placeholder?: string) — Dropdown, for long option lists.
+SegmentedControl(value: $binding<string>, options: (string | {value: string, label: string})[], block?: boolean) — 2 to 4 short choices in a row.
+Checkbox(checked: $binding<boolean>, label: string, lineThrough?: boolean) — lineThrough strikes the label when checked, for to-do lists.
+RadioGroup(value: $binding<string>, options: (string | {value: string, label: string, description?: string})[], label?: string, variant?: "list" | "pills" | "cards") — pills for short choices; cards for choices that need a description line.
+DatePicker(value: $binding<string>, label?: string, min?: string, max?: string) — Dates are "YYYY-MM-DD".
+Timer(seconds: $binding<number>, label?: string) — Countdown with start, pause and reset. It counts the bound seconds down to 0, so other statements can react, e.g. $left == 0.
+- An input's first argument is its value, usually a $variable that other statements read.
+- Every input either changes something shown on the page, or sits in a Form whose submit Button sends a short first-person @ToAssistant ("Help me choose a bike"); the form values go with it. No dead inputs.
+
+### Media and data
+
+SearchImage(query: string, aspectRatio?: number, radius?: Radius, fit?: "cover" | "contain") — A real photo the app finds for query; it needs no URL and no tool. Name the exact thing in 2 to 4 words: "Belém Tower Lisbon", "iPhone 17", "pastel de nata". Use one for every place, dish, product or thing with a look.
+Image(src: string, alt: string, aspectRatio?: number, radius?: Radius, fit?: "cover" | "contain") — Photo from a URL the user or a tool gave; if it fails, a photo is found for alt.
+Icon(name: string, size?: "sm" | "md" | "lg" | "xl", color?: Color) — Lucide icon by name, e.g. "map-pin".
+Map(markers: MapMarker[], route?: boolean, selected?: $binding<string>, height?: number) — Street map fitted to its markers. route draws the road path in marker order; selected holds the clicked marker's label.
+MapMarker(label: string, lat: number, lng: number, category?: string, icon?: string) — A place on a Map; icon is one emoji, else the pin shows its number.
+YouTube(video: string, title?: string) — Embedded YouTube video by id or URL. Only a video you know exists.
+
+### Play
+
+Flashcard(front: string | Node[], back: string | Node[], hint?: string) — Card that flips between front and back when tapped. Put several in a Carousel or Grid.
+Celebration(when: boolean) — Bursts confetti when its condition turns true, e.g. Celebration($score == 5) at the end of a quiz.
+
+### Drawing
+
+Svg(children: Node[], viewBox: string, width?: Length, height?: Length) — A drawing for steps, parts, mechanisms, diagrams and layouts. Scales to its width; its shapes take expressions, so state can move them.
+G(children: Node[], transform?: string, opacity?: number) — Group; transform like "rotate(30 50 50)" or "translate(10 0)".
+Circle(cx: number, cy: number, r: number, fill?: Color, stroke?: Color, strokeWidth?: number, opacity?: number)
+Ellipse(cx: number, cy: number, rx: number, ry: number, fill?: Color, stroke?: Color, strokeWidth?: number, opacity?: number)
+Rect(x: number, y: number, width: number, height: number, fill?: Color, stroke?: Color, strokeWidth?: number, opacity?: number, rx?: number)
+Line(x1: number, y1: number, x2: number, y2: number, stroke?: Color, strokeWidth?: number, opacity?: number)
+Path(d: string, fill?: Color, stroke?: Color, strokeWidth?: number, opacity?: number)
+Polyline(points: string, stroke?: Color, strokeWidth?: number, fill?: Color, opacity?: number) — points like "0,0 10,5 20,0".
+Polygon(points: string, fill?: Color, stroke?: Color, strokeWidth?: number, opacity?: number)
+SvgText(text: string, x: number, y: number, size?: number, fill?: Color, anchor?: "start" | "middle" | "end", weight?: "normal" | "medium" | "semibold")
+HtmlView(html: string, height?: number, title?: string) — Sandboxed HTML page with inline JS, for games and canvas. No network except script CDNs. Fits its content unless height is set.
+
+## Functions
+
+@First(array: any[]) → any — Returns first element of array
+@Last(array: any[]) → any — Returns last element of array
+@Min(numbers: number[]) → number — Minimum value in array
+@Max(numbers: number[]) → number — Maximum value in array
+@Sort(array: any[], field: string, direction?: "asc" | "desc") → any[] — Sort array by field. Direction: "asc" (default) or "desc"
+@Abs(number: number) → number — Absolute value
+@Floor(number: number) → number — Round down to nearest integer
+@Ceil(number: number) → number — Round up to nearest integer
+@Prepend(list: any[], item: any) → any[] — Copy of the list with item added at the start
+@Concat(list: any[], more: any[]) → any[] — Joins two lists
+@RemoveAt(list: any[], index: number) → any[] — Copy without the item at index (0-based; negative counts from the end)
+@Update(list: any[], field: string, value: any, setField: string, setValue: any) → any[] — Copy where items whose field equals value get setField set to setValue
+@Find(list: any[], field: string, value: any) → any — First item whose field equals value, or null
+@IndexOf(list: any[], item: any) → number — Index of item in the list, or -1
+@Take(list: any[], n: number) → any[] — The first n items; a negative n takes the last n
+@Slice(list: any[] | string, start: number, end?: number) → any[] | string — Items, or characters of text, from start up to end (not included); negative counts from the end
+@Unique(list: any[]) → any[] — Distinct items in first-seen order
+@Reverse(list: any[]) → any[] — Copy in reverse order
+@Pick(list: any[]) → any — A random item, or null for an empty list; draws anew each time, so call it inside @Set
+@Shuffle(list: any[]) → any[] — Copy in random order; call it inside @Set
+@Flatten(list: any[]) → any[] — One list from a list of lists, e.g. [[1, 2], [3]] is [1, 2, 3]
+@Chunk(list: any[], size: number) → any[][] — The list cut into lists of size items, e.g. for weeks of 7 days or pages
+@Pow(base: number, exponent: number) → number — base raised to exponent
+@Sqrt(number: number) → number — Square root; null for a negative number
+@Random(min: number, max: number, integer?: boolean) → number — Random number from min to max (integer true: a whole number, max included); draws anew each time, so call it inside @Set
+@Lerp(a: number, b: number, t: number) → number — The value a fraction t of the way from a to b
+@Allocate(total: number, weights: number[], decimals?: number) → number[] — Splits total in proportion to weights, rounded to decimals (default 2), so the parts add up to exactly total, e.g. @Allocate(100, [1, 1, 1]) is [33.34, 33.33, 33.33]
+@Payment(principal: number, rate: number, periods: number) → number — Payment per period that repays principal over periods at rate percent per period, e.g. a 30-year loan at 6% a year: @Payment(300000, 6 / 12, 360)
+@Convert(value: number, from: string, to: string) → number — value from one unit to another: mm cm m km in ft yd mi; mg g kg oz lb st; ml l tsp tbsp floz cup pt qt gal (US); m/s km/h mph kn; m2 km2 ft2 ha acre; c f k
+@Pad(value: string | number, length: number, char?: string) → string — Pads the start of value to length with char (default "0"), e.g. 7 -> "07"
+@Upper(text: string) → string — Text in upper case
+@Lower(text: string) → string — Text in lower case
+@Trim(text: string) → string — Text without spaces at the start and end
+@Capitalize(text: string) → string — Each word with a capital first letter, e.g. "new york" is "New York"
+@Split(text: string, sep?: string) → string[] — List of the parts of text between sep (default ","), each trimmed, empty parts dropped, e.g. @Split("a, b,,c") is ["a", "b", "c"]
+@Replace(text: string, find: string, replacement: string) → string — Text with every find replaced by replacement
+@Duration(seconds: number, style?: "short" | "clock") → string — Seconds as text: "short" 1h 20m, 4m 05s, 45s (default); "clock" 1:20:00, 4:05
+@MixColor(from: string, to: string, t: number) → string — The hex color a fraction t of the way from one hex color to another, e.g. @MixColor("#ffffff", "#0285ff", 0.5) for a heatmap or a tint
+@Now() → string — The current date and time as an ISO string
+@AddDays(date: string | number, days: number) → string — The date days later (negative: earlier), as "YYYY-MM-DD"
+@AddMonths(date: string | number, months: number) → string — The date months later (negative: earlier), kept within the month (Jan 31 + 1 is Feb 28), as "YYYY-MM-DD"; 12 months is a year
+@DaysBetween(from: string | number, to: string | number) → number — Calendar days from one date to another (negative if to is earlier)
+@MonthsBetween(from: string | number, to: string | number) → number — Whole months from one date to another (negative if to is earlier); @Floor(@MonthsBetween(birthday, @Today()) / 12) is an age
+@StartOf(date: string | number, unit: "week" | "month" | "year") → string — First day of the date's "week" (Monday), "month" or "year", as "YYYY-MM-DD"
+@GroupBy(rows: any[], key: string, field?: string, agg?: "sum" | "avg" | "count" | "min" | "max") → {key: string | number, value: number}[] — One row per distinct key, in first-seen order; value is agg of field (default "sum"), or the row count without a field
+@Pivot(rows: any[], rowKey: string, colKey: string, field?: string, agg?: "sum" | "avg" | "count" | "min" | "max") → Record<string, string | number>[] — One row per rowKey value with a column per colKey value holding agg of field, for stacked or grouped charts
+@Top(rows: any[], field: string, n: number, direction?: "desc" | "asc") → any[] — The n rows with the largest field ("asc": the smallest)
+@Between(rows: any[], field: string, min?: any, max?: any) → any[] — Rows whose field is from min to max, both included; compares numbers, or text such as "YYYY-MM-DD" dates. Leave min or max null for an open end
+@Bucket(rows: any[], dateField: string, unit: "day" | "week" | "month", field?: string, agg?: "sum" | "avg" | "count" | "min" | "max") → {key: string | number, value: number}[] — Rows per day, week (from Monday) or month of dateField, in date order, empty periods 0 for sum and count; key is "YYYY-MM-DD", or "YYYY-MM" for months
+@Cumulative(rows: any[], field: string) → any[] — Copy of the rows with field replaced by its running total (field "" for a list of numbers)
+@MovingAvg(rows: any[], field: string, window: number) → any[] — Copy of the rows with field replaced by the average of its last window values (field "" for a list of numbers)
+@Change(current: number, previous: number) → number — Percent change from previous to current, e.g. @Change(120, 100) is 20; null when previous is 0
+@Histogram(values: number[], bins: number, min?: number, max?: number) → {key: string, value: number, start: number, end: number}[] — Counts numbers into equal-width bins (value is the count); min and max fix the range, default the data's
+@Stats(values: number[]) → {count: number, min: number, max: number, mean: number, median: number, stdev: number} — Summary of numbers, all zeros for an empty list

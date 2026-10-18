@@ -1,5 +1,8 @@
 package org.wwz.ai.domain.agent.runtime.prompt;
 
+import lombok.extern.slf4j.Slf4j;
+import org.wwz.ai.domain.agent.runtime.tool.common.openui.OpenUiResources;
+
 /**
  * Agent system 提示。
  * <p>
@@ -7,10 +10,12 @@ package org.wwz.ai.domain.agent.runtime.prompt;
  * PlanSolve 主路径底座为 {@code PlanSolvePrompt.ORCHESTRATION}，不使用 REACT 底座。
  * 工具以 API {@code tools[]} 为准，system 不写死工具清单。
  */
+@Slf4j
 public class AgentPrompt {
 
     public static final String USER_FACING_REPLY_CONTRACT_MARKER = "USER_FACING_REPLY_CONTRACT_V6";
     public static final String COORDINATOR_FACING_REPLY_CONTRACT_MARKER = "COORDINATOR_FACING_REPLY_CONTRACT_V1";
+    public static final String OPENUI_PROTOCOL_MARKER = "OPENUI_PROTOCOL_V1";
 
     /**
      * 主路径终答：面向用户。
@@ -275,10 +280,39 @@ public class AgentPrompt {
     }
 
     /**
-     * PlanSolve 主 Agent system 模板：ORCHESTRATION 底座 + 面向用户终答（不含 REACT 底座）。
+     * PlanSolve 主 Agent system 模板：ORCHESTRATION 底座 + 面向用户终答 + openui 输出通道（不含 REACT 底座）。
      */
     public static String composePlanSolveSystemPrompt() {
-        return ensureUserFacingReplyContract(PlanSolvePrompt.ORCHESTRATION.trim());
+        return ensureOpenUiProtocol(ensureUserFacingReplyContract(PlanSolvePrompt.ORCHESTRATION.trim()));
+    }
+
+    /**
+     * 追加 openui-lang 可选输出通道（语法 + 核心组件 + 混排协议）。
+     *
+     * <p>内容来自 {@code ui/scripts/openui-generate.mjs} 生成的
+     * {@code openui/prompt-resident.txt}，改组件库后需重新生成并同步到 resources。
+     * 只注入主 agent：这段协议描述的是"本轮产出可以是一个界面"，子 agent 的终答必须回给协调者。</p>
+     */
+    public static String ensureOpenUiProtocol(String systemPrompt) {
+        String base = normalizeNewlines(systemPrompt);
+        if (base.contains(OPENUI_PROTOCOL_MARKER)) {
+            return endsWithNewline(base);
+        }
+        String resident;
+        try {
+            resident = OpenUiResources.residentPrompt();
+        } catch (IllegalStateException e) {
+            // 产物缺失时不能让整条链路挂掉：退化为纯 markdown 对话。
+            log.warn("openui 常驻提示词加载失败，本轮不注入界面通道: {}", e.getMessage());
+            return endsWithNewline(base);
+        }
+        String body = String.join("\n", resident.replace("\r\n", "\n").lines()
+                .filter(line -> !line.startsWith("# generated from"))
+                .toList()).trim();
+        if (body.isBlank()) {
+            return endsWithNewline(base);
+        }
+        return appendBlock(base, "# 可选输出通道：openui 智能界面 (" + OPENUI_PROTOCOL_MARKER + ")\n\n" + body);
     }
 
     public static String ensureUserFacingReplyContract(String systemPrompt) {

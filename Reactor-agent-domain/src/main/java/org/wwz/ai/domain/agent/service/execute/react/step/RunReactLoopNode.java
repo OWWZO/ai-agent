@@ -50,6 +50,9 @@ public class RunReactLoopNode extends AbstractExecuteSupport {
         ReactImplAgent executor = new ReactImplAgent(agentContext);
         dynamicContext.setExecutor(executor);
         PlanModePromptInjector.applyIfPlanMode(agentContext, executor);
+        // openui 输出通道：普通对话走 ReAct 链路，而协议原本只挂在 PlanSolve 主 agent 上，
+        // 不补这一句的话模型拿不到 marker 协议和核心组件签名，只能靠幻觉编 DSL。
+        executor.applyOpenUiProtocol();
         try {
             String runResult = executor.run(requestParameter.getQuery());
             String finalAnswer = ReactFinalAnswerResolver.resolve(executor, runResult);
