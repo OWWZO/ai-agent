@@ -1045,7 +1045,6 @@ public class AgentToolCollectionFactoryTest {
                 .printer(new SilentPrinter())
                 .productFiles(new ArrayList<>())
                 .runtimeDependencies(runtimeDependencies)
-                .historyDialogue("")
                 .basePrompt("")
                 .sopPrompt("")
                 .dateInfo("2026-05-10")

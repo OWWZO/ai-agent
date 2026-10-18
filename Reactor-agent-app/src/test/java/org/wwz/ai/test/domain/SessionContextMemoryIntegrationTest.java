@@ -25,7 +25,7 @@ public class SessionContextMemoryIntegrationTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    public void shouldInjectHistoryDialogueBeforeReactExecution() throws Exception {
+    public void shouldInjectWorkingMemoryBeforeReactExecution() throws Exception {
         ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
         seedSimpleHistory(ctx, "req-react-history-001", "session-react-history-001", "历史 thought from react");
         SessionContextMemoryServiceImpl memoryService = new SessionContextMemoryServiceImpl(
@@ -41,7 +41,6 @@ public class SessionContextMemoryIntegrationTest {
                 .thenAnswer(invocation -> {
                     AgentExecutionCommand request = invocation.getArgument(0);
                     Assert.assertTrue(workingMemoryContains(request, "历史 thought from react"));
-                    Assert.assertEquals("", request.getHistoryDialogue());
                     return "ok";
                 });
 
@@ -62,13 +61,12 @@ public class SessionContextMemoryIntegrationTest {
         strategy.execute(request, stream);
 
         Assert.assertTrue(workingMemoryContains(request, "历史 thought from react"));
-        Assert.assertEquals("", request.getHistoryDialogue());
         Mockito.verify(stream, Mockito.never()).send(Mockito.any());
     }
 
     @Test
     @SuppressWarnings("unchecked")
-    public void shouldInjectHistoryDialogueBeforePlanSolveExecution() throws Exception {
+    public void shouldInjectWorkingMemoryBeforePlanSolveExecution() throws Exception {
         ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
         seedSimpleHistory(ctx, "req-plan-history-001", "session-plan-history-001", "历史 thought from plan");
         SessionContextMemoryServiceImpl memoryService = new SessionContextMemoryServiceImpl(
@@ -84,7 +82,6 @@ public class SessionContextMemoryIntegrationTest {
                 .thenAnswer(invocation -> {
                     AgentExecutionCommand request = invocation.getArgument(0);
                     Assert.assertTrue(workingMemoryContains(request, "历史 thought from plan"));
-                    Assert.assertEquals("", request.getHistoryDialogue());
                     return "ok";
                 });
 
@@ -105,7 +102,6 @@ public class SessionContextMemoryIntegrationTest {
         strategy.execute(request, stream);
 
         Assert.assertTrue(workingMemoryContains(request, "历史 thought from plan"));
-        Assert.assertEquals("", request.getHistoryDialogue());
         Mockito.verify(stream, Mockito.never()).send(Mockito.any());
     }
 

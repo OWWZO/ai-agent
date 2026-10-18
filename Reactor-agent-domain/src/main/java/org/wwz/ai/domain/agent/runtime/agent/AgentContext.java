@@ -227,11 +227,6 @@ public class AgentContext {
 
     // ---- memory ----
     /**
-     * 会话历史摘要兼容字段；默认历史通过 workingMemoryMessages 进入 Memory。
-     */
-    String historyDialogue;
-
-    /**
      * 跨轮工作记忆消息链（ledger hydrate 结果），run 前 preload 进 Memory。
      */
     List<Message> workingMemoryMessages;
@@ -678,7 +673,6 @@ public class AgentContext {
                 .streamMessageType(streamMessageType)
                 .sopPrompt(sopPrompt)
                 .basePrompt(basePrompt)
-                .historyDialogue(historyDialogue)
                 .workingMemoryMessages(workingMemoryMessages)
                 .agentType(agentType)
                 .toolArtifactRegistry(toolArtifactRegistry)
@@ -726,7 +720,6 @@ public class AgentContext {
     }
 
     public record MemorySession(
-            String historyDialogue,
             List<Message> workingMemoryMessages,
             LtmOwner ltmOwner,
             String ltmMemoryContext,
@@ -757,7 +750,7 @@ public class AgentContext {
 
     public MemorySession memorySession() {
         return new MemorySession(
-                historyDialogue, workingMemoryMessages, ltmOwner, ltmMemoryContext, skipMemory, ltmSideEffectsDisabled);
+                workingMemoryMessages, ltmOwner, ltmMemoryContext, skipMemory, ltmSideEffectsDisabled);
     }
 
     public ToolSession toolSession() {
@@ -776,7 +769,6 @@ public class AgentContext {
                 ", query='" + query + '\'' +
                 ", task='" + task + '\'' +
                 ", dateInfo='" + dateInfo + '\'' +
-                ", historyDialogue='" + historyDialogue + '\'' +
                 ", productFiles=" + productFiles +
                 ", isStream=" + isStream +
                 ", streamMessageType='" + streamMessageType + '\'' +

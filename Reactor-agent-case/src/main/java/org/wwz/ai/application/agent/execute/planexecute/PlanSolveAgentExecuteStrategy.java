@@ -137,6 +137,5 @@ public class PlanSolveAgentExecuteStrategy implements IExecuteStrategy {
             );
         }
         request.setWorkingMemoryMessages(working == null ? List.of() : working);
-        request.setHistoryDialogue("");
     }
 }

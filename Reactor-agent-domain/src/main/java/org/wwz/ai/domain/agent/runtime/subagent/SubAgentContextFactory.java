@@ -115,7 +115,6 @@ public final class SubAgentContextFactory {
                 .streamMessageType(null)
                 .sopPrompt(null)
                 .basePrompt(null)
-                .historyDialogue(null)
                 .workingMemoryMessages(null)
                 // 共享父取消令牌，否则 /stop 杀不到嵌套子 Agent
                 .runCancellation(parent.getRunCancellation())

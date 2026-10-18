@@ -145,6 +145,5 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
             );
         }
         request.setWorkingMemoryMessages(working == null ? List.of() : working);
-        request.setHistoryDialogue("");
     }
 }

@@ -5,11 +5,7 @@ import org.junit.Test;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.BaseAgent;
 import org.wwz.ai.domain.agent.runtime.prompt.AgentPrompt;
-import org.wwz.ai.domain.agent.runtime.prompt.IntentGatedPrompt;
-import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
-
-import java.util.Map;
 
 /**
  * 同 session 多次组装 system 时字节必须稳定（prompt cache）。
@@ -19,9 +15,7 @@ public class StableSystemPromptTest {
     @Test
     public void sameInputsYieldIdenticalSystemBytesAcrossConstructions() {
         String template = AgentPrompt.SYSTEM_PROMPT
-                + "\r\n\r\n## 当前日期\n\n{{date}}\n\n"
-                + "{{basePrompt}}\n\n"
-                + "<files>\n</files>\n\n"
+                + "\r\n\r\n{{basePrompt}}\n\n"
                 + "尾部说明  \n";
 
         String first = assemble(template, "sess-1", "react", "角色A");
@@ -30,10 +24,23 @@ public class StableSystemPromptTest {
 
         Assert.assertEquals(first, second);
         Assert.assertEquals(first, third);
-        Assert.assertFalse(first.contains("{{date}}"));
-        Assert.assertFalse(first.contains("<files>"));
+        Assert.assertTrue(first.contains("角色A"));
         Assert.assertTrue(first.contains(AgentPrompt.USER_FACING_REPLY_CONTRACT_MARKER));
         Assert.assertTrue(first.endsWith("\n"));
+        // 行尾空白与连续空行被规范化掉
+        Assert.assertFalse(first.contains("尾部说明  \n"));
+        Assert.assertFalse(first.contains("\n\n\n"));
+    }
+
+    @Test
+    public void queryAndToolsDoNotAffectSystemBytes() {
+        String template = AgentPrompt.ensureUserFacingReplyContract("base");
+
+        String plain = assemble(template, "sess-q", "react", "", "普通问答", new ToolCollection());
+        String document = assemble(template, "sess-q", "react", "", "生成带饼图的 PDF 报告", new ToolCollection());
+
+        // system 不再按 query 意图追加重型策略：不同问题必须拿到同一份 system。
+        Assert.assertEquals(plain, document);
     }
 
     @Test
@@ -42,50 +49,6 @@ public class StableSystemPromptTest {
         String twice = AgentPrompt.ensureUserFacingReplyContract(once);
         Assert.assertEquals(once, twice);
         Assert.assertEquals(1, countMarker(once));
-    }
-
-    @Test
-    public void documentChartPolicyRequiresMatchingIntentAndTool() {
-        ToolCollection documentTools = new ToolCollection();
-        documentTools.addTool(tool("document_generate"));
-
-        Assert.assertEquals(IntentGatedPrompt.Selection.DOCUMENT_WITH_CHARTS,
-                IntentGatedPrompt.select("生成带饼图的 PDF 报告", documentTools));
-        Assert.assertEquals(IntentGatedPrompt.Selection.DOCUMENT,
-                IntentGatedPrompt.select("生成 DOCX 报告", documentTools));
-        Assert.assertEquals(IntentGatedPrompt.Selection.CHART,
-                IntentGatedPrompt.select("解释饼图的含义", documentTools));
-        Assert.assertEquals(IntentGatedPrompt.Selection.NONE,
-                IntentGatedPrompt.select("生成带饼图的 PDF 报告", new ToolCollection()));
-
-        ToolCollection canvasTools = new ToolCollection();
-        canvasTools.addTool(tool("emit_ui_tree"));
-        Assert.assertEquals(IntentGatedPrompt.Selection.CANVAS_WITH_CHARTS,
-                IntentGatedPrompt.select("生成销售 KPI 看板和柱状图", canvasTools));
-    }
-
-    @Test
-    public void intentPolicyUsesSeparateFrozenSystemVariant() {
-        String template = AgentPrompt.ensureUserFacingReplyContract("base");
-        ToolCollection tools = new ToolCollection();
-        tools.addTool(tool("document_generate"));
-
-        String normal = assemble(template, "sess-intent", "react", "", "普通问答", tools);
-        String document = assemble(template, "sess-intent", "react", "", "生成 PDF 报告", tools);
-
-        Assert.assertFalse(normal.contains("# 文档生成策略"));
-        Assert.assertTrue(document.contains("# 文档生成策略"));
-    }
-
-    @Test
-    public void canvasPolicyRequiresCanvasCapability() {
-        ToolCollection canvasTools = new ToolCollection();
-        canvasTools.addTool(tool("emit_ui_tree"));
-
-        Assert.assertEquals(IntentGatedPrompt.Selection.CANVAS,
-                IntentGatedPrompt.select("设计一个销售看板", canvasTools));
-        Assert.assertEquals(IntentGatedPrompt.Selection.NONE,
-                IntentGatedPrompt.select("设计一个销售看板", new ToolCollection()));
     }
 
     private static int countMarker(String s) {
@@ -114,30 +77,6 @@ public class StableSystemPromptTest {
                 .toolCollection(tools)
                 .build());
         return agent.exposeStable(template);
-    }
-
-    private static BaseTool tool(String name) {
-        return new BaseTool() {
-            @Override
-            public String getName() {
-                return name;
-            }
-
-            @Override
-            public String getDescription() {
-                return name;
-            }
-
-            @Override
-            public Map<String, Object> toParams() {
-                return Map.of();
-            }
-
-            @Override
-            public Object execute(Object input) {
-                return null;
-            }
-        };
     }
 
     private static final class ProbeAgent extends BaseAgent {

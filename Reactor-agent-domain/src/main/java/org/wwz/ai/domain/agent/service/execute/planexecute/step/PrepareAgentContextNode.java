@@ -98,7 +98,6 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
                 .workspaceRoot(resolveWorkspaceRoot(request.getSessionId()))
                 .sopPrompt(request.getSopPrompt())
                 .basePrompt(request.getBasePrompt())
-                .historyDialogue(request.getHistoryDialogue())
                 .workingMemoryMessages(request.getWorkingMemoryMessages())
                 .agentType(request.getAgentType())
                 .isStream(Objects.nonNull(request.getIsStream()) ? request.getIsStream() : false)

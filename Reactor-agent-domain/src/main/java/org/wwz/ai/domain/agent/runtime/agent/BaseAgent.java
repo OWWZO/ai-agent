@@ -25,7 +25,6 @@ import org.wwz.ai.domain.agent.runtime.llm.TokenCounter;
 import org.wwz.ai.domain.agent.runtime.llm.SessionPromptFreeze;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanModePromptInjector;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
-import org.wwz.ai.domain.agent.runtime.prompt.IntentGatedPrompt;
 import org.wwz.ai.domain.agent.runtime.prompt.AgentPrompt;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
@@ -375,7 +374,7 @@ public abstract class BaseAgent {
 
 
     /**
-     * 组装 cache-friendly system：只保留静态/会话级占位，去掉 query/date/files/history。
+     * 组装 cache-friendly system：只保留静态/会话级占位，query/date/files/history 不进 system。
      * <p>
      * 纯函数规范化：同输入必得同字节，不依赖 SessionPromptFreeze 内存。
      * tools 只走 API tools[]（忽略 toolPrompt 正文），避免 system 与 schema 双轨。
@@ -385,7 +384,7 @@ public abstract class BaseAgent {
         String basePrompt = context == null || context.getBasePrompt() == null
                 ? ""
                 : context.getBasePrompt().trim();
-        // SOP 为会话/请求级静态指引，进入 system 固定段（cache 友好）；query/date/files/history 仍只走 messages
+        // SOP 为会话/请求级静态指引，进入 system 固定段（cache 友好）；query/date/files/history 只走 messages
         String sopPrompt = context == null || context.getSopPrompt() == null
                 ? ""
                 : context.getSopPrompt().trim();
@@ -396,11 +395,7 @@ public abstract class BaseAgent {
                 .replace("{{tools}}", "")
                 .replace("{{basePrompt}}", basePrompt)
                 .replace("{{sopPrompt}}", sopPrompt)
-                .replace("{{executorSopPrompt}}", sopPrompt)
-                .replace("{{query}}", "")
-                .replace("{{date}}", "")
-                .replace("{{files}}", "")
-                .replace("{{history_dialogue}}", "");
+                .replace("{{executorSopPrompt}}", sopPrompt);
         if (extraPlaceholder != null && !extraPlaceholder.isEmpty()) {
             systemTemplate = systemTemplate.replace(extraPlaceholder, extraValue == null ? "" : extraValue);
         }
@@ -408,11 +403,6 @@ public abstract class BaseAgent {
         if (!sopPrompt.isEmpty() && !hasSopPlaceholder && !systemTemplate.contains(sopPrompt)) {
             systemTemplate = systemTemplate.trim() + "\n\n# SOP\n" + sopPrompt + "\n";
         }
-        systemTemplate = stripEmptyEnvBlocks(systemTemplate);
-        IntentGatedPrompt.Selection intentPolicy = IntentGatedPrompt.select(
-                context == null ? null : context.getQuery(),
-                context == null ? null : context.getToolCollection());
-        systemTemplate = intentPolicy.appendTo(systemTemplate);
         // Tool guidance (WHEN/SKIP) + curated snapshot; skip_memory 不注入
         if (context != null && !Boolean.TRUE.equals(context.getSkipMemory())) {
             var tools = context.getToolCollection();
@@ -438,8 +428,7 @@ public abstract class BaseAgent {
         // Freeze 仅作同 session 防御缓存；主稳定性来自确定性规范化
         String toolSig = LlmToolCallbackProvider.buildToolSignature(
                 context == null ? null : context.getToolCollection());
-        String agentSlot = StringUtils.defaultIfBlank(getName(), "agent")
-                + "|intent=" + intentPolicy.getCacheKey();
+        String agentSlot = StringUtils.defaultIfBlank(getName(), "agent");
         String sessionId = context == null ? null : context.getSessionId();
         return SessionPromptFreeze.freezeSystem(
                 sessionId, agentSlot, toolSig, systemTemplate);
@@ -479,26 +468,6 @@ public abstract class BaseAgent {
             s = s.substring(1);
         }
         return s.replace("\r\n", "\n").replace('\r', '\n');
-    }
-
-    /**
-     * 清掉被置空的 date/files/history 空标签块与空标题，避免 system 残留空壳。
-     */
-    protected String stripEmptyEnvBlocks(String system) {
-        if (system == null || system.isEmpty()) {
-            return "";
-        }
-        String s = system;
-        s = s.replaceAll("(?s)<date>\\s*</date>", "");
-        s = s.replaceAll("(?s)<files>\\s*</files>", "");
-        s = s.replaceAll("(?s)<file_desc>\\s*</file_desc>", "");
-        s = s.replaceAll("(?s)<history_dialogue>\\s*</history_dialogue>", "");
-        s = s.replaceAll("(?s)<session_env>\\s*</session_env>", "");
-        s = s.replaceAll("(?m)^## 当前日期\\s*$\\n?", "");
-        s = s.replaceAll("(?m)^## 可用文件及描述\\s*$\\n?", "");
-        s = s.replaceAll("(?m)^## 当前可用的文件名及描述\\s*$\\n?", "");
-        s = s.replaceAll("(?m)^## 用户历史对话信息\\s*$\\n?", "");
-        return s;
     }
 
     /**
