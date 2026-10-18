@@ -18,6 +18,7 @@ import {
   combineData,
   handleTaskData,
   normalizeEventData,
+  settleRootResultConclusion,
 } from "@/utils/chat";
 import { resolveParentToolUseId } from "@/utils/chat/subagent";
 import { mergeRunReplayIntoConversation } from "@/utils/conversationHistory";
@@ -1490,12 +1491,15 @@ export function useConversationStream(
       const isPlanThoughtFinal = Boolean(eventData.resultMap?.isFinal || finished);
       currentChat = combineData(eventData, currentChat);
       // 子 Agent result 带 parentToolUseId，只挂工作区，不能覆盖主对话终答。
+      // 根 result 收口：有流式段只并元数据不覆盖正文（ZCode 行模型），无流式段才建结论。
       // 有后台任务时后端会推迟 finished；这里仍收口主对话 loading，SSE 继续接收结算事件。
       const isRootResult =
         eventData.resultMap?.messageType === "result" &&
         !resolveParentToolUseId(eventData);
       if (isRootResult) {
-        currentChat.conclusion = buildTaskFromEventData(eventData) as CHAT.Task;
+        if (!settleRootResultConclusion(currentChat, eventData)) {
+          currentChat.conclusion = buildTaskFromEventData(eventData) as CHAT.Task;
+        }
       }
       if (
         planRootResultLoading({
@@ -2812,14 +2816,17 @@ export function useConversationStream(
       const isPlanThoughtFinal = Boolean(eventData.resultMap?.isFinal || finished);
       // combineData 只负责把事件合并进原始会话，后续再根据事件类型触发工作区同步和最终结论覆盖。
       currentChat = combineData(eventData, currentChat);
-      // 实时收到最终 result 时覆盖 agent_stream 结论；$$$ 点名由 ConclusionSection 剥离并映射会话文件。
+      // 根 result 收口：结论区已有流式正文时只并元数据、不覆盖正文（ZCode 行模型）；
+      // 没有流式段才用 result 建结论。$$$ 点名由 ConclusionSection 剥离并映射会话文件。
       // 子 Agent result 带 parentToolUseId，只挂工作区，不能覆盖主对话终答。
       // 有后台任务时后端会推迟 finished；这里仍收口主对话 loading，SSE 继续接收结算事件。
       const isRootResult =
         eventData.resultMap?.messageType === "result" &&
         !resolveParentToolUseId(eventData);
       if (isRootResult) {
-        currentChat.conclusion = buildTaskFromEventData(eventData) as CHAT.Task;
+        if (!settleRootResultConclusion(currentChat, eventData)) {
+          currentChat.conclusion = buildTaskFromEventData(eventData) as CHAT.Task;
+        }
       }
       const rootResultLoadingPlan = planRootResultLoading({
         isRootResult,

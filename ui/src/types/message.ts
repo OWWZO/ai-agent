@@ -130,6 +130,11 @@ declare global {
       plan?: Plan
       result?: string
       taskSummary?: string
+      /**
+       * agent_stream 全文快照帧专用：true 表示本轮调了工具、循环还会继续，
+       * 前端据此把本段发言封口成时间线上独立的助手文本行（对齐 ZCode 行模型）。
+       */
+      moreRounds?: boolean
       fileList?: FileInfo[]
       toolResult?: ToolResult
       planThought?: string

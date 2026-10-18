@@ -304,7 +304,7 @@ function handleTaskMessageByType(
 
   switch (messageType) {
     case "agent_stream":
-      handleAgentStreamMessage(eventData, currentChat);
+      handleAgentStreamMessage(eventData, currentChat, taskIndex, toolIndex);
       break;
     case "llm_retry":
       // 仅更新状态条，不进入任务时间线
@@ -752,7 +752,9 @@ function findSubAgentProgressTarget(
  */
 function handleAgentStreamMessage(
   eventData: MESSAGE.EventData,
-  currentChat: CHAT.ChatItem
+  currentChat: CHAT.ChatItem,
+  taskIndex = -1,
+  toolIndex = -1
 ) {
   const chunk = eventData.resultMap?.result || "";
   if (!chunk) {
@@ -761,9 +763,31 @@ function handleAgentStreamMessage(
   // 总结开始即收口深度思考，避免与 conclusion 并行慢播。
   finalizeOpenNativeReasoning(currentChat);
 
-  const streamConclusion = currentChat.conclusion;
-  if (!streamConclusion || streamConclusion.messageType !== "agent_stream") {
-    currentChat.conclusion = {
+  // 子 agent（SubAgentPrinter 透传回退路径）的 agent_stream 带嵌套标签：
+  // 不能写进主对话结论区，转成过程卡挂进嵌套时间线（与透传路径旧行为一致）。
+  // 主路径（隔离子会话流）不带标签，走下方正常行模型。
+  if (resolveParentToolUseId(eventData)) {
+    handleToolThoughtMessage(
+      {
+        ...eventData,
+        resultMap: { ...eventData.resultMap, toolThought: chunk },
+      } as MESSAGE.EventData,
+      currentChat,
+      taskIndex,
+      toolIndex
+    );
+    return;
+  }
+
+  // isFinal 帧是后端流结束时的全文快照（StreamResponseHandler onComplete 发的），不是增量；
+  // 必须整体替换，否则"逐帧增量 + 末帧全文"会把正文重复拼接一遍。
+  const isFinalSnapshot = Boolean(eventData.resultMap?.isFinal);
+  // moreRounds=true：本轮调了工具、循环还会继续（后端 onComplete 时已知 hasToolCalls）。
+  const moreRounds = Boolean(eventData.resultMap?.moreRounds);
+
+  let segment = currentChat.conclusion;
+  if (!segment || segment.messageType !== "agent_stream") {
+    segment = {
       taskId: eventData.taskId,
       messageId: eventData.messageId,
       messageType: "agent_stream",
@@ -778,14 +802,82 @@ function handleAgentStreamMessage(
         fileList: [],
       },
     } as unknown as CHAT.Task;
+    currentChat.conclusion = segment;
+    if (!isFinalSnapshot) {
+      // 首帧增量已就位，后续帧走追加
+      return;
+    }
+  }
+
+  if (isFinalSnapshot) {
+    segment.result = chunk;
+    if (!segment.resultMap) {
+      segment.resultMap = {};
+    }
+    segment.resultMap.taskSummary = chunk;
+    segment.finish = true;
+    segment.isFinal = true;
+    if (moreRounds) {
+      // ZCode 行模型：中间轮发言封口成时间线上独立的助手文本行（与 toolCall 行平铺），
+      // 后续轮另起一段。快照帧先于本轮 tool_call 事件到达，封口顺序天然正确。
+      // 终轮 moreRounds=false，留在结论区，result 只收口不覆盖。
+      if (!currentChat.multiAgent) {
+        currentChat.multiAgent = { tasks: [] } as unknown as MESSAGE.MultiAgent;
+      }
+      currentChat.multiAgent.tasks.push([segment as unknown as MESSAGE.Task]);
+      currentChat.conclusion = undefined;
+    }
     return;
   }
 
-  streamConclusion.result = `${streamConclusion.result || ""}${chunk}`;
-  if (!streamConclusion.resultMap) {
-    streamConclusion.resultMap = {};
+  segment.result = `${segment.result || ""}${chunk}`;
+  if (!segment.resultMap) {
+    segment.resultMap = {};
   }
-  streamConclusion.resultMap.taskSummary = `${streamConclusion.resultMap.taskSummary || ""}${chunk}`;
+  segment.resultMap.taskSummary = `${segment.resultMap.taskSummary || ""}${chunk}`;
+}
+
+/**
+ * 根 result 到达时的结论收口（ZCode 行模型：终稿不覆盖）。
+ *
+ * 结论区已有一段流式正文（agent_stream）时，正文以流式到达的为准 —— result 只把
+ * fileList/artifactRefs 等元数据合并进 resultMap 并置终态，**不替换正文**；
+ * 没有流式段（非流式请求 / 中间轮清空后未再开段）才用 result 建结论兜底。
+ *
+ * @returns true = 已合并进现有结论；false = 调用方需走原 buildTaskFromEventData 赋值。
+ */
+export function settleRootResultConclusion(
+  currentChat: CHAT.ChatItem,
+  eventData: MESSAGE.EventData
+): boolean {
+  const streamed = currentChat.conclusion;
+  if (
+    !streamed ||
+    streamed.messageType !== "agent_stream" ||
+    typeof streamed.result !== "string" ||
+    !streamed.result.trim()
+  ) {
+    return false;
+  }
+  const built = buildTaskFromEventData(eventData) as CHAT.Task;
+  streamed.isFinal = true;
+  streamed.finish = true;
+  // buildTaskFromEventData 把 resultMap 平铺到 task 顶层，这里精确挑选元数据回填，
+  // 避免把 taskId/messageId 等标识覆盖掉流式段自己的。
+  const meta = built as unknown as Record<string, unknown>;
+  const eventDataRecord = eventData as unknown as Record<string, unknown>;
+  streamed.resultMap = {
+    ...(streamed.resultMap || {}),
+    ...(Array.isArray(meta.fileList) ? { fileList: meta.fileList } : {}),
+    ...(Array.isArray(meta.artifactRefs) ? { artifactRefs: meta.artifactRefs } : {}),
+    ...(Array.isArray(eventDataRecord.artifactRefs)
+      ? { artifactRefs: eventDataRecord.artifactRefs }
+      : {}),
+    ...(meta.artifactKeys !== undefined ? { artifactKeys: meta.artifactKeys } : {}),
+    // 正文以流式段为准；文件/产物等元数据以 result 为准
+    taskSummary: streamed.result,
+  };
+  return true;
 }
 
 /**

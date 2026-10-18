@@ -7,6 +7,7 @@ import {
   combineData,
   getStableTaskIdentity,
   handleTaskData,
+  settleRootResultConclusion,
 } from "./chat";
 import {
   buildDeepSearchChapterWorkspaceModel,
@@ -3130,5 +3131,222 @@ describe("chat context_usage", () => {
       max: 200000,
       promptTokens: 24000,
     });
+  });
+});
+
+describe("chat agent_stream conclusion", () => {
+  const createAgentStreamEvent = (content: string, isFinal: boolean) =>
+    ({
+      messageType: "task",
+      messageId: "stream-message-1",
+      taskId: "stream-task-1",
+      taskOrder: 1,
+      messageOrder: 1,
+      resultMap: {
+        requestId: "req-stream-1",
+        messageId: "stream-message-1",
+        messageType: "agent_stream",
+        messageTime: "1714041609000",
+        isFinal,
+        finish: isFinal,
+        result: content,
+      },
+    }) as unknown as MESSAGE.EventData;
+
+  const createChat = () =>
+    ({
+      sessionId: "session-stream-1",
+      requestId: "req-stream-1",
+      query: "做个界面",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    }) as CHAT.ChatItem;
+
+  it("增量帧逐段追加进结论区，供 openui 流式渲染", () => {
+    const chat = createChat();
+    combineData(createAgentStreamEvent("]]>openui:content", false), chat);
+    combineData(createAgentStreamEvent("\nroot = Col([])", false), chat);
+
+    expect(chat.conclusion?.messageType).toBe("agent_stream");
+    expect(chat.conclusion?.result).toBe("]]>openui:content\nroot = Col([])");
+    expect(chat.conclusion?.isFinal).toBe(false);
+  });
+
+  it("isFinal 快照整体替换而不是追加，避免正文重复一遍", () => {
+    const chat = createChat();
+    const full = "]]>openui:content\nroot = Col([])\n]]>openui:end";
+    combineData(createAgentStreamEvent("]]>openui:content\nroot = Col([])", false), chat);
+    combineData(createAgentStreamEvent(full, true), chat);
+
+    expect(chat.conclusion?.result).toBe(full);
+    expect(chat.conclusion?.resultMap.taskSummary).toBe(full);
+    expect(chat.conclusion?.isFinal).toBe(true);
+    expect(chat.conclusion?.finish).toBe(true);
+  });
+
+  it("首帧即 isFinal 也正确建立结论", () => {
+    const chat = createChat();
+    combineData(createAgentStreamEvent("root = Col([])", true), chat);
+
+    expect(chat.conclusion?.messageType).toBe("agent_stream");
+    expect(chat.conclusion?.result).toBe("root = Col([])");
+    expect(chat.conclusion?.isFinal).toBe(true);
+  });
+});
+
+describe("chat agent_stream 行模型（对齐 ZCode）", () => {
+  const createStreamEvent = (
+    content: string,
+    isFinal: boolean,
+    moreRounds?: boolean,
+    messageId = "stream-message-1"
+  ) =>
+    ({
+      messageType: "task",
+      messageId,
+      taskId: "stream-task-1",
+      taskOrder: 1,
+      messageOrder: 1,
+      resultMap: {
+        requestId: "req-row-1",
+        messageId,
+        messageType: "agent_stream",
+        messageTime: "1714041609000",
+        isFinal,
+        finish: isFinal,
+        moreRounds,
+        result: content,
+      },
+    }) as unknown as MESSAGE.EventData;
+
+  const createChat = () =>
+    ({
+      sessionId: "session-row-1",
+      requestId: "req-row-1",
+      query: "做个界面",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    }) as CHAT.ChatItem;
+
+  it("中间轮发言封口成时间线上独立的助手文本行", () => {
+    const chat = createChat();
+    combineData(createStreamEvent("我先查组件目录", true, true, "round-1"), chat);
+
+    expect(chat.conclusion).toBeUndefined();
+    const sealed = chat.multiAgent.tasks.at(-1)?.[0];
+    expect(sealed?.messageType).toBe("agent_stream");
+    expect(sealed?.result).toBe("我先查组件目录");
+    expect(sealed?.isFinal).toBe(true);
+  });
+
+  it("终轮发言留在结论区，不进时间线", () => {
+    const chat = createChat();
+    combineData(createStreamEvent("]]>openui:content\nroot = Col([])", true, false, "round-2"), chat);
+
+    expect(chat.multiAgent.tasks).toHaveLength(0);
+    expect(chat.conclusion?.result).toBe("]]>openui:content\nroot = Col([])");
+    expect(chat.conclusion?.isFinal).toBe(true);
+  });
+
+  it("多轮循环：中间轮进时间线、终轮留在结论区，过程轨迹完整", () => {
+    const chat = createChat();
+    combineData(createStreamEvent("先调研", true, true, "round-1"), chat);
+    combineData(createStreamEvent("正在生成界面", false, undefined, "round-2"), chat);
+    combineData(createStreamEvent("正在生成界面…完成", true, false, "round-2"), chat);
+
+    const sealed = chat.multiAgent.tasks.at(-1)?.[0];
+    expect(sealed?.result).toBe("先调研");
+    expect(chat.conclusion?.result).toBe("正在生成界面…完成");
+  });
+
+  it("settleRootResultConclusion：有流式段时只并元数据，不覆盖正文", () => {
+    const chat = createChat();
+    combineData(createStreamEvent("]]>openui:content\nroot = Col([])", true, false, "round-2"), chat);
+
+    const resultEvent = {
+      messageType: "task",
+      messageId: "result-message-1",
+      taskId: "result-task-1",
+      taskOrder: 9,
+      messageOrder: 9,
+      resultMap: {
+        requestId: "req-row-1",
+        messageId: "result-message-1",
+        messageType: "result",
+        messageTime: "1714041610000",
+        isFinal: true,
+        result: "]]>openui:content\nroot = Col([])",
+        taskSummary: "]]>openui:content\nroot = Col([])",
+        fileList: [{ fileName: "a.ts" }],
+      },
+    } as unknown as MESSAGE.EventData;
+
+    const merged = settleRootResultConclusion(chat, resultEvent);
+    expect(merged).toBe(true);
+    expect(chat.conclusion?.result).toBe("]]>openui:content\nroot = Col([])");
+    expect(chat.conclusion?.isFinal).toBe(true);
+    expect(chat.conclusion?.resultMap.fileList).toEqual([{ fileName: "a.ts" }]);
+  });
+
+  it("settleRootResultConclusion：没有流式段时返回 false，调用方走原赋值", () => {
+    const chat = createChat();
+    expect(settleRootResultConclusion(chat, createStreamEvent("x", true, false))).toBe(false);
+  });
+});
+
+describe("agent_stream 子 agent 透传防御", () => {
+  const createNestedStreamEvent = (content: string, isFinal: boolean) =>
+    ({
+      messageType: "task",
+      messageId: "child-stream-1",
+      taskId: "child-task-1",
+      taskOrder: 2,
+      messageOrder: 2,
+      resultMap: {
+        requestId: "req-row-1",
+        messageId: "child-stream-1",
+        messageType: "agent_stream",
+        messageTime: "1714041611000",
+        isFinal,
+        finish: isFinal,
+        result: content,
+        // SubAgentPrinter 打的嵌套标签（BaseAgentStreamEventHandler 镜像进顶层与 resultMap）
+        parentToolUseId: "toolu-parent-1",
+        subAgentId: "child-1",
+        subAgentType: "research",
+      },
+    }) as unknown as MESSAGE.EventData;
+
+  const createChat = () =>
+    ({
+      sessionId: "session-nested-1",
+      requestId: "req-row-1",
+      query: "做个界面",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    }) as CHAT.ChatItem;
+
+  it("带 parentToolUseId 的 agent_stream 不写主结论区，转成嵌套过程卡", () => {
+    const chat = createChat();
+    combineData(createNestedStreamEvent("子 agent 正在检索来源", true), chat);
+
+    // 主结论区必须保持干净
+    expect(chat.conclusion).toBeUndefined();
+    // 过程文本挂进时间线（tool_thought 卡，与透传路径旧行为一致）
+    const flattened = chat.multiAgent.tasks.flat();
+    const thought = flattened.find((task) => task.messageType === "tool_thought");
+    expect(thought?.toolThought).toBe("子 agent 正在检索来源");
   });
 });
