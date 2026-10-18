@@ -1,7 +1,7 @@
 import { FC, useState, useCallback, useMemo, memo, useEffect, useRef, useSyncExternalStore } from "react";
 import AttachmentList from "@/components/AttachmentList";
 import { Message, MessageContent } from "@/components/ai-elements/message";
-import MarkdownRenderer from "@/components/ActionPanel/MarkdownRenderer";
+import { OpenUiMarkdown } from "@/components/openui/OpenUiMarkdown";
 import { isPlanSolveConversation } from "@/utils/agentMode";
 import {
   buildPlannerRoundsForDisplay,
@@ -320,9 +320,9 @@ const DialogueComponent: FC<Props> = (props) => {
         <div className="mt-7 w-full max-w-[94%]">
           <Message from="assistant" className="min-w-0 w-full">
             <MessageContent>
-              <MarkdownRenderer
-                markDownContent={chat.response}
-                isStreaming={chat.loading}
+              <OpenUiMarkdown
+                content={chat.response || ""}
+                streaming={chat.loading}
                 artifactFiles={sessionArtifactFiles}
                 className="chat-markdown kimi-md"
               />

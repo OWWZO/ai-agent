@@ -3,6 +3,9 @@ import { ConfigProvider, Spin } from 'antd';
 import { RouterProvider } from 'react-router-dom';
 import zhCN from 'antd/locale/zh_CN';
 import router from './router';
+// OpenUI 渲染器的样式。Tailwind v4 项目必须用 layered 入口（规则全包在 @layer openui 里），
+// 否则它会以未分层样式出现、盖掉 Tailwind utilities。变量前缀 --openui-* / --iui-*，与现有主题无冲突。
+import '@openuidev/react-ui/layered/styles/index.css';
 import { restoreAuthSession } from '@/services/auth';
 import { useAuth } from '@/stores/auth';
 

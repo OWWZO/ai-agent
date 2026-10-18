@@ -1,4 +1,6 @@
-import { defineConfig, loadEnv, type Plugin } from 'vite';
+import { loadEnv, type Plugin } from 'vite';
+// vitest/config 的 defineConfig 是 vite 的超集，多了 test 字段；vite 本身照旧读取同一份配置。
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { createReadStream, existsSync, mkdirSync, copyFileSync, readdirSync } from 'node:fs';
 import path from 'path';
@@ -138,6 +140,11 @@ export default defineConfig(({ command, mode }) => {
         // 摇树会把生产 worker 子构建摇成 0B，只关闭 worker 构建的摇树。
         treeshake: false,
       },
+    },
+    // openui 的 @FormatDate/@AddDays 等函数按本地时区格式化日期，单测里断言的是 UTC 结果。
+    // 固定 TZ=UTC 让测试与机器时区无关（等价于上游 openui 的 vitest.config.mts）。
+    test: {
+      env: { TZ: 'UTC' },
     },
   }
 });

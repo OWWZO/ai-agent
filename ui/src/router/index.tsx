@@ -26,6 +26,21 @@ const ModelAdmin = React.lazy(() => import('@/pages/ModelAdmin'));
 const CapabilityLibrary = React.lazy(() => import('@/pages/CapabilityLibrary'));
 const NotFound = React.lazy(() => import('@/components/NotFound'));
 const AuthPage = React.lazy(() => import('@/pages/Auth'));
+const OpenUiDemo = React.lazy(() => import('@/pages/OpenUiDemo'));
+
+// OpenUI 混排协议的验证页：只在开发环境注册，不进生产产物。
+const openUiDemoRoutes = import.meta.env.DEV
+  ? [
+      {
+        path: ROUTES.OPENUI_DEMO,
+        element: (
+          <Suspense fallback={<Loading loading={true} className="h-full" />}>
+            <OpenUiDemo />
+          </Suspense>
+        ),
+      },
+    ]
+  : [];
 
 // 创建路由配置
 const router = createBrowserRouter([
@@ -140,6 +155,8 @@ const router = createBrowserRouter([
       },
     ],
   },
+  // 开发用的 OpenUI 验证页（不挂 Layout / 不要求登录）
+  ...openUiDemoRoutes,
   // 重定向所有未匹配的路由到 404 页面
   {
     path: '*',

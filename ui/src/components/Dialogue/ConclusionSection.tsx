@@ -1,7 +1,7 @@
 import { FC, useMemo } from "react";
 import AttachmentList from "@/components/AttachmentList";
 import { Message, MessageContent } from "@/components/ai-elements/message";
-import MarkdownRenderer from "@/components/ActionPanel/MarkdownRenderer";
+import { OpenUiMarkdown } from "@/components/openui/OpenUiMarkdown";
 import { collectChatArtifactFiles } from "@/utils/markdownArtifacts";
 import { MessageToolbar } from "./MessageToolbar";
 import {
@@ -59,9 +59,9 @@ export const ConclusionSection: FC<{
     <div className="mt-5">
       <Message from="assistant" className="min-w-0 w-full">
         <MessageContent>
-          <MarkdownRenderer
-            markDownContent={summary}
-            isStreaming={summaryStreaming}
+          <OpenUiMarkdown
+            content={summary}
+            streaming={summaryStreaming}
             artifactFiles={artifactFiles}
             className="chat-markdown conclusion-markdown kimi-md"
           />
