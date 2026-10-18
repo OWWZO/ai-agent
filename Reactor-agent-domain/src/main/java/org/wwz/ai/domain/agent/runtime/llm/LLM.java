@@ -14,7 +14,6 @@ import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolChoice;
-import org.wwz.ai.domain.agent.runtime.planmode.PlanModeToolPolicy;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
@@ -394,7 +393,6 @@ public class LLM {
             int timeout
     ) {
         try {
-            tools = PlanModeToolPolicy.filterTools(context, tools);
             // 工具调用有两条协议分支：原生 function_call 由出站 Adapter 组装 tools[]，
             // struct_parse 则把 schema 放入 system 文本后自行解析 JSON；两者共用观测和账本入口。
             if (!ToolChoice.isValid(toolChoice)) {
@@ -403,7 +401,7 @@ public class LLM {
 
             LlmAskToolProtocol protocol = resolveAskToolProtocol();
             PromptShape promptShape = LlmPromptShapeFactory.forAskTool(
-                    context, systemMsgs, messages, tools, protocol);
+                    systemMsgs, messages, tools, protocol);
             // 与正式发送一致的 system+messages+tools 快照（先观测再落账本 start）
             LlmPromptObservability.logRequest(
                     context, model, ExecutionLedgerConstants.CALL_KIND_ASK_TOOL, promptShape);
@@ -675,14 +673,6 @@ public class LLM {
 
     public LlmAskToolProtocol resolveAskToolProtocol() {
         return isStructParseMode() ? LlmAskToolProtocol.STRUCT_PARSE : LlmAskToolProtocol.FUNCTION_CALL;
-    }
-
-    public PromptShape buildAskToolPromptShape(AgentContext context,
-                                               Message systemMessage,
-                                               List<Message> messages,
-                                               ToolCollection tools) {
-        return LlmPromptShapeFactory.forAskTool(
-                context, systemMessage, messages, tools, resolveAskToolProtocol());
     }
 
     private Message buildStructParseSystemMessage(Message systemMsg, ToolCollection tools) {

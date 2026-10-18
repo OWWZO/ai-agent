@@ -32,7 +32,7 @@ public final class PlanModePromptInjector {
 
             ## Hard constraints
             - NO business code/config/data edits. NO report/image/script side effects.
-              - Read-only tools OK: workspace_read/list/glob/grep, skill_view/skills_search (read).
+              - Read-only tools OK: workspace_read/list/glob/grep, skill_view/skills_search, and external search (web_search / deep_search / web_fetch). Reading is never restricted; only writes and local commands are.
               - Plan mode constrains only the main agent. Agent subagents keep their own tool pool and may search or write files.
             - Clarify with AskUserQuestion when needed. NEVER use AskUserQuestion to ask "is the plan OK?" — that is ExitPlanMode's job.
             - When the plan is ready, call ExitPlanMode (optionally pass plan text). The system will WAIT for user approval; you cannot self-approve.
@@ -93,6 +93,8 @@ public final class PlanModePromptInjector {
 
     /**
      * 每步前调用：按 throttle 注入 sparse/full 提醒，或注入 plan_mode_exit。
+     * <p>
+     * 全文只在 system 里没有契约时（system 注入失败）才发消息版，避免进入 plan 第一步就双份。
      */
     public static void injectStepReminders(BaseAgent agent) {
         if (agent == null || agent.getContext() == null || agent.getMemory() == null) {
@@ -126,12 +128,27 @@ public final class PlanModePromptInjector {
             return;
         }
 
-        boolean useFull = first || (state.getPlanAttachmentCount() % FULL_EVERY_N_ATTACHMENTS == 0);
+        int attachments = state.getPlanAttachmentCount();
+        // system 已带完整契约时，提醒一律用 sparse：同一时刻再塞一份全文等于双份，
+        // 而且这条消息会被持久化、之后每轮重发。只有 system 没注入成功才用全文兜底。
+        boolean useFull = shouldAttachFull(agent.getSystemPrompt(), attachments);
         String body = useFull
                 ? "<system-reminder>\n" + PLAN_MODE_INSTRUCTIONS.trim() + "\n</system-reminder>"
                 : PLAN_MODE_SPARSE.trim();
         agent.getMemory().addMessage(Message.userMessage(body, null));
         state.markPlanAttachmentInjected();
+    }
+
+    /**
+     * 本次提醒是否要带全文。
+     *
+     * @param systemPrompt 当前 system（用于判断契约是否已在 system 里）
+     * @param attachments  已注入的提醒条数（首条为 0）
+     */
+    public static boolean shouldAttachFull(String systemPrompt, int attachments) {
+        boolean systemHasContract = StringUtils.contains(systemPrompt, PLAN_MODE_INSTRUCTIONS_MARKER);
+        return !systemHasContract
+                || (attachments > 0 && attachments % FULL_EVERY_N_ATTACHMENTS == 0);
     }
 
     public static String buildApprovedPlanToolResult(String planContent, String planFilePath, String restoredMode) {

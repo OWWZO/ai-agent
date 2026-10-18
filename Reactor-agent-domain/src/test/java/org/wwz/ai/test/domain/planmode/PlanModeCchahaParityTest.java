@@ -59,6 +59,39 @@ public class PlanModeCchahaParityTest {
         Assert.assertNull(PlanModeToolPolicy.denyReason(state, "ExitPlanMode", Map.of()));
     }
 
+    /**
+     * system 已带契约时，首条提醒必须是 sparse（否则进入 plan 第一步就双份全文）。
+     */
+    @Test
+    public void firstReminderIsSparseWhenSystemAlreadyHasContract() {
+        String systemWithContract = PlanModePromptInjector.ensurePlanModeInstructions("# base");
+        Assert.assertTrue(systemWithContract.contains(PlanModePromptInjector.PLAN_MODE_INSTRUCTIONS_MARKER));
+
+        Assert.assertFalse(PlanModePromptInjector.shouldAttachFull(systemWithContract, 0));
+        Assert.assertFalse(PlanModePromptInjector.shouldAttachFull(systemWithContract, 1));
+        // 每第 5 条提醒仍用全文刷新一次
+        Assert.assertTrue(PlanModePromptInjector.shouldAttachFull(systemWithContract, 5));
+        // system 没有契约（注入失败）时用全文兜底
+        Assert.assertTrue(PlanModePromptInjector.shouldAttachFull("# base", 0));
+        Assert.assertTrue(PlanModePromptInjector.shouldAttachFull(null, 0));
+    }
+
+    /**
+     * plan 期只拦"写"和"有副作用的外部动作"，检索类工具不再被拦（也不再从 tools[] 里剔除）。
+     */
+    @Test
+    public void toolPolicyAllowsSearchToolsInPlanMode() {
+        PlanModeState state = PlanModeState.builder().build();
+        state.enterPlanMode();
+
+        Assert.assertNull(PlanModeToolPolicy.denyReason(state, "web_search", Map.of()));
+        Assert.assertNull(PlanModeToolPolicy.denyReason(state, "WebSearch", Map.of()));
+        Assert.assertNull(PlanModeToolPolicy.denyReason(state, "deep_search", Map.of()));
+        Assert.assertNull(PlanModeToolPolicy.denyReason(state, "web_fetch", Map.of()));
+        Assert.assertNull(PlanModeToolPolicy.denyReason(state, "session_search", Map.of()));
+        Assert.assertNull(PlanModeToolPolicy.denyReason(state, "skills_search", Map.of()));
+    }
+
     @Test
     public void toolPolicyAllowsAllWhenNotInPlanMode() {
         PlanModeState state = PlanModeState.builder().build();

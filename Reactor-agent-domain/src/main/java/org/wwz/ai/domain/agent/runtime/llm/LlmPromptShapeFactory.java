@@ -2,10 +2,8 @@ package org.wwz.ai.domain.agent.runtime.llm;
 
 import com.alibaba.fastjson.JSON;
 import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.model.McpToolInfo;
-import org.wwz.ai.domain.agent.runtime.planmode.PlanModeToolPolicy;
 import org.wwz.ai.domain.agent.runtime.prompt.AgentPrompt;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
@@ -35,23 +33,21 @@ public final class LlmPromptShapeFactory {
         return PromptShape.text(systemMessage, messages);
     }
 
-    public static PromptShape forAskTool(AgentContext context,
-                                         Message systemMessage,
+    public static PromptShape forAskTool(Message systemMessage,
                                          List<Message> messages,
                                          ToolCollection tools,
                                          LlmAskToolProtocol protocol) {
-        ToolCollection filtered = PlanModeToolPolicy.filterTools(context, tools);
         LlmAskToolProtocol effective = protocol == null ? LlmAskToolProtocol.FUNCTION_CALL : protocol;
         if (effective == LlmAskToolProtocol.STRUCT_PARSE) {
             return PromptShape.structParse(
-                    buildStructParseSystemMessage(systemMessage, filtered),
+                    buildStructParseSystemMessage(systemMessage, tools),
                     messages,
-                    filtered);
+                    tools);
         }
         if (effective == LlmAskToolProtocol.TEXT) {
             return PromptShape.text(systemMessage, messages);
         }
-        return PromptShape.functionCall(systemMessage, messages, filtered);
+        return PromptShape.functionCall(systemMessage, messages, tools);
     }
 
     public static Message buildStructParseSystemMessage(Message systemMsg, ToolCollection tools) {

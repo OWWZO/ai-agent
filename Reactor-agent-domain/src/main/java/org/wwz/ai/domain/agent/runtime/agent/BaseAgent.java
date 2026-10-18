@@ -176,7 +176,7 @@ public abstract class BaseAgent {
         Message system = StringUtils.isBlank(getSystemPrompt())
                 ? null
                 : Message.systemMessage(getSystemPrompt(), null);
-        return LlmPromptShapeFactory.forAskTool(context, system, messages, availableTools, protocol);
+        return LlmPromptShapeFactory.forAskTool(system, messages, availableTools, protocol);
     }
 
     protected Map<String, Object> parseToolParam(ToolCall command) {
