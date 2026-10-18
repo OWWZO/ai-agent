@@ -3,6 +3,7 @@ package org.wwz.ai.domain.agent.runtime.agent;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolChoice;
@@ -75,7 +76,12 @@ public class ReactImplAgent extends ReActAgent {
         // system 固定；productFiles/nextStep 不注入（prompt cache）。
         ensureQueryMessage();
         try {
-            context.setStreamMessageType("tool_thought");
+            // 正文 delta 走 agent_stream（前端把它增量拼进结论区 → openui 块能流式渐进渲染）。
+            // 子 agent / LTM fork 场景由创建方预先设成 tool_thought，这里只在未设置时兜底，
+            // 不无条件覆盖 —— 否则子 agent 的终答会流进用户结论区。
+            if (StringUtils.isBlank(context.getStreamMessageType())) {
+                context.setStreamMessageType("agent_stream");
+            }
 
             Integer configuredTimeout = context.getRuntimeDependencies()
                     .requireReactorConfig()

@@ -349,6 +349,9 @@ public class BaseAgentStreamEventHandler {
                 break;
             case "agent_stream":
                 payload.put("result", agentResponse.getResult());
+                // 子 agent（SubAgentPrinter 透传回退路径）的正文流也要带嵌套标签：
+                // 前端据此区分主/子 —— 子的挂嵌套时间线，不写主对话结论区。
+                appendSubAgentNestingTags(payload, agentResponse.getResultMap());
                 break;
             case "stream_settle":
                 // 仅关闭观察流，不带结论正文

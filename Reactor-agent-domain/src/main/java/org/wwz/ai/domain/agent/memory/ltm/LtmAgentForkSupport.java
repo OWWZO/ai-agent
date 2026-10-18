@@ -154,6 +154,8 @@ public final class LtmAgentForkSupport {
             ReactImplAgent agent = new ReactImplAgent(child);
             agent.setName("ltm-" + label);
             agent.setMaxSteps(steps);
+            // LTM fork 的 printer 是 LogPrinter（不推用户会话），正文走 agent_stream 也只进日志，
+            // 与主 agent 保持同一套 streamMessageType 逻辑，不再特判。
             // Hermes：原样钉死父 system；无父 system 时才退回默认 React 底座（冷缓存）
             if (forkParity.hasSystemPrompt()) {
                 agent.setSystemPrompt(forkParity.getFrozenSystemPrompt());

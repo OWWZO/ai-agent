@@ -319,8 +319,11 @@ public class StreamResponseHandler {
                             streamBuffer.setLength(0);
                         }
                         completeRuntimeTiming(runtimeTiming);
+                        // moreRounds：本段之后是否还有模型轮（hasToolCalls=true 说明本轮调了工具，
+                        // 循环会继续）。前端据此把中间轮发言封口成时间线上独立的助手文本行，
+                        // 终轮则留在结论区由 result 收口 —— 对齐 ZCode 的行模型。
                         sendStreamEvent(context, messageId, context.getStreamMessageType(),
-                                content, runtimeTiming, true);
+                                content, runtimeTiming, true, Map.of("moreRounds", hasToolCalls));
                     }
 
                     completeRuntimeTiming(runtimeTiming);
@@ -456,15 +459,32 @@ public class StreamResponseHandler {
                                  Object message,
                                  ReplayTiming runtimeTiming,
                                  boolean isFinal) {
+        sendStreamEvent(context, messageId, messageType, message, runtimeTiming, isFinal, null);
+    }
+
+    /** 带额外 resultMap 键的流事件：帧语义由前端按 these keys 解释（如 moreRounds 分段标记）。 */
+    private void sendStreamEvent(AgentContext context,
+                                 String messageId,
+                                 String messageType,
+                                 Object message,
+                                 ReplayTiming runtimeTiming,
+                                 boolean isFinal,
+                                 Map<String, Object> extraResultMap) {
         if (context == null || context.getPrinter() == null) {
             return;
         }
-        if (runtimeTiming == null) {
+        if (runtimeTiming == null && (extraResultMap == null || extraResultMap.isEmpty())) {
             context.getPrinter().send(messageId, messageType, message, isFinal);
             return;
         }
-        context.getPrinter().sendWithResultMap(messageId, messageType, message,
-                Map.of("timing", snapshotTiming(runtimeTiming)), isFinal);
+        Map<String, Object> resultMap = new LinkedHashMap<>();
+        if (runtimeTiming != null) {
+            resultMap.put("timing", snapshotTiming(runtimeTiming));
+        }
+        if (extraResultMap != null) {
+            resultMap.putAll(extraResultMap);
+        }
+        context.getPrinter().sendWithResultMap(messageId, messageType, message, resultMap, isFinal);
     }
 
     private void completeRuntimeTiming(ReplayTiming timing) {

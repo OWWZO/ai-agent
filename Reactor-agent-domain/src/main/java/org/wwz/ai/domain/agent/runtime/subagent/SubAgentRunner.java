@@ -303,6 +303,10 @@ public class SubAgentRunner {
             agent.setDescription(StringUtils.defaultIfBlank(description, definition.getAgentType()));
             // 整段替换为子 Agent 底座（面向协调者），不复用 ReAct 用户向 system / USER_FACING
             agent.applySubAgentSystemPrompt(definition.getSystemPrompt());
+            // 子 agent 与主 agent 复用同一套行模型：正文 delta 同样走 agent_stream，
+            // 由隔离子会话流（openIsolatedChildStream）承载、子会话面板用同一条 combineData
+            // 链路消费；透传回退路径由 SubAgentPrinter 打嵌套标签、前端挂嵌套时间线。
+            // "终答回给协调者"是消费语义，不改变展示语义。
             if (definition.getMaxSteps() != null && definition.getMaxSteps() > 0) {
                 agent.setMaxSteps(definition.getMaxSteps());
             }
