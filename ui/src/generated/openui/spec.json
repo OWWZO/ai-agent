@@ -155,7 +155,7 @@
     },
     "Chart": {
       "signature": "Chart(type: \"bar\" | \"line\" | \"area\" | \"pie\" | \"donut\" | \"scatter\", data: Record<string, string | number>[], x?: string, series?: string[], format?: \"number\" | \"currency\" | \"percent\", currency?: string, stacked?: boolean, height?: number)",
-      "description": "Rows of data; x is the category key (a number key for scatter), series the value keys (default: every number key). percent values are like 45; currency is a code like \"EUR\"."
+      "description": "Data rows; every value MUST be a bare number (never \"1,234\", \"45%\" or \"12.4万\" — put units in the series name or pass format:\"currency\"/\"percent\" for display). x and series must copy the data keys character for character, or omit series to auto-use every number key (recommended). percent values are like 45; currency is a code like \"EUR\"."
     },
     "Map": {
       "signature": "Map(markers: MapMarker[], route?: boolean, selected?: $binding<string>, height?: number)",
@@ -2023,7 +2023,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "Rows of data; x is the category key (a number key for scatter), series the value keys (default: every number key). percent values are like 45; currency is a code like \"EUR\"."
+        "description": "Data rows; every value MUST be a bare number (never \"1,234\", \"45%\" or \"12.4万\" — put units in the series name or pass format:\"currency\"/\"percent\" for display). x and series must copy the data keys character for character, or omit series to auto-use every number key (recommended). percent values are like 45; currency is a code like \"EUR\"."
       },
       "Map": {
         "type": "object",

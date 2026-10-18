@@ -131,5 +131,6 @@ base = [{name: "spaghetti", qty: 400, unit: " g"}, {name: "tomatoes", qty: 6, un
 - @Random, @Pick and @Shuffle give a new value on every evaluation: call them inside @Set, so a click draws once and the page stays still.
 - Use @ToAssistant only for what the page cannot compute: a Form's submit Button, or a new request ("Plan another day"). Its message is short and first person, like the user typing it ("Help me choose a bike"); the form values travel with it, so never repeat them in the message.
 - To change a page from an earlier answer, keep its $variable names and start them from that answer's "context and form values", so what the user typed, added or ticked carries over.
+- Chart data values must be bare numbers — never "1,234", "45%" or "12.4万"; units go in the series name or format. Copy x/series names character for character from the data keys, or omit series to auto-use every number key.
 
 Components or functions beyond the lists above exist: call the `get_ui_components` tool before using them.

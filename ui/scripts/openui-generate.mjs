@@ -42,6 +42,7 @@ const KEPT_RULES = [
   '@Random, @Pick and @Shuffle',
   'Use @ToAssistant only for what the page cannot compute',
   'To change a page from an earlier answer',
+  'Chart data values must be bare numbers',
 ];
 
 // 这段会被追加到主 agent 的 system prompt 末尾，所以不能自称角色（原版第一句
@@ -300,7 +301,8 @@ function main() {
     writeArtifact('openui-cloud-config.txt', `${cloudBlock.trim()}\n`);
 
     // 常驻提示词直接进主 agent 的上下文，超了会挤压其他指令；这里设一条硬上限防止悄悄膨胀。
-    const LIMIT = 10 * 1024;
+    // 2026-10-18：新增 chart 数据卫生规则后从 10KB 放宽到 10.5KB（system prompt 预算仍远低于注入的 24KB 组件目录）。
+    const LIMIT = 10.5 * 1024;
     if (residentBytes > LIMIT) {
       throw new Error(`prompt-resident.txt ${residentBytes}B 超过上限 ${LIMIT}B，请裁剪常驻组件/函数清单`);
     }
