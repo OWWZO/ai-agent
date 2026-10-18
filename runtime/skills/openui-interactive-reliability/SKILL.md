@@ -38,6 +38,16 @@ Before outputting an openui block, inspect it as if clicking every control:
 - A submit button is disabled by default “for safety,” leaving no path to completion. Make it enabled unless validation is actually implemented.
 - A form collects values but the assistant prompt ignores them. Refer to the form context implicitly and ask for the resulting plan; do not duplicate values in the message.
 
+## HtmlView 游戏界面
+
+对于可玩的小游戏，优先使用单个 `HtmlView` 包含 canvas、样式和内联 JavaScript；保持游戏状态集中在少量变量中，并让每次输入都产生可见变化（位置、分数、生命、提示或模式）。
+
+- 同时提供触控和键盘输入；触控按钮使用 `pointerdown`/`pointerup`，并在 `pointercancel`、`pointerleave` 与全局 `pointerup` 时释放按键，避免“卡住”。
+- 对按住有效的动作（移动、蓄力、连发）使用按键状态；对开始、重置、开火等单次动作使用独立函数，避免同一事件既触发绑定处理又触发额外监听而重复执行。
+- 在 `requestAnimationFrame` 循环中限制 `dt`，并在 `mode !== "play"` 时停止游戏逻辑；绘制层仍应显示标题、暂停、失败和胜利遮罩。
+- 每个可交互控件都要能在移动端点击，且提供明确的重试/重置路径；不要把按钮标记为 disabled，除非确有可见且可恢复的条件。
+- 在交付前静态预检：root 是首行；HTML 字符串中的引号已正确转义；canvas 尺寸与 CSS 比例一致；开始、暂停/重置、移动、跳跃/射击、结束状态均有可达路径；不重复注册同一按钮的同类事件。
+
 ## Output style
 
 Use Chinese when the user communicates in Chinese. Keep the surrounding explanation brief. For an interactive request, return one valid openui-lang block and no extra pseudo-code. If the interface depends on unknown component signatures, call `get_ui_components` first.
