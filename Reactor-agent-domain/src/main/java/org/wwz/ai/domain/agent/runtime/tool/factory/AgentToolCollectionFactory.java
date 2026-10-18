@@ -61,7 +61,6 @@ import org.wwz.ai.domain.agent.runtime.tool.common.canvas.CanvasPublishTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.EmitUiPatchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.EmitUiTreeTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.GetGenuiGuideTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.canvas.GetHtmlCanvasGuideTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.ListUiComponentsTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.MemoryTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.SessionSearchTool;
@@ -289,16 +288,18 @@ public class AgentToolCollectionFactory {
                     || agentToolList.contains("sql_query")) {
                 registerDataPrepTools(toolCollection, agentContext);
             }
+            // canvas：把 workspace 里的 HTML 发布成可预览链接。它不产出界面 DSL，与 genui 树无关，保持可用。
             if (agentToolList.contains("canvas")
                     || agentToolList.contains("canvas_publish")
-                    || agentToolList.contains("html_canvas")
-                    || agentToolList.contains("genui")) {
-                GetHtmlCanvasGuideTool getHtmlCanvasGuideTool = new GetHtmlCanvasGuideTool();
-                addTool(toolCollection, getHtmlCanvasGuideTool, agentContext, GetHtmlCanvasGuideTool::setAgentContext);
-
+                    || agentToolList.contains("html_canvas")) {
                 CanvasPublishTool canvasPublishTool = new CanvasPublishTool();
                 addTool(toolCollection, canvasPublishTool, agentContext, CanvasPublishTool::setAgentContext);
-
+            }
+            // 旧 genui 树默认不装配（autobots.autoagent.genui.enabled=false）：
+            // 界面通道已由 openui 承担，两套 DSL 同时在场会让模型在 emit_ui_tree 和 openui-lang 之间摇摆。
+            // 工具代码保留，置 true 可回滚。
+            if (reactorConfig.isGenuiEnabled()
+                    && (agentToolList.contains("canvas") || agentToolList.contains("genui"))) {
                 GetGenuiGuideTool getGenuiGuideTool = new GetGenuiGuideTool();
                 addTool(toolCollection, getGenuiGuideTool, agentContext, GetGenuiGuideTool::setAgentContext);
 

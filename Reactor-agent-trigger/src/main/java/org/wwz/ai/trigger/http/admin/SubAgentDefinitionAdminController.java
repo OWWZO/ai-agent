@@ -118,7 +118,6 @@ public class SubAgentDefinitionAdminController {
                 "sql_query",
                 // canvas / genui
                 "canvas_publish",
-                "get_html_canvas_guide",
                 "get_genui_guide",
                 "list_ui_components",
                 "emit_ui_tree",

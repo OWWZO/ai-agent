@@ -45,10 +45,13 @@ public class CanvasPublishTool implements BaseTool {
 
     @Override
     public String getDescription() {
+        // 不要把模型指向任何具体工具名：canvas 组与界面通道（openui）各自独立装配，
+        // 写死 emit_ui_tree / chart_generator 之类会在对应能力未装配时变成幻觉调用。
         return "Publish an existing HTML file from the active workspace into the preview panel. "
-                + "Use ONLY when the user explicitly wants HTML / a webpage / printable report, "
-                + "or page-scale layout that cannot be expressed by GenUI components. "
-                + "Charts / KPI / dashboards / multi-card UI -> prefer emit_ui_tree (not this tool). "
+                + "Use ONLY when the user explicitly wants a standalone HTML page / webpage / printable report, "
+                + "or page-scale layout that cannot live inside the conversation. "
+                + "Charts / KPI / dashboards / multi-card UI belong to the in-conversation interface channel "
+                + "(or a chart/document generator when a static export is required), not to this tool. "
                 + "First write the page with workspace_write, then pass its html_path. "
                 + "html_path is required; this tool does not accept inline HTML or upload/register files.";
     }

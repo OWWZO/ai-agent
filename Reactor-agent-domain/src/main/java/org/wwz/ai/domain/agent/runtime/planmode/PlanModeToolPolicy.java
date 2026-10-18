@@ -5,17 +5,15 @@ import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.common.AgentDispatchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.mcp.McpToolNames;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskToolNames;
-import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
-import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
-import org.wwz.ai.domain.agent.runtime.tool.mcp.model.McpToolInfo;
-import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolCatalog;
 
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 
 /**
- * Plan Mode 工具门禁（主 agent prompt 约束 + 写操作仅 plan 文件）。
+ * Plan Mode 工具门禁（执行期拒绝写操作与有副作用的命令；只做拦截，不改发送给模型的 tools[]）。
+ * <p>
+ * 注意：这里不再区分"外部检索"与"本地只读"——检索类工具在 plan 期正常可用。
+ * 门禁只在执行期生效，模型能看见全部工具，因此不需要"先隐藏再拒绝"的两段式设计。
  */
 public final class PlanModeToolPolicy {
 
@@ -38,7 +36,6 @@ public final class PlanModeToolPolicy {
             "workspace_grep",
             "skill_view",
             "skills_search",
-            "get_html_canvas_guide",
             "get_genui_guide",
             "list_ui_components",
             McpToolNames.TOOL_SEARCH,
@@ -46,13 +43,8 @@ public final class PlanModeToolPolicy {
             McpToolNames.TOOL_CALL
     );
 
-    private static final Set<String> SEARCH_TOOLS = Set.of(
-            "deep_search",
-            "web_search",
-            "WebSearch",
-            "web_fetch",
-            "WebFetch",
-            "session_search",
+    /** 执行本机命令 / 操作浏览器：不是"检索"，而是有副作用的外部动作，plan 期仍拦。 */
+    private static final Set<String> SIDE_EFFECT_TOOLS = Set.of(
             "host_cli",
             "browser",
             "opencli"
@@ -97,16 +89,13 @@ public final class PlanModeToolPolicy {
         }
         String name = toolName.trim();
         String lower = name.toLowerCase(Locale.ROOT);
-        if (SEARCH_TOOLS.contains(name)
-                || lower.contains("search")
-                || lower.contains("web_fetch")
-                || lower.equals("fetch")) {
-            return "Plan mode: 禁止调用搜索、外部命令或网页抓取工具「" + name + "」。"
-                    + " 请只使用本地工作区只读工具，退出 plan mode 并获用户批准后再进行外部检索。";
-        }
         if (ALWAYS_ALLOWED.contains(name)) {
             // Agent 在 plan 期允许，子代理工具池会额外剥离写工具
             return null;
+        }
+        if (SIDE_EFFECT_TOOLS.contains(name)) {
+            return "Plan mode: 禁止调用会执行本机命令或操作浏览器的工具「" + name + "」。"
+                    + " 请只使用只读工具与检索工具；退出 plan mode 并获用户批准后再执行。";
         }
         if ("workspace_write".equals(name) || "workspace_edit".equals(name)) {
             String path = extractPath(args);
@@ -126,54 +115,6 @@ public final class PlanModeToolPolicy {
             return "Plan mode: 工具「" + name + "」可能修改状态，已禁止。请退出 plan mode 并获用户批准后再用。";
         }
         return null;
-    }
-
-    /**
-     * 构造发给 LLM 的 plan-mode 工具视图，避免模型看到被禁止的外部检索工具。
-     */
-    public static ToolCollection filterTools(AgentContext context, ToolCollection tools) {
-        if (context == null || tools == null || context.isSubAgent()
-                || !context.requirePlanModeState().isPlanMode()) {
-            return tools;
-        }
-        ToolCollection filtered = new ToolCollection();
-        filtered.setAgentContext(context);
-        filtered.setMcpToolExecutor(tools.getMcpToolExecutor());
-        filtered.restoreTaskScopedState(tools.snapshotTaskScopedState());
-        if (tools.getToolMap() != null) {
-            for (Map.Entry<String, BaseTool> entry : tools.getToolMap().entrySet()) {
-                if (!isSearchTool(entry.getKey())) {
-                    filtered.addTool(entry.getValue());
-                }
-            }
-        }
-        if (tools.getMcpToolMap() != null) {
-            for (McpToolInfo info : tools.getMcpToolMap().values()) {
-                if (info != null && !isSearchTool(info.getName())) {
-                    filtered.addMcpTool(info);
-                }
-            }
-        }
-        DeferredToolCatalog catalog = tools.getDeferredToolCatalog();
-        if (catalog != null) {
-            filtered.setDeferredToolCatalog(catalog);
-        }
-        return filtered;
-    }
-
-    private static boolean isSearchTool(String toolName) {
-        if (toolName == null) {
-            return false;
-        }
-        if (McpToolNames.isBridge(toolName)) {
-            return false;
-        }
-        String name = toolName.trim();
-        String lower = name.toLowerCase(Locale.ROOT);
-        return SEARCH_TOOLS.contains(name)
-                || lower.contains("search")
-                || lower.contains("web_fetch")
-                || lower.equals("fetch");
     }
 
     private static boolean isPlanRelativePath(String path) {

@@ -28,6 +28,18 @@ public class ReactorConfig {
     @Value("${autobots.autoagent.planner.model_name:}")
     private String plannerModelName;
 
+    /**
+     * 旧 genui 树工具（emit_ui_tree / emit_ui_patch / get_genui_guide / list_ui_components）
+     * 是否装配。默认关：界面通道已由 openui 承担，两套同时在场会让模型在两种 DSL 之间摇摆。
+     * 需要回滚时置 true 即可，工具代码保留未删。
+     * <p>
+     * 注意：{@code canvas_publish}（把 workspace 里的 HTML 发布成预览链接）<b>不属于</b>本开关，
+     * 它是独立能力、始终装配，删 genui 系列时不要连带删掉。
+     * </p>
+     */
+    @Value("${autobots.autoagent.genui.enabled:false}")
+    private boolean genuiEnabled;
+
     @Value("${autobots.autoagent.executor.model_name:}")
     private String executorModelName;
 
