@@ -4,6 +4,7 @@ import {
   applyGuardError,
   claimTurnSettledRefresh,
   createConversationDraftController,
+  isContentlessRunChat,
   isSessionControlPackage,
   planEmptyStreamClose,
   planFollowIdleReplay,
@@ -25,6 +26,47 @@ describe("useConversationStream helpers", () => {
     expect(claimTurnSettledRefresh("req-1", settled)).toBe(true);
     expect(claimTurnSettledRefresh("req-1", settled)).toBe(false);
     expect(claimTurnSettledRefresh("", settled)).toBe(false);
+  });
+
+  it("空壳 chat 判定为可全量重放，带内容的 chat 不重放", () => {
+    // 历史 hydrate 的 summary 壳：全部内容字段为空。
+    const shell = {
+      requestId: "req-1",
+      response: "",
+      conclusion: undefined,
+      multiAgent: { tasks: [] },
+      timeline: [],
+    } as unknown as CHAT.ChatItem;
+    expect(isContentlessRunChat(shell)).toBe(true);
+    expect(isContentlessRunChat(undefined)).toBe(true);
+
+    // 账本回放灌过工具卡 / 有结论 / 有计划 → 不允许再全量重放（会重复挂卡）。
+    const withCards = {
+      ...shell,
+      multiAgent: { tasks: [[{ messageType: "tool_call" }]] },
+    } as unknown as CHAT.ChatItem;
+    expect(isContentlessRunChat(withCards)).toBe(false);
+
+    const withConclusion = {
+      ...shell,
+      conclusion: { result: "x" }
+    } as unknown as CHAT.ChatItem;
+    expect(isContentlessRunChat(withConclusion)).toBe(false);
+
+    const withPlan = {
+      ...shell,
+      multiAgent: {
+        tasks: [],
+        plan: { title: "p" }
+      },
+    } as unknown as CHAT.ChatItem;
+    expect(isContentlessRunChat(withPlan)).toBe(false);
+
+    const withTimeline = {
+      ...shell,
+      timeline: [{}]
+    } as unknown as CHAT.ChatItem;
+    expect(isContentlessRunChat(withTimeline)).toBe(false);
   });
 
   it("会话级控制帧不依赖 requestId 路由", () => {
@@ -76,7 +118,10 @@ describe("useConversationStream helpers", () => {
     expect(
       resolveActionPanelVisibility({
         plan: {
-          stages: [{ title: "分析需求", status: "completed" }],
+          stages: [{
+            title: "分析需求",
+            status: "completed"
+          }],
         } as unknown as CHAT.Plan,
         taskList: [],
       })
@@ -137,7 +182,10 @@ describe("useConversationStream helpers", () => {
       id: "c1",
       sessionId: "s1",
       chatList: [
-        { requestId: "req-old", query: "先跑后台" } as CHAT.ChatItem,
+        {
+          requestId: "req-old",
+          query: "先跑后台"
+        } as CHAT.ChatItem,
       ],
     } as CHAT.ConversationHistory;
     const controller = createConversationDraftController<CHAT.ChatItem>(
@@ -154,7 +202,10 @@ describe("useConversationStream helpers", () => {
       ...latest,
       chatList: [
         latest.chatList[0],
-        { requestId: "req-new", query: "第二句" } as CHAT.ChatItem,
+        {
+          requestId: "req-new",
+          query: "第二句"
+        } as CHAT.ChatItem,
       ],
     };
 
@@ -177,9 +228,18 @@ describe("useConversationStream helpers", () => {
       id: "c1",
       sessionId: "s1",
       chatList: [
-        { requestId: "req-old", query: "先跑后台" } as CHAT.ChatItem,
-        { requestId: "req-old", query: "重复副本" } as CHAT.ChatItem,
-        { requestId: "req-new", query: "第二句" } as CHAT.ChatItem,
+        {
+          requestId: "req-old",
+          query: "先跑后台"
+        } as CHAT.ChatItem,
+        {
+          requestId: "req-old",
+          query: "重复副本"
+        } as CHAT.ChatItem,
+        {
+          requestId: "req-new",
+          query: "第二句"
+        } as CHAT.ChatItem,
       ],
     } as CHAT.ConversationHistory;
     const controller = createConversationDraftController<CHAT.ChatItem>(
@@ -410,14 +470,20 @@ describe("useConversationStream helpers", () => {
         sawFollowIdle: false,
         chatRunning: true,
       })
-    ).toEqual({ writeDisconnectHint: false, reconnect: false });
+    ).toEqual({
+      writeDisconnectHint: false,
+      reconnect: false
+    });
     expect(
       planObservationClose({
         released: false,
         sawFollowIdle: true,
         chatRunning: true,
       })
-    ).toEqual({ writeDisconnectHint: false, reconnect: false });
+    ).toEqual({
+      writeDisconnectHint: false,
+      reconnect: false
+    });
   });
 
   it("没看到 follow_idle、仍在跑、且不是 released 时才写文案并重连", () => {
@@ -427,14 +493,20 @@ describe("useConversationStream helpers", () => {
         sawFollowIdle: false,
         chatRunning: true,
       })
-    ).toEqual({ writeDisconnectHint: true, reconnect: true });
+    ).toEqual({
+      writeDisconnectHint: true,
+      reconnect: true
+    });
     expect(
       planObservationClose({
         released: false,
         sawFollowIdle: false,
         chatRunning: false,
       })
-    ).toEqual({ writeDisconnectHint: false, reconnect: false });
+    ).toEqual({
+      writeDisconnectHint: false,
+      reconnect: false
+    });
   });
 
   it("follow_idle 只有明确终态才停止，账本仍为 RUNNING 时继续重连", () => {

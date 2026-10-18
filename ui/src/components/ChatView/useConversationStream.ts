@@ -156,9 +156,15 @@ export function planObservationClose(input: {
   chatRunning: boolean;
 }): ObservationClosePlan {
   if (input.released || input.sawFollowIdle || !input.chatRunning) {
-    return { writeDisconnectHint: false, reconnect: false };
+    return {
+      writeDisconnectHint: false,
+      reconnect: false
+    };
   }
-  return { writeDisconnectHint: true, reconnect: true };
+  return {
+    writeDisconnectHint: true,
+    reconnect: true
+  };
 }
 
 export type EmptyStreamClosePlan = "replay" | "reconnect";
@@ -219,11 +225,35 @@ export function planRootResultLoading(input: {
   return input.finished ? "keep" : "settle";
 }
 
+/**
+ * run 的本地聊天是否还是"空壳"（没有任何已重建的过程/正文内容）。
+ *
+ * 刷新或切会话回来时，历史 hydrate 只给 summary 壳；RUNNING run 的进行中
+ * 流式正文既不在账本回放里（ReplayProjector 对无工具的终轮 content 不投影、
+ * run.finalSummaryText 要 run 结束才落库），也不能靠带游标的 SSE 续绑拿回
+ * （游标之前的帧被去重丢弃）。这种情况下 follow 必须从 seq=0 全量重放。
+ */
+export function isContentlessRunChat(chat?: CHAT.ChatItem | null): boolean {
+  if (!chat) {
+    return true;
+  }
+  return (
+    !chat.conclusion &&
+    !(chat.multiAgent?.tasks?.length) &&
+    !chat.multiAgent?.plan &&
+    !chat.multiAgent?.plan_thought &&
+    !(chat.timeline?.length)
+  );
+}
+
 function withoutStaleDisconnectTip(chat: CHAT.ChatItem): CHAT.ChatItem {
   if (chat.tip !== CONNECTION_LOST_HINT) {
     return chat;
   }
-  return { ...chat, tip: "" };
+  return {
+    ...chat,
+    tip: ""
+  };
 }
 const FOLLOW_RECONNECT_BASE_DELAY = 800;
 const FOLLOW_RECONNECT_MAX_DELAY = 15_000;
@@ -975,7 +1005,15 @@ export function useConversationStream(
     const cached = reconnectContext || followReconnectContextsRef.current.get(targetRequestId);
     const baseConversation = conversationRef.current;
     const conversationId = cached?.conversationId || baseConversation.id;
+    // seed 优先取本地最新快照：重连时 cached.seedChat 是首轮 follow 时的旧壳，
+    // 用它会把已累积的正文整体替换回空壳（配合游标续流 = 丢前半段正文）。
+    const snapshotBase =
+      conversationSnapshotsRef.current.get(conversationId) ||
+      (conversationRef.current.id === conversationId ? conversationRef.current : undefined);
     const seedChat =
+      [...(snapshotBase?.chatList || [])]
+        .reverse()
+        .find((chat) => chat.requestId === targetRequestId) ||
       cached?.seedChat ||
       [...baseConversation.chatList]
         .reverse()
@@ -1019,11 +1057,16 @@ export function useConversationStream(
     const abortController = new AbortController();
     bindForegroundStream(conversationId, requestId, abortController);
     const storedCheckpoint = readActiveRun();
-    const initialEventSeq = Math.max(
+    const storedCursor = Math.max(
       storedCheckpoint?.sessionId === sessionId ? storedCheckpoint.lastEventSeq : 0,
       readSessionCursor(sessionId),
       lastEventSeqRef.current.get(requestId) || 0
     );
+    // 本地壳没有任何已重建内容（刷新/切会话回来；账本回放不投影进行中的流式正文）时，
+    // 带游标续绑会跳过服务端内存投影里已缓冲的历史帧 → 正文只剩游标之后的增量。
+    // 此时改从 0 全量重放：本 run 的历史帧照收，其它 run 的帧仍按游标丢弃（见 handleMessage）。
+    const acceptReplayedHistory = isContentlessRunChat(seedChat);
+    const initialEventSeq = acceptReplayedHistory ? 0 : storedCursor;
     lastEventSeqRef.current.set(requestId, initialEventSeq);
     if (!storedCheckpoint || storedCheckpoint.requestId !== requestId) {
       saveActiveRun(sessionId, requestId);
@@ -1056,13 +1099,13 @@ export function useConversationStream(
       (conversationRef.current.id === conversationId
         ? conversationRef.current
         : {
-            ...conversationRef.current,
-            id: conversationId,
-            sessionId,
-            productType: productType || conversationRef.current.productType,
-            deepThink: normalizedDeepThink,
-            chatList: [currentChat],
-          });
+          ...conversationRef.current,
+          id: conversationId,
+          sessionId,
+          productType: productType || conversationRef.current.productType,
+          deepThink: normalizedDeepThink,
+          chatList: [currentChat],
+        });
 
     const draftController = createConversationDraftController<CHAT.ChatItem>(
       conversationId,
@@ -1364,17 +1407,24 @@ export function useConversationStream(
       }
       const eventSeq = Number(data.eventSeq || 0);
       const lastEventSeq = lastEventSeqRef.current.get(requestId) || 0;
-      if (eventSeq > 0 && eventSeq <= lastEventSeq) {
+      const frameRequestId = String(data.reqId || "");
+      const isTargetFrame = !frameRequestId || frameRequestId === requestId;
+      // 全量重放窗口（acceptReplayedHistory）：低于存储游标的历史帧只对本 run 放行；
+      // 其它 run 的帧仍按游标丢弃，避免把已完成 run 的卡片/正文重复叠加。
+      if (
+        eventSeq > 0 &&
+        eventSeq <= storedCursor &&
+        !(acceptReplayedHistory && isTargetFrame)
+      ) {
         return;
       }
-      if (eventSeq > 0) {
+      if (eventSeq > 0 && eventSeq > lastEventSeq) {
         lastEventSeqRef.current.set(requestId, eventSeq);
         updateActiveRunSeq(sessionId, eventSeq);
       }
       const { finished, resultMap, packageType } = data;
       // 到达这里的都是本条流真正投递出来的帧（含控制帧），据此判断「空流」。
       sawAnyFrame = true;
-      const frameRequestId = String(data.reqId || "");
       // 会话控制帧的 reqId 由后端会话级 Hub 填充，可能是 sessionId；
       // 先处理控制语义，不能按普通业务帧的 requestId 规则丢弃。
       if (
@@ -1733,7 +1783,10 @@ export function useConversationStream(
           : conversationSnapshotsRef.current.get(conversationId) ||
             conversationRef.current;
       const chatList = (base.chatList || []).map((chat) =>
-        chat.tip === CONNECTION_LOST_HINT ? { ...chat, tip: "" } : chat
+        chat.tip === CONNECTION_LOST_HINT ? {
+          ...chat,
+          tip: ""
+        } : chat
       );
       const next = {
         ...base,
@@ -3148,7 +3201,7 @@ export function useConversationStream(
 
     sendMessage({
       message: last.query,
-       deepThink: conversation.deepThink,
+      deepThink: conversation.deepThink,
     });
   });
 

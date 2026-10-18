@@ -245,11 +245,11 @@ describe("sessionBootstrap", () => {
     expect(loadSessionDetail).toHaveBeenCalledOnce();
   });
 
-  it("summary hydrate 后 replay 当前 RUNNING run，保留其它历史 run", async () => {
-    const replay = createReplay("RUNNING", [
+  it("RUNNING run 跳过账本回放（交给 SSE 全量重放），同 turn 已完成 run 仍补齐", async () => {
+    const replay = createReplay("SUCCESS", [
       createReplayFrame(createPlanEvent()),
       createReplayFrame(createToolCallEvent()),
-    ]);
+    ], "req-completed");
     const loadReplay = vi.fn(async () => replay);
 
     const conversation = await hydrateSessionWithRunningReplay(
@@ -257,33 +257,35 @@ describe("sessionBootstrap", () => {
       loadReplay
     );
 
-    expect(loadReplay).toHaveBeenCalledOnce();
-    expect(loadReplay).toHaveBeenCalledWith("req-running");
+    expect(loadReplay).not.toHaveBeenCalled();
     expect(conversation.chatList.map((chat) => chat.requestId)).toEqual([
       "req-completed",
       "req-running",
     ]);
     expect(conversation.chatList[0].conclusion?.result).toBe("已完成的结论");
+    // RUNNING run 保持空壳：账本回放拿不到进行中的流式正文，
+    // 内容由 follow SSE 全量重放重建（acceptReplayedHistory）。
     expect(conversation.chatList[1].loading).toBe(true);
     expect(conversation.chatList[1].metrics?.status).toBe("RUNNING");
-    expect(conversation.chatList[1].replayLoaded).toBe(true);
-    expect(conversation.chatList[1].multiAgent.plan?.title).toBe(
-      "恢复的执行计划"
-    );
-    expect(
-      conversation.chatList[1].multiAgent.tasks.flat().filter(
-        (task) => task.messageType === "tool_call"
-      )
-    ).toHaveLength(1);
+    expect(conversation.chatList[1].replayLoaded).toBe(false);
+    expect(conversation.chatList[1].multiAgent.plan).toBeUndefined();
+    expect(conversation.chatList[1].conclusion).toBeUndefined();
   });
 
   it("replay 与 follow SSE 收到同一工具事件时保持单张卡片", async () => {
     const toolCall = createToolCallEvent();
+    const page = createRunningPage();
+    page.runCount = 1;
+    page.runs = [{
+      ...page.runs[1],
+      status: "SUCCESS",
+      finalSummaryPreview: ""
+    }];
     const conversation = await hydrateSessionWithRunningReplay(
-      createRunningPage(),
-      async () => createReplay("RUNNING", [createReplayFrame(toolCall)])
+      page,
+      async () => createReplay("SUCCESS", [createReplayFrame(toolCall)])
     );
-    const chat = conversation.chatList[1];
+    const chat = conversation.chatList[0];
     const afterFollow = buildConversationTaskData(
       combineData(toolCall, chat),
       conversation.deepThink
@@ -302,7 +304,12 @@ describe("sessionBootstrap", () => {
     const page = createRunningPage();
     page.runCount = 1;
     page.finishedRunCount = 0;
-    page.runs = [page.runs[1]];
+    // 只有非 RUNNING run 才走账本回放；这里模拟 run 已结束、summary 已落终态的场景。
+    page.runs = [{
+      ...page.runs[1],
+      status: "SUCCESS",
+      finalSummaryPreview: ""
+    }];
     const conversation = await hydrateSessionWithRunningReplay(
       page,
       async () => createReplay("SUCCESS", [createReplayFrame(replayResult)])
@@ -324,21 +331,28 @@ describe("sessionBootstrap", () => {
     ).toHaveLength(1);
   });
 
-  it("replay 期间 run 结束时使用终态，不再保留 loading", async () => {
+  it("已完成 run 的回放返回终态时不再保留 loading", async () => {
+    const page = createRunningPage();
+    page.runCount = 1;
+    page.runs = [{
+      ...page.runs[1],
+      status: "SUCCESS",
+      finalSummaryPreview: ""
+    }];
     const conversation = await hydrateSessionWithRunningReplay(
-      createRunningPage(),
+      page,
       async () => ({
         ...createReplay("SUCCESS"),
         finalSummaryText: "已完成",
       })
     );
 
-    expect(conversation.chatList[1].loading).toBe(false);
-    expect(conversation.chatList[1].metrics?.status).toBe("SUCCESS");
-    expect(conversation.chatList[1].conclusion?.result).toBe("已完成");
+    expect(conversation.chatList[0].loading).toBe(false);
+    expect(conversation.chatList[0].metrics?.status).toBe("SUCCESS");
+    expect(conversation.chatList[0].conclusion?.result).toBe("已完成");
   });
 
-  it("replay 请求失败时保留 RUNNING shell 并报告 requestId", async () => {
+  it("replay 请求失败时保留 shell 并报告 requestId", async () => {
     const error = new Error("replay unavailable");
     const onReplayError = vi.fn();
     const conversation = await hydrateSessionWithRunningReplay(
@@ -349,10 +363,12 @@ describe("sessionBootstrap", () => {
       onReplayError
     );
 
+    // RUNNING run 被跳过，不发出任何回放请求。
+    expect(onReplayError).not.toHaveBeenCalled();
+    expect(conversation.chatList[0].replayLoaded).toBe(false);
     expect(conversation.chatList[1].loading).toBe(true);
     expect(conversation.chatList[1].metrics?.status).toBe("RUNNING");
     expect(conversation.chatList[1].replayLoaded).toBe(false);
-    expect(onReplayError).toHaveBeenCalledWith("req-running", error);
   });
 
   it("没有 RUNNING run 时补最后一个 turn：提问 run 与续跑 run 一起补齐", async () => {

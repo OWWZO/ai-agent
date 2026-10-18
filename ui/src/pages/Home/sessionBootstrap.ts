@@ -114,8 +114,27 @@ export async function hydrateSessionWithRunningReplay(
     return conversation;
   }
 
+  // 数据源互斥：RUNNING run 的内容交给 SSE 全量重放（见 useConversationStream
+  // 的 acceptReplayedHistory），不再从账本回放加载。原因有二：
+  // ① 账本回放拿不到进行中的流式正文（无工具终轮 content 不投影、
+  //    finalSummaryText 要 run 结束才写），补了也补不全；
+  // ② 若先灌账本回放再全量重放 SSE，工具卡会重复挂载。
+  // 同 run 结束后由 follow_idle → applyFollowIdleReplay 按账本终态收口，内容不丢。
+  const runningRequestIds = new Set(
+    target.chats
+      .filter(
+        (chat) =>
+          chat.requestId &&
+          String(chat.metrics?.status || "").toUpperCase() === "RUNNING"
+      )
+      .map((chat) => String(chat.requestId))
+  );
+
   let next = conversation;
   for (const requestId of collectPendingReplayIds(target.chats)) {
+    if (runningRequestIds.has(requestId)) {
+      continue;
+    }
     try {
       const replay = await loadReplay(requestId);
       next = mergeRunReplayIntoConversation(next, replay);
