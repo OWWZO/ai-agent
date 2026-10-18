@@ -693,7 +693,7 @@ public class AgentToolCollectionFactoryTest {
     }
 
     @Test
-    public void shouldNotRegisterBrowserToolsWhenRelayOffline() {
+    public void shouldRegisterBrowserToolEvenWhenRelayOffline() {
         AgentToolCollectionFactory factory = newFactory(
                 buildReactorConfig(),
                 Mockito.mock(McpToolExecutor.class),
@@ -720,8 +720,10 @@ public class AgentToolCollectionFactoryTest {
 
         ToolCollection toolCollection = factory.buildForReact(ctx, request);
 
-        Assert.assertFalse(toolCollection.getToolMap().containsKey("browser"));
+        // browser 常驻挂载：relay 离线不影响 tools[]，避免工具集合随用户连接状态抖动打爆 prompt cache。
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("browser"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("browser_site"));
+        Mockito.verify(port, Mockito.never()).isOnline(Mockito.anyString());
     }
 
     @Test
@@ -785,8 +787,9 @@ public class AgentToolCollectionFactoryTest {
         ToolCollection toolCollection = factory.buildForReact(ctx, request);
 
         Assert.assertTrue(toolCollection.getToolMap().containsKey("agent_browser"));
-        Assert.assertFalse(toolCollection.getToolMap().containsKey("browser"));
-        Mockito.verify(relay).isOnline("user-1");
+        // browser 常驻挂载，与 relay 在线状态无关
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("browser"));
+        Mockito.verify(relay, Mockito.never()).isOnline(Mockito.anyString());
     }
 
     @Test

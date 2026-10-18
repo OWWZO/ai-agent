@@ -220,7 +220,7 @@ public class AgentToolCollectionFactory {
             if (workspaceService.isEnabled()) {
                 registerWorkspaceTools(toolCollection, agentContext);
             }
-            registerBrowserTool(toolCollection, agentContext, request);
+            registerBrowserTool(toolCollection, agentContext);
             registerAgentBrowserTool(toolCollection, agentContext, request);
             registerHostCliTool(toolCollection, agentContext);
             registerCodeModeTool(toolCollection, agentContext);
@@ -640,18 +640,23 @@ public class AgentToolCollectionFactory {
         addTool(toolCollection, sqlQueryTool, agentContext, SqlQueryTool::setAgentContext);
     }
 
-    private void registerBrowserTool(ToolCollection toolCollection, AgentContext agentContext, AgentExecutionCommand request) {
+    /**
+     * browser（用户本机 relay）常驻挂载。
+     * <p>
+     * 注册只看部署级能力（opencli 启用 + CLI 可解析），<b>不看用户 relay 是否在线</b>：
+     * 连接状态是运行期事实，用它决定 tools[] 会让工具集合随用户开关浏览器而抖动，
+     * 既打爆 prompt cache，也让模型在"这一轮没有浏览器能力"的假象下放弃操作。
+     * relay 离线由 {@code BrowserTool} 在执行期返回可读失败，模型据此提示用户连接后重试。
+     * </p>
+     */
+    private void registerBrowserTool(ToolCollection toolCollection, AgentContext agentContext) {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
             return;
         }
         ReactorRuntimeDependencies deps = agentContext.getRuntimeDependencies();
         var properties = deps.getOpenCliProperties();
         var cli = deps.getOptionalCliExecutionPort();
-        var port = deps.getOptionalBrowserRelayPort();
         if (properties == null || !properties.isEnabled() || cli == null || !cli.isResolvable(properties.getCommand())) {
-            return;
-        }
-        if (port == null || request == null || StringUtils.isBlank(request.getUserId()) || !port.isOnline(request.getUserId())) {
             return;
         }
         addTool(toolCollection, new BrowserTool(), agentContext, BrowserTool::setAgentContext);

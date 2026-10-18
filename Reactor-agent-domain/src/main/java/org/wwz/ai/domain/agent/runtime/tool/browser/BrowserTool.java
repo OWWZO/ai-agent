@@ -144,8 +144,12 @@ public class BrowserTool implements BaseTool {
         }
         BrowserRelayPort relay = deps.getOptionalBrowserRelayPort();
         if (relay == null || !relay.isOnline(userId)) {
+            // browser 常驻挂载：relay 离线是运行期事实，不能靠 tools[] 消失来表达。
+            // 这里必须给出可执行的下一步，否则模型只会重试同一条命令。
+            String offline = "浏览器未连接：用户的本机浏览器 relay 当前不在线。"
+                    + "请提示用户打开并登录浏览器连接后重试；在用户确认已连接前不要重复调用本工具。";
             return Execution.failed(ToolResultPayload.failure(
-                    "浏览器未连接", "浏览器未连接", null, "browser_offline"));
+                    offline, offline, null, "browser_offline"));
         }
         List<String> rewritten = OpenCliArgv.rewrite(args, properties.getExtraArgs());
         List<String> processArgs = new ArrayList<>();
