@@ -325,6 +325,8 @@ const DialogueComponent: FC<Props> = (props) => {
                 streaming={chat.loading}
                 artifactFiles={sessionArtifactFiles}
                 className="chat-markdown kimi-md"
+                sessionId={chat.sessionId}
+                messageId={chat.requestId}
               />
             </MessageContent>
             {!chat.loading ? (

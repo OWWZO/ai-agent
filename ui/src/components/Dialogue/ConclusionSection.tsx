@@ -64,6 +64,8 @@ export const ConclusionSection: FC<{
             streaming={summaryStreaming}
             artifactFiles={artifactFiles}
             className="chat-markdown conclusion-markdown kimi-md"
+            sessionId={chat.sessionId}
+            messageId={chat.requestId}
           />
         </MessageContent>
         {!summaryStreaming && summaryText ? (

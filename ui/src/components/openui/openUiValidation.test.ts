@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { normalizeOpenUiProgram } from '@/lib/openui/normalize';
-import { isRenderableProgram } from './openUiValidation';
+import { diagnoseProgram, isRenderableProgram } from './openUiValidation';
 
 /** 典型模型输出：核心组件 + Chart，应当通过校验（否则每张界面都会被降级）。 */
 const GOOD_PROGRAM = `root = Col([head, kpis, chart, note], 5)
@@ -98,5 +98,49 @@ b = Button("C", @//reset/($display))
 root = Col([t, b])`;
     expect(isRenderableProgram(broken)).toBe(false);
     expect(isRenderableProgram(normalizeOpenUiProgram(broken) as string)).toBe(true);
+  });
+});
+
+/**
+ * diagnoseProgram 是意图修复链路（plans/038）的信息源：
+ * 它必须保留 parser 给出的错误细节，同时与 isRenderableProgram 的判定严格一致。
+ */
+describe('diagnoseProgram', () => {
+  it('agrees with isRenderableProgram on a good program', () => {
+    const diagnosis = diagnoseProgram(GOOD_PROGRAM);
+    expect(diagnosis.renderable).toBe(true);
+    expect(diagnosis.incomplete).toBe(false);
+    expect(diagnosis.hasRoot).toBe(true);
+    expect(diagnosis.errors).toHaveLength(0);
+  });
+
+  it('reports component errors with statementId and path', () => {
+    // Text 的 size 只接受 xs/sm/md/lg，path 指到 /size。
+    const bad = '$display = 0\nt = Text($display + "", "3xl")\nroot = Col([t])';
+    const diagnosis = diagnoseProgram(bad);
+    expect(diagnosis.renderable).toBe(false);
+    expect(diagnosis.errors.length).toBeGreaterThan(0);
+    const withStatement = diagnosis.errors.find((error) => error.statementId);
+    expect(withStatement).toBeDefined();
+    expect(withStatement?.code).toBeTruthy();
+  });
+
+  it('marks truncated programs as incomplete with no usable statementId', () => {
+    const diagnosis = diagnoseProgram('root = Col([head]\nhead = Title("Q3"');
+    expect(diagnosis.renderable).toBe(false);
+    expect(diagnosis.incomplete).toBe(true);
+  });
+
+  it('reports unresolved references', () => {
+    const diagnosis = diagnoseProgram('root = Col([missing])');
+    expect(diagnosis.renderable).toBe(false);
+    expect(diagnosis.unresolved).toContain('missing');
+  });
+
+  it('treats blank input as incomplete', () => {
+    const diagnosis = diagnoseProgram('   ');
+    expect(diagnosis.renderable).toBe(false);
+    expect(diagnosis.incomplete).toBe(true);
+    expect(diagnosis.hasRoot).toBe(false);
   });
 });
