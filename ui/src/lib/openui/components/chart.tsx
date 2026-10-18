@@ -18,7 +18,29 @@ type Spec = {
 
 const COLORS = 6;
 const seriesColor = (i: number) => `var(--iui-chart-${(i % COLORS) + 1})`;
-const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : Number(value) || 0);
+/**
+ * 模型输出的数值经常带着"给人看"的形态："1,234"、"45%"、"12.4万"、全角数字、
+ * 尾随单位（"12 元"）。直接 Number() 全是 NaN，`|| 0` 就把整列静默归零——
+ * 这是图表数据全 0 的主要来源。这里做保守清洗：只剥装饰、换算万/亿，
+ * 解析不出就回退旧行为（Number || 0），绝不猜数。
+ */
+export function parseChartNumber(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value !== "string") return Number(value) || 0;
+  // 全角数字/标点归一（0xfee0 偏移），剥千分位逗号、空格、百分号。
+  const cleaned = value
+    .trim()
+    .replace(/[０-９．，％]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/[,\s%]/g, "");
+  const match = /^(-?\d+(?:\.\d+)?)(万|亿)?(元|美元)?$/.exec(cleaned);
+  if (!match) return Number(cleaned) || 0;
+  let n = parseFloat(match[1]);
+  if (match[2] === "万") n *= 1e4;
+  else if (match[2] === "亿") n *= 1e8;
+  return n;
+}
+
+const num = (value: unknown) => parseChartNumber(value);
 const label = (row: Row, x: string) => String(row[x] ?? "");
 
 function makeFormat(kind: string | undefined, currency: string | undefined): Format {
@@ -27,8 +49,16 @@ function makeFormat(kind: string | undefined, currency: string | undefined): For
   return (value, compact) => {
     if (kind === "percent") return `${Number(value.toFixed(compact ? 1 : 2))}%`;
     const big = Math.abs(value) >= (compact ? 1000 : 1e6);
-    const options: Intl.NumberFormatOptions = { minimumFractionDigits: 0, maximumFractionDigits: compact && big ? 1 : 2, ...(big ? { notation: "compact" } : {}) };
-    return value.toLocaleString("en-US", kind === "currency" ? { ...options, style: "currency", currency: code } : options);
+    const options: Intl.NumberFormatOptions = {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: compact && big ? 1 : 2,
+      ...(big ? { notation: "compact" } : {})
+    };
+    return value.toLocaleString("en-US", kind === "currency" ? {
+      ...options,
+      style: "currency",
+      currency: code
+    } : options);
   };
 }
 
@@ -83,7 +113,12 @@ function Cartesian({ spec, width }: { spec: Spec; width: number }) {
   const hi = Math.max(lo + step, Math.ceil(Math.max(0, ...values) / step) * step);
   const ticks = Array.from({ length: Math.round((hi - lo) / step) + 1 }, (_, k) => lo + k * step);
   const left = Math.max(...ticks.map((t) => format(t, true).length)) * 6.4 + 12;
-  const pad = { top: 10, right: 4, bottom: 26, left };
+  const pad = {
+    top: 10,
+    right: 4,
+    bottom: 26,
+    left
+  };
   const w = Math.max(10, width - pad.left - pad.right);
   const h = Math.max(10, height - pad.top - pad.bottom);
   const band = w / Math.max(1, rows.length);
@@ -159,7 +194,10 @@ function Cartesian({ spec, width }: { spec: Spec; width: number }) {
         {hover !== null && type !== "bar" && <line x1={xAt(hover)} x2={xAt(hover)} y1={pad.top} y2={pad.top + h} className="iui-chart-guide" />}
       </svg>
       {tip && (
-        <div className="iui-chart-tooltip" style={{ left: Math.min(Math.max(xAt(hover!), 70), width - 70), top: pad.top }}>
+        <div className="iui-chart-tooltip" style={{
+          left: Math.min(Math.max(xAt(hover!), 70), width - 70),
+          top: pad.top
+        }}>
           <strong>{label(tip, x)}</strong>
           {series.map((s, si) => (
             <span key={s}>
@@ -180,7 +218,11 @@ function axis(values: number[], zero: boolean) {
   const step = niceStep((max - min || Math.abs(max) || 1) / 5);
   const lo = Math.floor(min / step) * step;
   const hi = Math.max(lo + step, Math.ceil(max / step) * step);
-  return { lo, hi, ticks: Array.from({ length: Math.round((hi - lo) / step) + 1 }, (_, k) => lo + k * step) };
+  return {
+    lo,
+    hi,
+    ticks: Array.from({ length: Math.round((hi - lo) / step) + 1 }, (_, k) => lo + k * step)
+  };
 }
 
 /** Points with a numeric x; each series is a color. The first text key names a point in its tooltip. */
@@ -191,7 +233,12 @@ function Scatter({ spec, width }: { spec: Spec; width: number }) {
   const ya = axis(rows.flatMap((r) => series.map((s) => num(r[s]))), false);
   const xa = axis(rows.map((r) => num(r[x])), false);
   const left = Math.max(...ya.ticks.map((t) => format(t, true).length)) * 6.4 + 12;
-  const pad = { top: 10, right: 8, bottom: 26, left };
+  const pad = {
+    top: 10,
+    right: 8,
+    bottom: 26,
+    left
+  };
   const w = Math.max(10, width - pad.left - pad.right);
   const h = Math.max(10, height - pad.top - pad.bottom);
   const px = (v: number) => pad.left + ((v - xa.lo) / (xa.hi - xa.lo)) * w;
@@ -210,12 +257,18 @@ function Scatter({ spec, width }: { spec: Spec; width: number }) {
         {xa.ticks.map((t, k) => (k % every === 0 ? <text key={`x${t}`} x={px(t)} y={height - 6} textAnchor="middle" className="iui-chart-tick">{Number(t.toFixed(6)).toLocaleString("en-US", { notation: Math.abs(t) >= 1e4 ? "compact" : "standard" })}</text> : null))}
         {series.map((s, si) =>
           rows.map((r, i) => (
-            <circle key={`${si}-${i}`} cx={px(num(r[x]))} cy={py(num(r[s]))} r={hover?.i === i && hover.si === si ? 6.5 : 5} fill={seriesColor(si)} fillOpacity={0.78} stroke="var(--iui-canvas)" strokeWidth={1.5} onPointerEnter={() => setHover({ i, si })} />
+            <circle key={`${si}-${i}`} cx={px(num(r[x]))} cy={py(num(r[s]))} r={hover?.i === i && hover.si === si ? 6.5 : 5} fill={seriesColor(si)} fillOpacity={0.78} stroke="var(--iui-canvas)" strokeWidth={1.5} onPointerEnter={() => setHover({
+              i,
+              si
+            })} />
           )),
         )}
       </svg>
       {tip && hover && (
-        <div className="iui-chart-tooltip" style={{ left: Math.min(Math.max(px(num(tip[x])), 70), width - 70), top: Math.max(0, py(num(tip[series[hover.si]])) - 70) }}>
+        <div className="iui-chart-tooltip" style={{
+          left: Math.min(Math.max(px(num(tip[x])), 70), width - 70),
+          top: Math.max(0, py(num(tip[series[hover.si]])) - 70)
+        }}>
           <strong>{name ? String(tip[name]) : series[hover.si]}</strong>
           <span>{x} <b>{num(tip[x]).toLocaleString("en-US", { maximumFractionDigits: 2 })}</b></span>
           <span><i style={{ background: seriesColor(hover.si) }} />{series[hover.si]} <b>{format(num(tip[series[hover.si]]))}</b></span>
@@ -227,7 +280,10 @@ function Scatter({ spec, width }: { spec: Spec; width: number }) {
 
 function Pie({ spec, width }: { spec: Spec; width: number }) {
   const key = spec.series[0];
-  const items = spec.rows.map((row) => ({ label: label(row, spec.x), value: Math.max(0, num(key ? row[key] : 0)) }));
+  const items = spec.rows.map((row) => ({
+    label: label(row, spec.x),
+    value: Math.max(0, num(key ? row[key] : 0))
+  }));
   const total = items.reduce((sum, item) => sum + item.value, 0) || 1;
   const size = Math.max(80, Math.min(200, width < 420 ? width * 0.62 : 200));
   const r = size / 2;
@@ -282,12 +338,16 @@ const chartProps = z.object({
   height: z.number().optional(),
 });
 
-function toSpec(props: z.infer<typeof chartProps>): Spec | null {
+export function toSpec(props: z.infer<typeof chartProps>): Spec | null {
   const rows = ((Array.isArray(props.data) ? props.data : []) as unknown[]).filter((r): r is Row => !!r && typeof r === "object" && !Array.isArray(r));
   const first = rows[0];
   if (!first) return null;
   const x = (props.x && props.x in first ? props.x : null) ?? Object.keys(first).find((k) => (props.type === "scatter" ? typeof first[k] === "number" : typeof first[k] === "string")) ?? Object.keys(first)[0];
-  const series = (props.series?.length ? props.series.filter((s) => typeof s === "string") : Object.keys(first).filter((k) => k !== x && typeof first[k] === "number")).slice(0, 8);
+  // 模型写的 series 名经常与 data key 差一个字符（全角括号、单位、翻译不一致），
+  // 幻影 key 在 row[s] 里全变 undefined → 整列归零。这里只保留真实存在的 key，
+  // 全部落空就回退到默认的"所有数值 key"——宁可自动改用对的列，也不画全 0 的图。
+  const explicitSeries = (props.series ?? []).filter((s) => typeof s === "string" && s in first);
+  const series = (explicitSeries.length ? explicitSeries : Object.keys(first).filter((k) => k !== x && typeof first[k] === "number")).slice(0, 8);
   const type = (["bar", "line", "area", "pie", "donut", "scatter"] as const).includes(props.type) ? props.type : "bar";
   return {
     type,
@@ -303,7 +363,7 @@ function toSpec(props: z.infer<typeof chartProps>): Spec | null {
 export const Chart = defineComponent({
   name: "Chart",
   props: chartProps,
-  description: 'Rows of data; x is the category key (a number key for scatter), series the value keys (default: every number key). percent values are like 45; currency is a code like "EUR".',
+  description: 'Data rows; every value MUST be a bare number (never "1,234", "45%" or "12.4万" — put units in the series name or pass format:"currency"/"percent" for display). x and series must copy the data keys character for character, or omit series to auto-use every number key (recommended). percent values are like 45; currency is a code like "EUR".',
   component: function ChartView({ props }) {
     const [ref, width] = useWidth();
     const spec = toSpec(props);
