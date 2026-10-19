@@ -3350,3 +3350,97 @@ describe("agent_stream 子 agent 透传防御", () => {
     expect(thought?.toolThought).toBe("子 agent 正在检索来源");
   });
 });
+
+describe("React 循环真实帧序列：中间回复必须夹在工具之间", () => {
+  const streamFrame = (
+    content: string,
+    isFinal: boolean,
+    moreRounds: boolean,
+    messageId: string,
+    taskId: string
+  ) =>
+    ({
+      messageType: "task",
+      messageId,
+      taskId,
+      taskOrder: 1,
+      messageOrder: 1,
+      resultMap: {
+        requestId: "req-react-1",
+        messageId,
+        messageType: "agent_stream",
+        messageTime: "1714041609000",
+        isFinal,
+        finish: isFinal,
+        moreRounds,
+        result: content,
+      },
+    }) as unknown as MESSAGE.EventData;
+
+  const toolFrame = (
+    name: string,
+    toolCallId: string,
+    taskId: string,
+    messageId: string
+  ) =>
+    ({
+      messageType: "task",
+      messageId,
+      taskId,
+      taskOrder: 1,
+      messageOrder: 1,
+      resultMap: {
+        requestId: "req-react-1",
+        messageId,
+        messageType: "tool_call",
+        messageTime: "1714041610000",
+        isFinal: true,
+        finish: true,
+        toolCallId,
+        toolResult: { toolName: name },
+        resultMap: { toolName: name },
+      },
+    }) as unknown as MESSAGE.EventData;
+
+  const createChat = () =>
+    ({
+      sessionId: "session-react-1",
+      requestId: "req-react-1",
+      query: "做个界面",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    }) as CHAT.ChatItem;
+
+  it("中间回复穿插在两个工具卡片之间，而不是堆在底部", () => {
+    const chat = createChat();
+    // React 循环：正文(中间轮) -> Write -> 正文(中间轮) -> Read
+    combineData(streamFrame("我会做成单文件、可直接打开的炫酷交互页。", true, true, "r1", "t1"), chat);
+    combineData(toolFrame("Write", "c1", "t1", "m1"), chat);
+    combineData(streamFrame("正在生成单文件页面，并把适配一起写入。", true, true, "r2", "t1"), chat);
+    combineData(toolFrame("Read", "c2", "t1", "m2"), chat);
+
+    const derived = handleTaskData(chat, false, chat.multiAgent);
+    const rows = (derived.currentChat.tasks || [])
+      .flat()
+      .flatMap((container) => container.children || []);
+
+    const flow = rows.map((row) =>
+      row.messageType === "agent_stream"
+        ? `reply:${row.result}`
+        : row.messageType === "tool_call"
+          ? `tool:${row.toolResult?.toolName}`
+          : `${row.messageType}`
+    );
+
+    expect(flow).toEqual([
+      "reply:我会做成单文件、可直接打开的炫酷交互页。",
+      "tool:Write",
+      "reply:正在生成单文件页面，并把适配一起写入。",
+      "tool:Read",
+    ]);
+  });
+});

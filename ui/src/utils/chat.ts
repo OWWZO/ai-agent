@@ -824,7 +824,28 @@ function handleAgentStreamMessage(
       if (!currentChat.multiAgent) {
         currentChat.multiAgent = { tasks: [] } as unknown as MESSAGE.MultiAgent;
       }
-      currentChat.multiAgent.tasks.push([segment as unknown as MESSAGE.Task]);
+      if (!currentChat.multiAgent.tasks) {
+        currentChat.multiAgent.tasks = [];
+      }
+      // 关键：必须追加进本轮 taskId 所在的那一组，不能每次另起一个数组。
+      // handleTaskData 按 taskId 归组重建时间线，另起数组会让本段被当成独立组，
+      // 排到同组工具卡片之后 —— 用户看到的就是「中间回复全沉在最下方」。
+      const targetGroupIndex =
+        taskIndex >= 0
+          ? taskIndex
+          : findTaskIndex(
+              currentChat.multiAgent.tasks,
+              eventData.taskId || segment.taskId
+            );
+      const targetGroup =
+        targetGroupIndex >= 0
+          ? currentChat.multiAgent.tasks[targetGroupIndex]
+          : undefined;
+      if (targetGroup) {
+        targetGroup.push(segment as unknown as MESSAGE.Task);
+      } else {
+        currentChat.multiAgent.tasks.push([segment as unknown as MESSAGE.Task]);
+      }
       currentChat.conclusion = undefined;
     }
     return;
@@ -846,37 +867,57 @@ function handleAgentStreamMessage(
  *
  * @returns true = 已合并进现有结论；false = 调用方需走原 buildTaskFromEventData 赋值。
  */
+/** 结论区是否已有一段可用的流式正文（行模型的判定条件）。 */
+function isStreamedConclusion(
+  conclusion: CHAT.Task | undefined
+): conclusion is CHAT.Task {
+  return Boolean(
+    conclusion &&
+      conclusion.messageType === "agent_stream" &&
+      typeof conclusion.result === "string" &&
+      conclusion.result.trim()
+  );
+}
+
+/**
+ * 把 result 侧的元数据合并进流式正文段（正文不动）。
+ *
+ * buildTaskFromEventData 会把 resultMap 平铺到 task 顶层，这里精确挑选文件/产物字段，
+ * 避免把 taskId / messageId 等标识覆盖掉流式段自己的。
+ */
+function mergeResultMetadataIntoStreamed(
+  streamed: CHAT.Task,
+  meta: Record<string, unknown>
+) {
+  streamed.isFinal = true;
+  streamed.finish = true;
+  streamed.resultMap = {
+    ...(streamed.resultMap || {}),
+    ...(Array.isArray(meta.fileList) ? { fileList: meta.fileList } : {}),
+    ...(Array.isArray(meta.artifactRefs) ? { artifactRefs: meta.artifactRefs } : {}),
+    ...(meta.artifactKeys !== undefined ? { artifactKeys: meta.artifactKeys } : {}),
+    // 正文以流式段为准；文件/产物等元数据以 result 为准
+    taskSummary: streamed.result,
+  };
+}
+
 export function settleRootResultConclusion(
   currentChat: CHAT.ChatItem,
   eventData: MESSAGE.EventData
 ): boolean {
   const streamed = currentChat.conclusion;
-  if (
-    !streamed ||
-    streamed.messageType !== "agent_stream" ||
-    typeof streamed.result !== "string" ||
-    !streamed.result.trim()
-  ) {
+  if (!isStreamedConclusion(streamed)) {
     return false;
   }
   const built = buildTaskFromEventData(eventData) as CHAT.Task;
-  streamed.isFinal = true;
-  streamed.finish = true;
-  // buildTaskFromEventData 把 resultMap 平铺到 task 顶层，这里精确挑选元数据回填，
-  // 避免把 taskId/messageId 等标识覆盖掉流式段自己的。
-  const meta = built as unknown as Record<string, unknown>;
-  const eventDataRecord = eventData as unknown as Record<string, unknown>;
-  streamed.resultMap = {
-    ...(streamed.resultMap || {}),
-    ...(Array.isArray(meta.fileList) ? { fileList: meta.fileList } : {}),
-    ...(Array.isArray(meta.artifactRefs) ? { artifactRefs: meta.artifactRefs } : {}),
-    ...(Array.isArray(eventDataRecord.artifactRefs)
-      ? { artifactRefs: eventDataRecord.artifactRefs }
+  const meta = {
+    ...(built as unknown as Record<string, unknown>),
+    // 实时 SSE 的 artifactRefs 也可能只挂在 eventData 顶层
+    ...((eventData as unknown as Record<string, unknown>).artifactRefs
+      ? { artifactRefs: (eventData as unknown as Record<string, unknown>).artifactRefs }
       : {}),
-    ...(meta.artifactKeys !== undefined ? { artifactKeys: meta.artifactKeys } : {}),
-    // 正文以流式段为准；文件/产物等元数据以 result 为准
-    taskSummary: streamed.result,
   };
+  mergeResultMetadataIntoStreamed(streamed, meta);
   return true;
 }
 
@@ -2245,19 +2286,28 @@ export const handleTaskData = (
     }
   });
 
-  const streamConclusion =
-    currentChat.conclusion?.messageType === "agent_stream"
-      ? currentChat.conclusion
-      : undefined;
+  const streamedConclusion = isStreamedConclusion(currentChat.conclusion)
+    ? currentChat.conclusion
+    : undefined;
 
   currentChat.tasks = chatList as unknown as CHAT.Task[][];
   currentChat.plan = plan;
-  currentChat.conclusion =
-    (requestConclusion as CHAT.Task | undefined) ||
-    streamConclusion ||
-    (!currentChat.loading
-      ? (fallbackTaskSummary as CHAT.Task | undefined)
-      : undefined);
+  // 行模型：结论区已有流式正文时以流式为准，result 只补 fileList / artifactRefs 等元数据，
+  // 不整体覆盖正文（否则回放到的终轮正文会被 result 冲掉）。
+  if (streamedConclusion && requestConclusion) {
+    mergeResultMetadataIntoStreamed(
+      streamedConclusion,
+      requestConclusion as unknown as Record<string, unknown>
+    );
+    currentChat.conclusion = streamedConclusion;
+  } else {
+    currentChat.conclusion =
+      (requestConclusion as CHAT.Task | undefined) ||
+      streamedConclusion ||
+      (!currentChat.loading
+        ? (fallbackTaskSummary as CHAT.Task | undefined)
+        : undefined);
+  }
   currentChat.planList = plan?.stages?.reduce(
     (result: CHAT.PlanItem[], stage: string, index: number) => {
       const group = result.find((item) => item.name === stage);
