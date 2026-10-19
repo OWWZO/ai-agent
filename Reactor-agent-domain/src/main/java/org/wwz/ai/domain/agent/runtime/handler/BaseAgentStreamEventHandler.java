@@ -349,6 +349,10 @@ public class BaseAgentStreamEventHandler {
                 break;
             case "agent_stream":
                 payload.put("result", agentResponse.getResult());
+                // StreamResponseHandler 通过 resultMap 附带 moreRounds（本轮之后是否还有模型轮），
+                // 前端据此把中间轮发言封口成时间线独立的助手文本行，终轮留给 result 收口。
+                // 这里必须透传，否则实时链路的中间轮插不进工具卡片之间。
+                copyIfPresent(payload, agentResponse.getResultMap(), "moreRounds");
                 // 子 agent（SubAgentPrinter 透传回退路径）的正文流也要带嵌套标签：
                 // 前端据此区分主/子 —— 子的挂嵌套时间线，不写主对话结论区。
                 appendSubAgentNestingTags(payload, agentResponse.getResultMap());
