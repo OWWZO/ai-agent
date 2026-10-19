@@ -821,6 +821,77 @@ describe("agentProcessModel", () => {
     expect(model.groups[0].steps[0].title).toContain("读取");
     expect(model.totalDurationMs).toBe(12_000);
   });
+  it("classifies agent_stream middle round as assistant reply", () => {
+    expect(
+      resolveProcessStepKind(
+        tool({
+          messageType: "agent_stream",
+          result: "我先查组件目录",
+          resultMap: { isFinal: true },
+        })
+      )
+    ).toBe("assistant_reply");
+  });
+
+  it("interleaves agent_stream middle rounds between tool groups", () => {
+    const chat = createChat({
+      loading: false,
+      startedAt: "1714041600000",
+      finishedAt: "1714041612000",
+      tasks: workGroup([
+        tool({
+          id: "a1",
+          messageType: "agent_stream",
+          messageTime: "1714041600500",
+          result: "我会做成单文件、可直接打开的炫酷交互页。",
+          resultMap: ({ isFinal: true, moreRounds: true } as unknown) as CHAT.Task['resultMap'],
+          isFinal: true,
+          finish: true,
+        }),
+        tool({
+          id: "s1",
+          messageType: "tool_call",
+          messageTime: "1714041601500",
+          resultMap: { toolName: "Write", isFinal: true },
+          isFinal: true,
+          finish: true,
+        }),
+        tool({
+          id: "a2",
+          messageType: "agent_stream",
+          messageTime: "1714041603500",
+          result: "正在生成单文件页面，并把适配一起写入。",
+          resultMap: ({ isFinal: true, moreRounds: true } as unknown) as CHAT.Task['resultMap'],
+          isFinal: true,
+          finish: true,
+        }),
+        tool({
+          id: "s2",
+          messageType: "tool_call",
+          messageTime: "1714041604500",
+          resultMap: { toolName: "Read", isFinal: true },
+          isFinal: true,
+          finish: true,
+        }),
+      ]),
+    });
+
+    const segments = deriveAgentProcessModel({ chat, isPlanSolve: false }).segments;
+    const flow = segments.map((segment) =>
+      segment.type === "assistant_reply"
+        ? `reply:${segment.text}`
+        : segment.type === "group"
+          ? `group:${segment.group.steps.map((step) => step.tool.id).join(",")}`
+          : segment.type
+    );
+    // 每条助手中间回复必须夹在自己那组工具卡片之前，而不是全部沉到对话最下方
+    expect(flow).toEqual([
+      "reply:我会做成单文件、可直接打开的炫酷交互页。",
+      "group:s1",
+      "reply:正在生成单文件页面，并把适配一起写入。",
+      "group:s2",
+    ]);
+  });
 });
 
 describe("interactive 步骤会切开前面的工具组", () => {

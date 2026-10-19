@@ -25,6 +25,7 @@ import {
   type ProcessSegment,
   type ProcessStepGroup,
   type ProcessStepRow,
+  resolveAssistantReplyText,
 } from "./agentProcessModel";
 import UserBriefCard from "./UserBriefCard";
 import MarkdownRenderer from "@/components/ActionPanel/MarkdownRenderer";
@@ -119,7 +120,8 @@ function resolveSegmentComparableText(segment: ProcessSegment): string {
         return resolveTaskSummaryText(step.tool);
       }
       if (step.kind === "assistant_reply") {
-        return asText(step.tool.toolThought);
+        // agent_stream 的正文在 result 字段，tool_thought 才在 toolThought
+        return resolveAssistantReplyText(step.tool);
       }
     }
   }
@@ -550,7 +552,12 @@ function filterConclusionDuplicateSteps(
       );
     }
     if (step.kind === "assistant_reply") {
-      return !textsNearlyEqual(asText(step.tool.toolThought), conclusionText);
+      // 与 resolveSegmentComparableText 同一取文口径，否则 agent_stream 中间轮
+      // 会被当成空文本与终答误判重复而整条删掉
+      return !textsNearlyEqual(
+        resolveAssistantReplyText(step.tool),
+        conclusionText
+      );
     }
     return true;
   });

@@ -136,11 +136,11 @@ function isNativeReasoningTask(tool: CHAT.Task): boolean {
 }
 
 /**
- * 助手过程回复：有 tool 时的 content（tool_thought）。
- * 常显切分点；不是思考。
+ * 助手过程回复：有 tool 时的 content（tool_thought）与正文流行模型的中间轮（agent_stream）。
+ * 常显切分点；不是思考 —— 它必须夹在两组工具卡片之间，而不是堆在对话最下方。
  */
 function isAssistantProcessReplyTask(tool: CHAT.Task): boolean {
-  return tool.messageType === "tool_thought";
+  return tool.messageType === "tool_thought" || tool.messageType === "agent_stream";
 }
 
 /** 是否计入「执行了 N 个步骤」：思考/过程回复/user_brief 不计入 */
@@ -155,8 +155,12 @@ function countsAsExecutableStep(tool: CHAT.Task): boolean {
   return true;
 }
 
+/**
+ * 助手过程回复正文。tool_thought 读 toolThought；agent_stream 读 result。
+ * 行模型下同一时刻只会有一种形态，取到即可。
+ */
 export function resolveAssistantReplyText(tool: CHAT.Task): string {
-  return asText(tool.toolThought);
+  return asText(tool.toolThought || tool.result);
 }
 
 export function parseMessageTimeMs(value?: unknown): number | undefined {
@@ -231,7 +235,10 @@ export function resolveProcessStepKind(tool: CHAT.Task): ProcessStepKind {
   if (messageType === "llm_reasoning" || messageType === "plan_thought") {
     return "thinking";
   }
-  if (messageType === "tool_thought") {
+  // agent_stream 是 react 主 agent 的正文流行模型：中间轮（moreRounds=true）是助手过程回复；
+  // 终轮由结论区承接（handleAgentStreamMessage 只会把中间轮封口进时间线），这里统一按
+  // assistant_reply 渲染，保证它插在工具卡片之间而不是沉到对话底部。
+  if (messageType === "tool_thought" || messageType === "agent_stream") {
     return "assistant_reply";
   }
   if (isUserBriefTask(tool)) {
