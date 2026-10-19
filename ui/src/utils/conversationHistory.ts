@@ -7,7 +7,12 @@ import type {
 } from "@/services/agentConversation";
 import { GENERIC_TASK_PRODUCT } from "@/utils/constants";
 
-import { buildConversationTaskData, buildTaskFromEventData, combineData } from "./chat";
+import {
+  buildConversationTaskData,
+  buildTaskFromEventData,
+  combineData,
+  settleRootResultConclusion,
+} from "./chat";
 
 type ConversationHistoryTitleDetail = Pick<
   ConversationHistoryPage,
@@ -366,7 +371,16 @@ function syncConclusionFromEventData(
 ) {
   const nested = eventData?.resultMap;
   const nestedType = nested?.messageType;
-  if (nestedType === "result" || nestedType === "task_summary") {
+  if (nestedType === "result") {
+    // 与实时链路同一套收口语义：结论区已有流式正文（agent_stream）时，
+    // result 只并 fileList / artifactRefs 等元数据，不覆盖正文。
+    // 否则刷新后 result 会把回放到的终轮正文冲掉，最终回复消失。
+    if (!settleRootResultConclusion(currentChat, eventData)) {
+      currentChat.conclusion = buildTaskFromEventData(eventData) as unknown as CHAT.Task;
+    }
+    return;
+  }
+  if (nestedType === "task_summary") {
     currentChat.conclusion = buildTaskFromEventData(eventData) as unknown as CHAT.Task;
   }
 }

@@ -633,6 +633,142 @@ describe("conversationHistory hydrate", () => {
     expect(taskData.taskList[1].messageType).toBe("result");
   });
 
+  it("回放 agent_stream 行模型：中间轮进时间线、终轮落结论区", () => {
+    // 后端 ReplayProjector 与实时共用 agent_stream 协议：
+    // 中间轮 moreRounds=true 封口成时间线独立助手文本行，终轮 moreRounds=false 留在结论区。
+    const history = hydrateConversationFromReplayFrames({
+      sessionId: "session-row-model-001",
+      title: "多轮行模型回放",
+      status: "SUCCESS",
+      deepThink: false,
+      runCount: 1,
+      finishedRunCount: 1,
+      failedRunCount: 0,
+      runs: [
+        {
+          requestId: "req-row-model-001",
+          status: "SUCCESS",
+          queryText: "做个界面",
+          finalSummaryText: "最终答案：界面已生成",
+          startedAt: "2026-05-02T12:00:00",
+          finishedAt: "2026-05-02T12:05:00",
+          replayFrames: [
+            createReplayFrame({
+              taskId: "task-row-1",
+              taskOrder: 1,
+              messageType: "task",
+              messageOrder: 1,
+              messageId: "round-1",
+              resultMap: {
+                requestId: "req-row-model-001",
+                messageId: "round-1",
+                messageType: "agent_stream",
+                messageTime: "1714620300000",
+                isFinal: true,
+                finish: false,
+                result: "我先查组件目录",
+                moreRounds: true,
+              },
+            } as unknown as MESSAGE.EventData),
+            createReplayFrame({
+              taskId: "task-row-2",
+              taskOrder: 2,
+              messageType: "task",
+              messageOrder: 2,
+              messageId: "round-2",
+              resultMap: {
+                requestId: "req-row-model-001",
+                messageId: "round-2",
+                messageType: "agent_stream",
+                messageTime: "1714620301000",
+                isFinal: true,
+                finish: false,
+                result: "最终答案：界面已生成",
+                moreRounds: false,
+              },
+            } as unknown as MESSAGE.EventData),
+          ],
+        },
+      ],
+    });
+
+    const chat = history.chatList[0];
+    // 中间轮封口进时间线事实层
+    const sealed = (chat.multiAgent?.tasks || [])
+      .flat()
+      .find((task) => task.messageType === "agent_stream");
+    expect(sealed?.result).toBe("我先查组件目录");
+    // 终轮留在结论区，不被 run 摘要或空值覆盖
+    expect(chat.conclusion?.messageType).toBe("agent_stream");
+    expect(chat.conclusion?.result).toBe("最终答案：界面已生成");
+  });
+
+  it("回放 result 帧不覆盖已流式到达的终轮正文", () => {
+    // 实时与回放共用 settleRootResultConclusion：有流式段时 result 只并元数据。
+    const history = hydrateConversationFromReplayFrames({
+      sessionId: "session-settle-001",
+      title: "终稿不覆盖",
+      status: "SUCCESS",
+      deepThink: false,
+      runCount: 1,
+      finishedRunCount: 1,
+      failedRunCount: 0,
+      runs: [
+        {
+          requestId: "req-settle-001",
+          status: "SUCCESS",
+          queryText: "做个界面",
+          finalSummaryText: "run 摘要兜底文案",
+          startedAt: "2026-05-02T12:00:00",
+          finishedAt: "2026-05-02T12:05:00",
+          replayFrames: [
+            createReplayFrame({
+              taskId: "task-settle-1",
+              taskOrder: 1,
+              messageType: "task",
+              messageOrder: 1,
+              messageId: "settle-round",
+              resultMap: {
+                requestId: "req-settle-001",
+                messageId: "settle-round",
+                messageType: "agent_stream",
+                messageTime: "1714620300000",
+                isFinal: true,
+                finish: false,
+                result: "模型流式终答",
+                moreRounds: false,
+              },
+            } as unknown as MESSAGE.EventData),
+            createReplayFrame({
+              taskId: "task-settle-2",
+              taskOrder: 2,
+              messageType: "task",
+              messageOrder: 2,
+              messageId: "settle-result",
+              resultMap: {
+                requestId: "req-settle-001",
+                messageId: "settle-result",
+                messageType: "result",
+                messageTime: "1714620301000",
+                isFinal: true,
+                finish: true,
+                result: "run 摘要兜底文案",
+                taskSummary: "run 摘要兜底文案",
+                fileList: [{ fileName: "a.ts" }],
+              },
+            } as unknown as MESSAGE.EventData),
+          ],
+        },
+      ],
+    });
+
+    const chat = history.chatList[0];
+    // 正文以流式段为准
+    expect(chat.conclusion?.result).toBe("模型流式终答");
+    // 文件等元数据以 result 为准
+    expect(chat.conclusion?.resultMap?.fileList).toEqual([{ fileName: "a.ts" }]);
+  });
+
   it("keeps code interpreter history task when replay frame only contains codeOutput", () => {
     const history = hydrateConversationFromReplayFrames({
       sessionId: "session-code-history-001",
