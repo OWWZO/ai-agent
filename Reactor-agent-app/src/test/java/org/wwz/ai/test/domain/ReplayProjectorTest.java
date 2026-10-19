@@ -626,9 +626,10 @@ public class ReplayProjectorTest {
                 .build());
 
         Assert.assertEquals(4, frames.size());
-        Assert.assertEquals("tool_thought", frameResultMap(frames.get(0)).get("messageType"));
+        Assert.assertEquals("agent_stream", frameResultMap(frames.get(0)).get("messageType"));
         Assert.assertEquals("tool_result", frameResultMap(frames.get(1)).get("messageType"));
         Assert.assertEquals("Agent", toolResult(frames.get(1)).get("toolName"));
+        // 子 agent 正文仍是 tool_thought：只有 react 主 agent 才走 agent_stream 行模型
         Assert.assertEquals("tool_thought", frameResultMap(frames.get(2)).get("messageType"));
         Assert.assertEquals("子智能体内部思考，不应出现在主时间线", frameResultMap(frames.get(2)).get("toolThought"));
         Assert.assertEquals("parent-agent-call", frameResultMap(frames.get(2)).get("parentToolUseId"));

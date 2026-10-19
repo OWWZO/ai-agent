@@ -172,7 +172,9 @@ public class ReplayProjector {
                         subagentParentId
                 ));
             }
-            // content：有 tool 时才是过程文；无 tool 的 content 是终答，由 run finalSummary / result 交付，不进时间线
+            // content 分两档，与实时行模型一致：
+            //   有 tool  -> 中间轮正文，投影为 agent_stream（moreRounds=true），进时间线夹在工具卡片之间；
+            //   无 tool  -> 终轮正文，投影为 agent_stream（moreRounds=false），前端留在结论区由 result 收口。
             if (StringUtils.isNotBlank(llmInvocation.getResponseText())
                     && shouldProjectResponseTextAsProcess(llmInvocation)) {
                 messageType = resolveLlmMessageType(llmInvocation);
@@ -373,7 +375,10 @@ public class ReplayProjector {
                 && Integer.valueOf(0).equals(invocation.getToolCallCount())) {
             return "task_summary";
         }
-        return "tool_thought";
+        // 正文流：与实时同构。react 主 agent 的 content 走 agent_stream
+        // （中间轮 moreRounds=true 进时间线，终轮 moreRounds=false 留给 result 收口）；
+        // 其他 agent 保持历史语义 tool_thought。
+        return isReactMainAgent(invocation) ? "agent_stream" : "tool_thought";
     }
 
     /**
@@ -393,7 +398,34 @@ public class ReplayProjector {
             // task_summary 仍进时间线任务总结
             return true;
         }
-        // react 等：仅有 tool 时 content 才是过程文
+        if (isReactMainAgent(invocation)) {
+            // 无论本轮是否调工具都要投影正文：
+            // 有 tool 的是中间轮（moreRounds=true），无 tool 的是终轮（moreRounds=false）。
+            // 终轮若只靠 run.finalSummaryText 兜底，run 结束前刷新会整段丢失。
+            return true;
+        }
+        // 其他 agent：仅有 tool 时 content 才是过程文
+        return hasFollowUpToolCalls(invocation);
+    }
+
+    /**
+     * 是否是 react 主 agent 的模型调用（real stream 走 agent_stream 的那一档）。
+     * 子 agent（subagent:xxx）与 plan_solve 的 executor / planning 都不在此列，
+     * 它们的正文要继续按各自历史语义投影，避免破坏嵌套时间线。
+     */
+    private boolean isReactMainAgent(LlmInvocationView invocation) {
+        if (invocation == null || isSubagentLlm(invocation)) {
+            return false;
+        }
+        return ExecutionLedgerConstants.ENTRY_AGENT_REACT.equals(invocation.getAgentName());
+    }
+
+    /**
+     * 本轮模型输出之后是否还有工具轮次。
+     * 与实时 StreamResponseHandler 的 hasToolCalls 对齐：前端据此判断该段正文
+     * 是中间轮发言（封口成时间线独立的助手文本行）还是终轮（留给 result 收口）。
+     */
+    private boolean hasFollowUpToolCalls(LlmInvocationView invocation) {
         return invocation.getToolCallCount() != null && invocation.getToolCallCount() > 0;
     }
 
@@ -533,6 +565,12 @@ public class ReplayProjector {
         } else if ("llm_reasoning".equals(messageType)) {
             // 只用 reasoning_content，不用 response_text 冒充思考
             response.put("reasoningContent", invocation.getReasoningContent());
+        } else if ("agent_stream".equals(messageType)) {
+            // 与实时 agent_stream 帧同构：result 供前端增量拼接，
+            // moreRounds 标记本轮之后是否还有模型轮，用于中间轮封口 / 终轮收口。
+            response.put("result", invocation.getResponseText());
+            response.put("taskSummary", invocation.getResponseText());
+            response.put("moreRounds", hasFollowUpToolCalls(invocation));
         } else if ("tool_thought".equals(messageType)) {
             response.put("toolThought", invocation.getResponseText());
         } else if ("task_summary".equals(messageType)) {
