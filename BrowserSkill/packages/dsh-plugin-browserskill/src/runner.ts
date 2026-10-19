@@ -1,0 +1,413 @@
+/**
+ * Process runner for the `bsk` CLI. Every model-facing tool in this plugin
+ * maps to one `bsk <cmd> --json` invocation: spawn the child, capture
+ * stdout/stderr, honor the dsh cancellation signal by killing the child, and
+ * map the CLI's JSON error envelope onto a thrown `BskError`.
+ */
+
+import { type ChildProcess, type SpawnOptionsWithoutStdio, spawn } from "node:child_process";
+
+/** Shape of the JSON error envelope `bsk --json` prints on failure. */
+export interface BskErrorBody {
+  code?: string;
+  message?: string;
+  hint?: string;
+  exit_code?: number;
+  data?: unknown;
+}
+
+/** A failed `bsk` invocation (non-zero exit, timeout, or spawn failure). */
+export class BskError extends Error {
+  readonly code?: string;
+  readonly hint?: string;
+  readonly exitCode?: number | null;
+  readonly timedOut: boolean;
+
+  constructor(
+    message: string,
+    options: { code?: string; hint?: string; exitCode?: number | null; timedOut?: boolean } = {},
+  ) {
+    super(message);
+    this.name = "BskError";
+    this.code = options.code;
+    this.hint = options.hint;
+    this.exitCode = options.exitCode;
+    this.timedOut = options.timedOut ?? false;
+  }
+}
+
+export interface BskRunResult {
+  /** Process exit code, or null when killed by a signal / never started. */
+  code: number | null;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+  aborted: boolean;
+}
+
+export interface BskRunOptions {
+  signal?: AbortSignal;
+  /** Execution timeout; after exit, output collection has a separate 2s limit. */
+  timeoutMs?: number;
+  /** Opaque routing tag (e.g. a session id) enabling per-tag kills. */
+  tag?: string;
+}
+
+/** Minimal spawn signature so tests can substitute a fake child process. */
+export type SpawnImpl = (
+  command: string,
+  args: string[],
+  options?: SpawnOptionsWithoutStdio,
+) => ChildProcess;
+
+export interface BskRunner {
+  /** Run `bsk <args...> --json` and collect its output. */
+  run(args: string[], options?: BskRunOptions): Promise<BskRunResult>;
+  /** Kill every still-running child (used when the plugin unloads). */
+  killAll(): void;
+  /** Kill running children carrying this tag; returns the number matched. */
+  killFor(tag: string): number;
+}
+
+// Business RPCs translate Ctrl-C / opt-in stdin EOF into cancel(rpc_id).
+// Allow reconciliation before hard-killing an old or unresponsive CLI.
+const KILL_GRACE_MS = 3000;
+// Windows IPC may spend 5s connecting, 2s cancelling, 2s settling,
+// and up to 5s releasing the entire batch of caller-owned transfers.
+const WINDOWS_KILL_GRACE_MS = 15_000;
+// A killed child that never reports `exit` at all must still release the caller
+// once the forced kill has had its chance.
+const SETTLE_AFTER_KILL_SLACK_MS = 1000;
+// `close` fires only once every stdio pipe has reached EOF, which needs every
+// process holding a copy of the pipe handles to be gone, not just `bsk`. When
+// `bsk` auto-spawns the daemon, the daemon can end up holding those handles
+// (Windows `CreateProcess` inherits every inheritable handle; issue #180), so
+// after `exit` we drain what the pipes still give us and then settle, rather
+// than waiting for a `close` that may never come. `close` normally follows
+// `exit` within the same loop turn, so the wait is only ever paid when
+// something else is holding the pipes. Bytes arriving inside the window can
+// still be the child's own buffered output, so every chunk restarts the window
+// and EXIT_DRAIN_MAX_MS caps the total wait.
+const EXIT_DRAIN_GRACE_MS = 1000;
+const EXIT_DRAIN_MAX_MS = 2000;
+const SESSION_BUSY_RETRY_DELAY_MS = 100;
+
+/** One in-flight child plus the bounded shutdown that settles its run. */
+interface LiveRun {
+  tag: string | undefined;
+  requestKill: () => boolean;
+}
+
+export function createBskRunner(bskPath: string, spawnImpl: SpawnImpl = spawn): BskRunner {
+  const live = new Map<ChildProcess, LiveRun>();
+  const windows = process.platform === "win32";
+  const cancelling = new Map<ChildProcess, ReturnType<typeof setTimeout>>();
+  const killGraceMs = windows ? WINDOWS_KILL_GRACE_MS : KILL_GRACE_MS;
+  // The kill grace and the settlement deadline stay in step: a Windows
+  // cancellation using its full 15s must not be cut short by a 4s fallback.
+  const settleAfterKillMs = killGraceMs + SETTLE_AFTER_KILL_SLACK_MS;
+
+  function killChild(child: ChildProcess): void {
+    if (child.exitCode !== null || child.signalCode !== null || cancelling.has(child)) return;
+    const force = setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    }, killGraceMs);
+    force.unref();
+    cancelling.set(child, force);
+    // Node kills Windows children outright for SIGINT. EOF asks the CLI to
+    // send its existing cancel RPC and wait for browser reconciliation.
+    if (windows && child.stdin) child.stdin.end();
+    else child.kill("SIGINT");
+  }
+
+  return {
+    run(args, options = {}) {
+      if (options.signal?.aborted) {
+        return Promise.resolve({
+          code: null,
+          stdout: "",
+          stderr: "",
+          timedOut: false,
+          aborted: true,
+        });
+      }
+      return new Promise<BskRunResult>((resolve, reject) => {
+        let child: ChildProcess;
+        try {
+          child = spawnImpl(
+            bskPath,
+            [...args, "--json"],
+            windows
+              ? {
+                  windowsHide: true,
+                  env: { ...process.env, BSK_CANCEL_ON_STDIN_CLOSE: "1" },
+                }
+              : undefined,
+          );
+          // A child exiting while cancellation closes stdin may report EPIPE.
+          // Process completion remains the authority for the run result.
+          child.stdin?.on("error", () => {});
+        } catch (error) {
+          reject(error);
+          return;
+        }
+
+        let stdout = "";
+        let stderr = "";
+        let timedOut = false;
+        let aborted = false;
+        const onStdout = (chunk: Buffer | string) => {
+          stdout += chunk;
+          extendDrain();
+        };
+        const onStderr = (chunk: Buffer | string) => {
+          stderr += chunk;
+          extendDrain();
+        };
+        child.stdout?.on("data", onStdout);
+        child.stderr?.on("data", onStderr);
+
+        let settled = false;
+        let deadline: ReturnType<typeof setTimeout> | undefined;
+        let drainWindow: ReturnType<typeof setTimeout> | undefined;
+        let drainCap: ReturnType<typeof setTimeout> | undefined;
+        let drainCode: number | null = null;
+        // Dropping the listeners stops the collection, but our ends of the pipes
+        // stay open and keep the event loop referenced. When a grandchild holds
+        // the other ends, that would keep the host alive long after the run has
+        // settled, so close them and stop waiting on the child itself.
+        const release = () => {
+          child.stdout?.off("data", onStdout);
+          child.stderr?.off("data", onStderr);
+          child.stdout?.destroy();
+          child.stderr?.destroy();
+          child.stdin?.destroy();
+          child.unref();
+        };
+        const finish = (code: number | null) => {
+          if (settled) return;
+          settled = true;
+          settle();
+          release();
+          resolve({ code, stdout, stderr, timedOut, aborted });
+        };
+        // Wait for `close` after a normal `exit`, but not forever. Output landing
+        // in the window can still be the child's own buffered bytes, so each
+        // chunk reopens it for another EXIT_DRAIN_GRACE_MS and the cap keeps the
+        // total bounded when whatever holds the pipes keeps writing.
+        const extendDrain = () => {
+          if (drainCap === undefined || settled) return;
+          if (drainWindow !== undefined) clearTimeout(drainWindow);
+          drainWindow = setTimeout(() => finish(drainCode), EXIT_DRAIN_GRACE_MS);
+        };
+        const beginDrain = (code: number | null) => {
+          if (drainCap !== undefined) return;
+          drainCode = code;
+          // Keep the drain referenced if exit released the last process handle.
+          drainCap = setTimeout(() => finish(code), EXIT_DRAIN_MAX_MS);
+          extendDrain();
+        };
+        // Kill on our own initiative, then guarantee the promise settles even if
+        // the child never reports back: `exit` normally arrives promptly, and the
+        // deadline covers a child that reports nothing at all after SIGKILL.
+        const requestKill = () => {
+          // An exited command may still be draining its result. An interrupt
+          // cannot stop it anymore and must not discard the remaining output.
+          if (settled || child.exitCode !== null || child.signalCode !== null) return false;
+          killChild(child);
+          if (!settled && deadline === undefined) {
+            deadline = setTimeout(() => finish(child.exitCode), settleAfterKillMs);
+            deadline.unref();
+          }
+          return true;
+        };
+        live.set(child, { tag: options.tag, requestKill });
+
+        const timeoutMs = options.timeoutMs;
+        const timer =
+          timeoutMs !== undefined && timeoutMs > 0
+            ? setTimeout(() => {
+                if (child.exitCode !== null || child.signalCode !== null) return;
+                timedOut = true;
+                requestKill();
+              }, timeoutMs)
+            : undefined;
+        timer?.unref();
+
+        const onAbort = () => {
+          if (settled) return;
+          aborted = true;
+          // Explicit cancellation also stops waiting for an exited child's output.
+          if (!requestKill()) finish(child.exitCode);
+        };
+        const settle = () => {
+          if (timer !== undefined) clearTimeout(timer);
+          if (deadline !== undefined) clearTimeout(deadline);
+          if (drainWindow !== undefined) clearTimeout(drainWindow);
+          if (drainCap !== undefined) clearTimeout(drainCap);
+          const force = cancelling.get(child);
+          if (force !== undefined) clearTimeout(force);
+          cancelling.delete(child);
+          options.signal?.removeEventListener("abort", onAbort);
+          child.off("exit", onExit);
+          child.off("close", finish);
+          live.delete(child);
+        };
+
+        const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
+          // Execution is over; output collection has its own bounded deadline.
+          if (timer !== undefined) clearTimeout(timer);
+          if (signal !== null || timedOut || aborted) {
+            // Killed on our initiative: nothing left worth draining.
+            finish(code);
+            return;
+          }
+          // Normal exit: keep draining while bytes are still arriving, then
+          // settle even if a grandchild is still holding the pipes open.
+          beginDrain(code);
+        };
+
+        child.on("error", (error) => {
+          if (settled) return;
+          settled = true;
+          settle();
+          release();
+          reject(error);
+        });
+        child.on("close", finish);
+        child.once("exit", onExit);
+        if (options.signal?.aborted) {
+          onAbort();
+        } else {
+          options.signal?.addEventListener("abort", onAbort, { once: true });
+        }
+      });
+    },
+    killAll() {
+      for (const run of live.values()) run.requestKill();
+    },
+    killFor(tag: string) {
+      let killed = 0;
+      for (const run of live.values()) {
+        if (run.tag === tag && run.requestKill()) killed += 1;
+      }
+      return killed;
+    },
+  };
+}
+
+/** True when the spawn failure means the bsk binary itself is missing. */
+export function isCommandNotFound(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "ENOENT"
+  );
+}
+
+/** True only for the daemon's transient per-session reconciliation window. */
+export function isSessionBusyResult(result: BskRunResult): boolean {
+  if (result.code === 0) return false;
+  try {
+    const body = JSON.parse(result.stdout) as BskErrorBody;
+    const reason =
+      typeof body.data === "object" && body.data !== null && "reason" in body.data
+        ? (body.data as { reason?: unknown }).reason
+        : undefined;
+    return reason === "session_busy";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Retry exactly once after the tiny daemon-settlement race that can follow a
+ * graceful SIGINT cancellation. Other errors and persistent busy states stay
+ * visible to callers.
+ */
+export async function runWithSessionBusyRetry(
+  run: () => Promise<BskRunResult>,
+  signal?: AbortSignal,
+): Promise<BskRunResult> {
+  const first = await run();
+  if (!isSessionBusyResult(first)) return first;
+  await abortableDelay(SESSION_BUSY_RETRY_DELAY_MS, signal);
+  return run();
+}
+
+function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(abortError());
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(done, ms);
+    timer.unref();
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      reject(abortError());
+    };
+    function done() {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function abortError(): Error {
+  const error = new Error("tool call aborted");
+  error.name = "AbortError";
+  return error;
+}
+
+/** Install guidance shown when the bsk CLI cannot be spawned. */
+export function bskInstallMessage(bskPath: string): string {
+  return (
+    `the bsk CLI ("${bskPath}") was not found. BrowserSkill must be installed and on PATH ` +
+    "for browser tools to work — install it from https://github.com/Tencent/BrowserSkill " +
+    "(see the README install script or `cargo install`), then retry."
+  );
+}
+
+/**
+ * Interpret one finished run: throw `BskError` on timeout / non-zero exit
+ * (parsing the CLI's JSON error envelope when present), otherwise parse and
+ * return the stdout JSON payload.
+ */
+export function parseBskJson(result: BskRunResult, commandLabel: string): unknown {
+  if (result.timedOut) {
+    throw new BskError(`bsk ${commandLabel} timed out`, { timedOut: true });
+  }
+  const body = result.stdout.trim();
+  // Killed by our own interrupt (SIGINT from killFor), not by the abort path:
+  // say so instead of doubling the generic label into the message.
+  if (result.code === null && !result.aborted && !result.timedOut) {
+    throw new BskError(`bsk ${commandLabel} was interrupted (process killed)`);
+  }
+  if (result.code !== 0) {
+    let parsed: BskErrorBody | undefined;
+    try {
+      parsed = JSON.parse(body) as BskErrorBody;
+    } catch {
+      parsed = undefined;
+    }
+    const message =
+      parsed?.message ?? (result.stderr.trim() || body || `bsk ${commandLabel} failed`);
+    // Surface the envelope's actionable hint in the model-facing message; a
+    // hint the model cannot see cannot be followed.
+    const withHint = parsed?.hint !== undefined ? `${message} (hint: ${parsed.hint})` : message;
+    throw new BskError(`bsk ${commandLabel} failed: ${withHint}`, {
+      code: parsed?.code,
+      hint: parsed?.hint,
+      exitCode: result.code,
+    });
+  }
+  try {
+    return JSON.parse(body);
+  } catch {
+    throw new BskError(
+      `bsk ${commandLabel} did not produce JSON output: ${body.slice(0, 200) || "(empty)"}`,
+      { exitCode: result.code },
+    );
+  }
+}
