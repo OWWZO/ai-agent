@@ -164,7 +164,10 @@ function getArtifactSignature(task: RenderableTask): string {
     .join(",");
 }
 
-function getTaskRenderSignature(task: RenderableTask, baseId: string): string {
+export function getTaskRenderSignature(
+  task: RenderableTask,
+  baseId: string
+): string {
   const resultMap = task.resultMap || {};
   const searchResult = resultMap.searchResult;
   const plan = task.plan;
@@ -204,15 +207,14 @@ function getTaskRenderSignature(task: RenderableTask, baseId: string): string {
       : 0,
     String(resultMap.subAgentLiveText || ""),
     resultMap.subAgentElapsedMs ?? "",
-    // 流式入参增长必须使签名失效，否则 WeakMap 会卡住旧 argumentsText
-    typeof resultMap.argumentsText === "string"
-      ? resultMap.argumentsText.length
-      : 0,
+    // 流式入参必须整体进签名。只放长度会漏「同长度不同内容」的原地更新
+    // （例如 '{"path":"a.ts"}' → '{"path":"b.ts"}'），WeakMap 会返回旧结果。
+    typeof resultMap.argumentsText === "string" ? resultMap.argumentsText : "",
     typeof (resultMap as { resultMap?: { argumentsText?: string } }).resultMap
       ?.argumentsText === "string"
       ? (resultMap as { resultMap?: { argumentsText?: string } }).resultMap!
-        .argumentsText!.length
-      : 0,
+        .argumentsText!
+      : "",
     toolCallTargetName,
     task.toolThought || "",
     resultMap.answer || "",
