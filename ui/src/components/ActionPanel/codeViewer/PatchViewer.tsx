@@ -18,6 +18,7 @@ import {
   getPlainTextPatchPreviewLines,
 } from "@/lib/patchPreview";
 import { cn } from "@/lib/utils";
+import { buildDiffViewerStyle } from "./utils";
 import Loading from "../Loading";
 
 /**
@@ -82,15 +83,11 @@ export const PatchViewer = memo(function PatchViewer({ patch, className }: Patch
 
   const viewerStyle = useMemo<PatchViewerStyle>(
     () => ({
-      // 应用暗色是 `.dark` class 驱动，而 @pierre/diffs 的 token 依赖 light-dark()。
-      // 必须显式指定 colorScheme，否则暗色下 diff 会渲染成浅色主题的深色文字。
-      colorScheme: isDark ? "dark" : "light",
-      "--diffs-bg": "var(--chat-surface)",
-      "--diffs-light-bg": "var(--chat-surface)",
-      "--diffs-dark-bg": "var(--chat-surface)",
-      // 库在 Shadow DOM 内用自己的等宽 fallback，Windows 中文会落到宋体。
-      "--diffs-font-family": "var(--font-mono)",
-      "--diffs-font-size": `${settings.fontSizePx}px`,
+      // 主题适配与 CodeViewer 共用，见 buildDiffViewerStyle 的说明
+      ...buildDiffViewerStyle({
+        isDark,
+        fontSizePx: settings.fontSizePx,
+      }),
     }),
     [isDark, settings.fontSizePx]
   );

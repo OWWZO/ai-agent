@@ -29,6 +29,7 @@ import type {
 import {
   CODE_VIEWER_UNSAFE_CSS,
   DEFAULT_CODE_COMMENT_LABELS,
+  buildDiffViewerStyle,
   codeCommentRangeToSelectedRange,
   codeViewerMarkedLinesCss,
   createCodeViewerFile,
@@ -322,15 +323,12 @@ const CodeViewerComponent: ReactorType.FC<CodeViewerProps> = (props) => {
 
   const viewerStyle = useMemo<CodeViewerStyle>(
     () => ({
-      // 应用暗色是 `.dark` class 驱动，而 @pierre/diffs 的 token 依赖 light-dark()。
-      // 必须显式指定 colorScheme，否则暗色下代码会渲染成浅色主题的深色文字。
-      colorScheme: isDark ? "dark" : "light",
-      "--diffs-bg": "var(--chat-surface)",
-      "--diffs-light-bg": "var(--chat-surface)",
-      "--diffs-dark-bg": "var(--chat-surface)",
-      // 库在 Shadow DOM 内用自己的等宽 fallback，Windows 中文会落到宋体。
-      "--diffs-font-family": "var(--font-mono)",
-      "--diffs-font-size": `${resolvedFontSizePx}px`,
+      // 主题适配（colorScheme / --diffs-*）见 buildDiffViewerStyle 的说明：
+      // 暗色是 class 驱动而库依赖 light-dark()，不显式指定就会渲染错。
+      ...buildDiffViewerStyle({
+        isDark,
+        fontSizePx: resolvedFontSizePx,
+      }),
       "--code-comment-add-tooltip": toCssString(
         canUseCommentGutterUtility ? labels.addCommentTooltip : ""
       ),

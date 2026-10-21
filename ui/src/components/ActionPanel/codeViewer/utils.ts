@@ -1,6 +1,11 @@
 import type { FileContents, SupportedLanguages } from "@pierre/diffs";
 import type { BundledTheme } from "shiki";
-import type { CodeCommentLabels, CodeCommentRange, SelectedLineRange } from "./types";
+import type {
+  CodeCommentLabels,
+  CodeCommentRange,
+  CodeViewerStyle,
+  SelectedLineRange,
+} from "./types";
 
 /** 中文 labels（ZCode 为英文，移植时本地化）。 */
 export const DEFAULT_CODE_COMMENT_LABELS: CodeCommentLabels = {
@@ -83,6 +88,31 @@ export function hashCodeViewerContent(code: string): string {
     hash = (hash * 33) ^ code.charCodeAt(index);
   }
   return (hash >>> 0).toString(36);
+}
+
+/**
+ * `@pierre/diffs` 两个 viewer（CodeViewer / PatchViewer）共用的主题适配。
+ *
+ * 两处必须显式给出，缺一个就会出错：
+ * - `colorScheme`：应用的暗色由 `.dark` class 驱动，而库的 token 依赖
+ *   `light-dark()`，不指定时暗色下会渲染成浅色主题的深色文字。
+ * - `--diffs-font-family`：库在 Shadow DOM 内用自己的等宽 fallback，
+ *   Windows 中文会落到宋体。
+ *
+ * 原来这份配置在两个文件里各写一遍，改一处漏一处就会出现上述问题。
+ */
+export function buildDiffViewerStyle(params: {
+  isDark: boolean;
+  fontSizePx: number;
+}): CodeViewerStyle {
+  return {
+    colorScheme: params.isDark ? "dark" : "light",
+    "--diffs-bg": "var(--chat-surface)",
+    "--diffs-light-bg": "var(--chat-surface)",
+    "--diffs-dark-bg": "var(--chat-surface)",
+    "--diffs-font-family": "var(--font-mono)",
+    "--diffs-font-size": `${params.fontSizePx}px`,
+  };
 }
 
 export function createCodeViewerFile(params: {
