@@ -13,6 +13,9 @@ import {
   isTimelineToolActive,
   isWorkspaceAttentionTask,
   resolveActionPanelVisibility,
+  markAskUserQuestionsAnswered,
+  markDesktopControlCompleted,
+  markPlanApprovalsDecided,
   resolveRunPhaseHint,
   resolveRunPresence,
   isWorkspaceRenderableTask,
@@ -775,5 +778,100 @@ describe("resolveRunPhaseHint", () => {
     expect(resolveRunPhaseHint("failed")).toBe("本轮未能完成");
     expect(resolveRunPhaseHint("stopped")).toBe("已停止");
     expect(resolveRunPhaseHint("idle")).toBe("");
+  });
+});
+
+describe("HITL 卡片本地标记", () => {
+  const card = (
+    messageType: string,
+    idField: string,
+    id: string,
+    extra: Record<string, unknown> = {}
+  ) =>
+    ({
+      messageType,
+      messageId: id,
+      resultMap: {
+        [idField]: id,
+        status: "pending",
+        ...extra,
+      },
+    }) as unknown as CHAT.Task;
+
+  const chatWith = (...tools: CHAT.Task[]) =>
+    ({
+      multiAgent: { tasks: [tools] },
+    }) as unknown as CHAT.ChatItem;
+
+  it("markAskUserQuestionsAnswered 标 answered 并带上答案", () => {
+    const chat = chatWith(card("ask_user_question", "questionId", "q1"));
+    const next = markAskUserQuestionsAnswered(chat, "q1", { a: "yes" });
+    const tool = next.multiAgent?.tasks?.[0]?.[0] as CHAT.Task;
+    expect(tool.finish).toBe(true);
+    expect(tool.isFinal).toBe(true);
+    expect(tool.resultMap?.status).toBe("answered");
+    expect(tool.resultMap?.answers).toEqual({ a: "yes" });
+    // 内层 resultMap 同步一份，渲染层两处都读
+    expect((tool.resultMap?.resultMap as { status?: string })?.status).toBe(
+      "answered"
+    );
+  });
+
+  it("markAskUserQuestionsAnswered 只改目标 id 的卡片", () => {
+    const chat = chatWith(
+      card("ask_user_question", "questionId", "q1"),
+      card("ask_user_question", "questionId", "q2")
+    );
+    const next = markAskUserQuestionsAnswered(chat, "q1");
+    const [first, second] = next.multiAgent?.tasks?.[0] as CHAT.Task[];
+    expect(first.resultMap?.status).toBe("answered");
+    expect(second.resultMap?.status).toBe("pending");
+  });
+
+  it("markPlanApprovalsDecided 标 decided 并记录 approved", () => {
+    const chat = chatWith(card("plan_approval", "approvalId", "a1"));
+    const next = markPlanApprovalsDecided(chat, "a1", undefined, true);
+    const tool = next.multiAgent?.tasks?.[0]?.[0] as CHAT.Task;
+    expect(tool.resultMap?.status).toBe("decided");
+    expect((tool.resultMap as { approved?: boolean })?.approved).toBe(true);
+  });
+
+  it("markPlanApprovalsDecided 不传 approved 时不写该字段", () => {
+    const chat = chatWith(card("plan_approval", "approvalId", "a1"));
+    const next = markPlanApprovalsDecided(chat, "a1");
+    const tool = next.multiAgent?.tasks?.[0]?.[0] as CHAT.Task;
+    expect(tool.resultMap?.status).toBe("decided");
+    expect("approved" in (tool.resultMap || {})).toBe(false);
+  });
+
+  it("markDesktopControlCompleted 标 completed", () => {
+    const chat = chatWith(card("desktop_control", "controlId", "d1"));
+    const next = markDesktopControlCompleted(chat, "d1");
+    const tool = next.multiAgent?.tasks?.[0]?.[0] as CHAT.Task;
+    expect(tool.resultMap?.status).toBe("completed");
+    expect(tool.finish).toBe(true);
+  });
+
+  it("三个函数都不碰其它类型的卡片", () => {
+    const chat = chatWith(card("tool_call", "toolCallId", "t1"));
+    expect(
+      (markAskUserQuestionsAnswered(chat, "q1").multiAgent?.tasks?.[0]?.[0] as CHAT.Task)
+        .resultMap?.status
+    ).toBe("pending");
+    expect(
+      (markPlanApprovalsDecided(chat, "a1").multiAgent?.tasks?.[0]?.[0] as CHAT.Task)
+        .resultMap?.status
+    ).toBe("pending");
+    expect(
+      (markDesktopControlCompleted(chat, "d1").multiAgent?.tasks?.[0]?.[0] as CHAT.Task)
+        .resultMap?.status
+    ).toBe("pending");
+  });
+
+  it("原 chat 不被修改（返回新对象）", () => {
+    const chat = chatWith(card("ask_user_question", "questionId", "q1"));
+    const before = (chat.multiAgent?.tasks?.[0]?.[0] as CHAT.Task).resultMap?.status;
+    markAskUserQuestionsAnswered(chat, "q1");
+    expect((chat.multiAgent?.tasks?.[0]?.[0] as CHAT.Task).resultMap?.status).toBe(before);
   });
 });
