@@ -5,6 +5,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.application.agent.execute.IExecuteStrategy;
+import org.wwz.ai.application.agent.execute.WorkingMemoryHydration;
 import org.wwz.ai.application.agent.stream.AgentSessionPrinter;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
@@ -12,18 +13,12 @@ import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
 import org.wwz.ai.domain.agent.memory.SessionContextMemoryService;
 import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
-import org.wwz.ai.domain.agent.runtime.dto.Message;
-import java.util.List;
-import org.wwz.ai.application.agent.askuser.AskUserResumeApplicationService;
-import org.wwz.ai.application.agent.desktopcontrol.DesktopControlResumeApplicationService;
-import org.wwz.ai.application.agent.planmode.PlanApprovalResumeApplicationService;
 import org.wwz.ai.domain.agent.runtime.askuser.IUserQuestionRepository;
 import org.wwz.ai.domain.agent.runtime.desktopcontrol.IDesktopControlRepository;
 import org.wwz.ai.domain.agent.runtime.planmode.IPlanApprovalRepository;
 import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 
 import org.wwz.ai.domain.agent.service.execute.planexecute.step.factory.DefaultPlanSolveAgentExecuteStrategyFactory;
-import org.apache.commons.lang3.StringUtils;
 
 /**
  * PlanSolve 应用层执行策略。
@@ -106,36 +101,13 @@ public class PlanSolveAgentExecuteStrategy implements IExecuteStrategy {
     }
 
     private void enrichWorkingMemory(AgentExecutionCommand request) {
-        if (request == null) {
-            return;
-        }
-        List<Message> working = List.of();
-        if (sessionWorkingMemoryService != null) {
-            // working_memory 是默认跨轮上下文来源，只有投影不可用时才回退到 ledger hydrate。
-            working = sessionWorkingMemoryService.loadReadyMessages(request.getSessionId(), request.getRequestId());
-        }
-        // 冷启动/无投影时回退 ledger hydrate，保证首批会话仍有跨轮上下文
-        if ((working == null || working.isEmpty()) && sessionContextMemoryService != null) {
-            working = sessionContextMemoryService.hydrateWorkingMessages(request.getSessionId(), request.getRequestId());
-        }
-        if (StringUtils.isNotBlank(request.getResumeQuestionId()) && userQuestionRepository != null) {
-            working = AskUserResumeApplicationService.appendAnswerObservation(
-                    working,
-                    userQuestionRepository.findByQuestionId(request.getResumeQuestionId()).orElse(null)
-            );
-        }
-        if (StringUtils.isNotBlank(request.getResumeDesktopControlId()) && desktopControlRepository != null) {
-            working = DesktopControlResumeApplicationService.appendCompletedObservation(
-                    working,
-                    desktopControlRepository.findByControlId(request.getResumeDesktopControlId()).orElse(null)
-            );
-        }
-        if (StringUtils.isNotBlank(request.getResumeApprovalId()) && planApprovalRepository != null) {
-            working = PlanApprovalResumeApplicationService.appendDecisionObservation(
-                    working,
-                    planApprovalRepository.findByApprovalId(request.getResumeApprovalId()).orElse(null)
-            );
-        }
-        request.setWorkingMemoryMessages(working == null ? List.of() : working);
+        // hydrate 逻辑与 ReactAgentExecuteStrategy 共用：优先 working_memory 投影，空则回退 ledger，再追加 resume 观测。
+        WorkingMemoryHydration.enrich(
+                request,
+                sessionWorkingMemoryService,
+                sessionContextMemoryService,
+                userQuestionRepository,
+                desktopControlRepository,
+                planApprovalRepository);
     }
 }
