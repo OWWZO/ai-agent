@@ -842,26 +842,51 @@ export function planSessionObservation(input: {
   };
 }
 
-export function markDesktopControlCompleted(
+/**
+ * 把指定 HITL 卡片在本地标成终态，让 UI 立刻退出等待态。
+ *
+ * 后端确认由 resume / 后续帧负责，这里只做即时反馈。三个 mark 函数
+ * （ask_user_question / plan_approval / desktop_control）原本是三份
+ * 逐字相同的代码，只有 messageType、ID 字段名、终态 status 和额外
+ * 字段不同，统一走这里。
+ *
+ * 卡片 ID 可能出现在内层 resultMap、外层 resultMap 或 tool 顶层，
+ * 所以按 idField 从内往外取。
+ */
+function markHITLCardsSettled(
   chat: CHAT.ChatItem,
-  controlId?: string
+  options: {
+    messageType: string;
+    /** 卡片 ID 在 resultMap / 嵌套 resultMap 里的字段名 */
+    idField: string;
+    /** 传入时只标记该 ID 的卡片，否则标记全部同类卡片 */
+    id?: string;
+    /** 终态 status：answered / decided / completed */
+    status: string;
+    /** 额外写进 resultMap 与嵌套 resultMap 的字段（answers / approved） */
+    extra?: Record<string, unknown>;
+  }
 ): CHAT.ChatItem {
   const tasks = (chat.multiAgent?.tasks || []).map((group) =>
     (group || []).map((tool) => {
-      if (tool?.messageType !== "desktop_control") {
+      if (tool?.messageType !== options.messageType) {
         return tool;
       }
       const prevMap = (tool.resultMap || {}) as Record<string, unknown>;
       const nestedMap = (prevMap.resultMap as Record<string, unknown> | undefined) || {};
-      const currentControlId = String(
-        nestedMap.controlId || prevMap.controlId || tool.messageId || ""
+      const currentId = String(
+        nestedMap[options.idField] ||
+          prevMap[options.idField] ||
+          tool.messageId ||
+          ""
       );
-      if (controlId && currentControlId && currentControlId !== controlId) {
+      if (options.id && currentId && currentId !== options.id) {
         return tool;
       }
       const nested = {
         ...nestedMap,
-        status: "completed",
+        status: options.status,
+        ...(options.extra || {}),
       };
       return {
         ...tool,
@@ -869,8 +894,9 @@ export function markDesktopControlCompleted(
         isFinal: true,
         resultMap: {
           ...prevMap,
-          status: "completed",
+          status: options.status,
           isFinal: true,
+          ...(options.extra || {}),
           resultMap: nested,
         },
       } as CHAT.Task;
@@ -885,51 +911,31 @@ export function markDesktopControlCompleted(
   };
 }
 
+export function markDesktopControlCompleted(
+  chat: CHAT.ChatItem,
+  controlId?: string
+): CHAT.ChatItem {
+  return markHITLCardsSettled(chat, {
+    messageType: "desktop_control",
+    idField: "controlId",
+    id: controlId,
+    status: "completed",
+  });
+}
+
 /** 用户已提交答案后，把本地卡片标成 answered，避免 UI 仍停在等待态 */
 export function markAskUserQuestionsAnswered(
   chat: CHAT.ChatItem,
   questionId?: string,
   answers?: Record<string, string>
 ): CHAT.ChatItem {
-  const tasks = (chat.multiAgent?.tasks || []).map((group) =>
-    (group || []).map((tool) => {
-      if (tool?.messageType !== "ask_user_question") {
-        return tool;
-      }
-      const prevMap = (tool.resultMap || {}) as Record<string, unknown>;
-      const nestedMap = (prevMap.resultMap as Record<string, unknown> | undefined) || {};
-      const currentQuestionId = String(
-        nestedMap.questionId || prevMap.questionId || tool.messageId || ""
-      );
-      if (questionId && currentQuestionId && currentQuestionId !== questionId) {
-        return tool;
-      }
-      const nested = {
-        ...nestedMap,
-        status: "answered",
-        ...(answers ? { answers } : {}),
-      };
-      return {
-        ...tool,
-        finish: true,
-        isFinal: true,
-        resultMap: {
-          ...prevMap,
-          status: "answered",
-          isFinal: true,
-          ...(answers ? { answers } : {}),
-          resultMap: nested,
-        },
-      } as CHAT.Task;
-    })
-  );
-  return {
-    ...chat,
-    multiAgent: {
-      ...(chat.multiAgent || { tasks: [] }),
-      tasks: tasks as unknown as MESSAGE.Task[][],
-    },
-  };
+  return markHITLCardsSettled(chat, {
+    messageType: "ask_user_question",
+    idField: "questionId",
+    id: questionId,
+    status: "answered",
+    ...(answers ? { extra: { answers } } : {}),
+  });
 }
 
 /** 用户已提交计划审批后，把本地卡片标成 decided */
@@ -939,45 +945,13 @@ export function markPlanApprovalsDecided(
   _answers?: Record<string, string>,
   approved?: boolean
 ): CHAT.ChatItem {
-  const tasks = (chat.multiAgent?.tasks || []).map((group) =>
-    (group || []).map((tool) => {
-      if (tool?.messageType !== "plan_approval") {
-        return tool;
-      }
-      const prevMap = (tool.resultMap || {}) as Record<string, unknown>;
-      const nestedMap = (prevMap.resultMap || {}) as Record<string, unknown>;
-      const currentApprovalId = String(
-        nestedMap.approvalId || prevMap.approvalId || tool.messageId || ""
-      );
-      if (approvalId && currentApprovalId !== approvalId) {
-        return tool;
-      }
-      const nested = {
-        ...nestedMap,
-        status: "decided",
-        ...(typeof approved === "boolean" ? { approved } : {}),
-      };
-      return {
-        ...tool,
-        finish: true,
-        isFinal: true,
-        resultMap: {
-          ...prevMap,
-          status: "decided",
-          isFinal: true,
-          ...(typeof approved === "boolean" ? { approved } : {}),
-          resultMap: nested,
-        },
-      } as CHAT.Task;
-    })
-  );
-  return {
-    ...chat,
-    multiAgent: {
-      ...(chat.multiAgent || { tasks: [] }),
-      tasks: tasks as unknown as MESSAGE.Task[][],
-    },
-  };
+  return markHITLCardsSettled(chat, {
+    messageType: "plan_approval",
+    idField: "approvalId",
+    id: approvalId,
+    status: "decided",
+    ...(typeof approved === "boolean" ? { extra: { approved } } : {}),
+  });
 }
 
 /** 进入等待用户输入终态：不 loading、无停止、tip=需要你的帮助 */
