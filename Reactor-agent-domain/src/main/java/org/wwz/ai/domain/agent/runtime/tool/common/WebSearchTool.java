@@ -99,7 +99,9 @@ public class WebSearchTool implements BaseTool {
         long start = System.currentTimeMillis();
         try {
             Map<String, Object> params = ToolArgs.mapStrict(input);
-            String query = StringUtils.trimToEmpty(String.valueOf(params.get("query")));
+            // 必须用 ToolArgs.str：String.valueOf(null) 会得到字面量 "null"，
+            // 长度 4 能绕过下面的 >=2 校验，把 "null" 当查询词发给 provider。
+            String query = ToolArgs.str(params.get("query"));
             if (StringUtils.isBlank(query) || query.length() < 2) {
                 return failure("WebSearch 失败：query 至少 2 个字符");
             }

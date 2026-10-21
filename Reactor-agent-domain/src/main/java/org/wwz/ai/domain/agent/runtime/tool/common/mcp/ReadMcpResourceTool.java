@@ -9,7 +9,6 @@ import org.wwz.ai.domain.agent.runtime.tool.ToolArgs;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.port.McpToolExecutor;
 
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
