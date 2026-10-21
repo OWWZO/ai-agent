@@ -7,8 +7,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.File;
-import org.wwz.ai.domain.agent.runtime.dto.Message;
-import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.factory.AgentToolCollectionFactory;
@@ -304,42 +302,6 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
                     .build());
         }
         return files;
-    }
-
-    private List<Message> convertMessages(List<AgentExecutionCommand.Message> messages) {
-        if (messages == null || messages.isEmpty()) {
-            return List.of();
-        }
-        List<Message> result = new ArrayList<>(messages.size());
-        // 历史消息只做运行时 DTO 翻译；它们属于输入上下文，不会在这里重新写入 Execution Ledger。
-        for (AgentExecutionCommand.Message message : messages) {
-            result.add(convertMessage(message));
-        }
-        return result;
-    }
-
-    private Message convertMessage(AgentExecutionCommand.Message message) {
-        RoleType role = resolveRoleType(message == null ? null : message.getRole());
-        Message.MessageBuilder builder = Message.builder()
-                .role(role)
-                .content(message == null ? null : message.getContent());
-        if (message != null && message.getToolCalls() != null && !message.getToolCalls().isEmpty()) {
-            builder.toolCalls(message.getToolCalls());
-        }
-        if (message != null && Objects.nonNull(message.getToolCallId())) {
-            builder.toolCallId(message.getToolCallId());
-        }
-        return builder.build();
-    }
-
-    private RoleType resolveRoleType(String role) {
-        if ("assistant".equalsIgnoreCase(role)) {
-            return RoleType.ASSISTANT;
-        }
-        if ("tool".equalsIgnoreCase(role)) {
-            return RoleType.TOOL;
-        }
-        return RoleType.USER;
     }
 
     @Override
