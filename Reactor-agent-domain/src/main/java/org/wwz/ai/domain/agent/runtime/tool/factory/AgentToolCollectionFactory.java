@@ -233,15 +233,9 @@ public class AgentToolCollectionFactory {
                             .getOrDefault("default", "search,web_fetch,web_search,code_execution,docgen,docread,dataprep,canvas,image_generation,data_analysis,openui")
                     );
 
-            if (agentToolList.contains("docgen")
-                    || agentToolList.contains("document_generate")
-                    || agentToolList.contains("slides_generate")
-                    || agentToolList.contains("excel_generator")
-                    || agentToolList.contains("checklist_generate")
-                    || agentToolList.contains("template_filler")
-                    || agentToolList.contains("document_template")
-                    || agentToolList.contains("theme_designer")
-                    || agentToolList.contains("chart_generator")) {
+            if (matchesAny(agentToolList, "docgen", "document_generate", "slides_generate",
+                    "excel_generator", "checklist_generate", "template_filler",
+                    "document_template", "theme_designer", "chart_generator")) {
                 DocumentGenerateTool documentGenerateTool = new DocumentGenerateTool();
                 addTool(toolCollection, documentGenerateTool, agentContext, DocumentGenerateTool::setAgentContext);
 
@@ -266,32 +260,17 @@ public class AgentToolCollectionFactory {
                 ChartGeneratorTool chartGeneratorTool = new ChartGeneratorTool();
                 addTool(toolCollection, chartGeneratorTool, agentContext, ChartGeneratorTool::setAgentContext);
             }
-            if (agentToolList.contains("docread")
-                    || agentToolList.contains("csv_processor")
-                    || agentToolList.contains("excel_reader")
-                    || agentToolList.contains("pdf_reader")
-                    || agentToolList.contains("word_reader")
-                    || agentToolList.contains("html_processor")
-                    || agentToolList.contains("markdown_processor")
-                    || agentToolList.contains("text_processor")
-                    || agentToolList.contains("pdf_structure")
-                    || agentToolList.contains("citation_extractor")
-                    || agentToolList.contains("image_ocr")) {
+            if (matchesAny(agentToolList, "docread", "csv_processor", "excel_reader",
+                    "pdf_reader", "word_reader", "html_processor", "markdown_processor",
+                    "text_processor", "pdf_structure", "citation_extractor", "image_ocr")) {
                 registerDocReadTools(toolCollection, agentContext);
             }
-            if (agentToolList.contains("dataprep")
-                    || agentToolList.contains("data_aggregate")
-                    || agentToolList.contains("data_clean")
-                    || agentToolList.contains("data_merge")
-                    || agentToolList.contains("data_transform")
-                    || agentToolList.contains("data_validate")
-                    || agentToolList.contains("sql_query")) {
+            if (matchesAny(agentToolList, "dataprep", "data_aggregate", "data_clean",
+                    "data_merge", "data_transform", "data_validate", "sql_query")) {
                 registerDataPrepTools(toolCollection, agentContext);
             }
             // canvas：把 workspace 里的 HTML 发布成可预览链接。它不产出界面 DSL，与 genui 树无关，保持可用。
-            if (agentToolList.contains("canvas")
-                    || agentToolList.contains("canvas_publish")
-                    || agentToolList.contains("html_canvas")) {
+            if (matchesAny(agentToolList, "canvas", "canvas_publish", "html_canvas")) {
                 CanvasPublishTool canvasPublishTool = new CanvasPublishTool();
                 addTool(toolCollection, canvasPublishTool, agentContext, CanvasPublishTool::setAgentContext);
             }
@@ -299,7 +278,7 @@ public class AgentToolCollectionFactory {
             // 界面通道已由 openui 承担，两套 DSL 同时在场会让模型在 emit_ui_tree 和 openui-lang 之间摇摆。
             // 工具代码保留，置 true 可回滚。
             if (reactorConfig.isGenuiEnabled()
-                    && (agentToolList.contains("canvas") || agentToolList.contains("genui"))) {
+                    && matchesAny(agentToolList, "canvas", "genui")) {
                 GetGenuiGuideTool getGenuiGuideTool = new GetGenuiGuideTool();
                 addTool(toolCollection, getGenuiGuideTool, agentContext, GetGenuiGuideTool::setAgentContext);
 
@@ -313,8 +292,7 @@ public class AgentToolCollectionFactory {
                 addTool(toolCollection, emitUiPatchTool, agentContext, EmitUiPatchTool::setAgentContext);
             }
             // openui-lang 扩展组件目录（与上面的 genui canvas 链路相互独立）。
-            if (agentToolList.contains("openui")
-                    || agentToolList.contains(OpenUiToolNames.GET_UI_COMPONENTS)) {
+            if (matchesAny(agentToolList, "openui", OpenUiToolNames.GET_UI_COMPONENTS)) {
                 GetUiComponentsTool getUiComponentsTool = new GetUiComponentsTool();
                 addTool(toolCollection, getUiComponentsTool, agentContext, GetUiComponentsTool::setAgentContext);
             }
@@ -322,11 +300,11 @@ public class AgentToolCollectionFactory {
                 DeepSearchTool deepSearchTool = new DeepSearchTool();
                 addTool(toolCollection, deepSearchTool, agentContext, DeepSearchTool::setAgentContext);
             }
-            if (agentToolList.contains("web_fetch") || agentToolList.contains("WebFetch")) {
+            if (matchesAny(agentToolList, "web_fetch", "WebFetch")) {
                 WebFetchTool webFetchTool = new WebFetchTool();
                 addTool(toolCollection, webFetchTool, agentContext, WebFetchTool::setAgentContext);
             }
-            if (agentToolList.contains("web_search") || agentToolList.contains("WebSearch")) {
+            if (matchesAny(agentToolList, "web_search", "WebSearch")) {
                 WebSearchTool webSearchTool = new WebSearchTool();
                 addTool(toolCollection, webSearchTool, agentContext, WebSearchTool::setAgentContext);
             }
@@ -746,6 +724,26 @@ public class AgentToolCollectionFactory {
                                               BiConsumer<T, AgentContext> contextBinder) {
         contextBinder.accept(tool, agentContext);
         toolCollection.addTool(tool);
+    }
+
+
+    /**
+     * 白名单组判定：组名或组内任一工具别名命中即装配整组。
+     * <p>
+     * 组名与别名是<b>或</b>关系——配置里写组名（如 {@code docread}）或写某个具体
+     * 工具别名（如 {@code pdf_reader}）都应触发整组装配，因为组内工具彼此协作，
+     * 只装一个会让模型拿到半套能力。
+     */
+    private static boolean matchesAny(List<String> agentToolList, String group, String... aliases) {
+        if (agentToolList.contains(group)) {
+            return true;
+        }
+        for (String alias : aliases) {
+            if (agentToolList.contains(alias)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private ReactorRuntimeDependencies requireRuntimeDependencies(AgentContext agentContext) {
