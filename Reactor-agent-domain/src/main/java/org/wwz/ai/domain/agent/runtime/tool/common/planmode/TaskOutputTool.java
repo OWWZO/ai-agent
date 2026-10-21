@@ -165,10 +165,7 @@ public class TaskOutputTool implements BaseTool {
         return "ok";
     }
 
-    @SuppressWarnings("unchecked")
-
-
-    private static boolean coerceBoolean(Object value, boolean defaultValue) {
+        private static boolean coerceBoolean(Object value, boolean defaultValue) {
         if (value == null) {
             return defaultValue;
         }

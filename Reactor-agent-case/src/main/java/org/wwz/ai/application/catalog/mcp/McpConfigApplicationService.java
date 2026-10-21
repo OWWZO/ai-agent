@@ -32,7 +32,7 @@ public class McpConfigApplicationService {
             config.setUpdateTime(now);
             // 与普通目录创建共用同一组默认值，避免两条创建路径对同一个 MCP
             // 给出不同的 transportType / requestTimeout / status 语义。
-            applyCreateDefaults(config);
+            applyWriteDefaults(config);
             boolean changed = repository.insert(config);
             return writeReloadSupport.afterWrite(changed);
         } catch (IllegalArgumentException e) {
@@ -50,6 +50,7 @@ public class McpConfigApplicationService {
         try {
             AiClientToolMcpConfig config = toConfig(command);
             config.setUpdateTime(LocalDateTime.now());
+            applyWriteDefaults(config);
             boolean changed = repository.updateById(config);
             return writeReloadSupport.afterWrite(changed);
         } catch (Exception e) {
@@ -65,6 +66,7 @@ public class McpConfigApplicationService {
         try {
             AiClientToolMcpConfig config = toConfig(command);
             config.setUpdateTime(LocalDateTime.now());
+            applyWriteDefaults(config);
             boolean changed = repository.updateByMcpId(config);
             return writeReloadSupport.afterWrite(changed);
         } catch (Exception e) {
@@ -169,10 +171,13 @@ public class McpConfigApplicationService {
     }
 
     /**
-     * 补齐创建默认值。管理端与普通目录创建必须一致，否则同一能力在两条入口下
-     * 会写入不同的 transportType / requestTimeout / status。
+     * 补齐写入默认值，create / update 都必须走。
+     * <p>
+     * Mapper 的 UPDATE 是静态赋值（{@code transport_type = #{transportType}}），
+     * 不补默认值就会把 NULL 写进可空列，之后 buildDescriptor 三个分支全部落空，
+     * 该 MCP 从运行时静默消失。
      */
-    private static void applyCreateDefaults(AiClientToolMcpConfig config) {
+    private static void applyWriteDefaults(AiClientToolMcpConfig config) {
         if (StringUtils.isBlank(config.getTransportType())) {
             config.setTransportType(McpDefaults.DEFAULT_TRANSPORT_TYPE);
         }

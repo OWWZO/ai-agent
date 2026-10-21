@@ -74,7 +74,8 @@ public class PendingUserQuestionRegistry {
      * 用户提交答案。返回 false 表示不存在或已结束。
      */
     public boolean answer(String questionId, Map<String, String> answers) {
-        PendingUserQuestion item = pending.get(StringUtils.trimToEmpty(questionId));
+        String key = StringUtils.trimToEmpty(questionId);
+        PendingUserQuestion item = pending.get(key);
         if (item == null) {
             return false;
         }
@@ -86,11 +87,14 @@ public class PendingUserQuestionRegistry {
             item.setStatus(PendingUserQuestion.STATUS_ANSWERED);
             item.getFuture().complete(item.getAnswers());
         }
+        // 终态即驱逐：awaitAnswers 删除后，这里是 pending 唯一的清理点。
+        pending.remove(key, item);
         return true;
     }
 
     public boolean cancel(String questionId, String reason) {
-        PendingUserQuestion item = pending.get(StringUtils.trimToEmpty(questionId));
+        String key = StringUtils.trimToEmpty(questionId);
+        PendingUserQuestion item = pending.get(key);
         if (item == null) {
             return false;
         }
@@ -102,6 +106,8 @@ public class PendingUserQuestionRegistry {
             item.getFuture().completeExceptionally(
                     new IllegalStateException(StringUtils.defaultIfBlank(reason, "cancelled")));
         }
+        // 终态即驱逐：避免已结束的问询长期滞留在进程级 map 里。
+        pending.remove(key, item);
         return true;
     }
 

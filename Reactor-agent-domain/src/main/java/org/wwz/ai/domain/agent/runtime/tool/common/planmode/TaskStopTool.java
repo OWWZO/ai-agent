@@ -110,10 +110,7 @@ public class TaskStopTool implements BaseTool {
         }
     }
 
-    @SuppressWarnings("unchecked")
-
-
-    private static String firstNonBlank(String a, String b) {
+        private static String firstNonBlank(String a, String b) {
         if (StringUtils.isNotBlank(a)) {
             return a;
         }

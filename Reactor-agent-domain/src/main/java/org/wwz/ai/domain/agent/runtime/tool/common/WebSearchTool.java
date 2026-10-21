@@ -116,6 +116,9 @@ public class WebSearchTool implements BaseTool {
             if (plans.isEmpty()) {
                 return failure("WebSearch 未配置。请配置 GPT/OpenAI（web_search.gpt_*）、Grok/xAI 或 exa/tavily/brave API key。");
             }
+            // 缺失 HTTP 端口是配置问题，不是某个 provider 的失败：提前抛，
+            // 否则每个 provider 都会以"Grok 缺少 RemoteHttpPort"的名义失败一遍。
+            requireHttpPort();
 
             Exception lastError = null;
             // provider 按优先级逐个尝试；单个供应商超时或响应格式异常时，继续使用下一个可用后端。
@@ -358,9 +361,18 @@ public class WebSearchTool implements BaseTool {
     }
 
     /** 惰性取 HTTP 端口；缺失时返回 null，由 provider 在使用处报错。 */
+    /**
+     * 取 HTTP 端口。provider 构造时只收 Supplier，真正发请求时才解析，
+     * 但 execute() 已在进入循环前校验过一次，这里的失败说明依赖装配缺失。
+     */
     private RemoteHttpPort optionalRemoteHttpPort() {
+        return requireHttpPort();
+    }
+
+    /** 依赖缺失时立即抛错，不让每个 provider 都以自己的名义失败一遍。 */
+    private RemoteHttpPort requireHttpPort() {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            return null;
+            throw new IllegalStateException("WebSearchTool 缺少 ReactorRuntimeDependencies");
         }
         return agentContext.getRuntimeDependencies().requireRemoteHttpPort();
     }
