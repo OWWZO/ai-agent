@@ -230,89 +230,74 @@ function resolveToolCallId(tool: CHAT.Task): string {
   );
 }
 
+/**
+ * 消息类型 → 步骤类型。
+ *
+ * 纯常量映射，提到模块级避免每条 task 重建判断链。表内查不到的类型
+ * 继续走下面的「子任务 → 工具名关键字」判定。
+ */
+const STEP_KIND_BY_MESSAGE_TYPE: Record<string, ProcessStepKind> = {
+  llm_reasoning: "thinking",
+  plan_thought: "thinking",
+  // agent_stream 是 react 主 agent 的正文流行模型：中间轮（moreRounds=true）
+  // 是助手过程回复；终轮由结论区承接（handleAgentStreamMessage 只会把中间轮
+  // 封口进时间线），这里统一按 assistant_reply 渲染，保证它插在工具卡片之间
+  // 而不是沉到对话底部。
+  tool_thought: "assistant_reply",
+  agent_stream: "assistant_reply",
+  ask_user_question: "interactive",
+  desktop_control: "interactive",
+  plan_approval: "interactive",
+  session_tasks: "interactive",
+  browser: "browser",
+  deep_search: "search",
+  knowledge: "search",
+  code: "code",
+  html: "code",
+  file: "file",
+  markdown: "artifact",
+  ppt: "artifact",
+  data_analysis: "artifact",
+  ui_tree: "artifact",
+  ui_patch: "artifact",
+};
+
+/**
+ * 工具名关键字 → 步骤类型。按顺序匹配，命中即返回。
+ *
+ * 工具名没有统一命名规范（同一语义在不同模型下叫法不同），只能靠关键字兜底。
+ */
+const STEP_KIND_BY_TOOL_NAME_KEYWORD: ReadonlyArray<
+  readonly [keywords: readonly string[], kind: ProcessStepKind]
+> = [
+  [["read", "cat", "view", "open"], "read"],
+  [["edit", "write", "create", "patch", "replace"], "edit"],
+  [["bash", "shell", "terminal", "exec", "run"], "terminal"],
+  [["search", "grep", "web", "crawl"], "search"],
+];
+
 export function resolveProcessStepKind(tool: CHAT.Task): ProcessStepKind {
   const messageType = tool.messageType || "";
-  if (messageType === "llm_reasoning" || messageType === "plan_thought") {
-    return "thinking";
+  const byType = STEP_KIND_BY_MESSAGE_TYPE[messageType];
+  if (byType) {
+    return byType;
   }
-  // agent_stream 是 react 主 agent 的正文流行模型：中间轮（moreRounds=true）是助手过程回复；
-  // 终轮由结论区承接（handleAgentStreamMessage 只会把中间轮封口进时间线），这里统一按
-  // assistant_reply 渲染，保证它插在工具卡片之间而不是沉到对话底部。
-  if (messageType === "tool_thought" || messageType === "agent_stream") {
-    return "assistant_reply";
-  }
+
   if (isUserBriefTask(tool)) {
     return "user_message";
   }
-  if (
-    messageType === "ask_user_question" ||
-    messageType === "desktop_control" ||
-    messageType === "plan_approval" ||
-    messageType === "session_tasks"
-  ) {
-    return "interactive";
-  }
+
   if (isSubAgentParentTask(tool)) {
     return "agent";
   }
-  if (messageType === "browser") {
-    return "browser";
-  }
-  if (messageType === "deep_search" || messageType === "knowledge") {
-    return "search";
-  }
-  if (messageType === "code" || messageType === "html") {
-    return "code";
-  }
-  if (
-    messageType === "file" ||
-    messageType === "markdown" ||
-    messageType === "ppt" ||
-    messageType === "data_analysis" ||
-    messageType === "ui_tree" ||
-    messageType === "ui_patch"
-  ) {
-    return messageType === "file" ? "file" : "artifact";
-  }
 
   const toolName = resolveToolName(tool);
-  if (
-    toolName.includes("read") ||
-    toolName.includes("cat") ||
-    toolName.includes("view") ||
-    toolName.includes("open")
-  ) {
-    return "read";
+  for (const [keywords, kind] of STEP_KIND_BY_TOOL_NAME_KEYWORD) {
+    if (keywords.some((keyword) => toolName.includes(keyword))) {
+      return kind;
+    }
   }
-  if (
-    toolName.includes("edit") ||
-    toolName.includes("write") ||
-    toolName.includes("create") ||
-    toolName.includes("patch") ||
-    toolName.includes("replace")
-  ) {
-    return "edit";
-  }
-  if (
-    toolName.includes("bash") ||
-    toolName.includes("shell") ||
-    toolName.includes("terminal") ||
-    toolName.includes("exec") ||
-    toolName.includes("run")
-  ) {
-    return "terminal";
-  }
-  if (
-    toolName.includes("search") ||
-    toolName.includes("grep") ||
-    toolName.includes("web") ||
-    toolName.includes("crawl")
-  ) {
-    return "search";
-  }
-  if (messageType === "tool_call" || messageType === "tool_result") {
-    return "tool";
-  }
+
   return "tool";
 }
 
