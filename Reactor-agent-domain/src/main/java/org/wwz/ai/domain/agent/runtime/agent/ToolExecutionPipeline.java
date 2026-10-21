@@ -1028,10 +1028,7 @@ final class ToolExecutionPipeline {
             if (command == null || StringUtils.isBlank(command.getId())) {
                 continue;
             }
-            runtimeTimings.computeIfAbsent(command.getId(), ignored -> ReplayTiming.builder()
-                    .startedAt(LocalDateTime.now())
-                    .source(ReplayTiming.SOURCE_RUNTIME)
-                    .build());
+            runtimeTimings.computeIfAbsent(command.getId(), ignored -> ReplayTiming.startRuntime());
         }
     }
 
@@ -1065,15 +1062,7 @@ final class ToolExecutionPipeline {
     }
 
     private ReplayTiming snapshotTiming(ReplayTiming timing) {
-        if (timing == null) {
-            return null;
-        }
-        return ReplayTiming.builder()
-                .startedAt(timing.getStartedAt())
-                .finishedAt(timing.getFinishedAt())
-                .durationMs(timing.getDurationMs())
-                .source(timing.getSource())
-                .build();
+        return ReplayTiming.copyOf(timing);
     }
 
     private Map<String, Dispatch> resolveAll(List<ToolCall> commands) {

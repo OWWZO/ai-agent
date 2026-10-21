@@ -4,11 +4,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.handler.AgentStreamEventHandler;
-import org.wwz.ai.domain.agent.runtime.handler.PlanSolveAgentStreamEventHandler;
-import org.wwz.ai.domain.agent.runtime.handler.ReactAgentStreamEventHandler;
+import org.wwz.ai.domain.agent.runtime.handler.CanonicalAgentStreamEventHandler;
 
 import java.util.EnumMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -19,15 +17,11 @@ import java.util.Map;
 public class AgentHandlerAutoConfiguration {
 
     @Bean
-    public Map<AgentType, AgentStreamEventHandler> handlerMap(List<AgentStreamEventHandler> handlerList) {
+    public Map<AgentType, AgentStreamEventHandler> handlerMap(CanonicalAgentStreamEventHandler handler) {
+        // React 与 PlanSolve 共用同一份 canonical 投影，两个 AgentType 指向同一实现。
         Map<AgentType, AgentStreamEventHandler> map = new EnumMap<>(AgentType.class);
-        for (AgentStreamEventHandler handler : handlerList) {
-            if (handler instanceof PlanSolveAgentStreamEventHandler) {
-                map.put(AgentType.PLAN_SOLVE, handler);
-            } else if (handler instanceof ReactAgentStreamEventHandler) {
-                map.put(AgentType.REACT, handler);
-            }
-        }
+        map.put(AgentType.REACT, handler);
+        map.put(AgentType.PLAN_SOLVE, handler);
         return map;
     }
 }

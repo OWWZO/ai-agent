@@ -924,26 +924,11 @@ public class LLM {
     }
 
     private void applyUsage(ToolCallResponse response, LlmUsageSnapshot usage) {
-        if (response == null || usage == null) {
-            return;
-        }
-        response.setPromptTokens(usage.getPromptTokens());
-        response.setCompletionTokens(usage.getCompletionTokens());
-        response.setTotalTokens(usage.getTotalTokens());
-        response.setCachedPromptTokens(usage.getCachedPromptTokens());
-        response.setPromptTextTokens(usage.getPromptTextTokens());
-        response.setPromptAudioTokens(usage.getPromptAudioTokens());
-        response.setPromptImageTokens(usage.getPromptImageTokens());
-        response.setCompletionTextTokens(usage.getCompletionTextTokens());
-        response.setCompletionAudioTokens(usage.getCompletionAudioTokens());
-        response.setReasoningTokens(usage.getReasoningTokens());
+        LlmUsageSnapshot.applyTo(response, usage);
     }
 
     private LlmInvocationHandle startLlmInvocation(AgentContext context, String callKind, boolean stream) {
-        ReplayTiming runtimeTiming = ReplayTiming.builder()
-                .startedAt(LocalDateTime.now())
-                .source(ReplayTiming.SOURCE_RUNTIME)
-                .build();
+        ReplayTiming runtimeTiming = ReplayTiming.startRuntime();
         if (context == null || !context.hasActiveLedgerRun() || context.getAgentRunState() == null) {
             return LlmInvocationHandle.disabled(runtimeTiming);
         }
@@ -1108,26 +1093,11 @@ public class LLM {
     }
 
     private void completeRuntimeTiming(ReplayTiming timing) {
-        if (timing == null || timing.getFinishedAt() != null || timing.getStartedAt() == null) {
-            return;
-        }
-        LocalDateTime finishedAt = LocalDateTime.now();
-        timing.setFinishedAt(finishedAt);
-        timing.setDurationMs(Math.max(0L,
-                java.time.Duration.between(timing.getStartedAt(), finishedAt).toMillis()));
-        timing.setSource(ReplayTiming.SOURCE_RUNTIME);
+        ReplayTiming.finishRuntime(timing);
     }
 
     private ReplayTiming snapshotTiming(ReplayTiming timing) {
-        if (timing == null) {
-            return null;
-        }
-        return ReplayTiming.builder()
-                .startedAt(timing.getStartedAt())
-                .finishedAt(timing.getFinishedAt())
-                .durationMs(timing.getDurationMs())
-                .source(timing.getSource())
-                .build();
+        return ReplayTiming.copyOf(timing);
     }
 
     private Throwable unwrapCompletionThrowable(Throwable throwable) {

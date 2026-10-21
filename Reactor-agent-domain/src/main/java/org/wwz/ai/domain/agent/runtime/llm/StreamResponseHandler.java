@@ -11,8 +11,6 @@ import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 
 import javax.annotation.Resource;
-import java.time.Duration;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -488,25 +486,11 @@ public class StreamResponseHandler {
     }
 
     private void completeRuntimeTiming(ReplayTiming timing) {
-        if (timing == null || timing.getFinishedAt() != null || timing.getStartedAt() == null) {
-            return;
-        }
-        LocalDateTime finishedAt = LocalDateTime.now();
-        timing.setFinishedAt(finishedAt);
-        timing.setDurationMs(Math.max(0L, Duration.between(timing.getStartedAt(), finishedAt).toMillis()));
-        timing.setSource(ReplayTiming.SOURCE_RUNTIME);
+        ReplayTiming.finishRuntime(timing);
     }
 
     private ReplayTiming snapshotTiming(ReplayTiming timing) {
-        if (timing == null) {
-            return null;
-        }
-        return ReplayTiming.builder()
-                .startedAt(timing.getStartedAt())
-                .finishedAt(timing.getFinishedAt())
-                .durationMs(timing.getDurationMs())
-                .source(timing.getSource())
-                .build();
+        return ReplayTiming.copyOf(timing);
     }
 
     private int[] resolveIntervals() {
@@ -592,19 +576,7 @@ public class StreamResponseHandler {
     }
 
     private void applyUsage(LLM.ToolCallResponse response, LlmUsageSnapshot usage) {
-        if (response == null || usage == null) {
-            return;
-        }
-        response.setPromptTokens(usage.getPromptTokens());
-        response.setCompletionTokens(usage.getCompletionTokens());
-        response.setTotalTokens(usage.getTotalTokens());
-        response.setCachedPromptTokens(usage.getCachedPromptTokens());
-        response.setPromptTextTokens(usage.getPromptTextTokens());
-        response.setPromptAudioTokens(usage.getPromptAudioTokens());
-        response.setPromptImageTokens(usage.getPromptImageTokens());
-        response.setCompletionTextTokens(usage.getCompletionTextTokens());
-        response.setCompletionAudioTokens(usage.getCompletionAudioTokens());
-        response.setReasoningTokens(usage.getReasoningTokens());
+        LlmUsageSnapshot.applyTo(response, usage);
     }
 
     private static class ToolCallAccumulator {

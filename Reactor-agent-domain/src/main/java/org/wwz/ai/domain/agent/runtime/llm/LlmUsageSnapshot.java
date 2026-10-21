@@ -349,4 +349,23 @@ public class LlmUsageSnapshot {
         }
         return null;
     }
+
+    /**
+     * 把 usage 快照回填到工具调用响应；任一侧为空时不做任何事。
+     */
+    public static void applyTo(LLM.ToolCallResponse response, LlmUsageSnapshot usage) {
+        if (response == null || usage == null) {
+            return;
+        }
+        response.setPromptTokens(usage.getPromptTokens());
+        response.setCompletionTokens(usage.getCompletionTokens());
+        response.setTotalTokens(usage.getTotalTokens());
+        response.setCachedPromptTokens(usage.getCachedPromptTokens());
+        response.setPromptTextTokens(usage.getPromptTextTokens());
+        response.setPromptAudioTokens(usage.getPromptAudioTokens());
+        response.setPromptImageTokens(usage.getPromptImageTokens());
+        response.setCompletionTextTokens(usage.getCompletionTextTokens());
+        response.setCompletionAudioTokens(usage.getCompletionAudioTokens());
+        response.setReasoningTokens(usage.getReasoningTokens());
+    }
 }
