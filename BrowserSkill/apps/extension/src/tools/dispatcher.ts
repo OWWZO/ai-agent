@@ -8,13 +8,16 @@ import { withTaskPopups } from "@/session-manager/task-popups";
 import type { Transport } from "@/transport/transport";
 import type {
   BlurParams,
+  CdpParams,
   ClickParams,
   ConsoleParams,
+  CookiesParams,
   DownloadParams,
   EmulateParams,
   EvaluateParams,
   FillParams,
   FocusParams,
+  FramesParams,
   GetHtmlParams,
   HoverParams,
   HoverResult,
@@ -47,12 +50,15 @@ import type {
 import { isRequestFrame } from "@/transport/types";
 import { auditContext } from "./audit-context";
 import { prepareBackgroundExecution } from "./background-execution";
+import { handleCdp } from "./cdp";
 import { handleConsole } from "./console";
+import { chromeCookiesApi, handleCookies } from "./cookies";
 import { handleDebug } from "./debug";
 import { handleDownload } from "./download";
 import { type EmulateCdpRunner, handleEmulate } from "./emulate";
 import { classifyCdpError } from "./errors";
 import { handleEvaluate } from "./evaluate";
+import { handleFrames } from "./frames";
 import { handleRequestHelp } from "./human-loop";
 import {
   handleBlur,
@@ -809,6 +815,26 @@ export class ToolDispatcher {
           req.params as EvaluateParams,
           this.cdp ? { cdp: this.cdp, tabsApi: chromeTabsApi, signal } : undefined,
         );
+      case "tool.cookies":
+        return handleCookies(this.sessions, req.params as CookiesParams, {
+          tabsApi: chromeTabsApi,
+          cookiesApi: chromeCookiesApi,
+          ...(signal ? { signal } : {}),
+        });
+      case "tool.frames":
+        if (!this.cdp) return { code: "unsupported", message: "Frame enumeration requires CDP" };
+        return handleFrames(this.sessions, req.params as FramesParams, {
+          cdp: this.cdp,
+          tabsApi: chromeTabsApi,
+          ...(signal ? { signal } : {}),
+        });
+      case "tool.cdp":
+        if (!this.cdp) return { code: "unsupported", message: "CDP passthrough requires CDP" };
+        return handleCdp(this.sessions, req.params as CdpParams, {
+          cdp: this.cdp,
+          tabsApi: chromeTabsApi,
+          ...(signal ? { signal } : {}),
+        });
       case "tool.wait_for_navigation":
         return handleWaitForNavigation(
           this.sessions,
@@ -1024,6 +1050,7 @@ function sessionIdForBrowserControlMethod(req: RequestFrame): string | null {
     case "tool.download":
     case "tool.evaluate":
     case "tool.observe":
+    case "tool.cdp":
     case "tool.screenshot_full_page":
     case "tool.request_help":
     case "tool.record_start": {

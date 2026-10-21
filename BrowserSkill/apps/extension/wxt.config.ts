@@ -41,6 +41,8 @@ export default defineConfig({
     permissions: [
       "alarms",
       "activeTab",
+      // `tool.cookies` reads the profile's cookie store for one domain / URL.
+      "cookies",
       "debugger",
       "downloads",
       "idle",

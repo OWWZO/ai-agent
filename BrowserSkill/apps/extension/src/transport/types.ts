@@ -883,6 +883,75 @@ export interface EmulateResult {
 }
 
 // --------------------------------------------------------------------------
+// Browser primitives — `tool.cookies` / `tool.frames` / `tool.cdp`.
+// These mirror the OpenCLI extension's `cookies` / `frames` / `cdp` actions.
+// --------------------------------------------------------------------------
+
+export interface CookiesParams {
+  session_id: string;
+  tab_id?: number;
+  /** Cookie domain filter. At least one of `domain` / `url` is required. */
+  domain?: string;
+  /** Cookie scope by URL. Takes precedence over `domain` when both are set. */
+  url?: string;
+}
+
+export interface CookieEntry {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  secure: boolean;
+  http_only: boolean;
+  /** Seconds since the Unix epoch. Absent for session cookies. */
+  expiration_date?: number;
+}
+
+export interface CookiesResult {
+  tab_id: number;
+  /** The scope actually used: requested URL, else domain, else tab origin. */
+  scope: string;
+  cookies: CookieEntry[];
+}
+
+export interface FramesParams {
+  session_id: string;
+  tab_id?: number;
+}
+
+export interface FrameEntry {
+  frame_id: string;
+  parent_frame_id?: string;
+  url?: string;
+  /** True when the frame runs in its own CDP target (cross-origin / OOPIF). */
+  out_of_process: boolean;
+}
+
+export interface FramesResult {
+  tab_id: number;
+  root_frame_id: string;
+  frames: FrameEntry[];
+  /** Subtrees the browser refused to describe, kept visible as gaps. */
+  unavailable_frames: FrameEntry[];
+}
+
+export interface CdpParams {
+  session_id: string;
+  tab_id?: number;
+  /** CDP method name. Must be on the extension's allowlist. */
+  method: string;
+  /** CDP method params. Opaque to the protocol; forwarded verbatim. */
+  params?: Record<string, unknown>;
+}
+
+export interface CdpResult {
+  tab_id: number;
+  method: string;
+  /** The raw CDP reply. Its shape is defined by the method that was called. */
+  result: unknown;
+}
+
+// --------------------------------------------------------------------------
 // Semantic record payloads mirror the versioned Rust protocol models.
 // --------------------------------------------------------------------------
 
