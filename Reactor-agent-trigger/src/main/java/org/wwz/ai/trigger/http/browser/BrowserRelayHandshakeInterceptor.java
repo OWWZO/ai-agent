@@ -36,8 +36,11 @@ public class BrowserRelayHandshakeInterceptor implements HandshakeInterceptor {
         }
         String userId = browserRelayApplicationService.resolveUserId(token);
         if (StringUtils.isBlank(userId)) {
-            log.warn("browser relay handshake rejected tokenPresent={} tokenLen={}",
-                    StringUtils.isNotBlank(token), token == null ? 0 : token.length());
+            // 前缀指纹（前8位）用于区分"重启前的旧 token 重连"与"陌生 token"：
+            // 同一前缀反复出现 = 扩展缓存了重启前的旧凭据，需要重新点连接。
+            log.warn("browser relay handshake rejected tokenPresent={} tokenLen={} tokenPrefix={}",
+                    StringUtils.isNotBlank(token), token == null ? 0 : token.length(),
+                    token == null ? "-" : token.substring(0, Math.min(8, token.length())));
             return false;
         }
         attributes.put("userId", userId);

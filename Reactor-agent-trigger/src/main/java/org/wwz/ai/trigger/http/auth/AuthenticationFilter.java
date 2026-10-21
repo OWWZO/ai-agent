@@ -50,6 +50,13 @@ public final class AuthenticationFilter extends OncePerRequestFilter {
                 // Relay handshakes authenticate with the pairing token in the WebSocket interceptor.
                 || "/api/agent/browser/relay".equals(path)
                 || "/api/agent/browser/relay/".equals(path)
+                // bsk 网关的各端点都自带凭证校验，不能走用户登录态：
+                // - 扩展侧握手：token 在子协议头 / ?token= 里（BskAuthSubProtocolInterceptor）
+                // - 设备授权：凭证在 Authorization 头里（BskAuthorizeController）
+                // - CLI 侧：X-Adapter-Secret + user_id（BskCliAuthInterceptor）
+                // 端点路径可配置（reactor.browser-bsk.path / reactor.opencli.bsk-cli-path），
+                // 所以按前缀放行，否则改路径后连接会在到达握手拦截器前被 401。
+                || path.startsWith("/api/agent/browser/bsk-")
                 || path.startsWith("/internal/");
     }
 
