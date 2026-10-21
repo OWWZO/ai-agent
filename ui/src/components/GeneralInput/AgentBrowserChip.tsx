@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Cloud, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { showMessage } from "@/utils";
+import { toast } from "sonner";
 import { agentBrowserApi, type AgentBrowserStatus } from "@/services/agentBrowser";
 
 type Props = {
@@ -28,7 +28,7 @@ export default function AgentBrowserChip({ disabled }: Props) {
     if (busy || disabled) return;
     const popup = window.open("about:blank", "_blank");
     if (!popup) {
-      showMessage()?.error("请允许弹出窗口后再打开 Agent 浏览器");
+      toast.error("请允许弹出窗口后再打开 Agent 浏览器");
       return;
     }
     popup.opener = null;
@@ -37,14 +37,14 @@ export default function AgentBrowserChip({ disabled }: Props) {
       const liveView = await agentBrowserApi.ensure();
       if (!liveView?.browserLiveViewUrl) {
         popup.close();
-        showMessage()?.error("Agent 浏览器地址不可用");
+        toast.error("Agent 浏览器地址不可用");
         return;
       }
       popup.location.replace(liveView.browserLiveViewUrl);
       await refresh();
     } catch (error) {
       popup.close();
-      showMessage()?.error(error instanceof Error ? error.message : "打开 Agent 浏览器失败");
+      toast.error(error instanceof Error ? error.message : "打开 Agent 浏览器失败");
     } finally {
       setBusy(false);
     }
@@ -57,7 +57,7 @@ export default function AgentBrowserChip({ disabled }: Props) {
       await agentBrowserApi.reset();
       await refresh();
     } catch (error) {
-      showMessage()?.error(error instanceof Error ? error.message : "重置 Agent 浏览器失败");
+      toast.error(error instanceof Error ? error.message : "重置 Agent 浏览器失败");
     } finally {
       setBusy(false);
     }

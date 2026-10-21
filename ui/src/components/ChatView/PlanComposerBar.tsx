@@ -4,7 +4,7 @@ import {
   LoaderCircleIcon,
   MinusIcon,
 } from "lucide-react";
-import { message } from "antd";
+import { toast } from "sonner";
 import {
   dispatchPlanApprovalResume,
   planApprovalApi,
@@ -112,7 +112,7 @@ const PlanComposerBarInner: FC<{
         feedback: feedback.trim() || undefined,
       });
       if (res && res.accepted === false) {
-        message.warning(String(res.message || "批准失败"));
+        toast.warning(String(res.message || "批准失败"));
         return;
       }
       setLocalStatus("approved");
@@ -124,12 +124,12 @@ const PlanComposerBarInner: FC<{
           approvalId: model.approvalId,
           approved: true,
         });
-        message.success("计划已批准，正在继续执行");
+        toast.success("计划已批准，正在继续执行");
       } else {
-        message.success("计划已批准");
+        toast.success("计划已批准");
       }
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "批准失败");
+      toast.error(error instanceof Error ? error.message : "批准失败");
     } finally {
       setSubmitting(false);
       setPendingAction(null);
@@ -146,7 +146,7 @@ const PlanComposerBarInner: FC<{
         feedback: (fb ?? feedback).trim() || label,
       });
       if (res && res.accepted === false) {
-        message.warning(String(res.message || "拒绝失败"));
+        toast.warning(String(res.message || "拒绝失败"));
         return;
       }
       setLocalStatus("rejected");
@@ -159,12 +159,12 @@ const PlanComposerBarInner: FC<{
           approvalId: model.approvalId,
           approved: false,
         });
-        message.success("已拒绝，正在继续修订");
+        toast.success("已拒绝，正在继续修订");
       } else {
-        message.success("已拒绝");
+        toast.success("已拒绝");
       }
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "拒绝失败");
+      toast.error(error instanceof Error ? error.message : "拒绝失败");
     } finally {
       setSubmitting(false);
       setPendingAction(null);

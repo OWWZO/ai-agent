@@ -1,6 +1,6 @@
 import { FC, memo, useMemo, useState } from "react";
 import { LoaderCircleIcon, PanelRightOpen } from "lucide-react";
-import { message } from "antd";
+import { toast } from "sonner";
 import {
   desktopControlApi,
   dispatchDesktopControlPreview,
@@ -38,7 +38,7 @@ const DesktopControlCard: FC<DesktopControlCardProps> = memo(({ tool }) => {
 
   const openDesktop = () => {
     if (!fields.streamUrl) {
-      message.warning("桌面地址不可用，请刷新后重试");
+      toast.warning("桌面地址不可用，请刷新后重试");
       return;
     }
     dispatchDesktopControlPreview();
@@ -50,7 +50,7 @@ const DesktopControlCard: FC<DesktopControlCardProps> = memo(({ tool }) => {
     try {
       const res = await desktopControlApi.complete({ controlId: fields.controlId });
       if (res && res.accepted === false) {
-        message.warning(String(res.message || "提交失败，桌面控制可能已结束"));
+        toast.warning(String(res.message || "提交失败，桌面控制可能已结束"));
         return;
       }
       setSubmitted(true);
@@ -61,12 +61,12 @@ const DesktopControlCard: FC<DesktopControlCardProps> = memo(({ tool }) => {
           sessionId: fields.sessionId,
           controlId: fields.controlId,
         });
-        message.success("已完成，正在继续执行");
+        toast.success("已完成，正在继续执行");
       } else {
-        message.success("已完成");
+        toast.success("已完成");
       }
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "提交失败");
+      toast.error(error instanceof Error ? error.message : "提交失败");
     } finally {
       setSubmitting(false);
     }

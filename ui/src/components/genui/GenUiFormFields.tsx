@@ -1,5 +1,5 @@
 import { FC, memo, useState, type ReactNode } from "react";
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import {
   GenUiFormProvider,
@@ -11,7 +11,7 @@ import { fireGenUiControl } from "./genUiActionBus";
 import { useGenUiRenderContext } from "./GenUiRenderContext";
 import { useGenUiBind } from "./GenUiBind";
 import type { GenUiNodeData } from "./GenUiNode";
-import { showMessage } from "@/utils";
+import { toast } from "sonner";
 
 const FIELD_CLASS =
   "w-full rounded-md border border-[var(--chat-border)]/70 bg-[var(--chat-surface)] px-3 py-2 text-[13px] text-[var(--chat-text)] focus:outline-none focus:ring-1 focus:ring-[var(--chat-accent)]";
@@ -120,7 +120,7 @@ export const GenUiActionButton: FC<{
     return (
       <a
         href={String(href)}
-        className={classNames(
+        className={cn(
           "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[13px] font-medium transition-colors",
           primary
             ? "border-[var(--chat-accent)] bg-[var(--chat-accent)] text-white hover:opacity-90"
@@ -147,7 +147,7 @@ export const GenUiActionButton: FC<{
             ? "未配置 UI 动作"
             : undefined
       }
-      className={classNames(
+      className={cn(
         "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[13px] font-medium transition-colors",
         primary
           ? "border-[var(--chat-accent)] bg-[var(--chat-accent)] text-white hover:opacity-90"
@@ -171,15 +171,15 @@ export const GenUiActionButton: FC<{
                 (typeof props.successMessage === "string" && props.successMessage) ||
                 (result.type ? ACTION_FEEDBACK[result.type] : "") ||
                 "完成";
-              showMessage()?.success(tip);
+              toast.success(tip);
             } else if (result.reason === "error") {
-              showMessage()?.error(
+              toast.error(
                 typeof props.errorMessage === "string"
                   ? props.errorMessage
                   : "操作失败，请重试"
               );
             } else {
-              showMessage()?.warning("未配置有效动作");
+              toast.warning("未配置有效动作");
             }
           })
           .finally(() => setLoading(false));
@@ -244,7 +244,7 @@ export const GenUiFormField: FC<{
           description={props.description}
         >
           <textarea
-            className={classNames(FIELD_CLASS, "resize-y")}
+            className={cn(FIELD_CLASS, "resize-y")}
             rows={typeof props.rows === "number" ? props.rows : 3}
             placeholder={s(props.placeholder)}
             value={s(value)}
@@ -304,13 +304,13 @@ export const GenUiFormField: FC<{
             role="switch"
             aria-checked={Boolean(value)}
             onClick={() => onChange(!value)}
-            className={classNames(
+            className={cn(
               "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
               value ? "bg-[var(--chat-accent)]" : "bg-[var(--chat-border)]"
             )}
           >
             <span
-              className={classNames(
+              className={cn(
                 "inline-block h-4 w-4 transform rounded-full bg-[var(--chat-surface)] shadow transition-transform",
                 value ? "translate-x-[18px]" : "translate-x-0.5"
               )}
@@ -373,7 +373,7 @@ export const GenUiFormField: FC<{
           description={props.description}
         >
           <select
-            className={classNames(FIELD_CLASS, "appearance-none")}
+            className={cn(FIELD_CLASS, "appearance-none")}
             value={s(value)}
             onChange={(e) => onChange(e.target.value)}
           >

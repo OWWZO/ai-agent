@@ -1,4 +1,3 @@
-import { MessageInstance } from "antd/es/message/interface";
 import { throttle } from "lodash";
 
 /**
@@ -180,23 +179,6 @@ export const peekSessionId = () => {
  * 创建新的稳定会话 ID。
  */
 export const createSessionId = () => `session-${getUniqId()}`;
-
-/**
- * 设置全局消息实例，以便在应用中统一管理消息提示
- */
-let message: MessageInstance | null = null;
-
-/**
- * 设置全局的静态消息实例
- * @param messageCnf 消息实例
- */
-export const setMessage = (messageCnf: typeof message) => {
-  message = messageCnf;
-};
-
-export const showMessage = () => {
-  return message;
-};
 
 export const getOS = () => {
   const userAgent = navigator.userAgent.toLowerCase();

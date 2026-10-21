@@ -16,7 +16,8 @@ import {
 } from "./workspaceFiles";
 import WorkspaceFileTree from "./WorkspaceFileTree";
 import { agentFileApi } from "@/services/agentFile";
-import { copyText, showMessage } from "@/utils";
+import { copyText } from "@/utils";
+import { toast } from "sonner";
 
 type TaskFileSidebarProps = {
   taskList?: PanelItemType[];
@@ -40,28 +41,28 @@ const TaskFileSidebar = memo(function TaskFileSidebar(props: TaskFileSidebarProp
     const selected = resolveSelected();
     const url = selected?.downloadUrl || selected?.url;
     if (!url) {
-      showMessage()?.warning("暂无可复制链接");
+      toast.warning("暂无可复制链接");
       return;
     }
     copyText(url);
-    showMessage()?.success("链接已复制");
+    toast.success("链接已复制");
   };
 
   const handleDownloadAll = async () => {
     if (!sessionId) {
-      showMessage()?.warning("当前没有会话");
+      toast.warning("当前没有会话");
       return;
     }
     if (!files.length) {
-      showMessage()?.warning("当前会话暂无文件");
+      toast.warning("当前会话暂无文件");
       return;
     }
     setArchiving(true);
     try {
       await agentFileApi.downloadWorkspaceArchive(sessionId);
-      showMessage()?.success("已开始下载工作区");
+      toast.success("已开始下载工作区");
     } catch (error) {
-      showMessage()?.error(error instanceof Error ? error.message : "工作区打包失败");
+      toast.error(error instanceof Error ? error.message : "工作区打包失败");
     } finally {
       setArchiving(false);
     }
@@ -97,11 +98,11 @@ const TaskFileSidebar = memo(function TaskFileSidebar(props: TaskFileSidebarProp
               const selected = resolveSelected();
               const path = selected ? workspaceRelativePath(selected) || selected.name : "";
               if (!path) {
-                showMessage()?.warning("暂无文件");
+                toast.warning("暂无文件");
                 return;
               }
               copyText(path);
-              showMessage()?.success("路径已复制");
+              toast.success("路径已复制");
             }}
           >
             <Copy className="h-3.5 w-3.5" />

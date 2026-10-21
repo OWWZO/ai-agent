@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { LoaderCircleIcon, MinusIcon, ChevronUpIcon } from "lucide-react";
-import { message } from "antd";
+import { toast } from "sonner";
 import { askUserApi, dispatchAskUserResume } from "@/services/askUser";
 import {
   normalizeAskQuestions,
@@ -150,7 +150,7 @@ const AskUserQuestionCard: FC<AskUserQuestionCardProps> = memo(({ tool }) => {
         answers: finalAnswers,
       });
       if (res && res.accepted === false) {
-        message.warning(String(res.message || "提交失败，问题可能已结束"));
+        toast.warning(String(res.message || "提交失败，问题可能已结束"));
         return;
       }
       setSubmitted(true);
@@ -164,12 +164,12 @@ const AskUserQuestionCard: FC<AskUserQuestionCardProps> = memo(({ tool }) => {
           questionId,
           answers: finalAnswers,
         });
-        message.success("已提交，正在继续执行");
+        toast.success("已提交，正在继续执行");
       } else {
-        message.success("已提交");
+        toast.success("已提交");
       }
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "提交失败");
+      toast.error(error instanceof Error ? error.message : "提交失败");
     } finally {
       setSubmitting(false);
     }

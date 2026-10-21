@@ -5,7 +5,7 @@ import axios, {
   AxiosResponse,
   InternalAxiosRequestConfig,
 } from 'axios';
-import { showMessage } from './utils';
+import { toast } from 'sonner';
 import { getDeviceId } from '@/services/agentConversation';
 import { resolveServiceBaseUrl } from './origin';
 import { clearAuthSession, getAccessToken } from '@/stores/auth';
@@ -162,7 +162,7 @@ request.interceptors.response.use(
       } else {
         const errMsg = data.msg || data.info || '请求失败';
         if (!isAuthEndpoint(response.config.url)) {
-          showMessage()?.error(errMsg);
+          toast.error(errMsg);
         }
         return Promise.reject(new Error(errMsg));
       }
@@ -173,7 +173,6 @@ request.interceptors.response.use(
   (error: AxiosError) => {
     console.error('响应错误:', error);
 
-    const message = showMessage();
     if (error.response) {
       const { status, data: resData } = error.response;
       const config = error.config as AuthRetryConfig | undefined;
@@ -186,31 +185,31 @@ request.interceptors.response.use(
           );
         case 403:
           if (!isAuthEndpoint(config?.url)) {
-            message?.error(responseMessage(resData, error.message || '没有权限访问'));
+            toast.error(responseMessage(resData, error.message || '没有权限访问'));
           }
           break;
         case 404:
           if (!isAuthEndpoint(config?.url)) {
-            message?.error(responseMessage(resData, error.message || '请求的资源不存在'));
+            toast.error(responseMessage(resData, error.message || '请求的资源不存在'));
           }
           break;
         case 500:
           if (!isAuthEndpoint(config?.url)) {
-            message?.error(responseMessage(resData, error.message || '服务器内部错误'));
+            toast.error(responseMessage(resData, error.message || '服务器内部错误'));
           }
           break;
         default:
           if (!isAuthEndpoint(config?.url)) {
-            message?.error(responseMessage(resData, error.message || `请求失败，状态码: ${status}`));
+            toast.error(responseMessage(resData, error.message || `请求失败，状态码: ${status}`));
           }
       }
     } else if (error.request) {
       if (!isAuthEndpoint(error.config?.url)) {
-        message?.error(error.message || '网络错误，请检查网络连接');
+        toast.error(error.message || '网络错误，请检查网络连接');
       }
     } else {
       if (!isAuthEndpoint(error.config?.url)) {
-        message?.error('请求配置错误');
+        toast.error('请求配置错误');
       }
     }
 

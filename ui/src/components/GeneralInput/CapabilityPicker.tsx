@@ -11,7 +11,7 @@ import {
   sessionCapabilityApi,
   type SessionCapabilities,
 } from "@/services/sessionCapability";
-import { showMessage } from "@/utils";
+import { toast } from "sonner";
 
 type Props = {
   sessionId: string;
@@ -75,7 +75,7 @@ const CapabilityPicker: ReactorType.FC<Props> = ({
         };
       });
     } catch (e) {
-      showMessage()?.error(e instanceof Error ? e.message : "切换失败");
+      toast.error(e instanceof Error ? e.message : "切换失败");
     }
   };
 

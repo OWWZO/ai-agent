@@ -1,7 +1,6 @@
-import { showMessage } from "@/utils";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useBoolean } from "ahooks";
-import classNames from "classnames";
 import { MousePointerClick } from "lucide-react";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -9,7 +8,7 @@ import { useHtmlElementPicker } from "@/hooks/useHtmlElementPicker";
 import { cn } from "@/lib/utils";
 import { useFilePreviewHeaderSlot } from "./filePreviewHeaderSlot";
 import Loading from "./Loading";
-import { Empty } from "antd";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import MarkdownRenderer from "./MarkdownRenderer";
 
 interface HTMLRendererProps {
@@ -71,7 +70,7 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
 
   useEffect(() => {
     if (pickerError) {
-      showMessage()?.warning(pickerError);
+      toast.warning(pickerError);
     }
   }, [pickerError]);
 
@@ -162,7 +161,7 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
   if (error) {
     return (
       <div
-        className={classNames(
+        className={cn(
           "flex h-full min-h-[320px] items-center justify-center p-6 text-red-500",
           className
         )}
@@ -175,7 +174,7 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
   if (missingReason && !htmlUrl && !htmlContent) {
     return (
       <div
-        className={classNames(
+        className={cn(
           "flex h-full min-h-[320px] items-center justify-center p-6 text-red-500",
           className
         )}
@@ -188,7 +187,7 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
   if (htmlUrl || htmlContent) {
     return (
       <div
-        className={classNames(
+        className={cn(
           "relative h-full min-h-[480px] w-full flex-1 bg-white",
           className
         )}
@@ -220,8 +219,12 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
   }
 
   return (
-    <div className={classNames(className, "relative min-h-[240px]")}>
-      <Empty description="暂无内容" className="mt-32" />
+    <div className={cn(className, "relative min-h-[240px]")}>
+      <Empty className="mt-32">
+        <EmptyHeader>
+          <EmptyTitle>暂无内容</EmptyTitle>
+        </EmptyHeader>
+      </Empty>
     </div>
   );
 });

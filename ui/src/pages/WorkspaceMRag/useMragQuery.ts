@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 
 import { mapMragError, streamMragQuery } from "@/services/mragWorkspace";
-import { showMessage } from "@/utils";
+import { toast } from "sonner";
 
 export function useMragQuery(
   toolBaseUrl: string,
@@ -20,11 +20,11 @@ export function useMragQuery(
     // 每次提交先校验知识库和问题，并取消上一条请求，保证只保留一个活动流。
     const currentQuestion = question.trim();
     if (!selectedKnowledgeBaseId) {
-      showMessage()?.error("请先选择知识库");
+      toast.error("请先选择知识库");
       return;
     }
     if (!currentQuestion) {
-      showMessage()?.error("请输入问题");
+      toast.error("请输入问题");
       return;
     }
 
@@ -77,7 +77,7 @@ export function useMragQuery(
     queryAbortRef.current.abort();
     queryAbortRef.current = null;
     setQuerying(false);
-    showMessage()?.info("已停止当前检索");
+    toast.info("已停止当前检索");
   }, []);
 
   const handleClearQueryResult = useCallback(() => {

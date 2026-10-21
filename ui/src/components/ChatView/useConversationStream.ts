@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { useMemoizedFn } from "ahooks";
-import { message as antdMessage } from "antd";
+import { toast } from "sonner";
 import { getUniqId } from "@/utils";
 import { buildAgentStreamRequest } from "@/utils/agentRequest";
 import {
@@ -2310,7 +2310,7 @@ export function useConversationStream(
           error instanceof AgentQuerySubmitError && error.concurrent;
         const messageText = error instanceof Error ? error.message : CONCURRENT_RUN_HINT;
         if (concurrent) {
-          antdMessage.warning(messageText || CONCURRENT_RUN_HINT);
+          toast.warning(messageText || CONCURRENT_RUN_HINT);
         }
         const streamStillActive = isActiveStream();
         clearActiveRun(resumeRequestId);
@@ -2539,7 +2539,7 @@ export function useConversationStream(
           sendMessage(inputInfo);
           return;
         }
-        antdMessage.warning(CONCURRENT_RUN_HINT);
+        toast.warning(CONCURRENT_RUN_HINT);
       });
       return;
     }
@@ -3160,7 +3160,7 @@ export function useConversationStream(
           error instanceof AgentQuerySubmitError && error.concurrent;
         const messageText = error instanceof Error ? error.message : CONCURRENT_RUN_HINT;
         if (concurrent) {
-          antdMessage.warning(messageText || CONCURRENT_RUN_HINT);
+          toast.warning(messageText || CONCURRENT_RUN_HINT);
         }
         failBeforeStreamOpened(
           concurrent ? CONCURRENT_RUN_HINT : messageText || "请求未能建立，请稍后重试"

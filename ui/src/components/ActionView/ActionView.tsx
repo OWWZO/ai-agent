@@ -8,7 +8,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 import { motion } from "motion/react";
 import { DURATION, EASE_OUT, useMotionConfig } from "@/lib/motion";
 import {
@@ -27,7 +27,8 @@ import { useMemoizedFn } from "ahooks";
 import FileList from "./FileList";
 import { PlanView, PlanViewAction } from "../PlanView";
 import { PanelItemType } from "../ActionPanel";
-import { copyText, downloadFile, showMessage } from "@/utils";
+import { copyText, downloadFile } from "@/utils";
+import { toast } from "sonner";
 import { iconType } from "@/utils/constants";
 import {
   AGENT_DIRECTORY_TAB_KEY,
@@ -732,11 +733,11 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
 
   const handleCopyLink = useMemoizedFn(() => {
     if (!downloadUrl) {
-      showMessage()?.warning("暂无可复制链接");
+      toast.warning("暂无可复制链接");
       return;
     }
     copyText(downloadUrl);
-    showMessage()?.success("链接已复制");
+    toast.success("链接已复制");
   });
 
   const selectedKind = resolveFileKind(selectedFile?.type, selectedFile?.name);
@@ -777,7 +778,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
 
   return (
     <motion.div
-      className={classNames(
+      className={cn(
         "reactor-workspace-content flex h-full w-full flex-col overflow-hidden bg-background",
         className
       )}
@@ -811,7 +812,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
           {files.length > 0 ? (
             <div
               ref={tabsRef}
-              className={classNames(
+              className={cn(
                 // 滚动条隐藏：边缘渐隐遮罩（mask-*，见 global.css）已经承担「还能滚」的
                 // 提示，再挂一条细滚动条就是多一条线（ZCode 用 `!scrollbar-hide`）。
                 "reactor-workspace-tabs flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
@@ -850,7 +851,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                       event.stopPropagation();
                       closeTab(key);
                     }}
-                    className={classNames(
+                    className={cn(
                       // `pr-5` 给右侧关闭按钮**固定**留位（X 是 absolute，size-4 @ right-1）：
                       // 标题用 `text-overflow: ellipsis` 截断，留位固定，省略号不会压到 X 上，
                       // 也不会因为 hover 时 X 浮出而重新截断。
@@ -884,7 +885,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                         event.stopPropagation();
                         closeTab(key);
                       }}
-                      className={classNames(
+                      className={cn(
                         "absolute right-1 top-1/2 flex size-4 -translate-y-1/2 items-center justify-center rounded-sm text-foreground-subtle transition-opacity hover:bg-surface-hover hover:text-foreground",
                         // active 的 tab 常显关闭按钮；其余 hover / 键盘聚焦时才浮出
                         active
@@ -944,7 +945,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
               <button
                 type="button"
                 onClick={onToggleFocusMode}
-                className={classNames(
+                className={cn(
                   iconBtnClass,
                   isFocusMode && "bg-selected text-foreground"
                 )}
@@ -1019,7 +1020,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                 badge + 两行文件名 + 6 个图标」，一行信息被摊成三层。
                 底部分隔线按 shouldShowPreviewHeaderDivider 条件渲染。 */}
             <div
-              className={classNames(
+              className={cn(
                 "flex h-10 shrink-0 items-center gap-8 px-3",
                 showFileHeaderDivider && "border-b border-border/50"
               )}
@@ -1040,7 +1041,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                     />
                   ) : (
                     <span
-                      className={classNames(
+                      className={cn(
                         "flex size-4 shrink-0 items-center justify-center rounded-sm text-ui-xs font-bold leading-none",
                         FILE_KIND_TONE
                       )}
@@ -1065,7 +1066,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                     <button
                       type="button"
                       aria-pressed={viewMode === "preview"}
-                      className={classNames(
+                      className={cn(
                         "h-7 rounded-lg px-2 text-ui-sm font-medium transition-colors",
                         viewMode === "preview"
                           ? "bg-selected text-foreground"
@@ -1078,7 +1079,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                     <button
                       type="button"
                       aria-pressed={viewMode === "source"}
-                      className={classNames(
+                      className={cn(
                         "h-7 rounded-lg px-2 text-ui-sm font-medium transition-colors",
                         viewMode === "source"
                           ? "bg-selected text-foreground"
