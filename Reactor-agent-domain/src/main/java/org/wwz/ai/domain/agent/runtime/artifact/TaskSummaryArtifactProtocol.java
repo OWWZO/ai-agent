@@ -23,16 +23,6 @@ public final class TaskSummaryArtifactProtocol {
     }
 
     /**
-     * 写入 system 的协议说明（与 Summary 历史口径一致）。
-     */
-    public static String protocolInstruction() {
-        return "如果需要返回最终交付文件，请在 " + ToolArtifactFormatter.ARTIFACT_DELIMITER
-                + " 后仅输出工作区相对路径或唯一文件名，多个使用、分隔。"
-                + "优先写相对路径；根目录且文件名全局唯一时可以只写文件名。"
-                + "如果没有需要返回的文件，则不要输出 " + ToolArtifactFormatter.ARTIFACT_DELIMITER + " 段落。";
-    }
-
-    /**
      * 终答原文保留 {@code $$$}；只解析点名 keys，不对 visibleBindings。
      */
     public static TaskSummaryResult parse(String llmResponse, List<ToolArtifactBinding> visibleBindings) {
@@ -60,16 +50,6 @@ public final class TaskSummaryArtifactProtocol {
             List<ToolArtifactBinding> visibleBindings
     ) {
         return parse(llmResponse);
-    }
-
-    /**
-     * 从终答协议构造 result payload；适用于不结束父 run 的子 Agent。
-     */
-    public static Map<String, Object> buildDeliveryPayload(
-            String llmResponse,
-            List<ToolArtifactBinding> visibleBindings
-    ) {
-        return toEventPayload(resolveForDelivery(llmResponse, visibleBindings));
     }
 
     /** 构造与实时/历史 replay 共用的 result event payload。 */

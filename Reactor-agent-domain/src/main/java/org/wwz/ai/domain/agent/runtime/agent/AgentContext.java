@@ -609,19 +609,6 @@ public class AgentContext {
     }
 
     /**
-     * 获取可见产物文件列表（按时间倒序，最新的在前）。
-     * 避免外部调用时的双重拷贝和手动反转。
-     */
-    public List<File> getReversedVisibleArtifactFiles() {
-        List<ToolArtifactBinding> bindings = toolArtifactRegistry.listVisibleBindings();
-        List<File> result = new ArrayList<>(bindings.size());
-        for (int i = bindings.size() - 1; i >= 0; i--) {
-            result.add(bindings.get(i).getFile());
-        }
-        return result;
-    }
-
-    /**
      * 绑定本次请求的 run 主键与外部身份。
      */
     public void activateLedgerRun(Long runId, String runUid) {

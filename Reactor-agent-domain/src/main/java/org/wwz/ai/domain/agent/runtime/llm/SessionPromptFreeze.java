@@ -34,16 +34,6 @@ public final class SessionPromptFreeze {
         return systemPrompt;
     }
 
-    public static String peek(String sessionId, String agentSlot, String toolSignature) {
-        if (StringUtils.isBlank(sessionId)) {
-            return null;
-        }
-        String key = StringUtils.defaultString(sessionId) + "|"
-                + StringUtils.defaultString(agentSlot, "default") + "|"
-                + StringUtils.defaultString(toolSignature);
-        return SYSTEM_BY_KEY.get(key);
-    }
-
     /**
      * 显式 skill reload 时清掉该会话冻结的 system，下一轮组装使用新索引。
      */
