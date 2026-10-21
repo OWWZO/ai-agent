@@ -8,6 +8,8 @@
  * 把当前 chat 改成 FAILED 并覆盖 conclusion。
  */
 
+import { buildConversationTaskData } from "@/utils/chat";
+
 /** submit＝确实需要补发 resume；observe＝续跑在飞，只挂观察；none＝已终态，什么都不做 */
 export type HITLResumeIntent = "submit" | "observe" | "none";
 
@@ -78,5 +80,67 @@ export function markChatSettled(chat: CHAT.ChatItem): CHAT.ChatItem {
       ...(chat.metrics || {}),
       status: "SUCCESS",
     },
+  };
+}
+
+/**
+ * 复制 chatList，连同每组 tasks 一起浅层展开。
+ *
+ * 三个 HITL restore 都要「改某一轮但不碰原始会话」，所以先整体铺一层新引用。
+ */
+export function cloneChatListForHITL(
+  conversation: CHAT.ConversationHistory
+): CHAT.ChatItem[] {
+  return conversation.chatList.map((chat) => ({
+    ...chat,
+    multiAgent: {
+      ...(chat.multiAgent || { tasks: [] }),
+      tasks: [...(chat.multiAgent?.tasks || [])].map((group) => [...(group || [])]),
+    },
+  }));
+}
+
+/**
+ * 定位 pending 项该落到哪一轮。
+ *
+ * 三级回退：requestId 精确命中 → 唯一的 WAITING_INPUT 轮 → 最后一轮。
+ * 历史分页里 requestId 常被裁掉，回退链不能省。
+ */
+export function resolveHITLChatIndex(
+  chatList: CHAT.ChatItem[],
+  requestId: string
+): number {
+  let index = requestId
+    ? chatList.findIndex((chat) => chat.requestId === requestId)
+    : -1;
+  if (index < 0) {
+    index = chatList.findIndex(
+      (chat) => String(chat.metrics?.status || "").toUpperCase() === "WAITING_INPUT"
+    );
+  }
+  if (index < 0) {
+    index = chatList.length - 1;
+  }
+  return index;
+}
+
+/**
+ * 把改过的 chat 写回列表，并重建派生层。
+ *
+ * Dialogue 渲染的是 chat.tasks，必须像历史 hydrate 一样从 multiAgent 重建；
+ * tip / loading / metrics 在渲染层之外单独维护，不能被派生覆盖。
+ */
+export function commitHITLChat(
+  chatList: CHAT.ChatItem[],
+  index: number,
+  chat: CHAT.ChatItem,
+  deepThink?: boolean
+): void {
+  const derived = buildConversationTaskData(chat, deepThink);
+  chatList[index] = {
+    ...derived.currentChat,
+    tip: chat.tip,
+    loading: chat.loading,
+    metrics: chat.metrics,
   };
 }

@@ -3,12 +3,15 @@ import {
   planApprovalApi,
   type PlanApprovalResumeEventDetail,
 } from "@/services/planApproval";
-import { buildConversationTaskData, combineData } from "@/utils/chat";
+import { combineData } from "@/utils/chat";
 import { applyWaitingUserInputState } from "@/components/ChatView/streamState";
 import {
   claimHitlResumeDispatch,
+  cloneChatListForHITL,
+  commitHITLChat,
   markChatResuming,
   markChatSettled,
+  resolveHITLChatIndex,
   resolveHitlResumeIntent,
 } from "@/utils/hitlResumeIntent";
 
@@ -89,13 +92,7 @@ export function mergePendingPlanApprovals(
     };
   }
 
-  const chatList = conversation.chatList.map((chat) => ({
-    ...chat,
-    multiAgent: {
-      ...(chat.multiAgent || { tasks: [] }),
-      tasks: [...(chat.multiAgent?.tasks || [])].map((group) => [...(group || [])]),
-    },
-  }));
+  const chatList = cloneChatListForHITL(conversation);
   const autoResumes: PlanApprovalResumeEventDetail[] = [];
 
   for (const payload of pending) {
@@ -103,17 +100,7 @@ export function mergePendingPlanApprovals(
     const requestId = String(payload.requestId || "");
     const clientStatus = String(payload.status || "pending").toLowerCase();
     const persistenceStatus = String(payload.persistenceStatus || "").toUpperCase();
-    let index = requestId
-      ? chatList.findIndex((chat) => chat.requestId === requestId)
-      : -1;
-    if (index < 0) {
-      index = chatList.findIndex(
-        (chat) => String(chat.metrics?.status || "").toUpperCase() === "WAITING_INPUT"
-      );
-    }
-    if (index < 0) {
-      index = chatList.length - 1;
-    }
+    const index = resolveHITLChatIndex(chatList, requestId);
     if (index < 0) {
       continue;
     }
@@ -217,13 +204,7 @@ export function mergePendingPlanApprovals(
       };
     }
 
-    const derived = buildConversationTaskData(chat, conversation.deepThink);
-    chatList[index] = {
-      ...derived.currentChat,
-      tip: chat.tip,
-      loading: chat.loading,
-      metrics: chat.metrics,
-    };
+    commitHITLChat(chatList, index, chat, conversation.deepThink);
   }
 
   return {
