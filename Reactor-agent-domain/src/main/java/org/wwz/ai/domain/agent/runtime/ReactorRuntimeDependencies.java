@@ -4,6 +4,7 @@ import lombok.Builder;
 import lombok.Value;
 import org.springframework.core.env.Environment;
 import org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort;
+import org.wwz.ai.domain.agent.adapter.port.BrowserBskConnectionPort;
 import org.wwz.ai.domain.agent.adapter.port.AgentBrowserSessionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
@@ -59,6 +60,9 @@ public class ReactorRuntimeDependencies {
 
     /** 可选：用户本机浏览器遥控 */
     BrowserRelayPort browserRelayPort;
+
+    /** 可选：bsk 后端的浏览器在线状态（021） */
+    BrowserBskConnectionPort browserBskConnectionPort;
 
     /** 可选：本机进程 CLI（opencli / host_cli） */
     CliExecutionPort cliExecutionPort;
@@ -157,6 +161,10 @@ public class ReactorRuntimeDependencies {
 
     public BrowserRelayPort getOptionalBrowserRelayPort() {
         return browserRelayPort;
+    }
+
+    public BrowserBskConnectionPort getOptionalBrowserBskConnectionPort() {
+        return browserBskConnectionPort;
     }
 
     public CliExecutionPort getOptionalCliExecutionPort() {

@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.scheduling.TaskScheduler;
+import org.wwz.ai.domain.agent.adapter.port.BrowserBskConnectionPort;
 import org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort;
 import org.wwz.ai.domain.agent.adapter.port.AgentBrowserSessionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
@@ -104,6 +105,7 @@ public class ReactorRuntimeAutoConfiguration {
                                                                  RemoteStreamPort remoteStreamPort,
                                                                  FileArtifactPort fileArtifactPort,
                                                                    ObjectProvider<BrowserRelayPort> browserRelayPortProvider,
+                                                                   ObjectProvider<BrowserBskConnectionPort> browserBskConnectionPortProvider,
                                                                    ObjectProvider<CliExecutionPort> cliExecutionPortProvider,
                                                                      ObjectProvider<AgentBrowserSessionPort> agentBrowserSessionPortProvider,
                                                                    ObjectProvider<OpenCliProperties> openCliPropertiesProvider,
@@ -137,6 +139,7 @@ public class ReactorRuntimeAutoConfiguration {
                 .remoteStreamPort(remoteStreamPort)
                 .fileArtifactPort(fileArtifactPort)
                 .browserRelayPort(browserRelayPortProvider.getIfAvailable())
+                .browserBskConnectionPort(browserBskConnectionPortProvider.getIfAvailable())
                 .cliExecutionPort(cliExecutionPortProvider.getIfAvailable())
                  .agentBrowserSessionPort(agentBrowserSessionPortProvider.getIfAvailable())
                 .openCliProperties(openCliPropertiesProvider.getIfAvailable())
