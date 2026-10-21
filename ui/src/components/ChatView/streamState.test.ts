@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyWaitingUserInputState,
   hasPendingAskUserQuestion,
+  canOpenTaskWorkspacePanel,
   isChatItemFollowable,
   isChatItemRunning,
   isParentLoopLive,
@@ -13,6 +14,7 @@ import {
   isWorkspaceAttentionTask,
   resolveActionPanelVisibility,
   resolveRunPresence,
+  isWorkspaceRenderableTask,
   resolveWorkspaceCaption,
   shouldRefreshWorkspaceTask,
   WAITING_USER_HELP_HINT,
@@ -665,5 +667,78 @@ describe("planSessionObservation", () => {
     expect(plan.followRequestId).toBeNull();
     expect(plan.clearDisconnectTip).toBe(false);
     expect(plan.abortConversationIds).toEqual(["b"]);
+  });
+});
+
+describe("工作区可见性判定链", () => {
+  const task = (
+    messageType: string,
+    resultMap: Record<string, unknown> = {}
+  ) =>
+    ({
+      messageType,
+      resultMap,
+    }) as unknown as CHAT.Task;
+
+  it("isWorkspaceRenderableTask 排除隐藏类型与空任务", () => {
+    expect(isWorkspaceRenderableTask(undefined)).toBe(false);
+    expect(isWorkspaceRenderableTask(task("tool_thought"))).toBe(false);
+    expect(isWorkspaceRenderableTask(task("llm_reasoning"))).toBe(false);
+    expect(isWorkspaceRenderableTask(task("ui_tree"))).toBe(false);
+    expect(isWorkspaceRenderableTask(task("html"))).toBe(true);
+    expect(isWorkspaceRenderableTask(task("file"))).toBe(true);
+  });
+
+  it("deep_search 在 search / chapter_summary / report 三阶段都进工作区", () => {
+    for (const stage of ["search", "chapter_summary", "report"]) {
+      expect(
+        isWorkspaceRenderableTask(task("deep_search", { messageType: stage }))
+      ).toBe(true);
+    }
+    // 未知 stage 被 resolveDeepSearchStage 归一成 search，所以仍进工作区
+    // （归一的设计意图就是不让 UI 卡在空状态）
+    expect(
+      isWorkspaceRenderableTask(task("deep_search", { messageType: "unknown" }))
+    ).toBe(true);
+    // resultMap 里完全没有 messageType 时同理
+    expect(isWorkspaceRenderableTask(task("deep_search"))).toBe(true);
+  });
+
+  it("isStructuredDataOnlyTask：tool_call 一律算纯结构化", () => {
+    expect(isStructuredDataOnlyTask(task("tool_call"))).toBe(true);
+    expect(isStructuredDataOnlyTask(task("html"))).toBe(false);
+  });
+
+  it("isStructuredDataOnlyTask：tool_result 有产物就放行", () => {
+    const withArtifact = task("tool_result", {
+      toolName: "code_interpreter",
+      fileInfo: [
+        {
+          fileName: "a.png",
+          domainUrl: "http://x/a.png",
+        },
+      ],
+    });
+    expect(isStructuredDataOnlyTask(withArtifact)).toBe(false);
+  });
+
+  it("isStructuredDataOnlyTask：搜索类工具即使无产物也放行", () => {
+    expect(isStructuredDataOnlyTask(task("tool_result", { toolName: "web_search" }))).toBe(
+      false
+    );
+    expect(
+      isStructuredDataOnlyTask(task("tool_result", { toolName: "internal_search" }))
+    ).toBe(false);
+  });
+
+  it("canOpenTaskWorkspacePanel 同时要求可渲染且非纯结构化", () => {
+    expect(canOpenTaskWorkspacePanel(undefined)).toBe(false);
+    // 可渲染但纯结构化 → 不能打开
+    expect(canOpenTaskWorkspacePanel(task("tool_call"))).toBe(false);
+    // 可渲染且非纯结构化 → 可以
+    expect(canOpenTaskWorkspacePanel(task("html"))).toBe(true);
+    expect(canOpenTaskWorkspacePanel(task("file"))).toBe(true);
+    // 隐藏类型 → 不能
+    expect(canOpenTaskWorkspacePanel(task("plan_approval"))).toBe(false);
   });
 });
