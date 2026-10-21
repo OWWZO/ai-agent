@@ -17,6 +17,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { copyToClipboard } from "@/utils";
 import Loading from "./Loading";
 import DocumentFallback from "./DocumentFallback";
 import {
@@ -549,12 +550,8 @@ const PptxViewer: React.FC<{ data: ArrayBuffer; className?: string }> = ({
     if (!text) {
       return;
     }
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
+    const ok = await copyToClipboard(text);
+    setCopied(ok);
   }, [selectedElement]);
 
   if (loadError) {

@@ -10,6 +10,7 @@ import { useCodePreviewWrap } from "@/hooks/useCodePreviewWrap";
 import { cn } from "@/lib/utils";
 import type { BundledLanguage, ThemedToken } from "shiki";
 import { tokenizeCode, tokenStyle } from "@/lib/shikiTokens";
+import { copyToClipboard } from "@/utils";
 
 type DiffRow = {
   type: "add" | "del" | "hunk" | "ctx";
@@ -28,15 +29,6 @@ export function parseDiffLines(code: string): DiffRow[] {
       return { type: "ctx", sign: "", text: line.slice(1) };
     return { type: "ctx", sign: "", text: line };
   });
-}
-
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /** @deprecated 保留给旧测试；fence 已改为 tokens 渲染，不再注入 HTML */
@@ -61,7 +53,7 @@ function FenceChrome({
   const [wrap, , toggleWrap] = useCodePreviewWrap();
 
   const onCopy = useCallback(async () => {
-    const ok = await copyText(code);
+    const ok = await copyToClipboard(code);
     if (!ok) return;
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1400);

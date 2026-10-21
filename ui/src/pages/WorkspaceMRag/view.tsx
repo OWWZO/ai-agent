@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { copyToClipboard } from "@/utils";
 import {
   BookOpenText,
   History,
@@ -633,13 +634,10 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
 
   const handleCopyAnswer = async () => {
     if (!queryAnswer) return;
-    try {
-      await navigator.clipboard.writeText(queryAnswer);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1600);
-    } catch {
-      // ignore clipboard failures
-    }
+    const ok = await copyToClipboard(queryAnswer);
+    if (!ok) return;
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
   };
 
   const handleSubmit = () => {

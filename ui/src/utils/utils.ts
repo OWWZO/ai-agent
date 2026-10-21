@@ -76,18 +76,39 @@ export const scrollToTop = (dom: Element) => {
   }, 100);
 };
 
-export const copyText = throttle((text?: string | number) => {
+/**
+ * 复制文本，返回是否成功。
+ *
+ * 没有 `navigator.clipboard` 时（非安全上下文、老浏览器）退到
+ * `execCommand("copy")`，那条路拿不到结果，只能假定成功。
+ */
+export async function copyToClipboard(text?: string | number): Promise<boolean> {
+  const value = (text ?? "") + "";
   if (navigator.clipboard) {
-    navigator.clipboard.writeText((text || "") + "");
-  } else {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      // 权限被拒或非安全上下文：继续走兜底
+    }
+  }
+  try {
     const input = document.createElement("textarea");
-    input.value = text + "";
+    input.value = value;
     document.body.appendChild(input);
     input.focus();
     input.select();
-    document.execCommand("copy");
+    const ok = document.execCommand("copy");
     document.body.removeChild(input);
+    return ok;
+  } catch {
+    return false;
   }
+}
+
+/** 节流版复制：给不需要结果反馈的调用点（连点、批量按钮）。 */
+export const copyText = throttle((text?: string | number) => {
+  void copyToClipboard(text);
 }, 1000);
 
 /**

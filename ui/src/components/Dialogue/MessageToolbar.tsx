@@ -16,6 +16,7 @@ import {
   MoreHorizontalIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { copyToClipboard } from "@/utils";
 export type MessageToolbarProps = {
   response?: string;
   /** Kimi 式：撤销本轮并回填输入框 */
@@ -36,7 +37,8 @@ export const MessageToolbar: FC<MessageToolbarProps> = ({
       return;
     }
 
-    navigator.clipboard.writeText(response).then(() => {
+    void copyToClipboard(response).then((ok) => {
+      if (!ok) return;
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
