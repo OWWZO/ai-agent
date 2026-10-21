@@ -280,7 +280,11 @@ export function toolSummary(name: string, arg: string, full = false): string {
         const pattern = str(d.pattern) ?? str(d.glob) ?? str(d.query);
         const path = str(d.path) ?? str(d.cwd);
         if (pattern && path) return c(`${pattern}  in ${path}`);
-        return pattern ? c(pattern) : str(d.path) ? c(str(d.path)!) : fallback();
+        if (pattern) return c(pattern);
+        // 没有 pattern 时退回路径本身：这里必须用上面算好的 path，
+        // 直接读 str(d.path) 会漏掉 d.cwd 兜底的那一种入参形态。
+        if (path) return c(path);
+        return fallback();
       }
       case "ls": {
         const dir =

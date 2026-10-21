@@ -81,3 +81,27 @@ describe("extractExecuteCommand", () => {
     expect(extractExecuteCommand("   ")).toBe("");
   });
 });
+
+describe("toolSummary glob", () => {
+  it("pattern + path 拼成 'pattern in path'", () => {
+    expect(
+      toolSummary("glob", JSON.stringify({ pattern: "*.ts", path: "src" }))
+    ).toBe("*.ts  in src");
+  });
+
+  it("只有 pattern 时退回 pattern 本身", () => {
+    expect(toolSummary("glob", JSON.stringify({ pattern: "*.ts" }))).toBe("*.ts");
+  });
+
+  it("path 缺省时用 cwd 兜底，不漏成原始入参", () => {
+    expect(toolSummary("glob", JSON.stringify({ cwd: "packages/ui" }))).toBe(
+      "packages/ui"
+    );
+  });
+
+  it("pattern 和路径都没有时退回原始入参", () => {
+    expect(toolSummary("glob", JSON.stringify({ limit: 5 }))).toBe(
+      JSON.stringify({ limit: 5 })
+    );
+  });
+});
