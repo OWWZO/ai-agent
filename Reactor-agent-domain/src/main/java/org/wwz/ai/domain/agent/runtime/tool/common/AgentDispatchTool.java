@@ -9,6 +9,7 @@ import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.runtime.subagent.BackgroundSubAgentExecutor;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentDefinition;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRegistry;
+import org.wwz.ai.domain.agent.runtime.subagent.SubAgentObservationBuilder;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentResult;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRunner;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
@@ -162,7 +163,7 @@ public class AgentDispatchTool implements BaseTool {
             SubAgentResult result = subAgentRunner.run(
                     agentContext, description, prompt, subagentType,
                     null, null, null, parentToolUseId);
-            Map<String, Object> data = buildObservationData(result);
+            Map<String, Object> data = SubAgentObservationBuilder.build(result, NAME, false);
             if (!result.isCompleted()) {
                 return ToolResultPayload.failureFrom(
                         StringUtils.defaultIfBlank(result.getErrorMsg(), "Agent 执行失败"),
@@ -185,28 +186,7 @@ public class AgentDispatchTool implements BaseTool {
         BackgroundSubAgentExecutor.settleLedgerIfTerminal(parent, parentToolUseId, runningObservation);
     }
 
-    private static Map<String, Object> buildObservationData(SubAgentResult result) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("tool", NAME);
-        body.put("ok", result.isCompleted());
-        body.put("status", result.getStatus());
-        body.put("agentId", result.getAgentId());
-        body.put("agentType", result.getAgentType());
-        if (StringUtils.isNotBlank(result.getChildSessionId())) {
-            body.put("childSessionId", result.getChildSessionId());
-        }
-        body.put("description", result.getDescription());
-        body.put("content", result.getContent());
-        body.put("totalToolUseCount", result.getTotalToolUseCount());
-        body.put("totalDurationMs", result.getTotalDurationMs());
-        if (result.getMemoryPersisted() != null) {
-            body.put("memoryPersisted", result.getMemoryPersisted());
-        }
-        if (StringUtils.isNotBlank(result.getErrorMsg())) {
-            body.put("errorMsg", result.getErrorMsg());
-        }
-        return body;
-    }
+
 
     /**
      * 后台任务清空后，只有父 run 已经 finishRun 才允许关观察流。

@@ -310,7 +310,7 @@ public final class BackgroundSubAgentExecutor {
             if (StringUtils.isNotBlank(parentToolUseId)) {
                 Map<String, Object> data = result == null
                         ? new LinkedHashMap<>()
-                        : buildObservationData(result, toolName);
+                        : SubAgentObservationBuilder.build(result, toolName, true);
                 data.put("tool", toolName);
                 data.put("ok", completed);
                 data.put("run_in_background", true);
@@ -360,29 +360,7 @@ public final class BackgroundSubAgentExecutor {
         }
     }
 
-    private static Map<String, Object> buildObservationData(SubAgentResult result, String toolName) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("tool", toolName);
-        body.put("ok", result.isCompleted());
-        body.put("status", result.getStatus());
-        body.put("agentId", result.getAgentId());
-        body.put("agentType", result.getAgentType());
-        if (StringUtils.isNotBlank(result.getChildSessionId())) {
-            body.put("childSessionId", result.getChildSessionId());
-        }
-        body.put("description", result.getDescription());
-        body.put("content", result.getContent());
-        body.put("totalToolUseCount", result.getTotalToolUseCount());
-        body.put("totalDurationMs", result.getTotalDurationMs());
-        body.put("run_in_background", true);
-        if (result.getMemoryPersisted() != null) {
-            body.put("memoryPersisted", result.getMemoryPersisted());
-        }
-        if (StringUtils.isNotBlank(result.getErrorMsg())) {
-            body.put("errorMsg", result.getErrorMsg());
-        }
-        return body;
-    }
+
 
     private static String trimToString(Object value) {
         return value == null ? "" : String.valueOf(value).trim();
