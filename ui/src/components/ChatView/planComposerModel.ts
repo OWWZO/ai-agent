@@ -189,23 +189,20 @@ export function findLatestPlanApproval(
   taskList?: CHAT.Task[]
 ): CHAT.Task | undefined {
   const tasks = flattenTasks(chat, taskList);
-  for (let i = tasks.length - 1; i >= 0; i--) {
-    const task = tasks[i];
+  // 一次反向遍历同时拿到两个结果：有正文的最后一个优先，
+  // 否则退回任意最后一个（可能还在写，正文尚未成形）。
+  let last: CHAT.Task | undefined;
+  for (let index = tasks.length - 1; index >= 0; index -= 1) {
+    const task = tasks[index];
     if (task?.messageType !== "plan_approval") {
       continue;
     }
-    const { planContent } = pickPlanApprovalFields(task);
-    if (planContent.trim()) {
+    last = task;
+    if (pickPlanApprovalFields(task).planContent.trim()) {
       return task;
     }
   }
-  // 无正文也返回最后一个 plan_approval（可能还在写）
-  for (let i = tasks.length - 1; i >= 0; i--) {
-    if (tasks[i]?.messageType === "plan_approval") {
-      return tasks[i];
-    }
-  }
-  return undefined;
+  return last;
 }
 
 export function buildComposerPlanModel(params: {

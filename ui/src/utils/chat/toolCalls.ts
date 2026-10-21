@@ -317,6 +317,15 @@ export function findLastTaskIndex<TTask>(
   return -1;
 }
 
+/** 从后往前找最后一个匹配的任务本体；找不到返回 undefined。 */
+export function findLastTask<TTask>(
+  tasks: TTask[],
+  matcher: (task: TTask) => boolean
+): TTask | undefined {
+  const index = findLastTaskIndex(tasks, matcher);
+  return index < 0 ? undefined : tasks[index];
+}
+
 export function findToolCallPlaceholderIndex(
   tasks: MESSAGE.Task[],
   toolCallId: string | undefined
