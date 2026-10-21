@@ -1,7 +1,7 @@
 import { ToolJsonBlock, type ToolJsonValue } from "./ToolJsonBlock";
 
 /**
- * 工具入参段（对齐 ZCode `components/ai-elements/tool.tsx` 的 `ToolInput`）。
+ * 工具入参段。
  *
  * 段标题固定 `Parameters`，容器与出参段同规格：淡底、无描边、上限 240px。
  * 解析不出 JSON 时退化为等宽纯文本 —— ZCode 那边 `input` 已经是对象，
