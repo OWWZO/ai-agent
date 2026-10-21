@@ -2,18 +2,14 @@ package org.wwz.ai.domain.agent.runtime.planmode;
 
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
-import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
-import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
+import org.wwz.ai.domain.agent.runtime.yield.PendingYieldToolCalls;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskToolNames;
-import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * ExitPlanMode observation 与客户端卡片载荷的统一构造。
@@ -34,61 +30,12 @@ public final class PlanApprovalObservationSupport {
     }
 
     public static String resolveExitPlanToolCallId(List<Message> messages, String preferredToolCallId) {
-        if (StringUtils.isNotBlank(preferredToolCallId)) {
-            return preferredToolCallId.trim();
-        }
-        if (messages == null || messages.isEmpty()) {
-            return null;
-        }
-        Set<String> answeredIds = new HashSet<>();
-        for (Message message : messages) {
-            if (message == null || message.getRole() != RoleType.TOOL || StringUtils.isBlank(message.getToolCallId())) {
-                continue;
-            }
-            if (StringUtils.defaultString(message.getContent()).contains("waiting_user_input")) {
-                continue;
-            }
-            answeredIds.add(message.getToolCallId());
-        }
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            Message message = messages.get(i);
-            if (message == null || message.getRole() != RoleType.ASSISTANT
-                    || message.getToolCalls() == null || message.getToolCalls().isEmpty()) {
-                continue;
-            }
-            for (ToolCall toolCall : message.getToolCalls()) {
-                if (toolCall == null || toolCall.getFunction() == null) {
-                    continue;
-                }
-                if (!TaskToolNames.EXIT_PLAN_MODE.equals(toolCall.getFunction().getName())) {
-                    continue;
-                }
-                if (StringUtils.isNotBlank(toolCall.getId()) && answeredIds.contains(toolCall.getId())) {
-                    continue;
-                }
-                if (StringUtils.isBlank(toolCall.getId())) {
-                    // 兼容少数 OpenAI-compatible 网关丢失 tool_call_id 的响应；先修复
-                    // assistant tool call，再用同一 ID 写入 waiting/decision observation。
-                    toolCall.setId(StringUtil.getUUID());
-                }
-                return toolCall.getId();
-            }
-        }
-        return null;
+        return PendingYieldToolCalls.resolve(messages, preferredToolCallId,
+                TaskToolNames.EXIT_PLAN_MODE, true);
     }
 
     public static boolean hasToolResult(List<Message> messages, String toolCallId) {
-        if (messages == null || StringUtils.isBlank(toolCallId)) {
-            return false;
-        }
-        for (Message message : messages) {
-            if (message != null
-                    && message.getRole() == RoleType.TOOL
-                    && toolCallId.equals(message.getToolCallId())) {
-                return true;
-            }
-        }
-        return false;
+        return PendingYieldToolCalls.hasToolResult(messages, toolCallId);
     }
 
     public static String buildDecisionObservation(PlanApprovalRecord record) {

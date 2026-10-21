@@ -7,7 +7,7 @@ import org.wwz.ai.domain.agent.runtime.agent.BaseAgent;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
-import org.wwz.ai.domain.agent.runtime.handler.ReactAgentStreamEventHandler;
+import org.wwz.ai.domain.agent.runtime.handler.CanonicalAgentStreamEventHandler;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunFinishRecord;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionRunDetail;
@@ -101,7 +101,7 @@ public class ReactExecutionLedgerIntegrationTest {
                 .finalSummaryText("react plan summary")
                 .build());
 
-        ReactAgentStreamEventHandler handler = new ReactAgentStreamEventHandler(
+        CanonicalAgentStreamEventHandler handler = new CanonicalAgentStreamEventHandler(
                 new org.wwz.ai.domain.agent.ledger.replay.ReplayProjector(
                         new org.wwz.ai.domain.agent.ledger.replay.projector.ToolInvocationProjectorRegistry(
                                 List.of(),
