@@ -94,15 +94,29 @@
 
 ## 测试与质量
 
-本模块当前不带独立测试；回归测试由 `ai-agent-station-study-app` 模块的测试集中承担：
+本模块自带 8 个测试类（14 个用例），覆盖 catalog（MCP / API / Model 配置）、
+subagent 定义、planmode 续跑与分层边界守卫。
 
-- `*BoundaryTest` — 019/020 边界守卫测试，验证 trigger 不再绕过 case 直连 domain
-- `AgentContextConvergenceBoundaryTest` 等 — 锁定 GPT query / dataagent bridge 已删除
+**注意：根 `pom.xml` 的 surefire 默认 `<skipTests>${skip.tests}</skipTests>`，
+而 `skip.tests` 缺省为 `true`，因此本模块测试默认不执行。**
 
-跑法：
+跑法（必须显式开启）：
 
 ```bash
-mvn -pl ai-agent-station-study-app test -Dtest='*BoundaryTest' -DskipTests=false
+mvn -pl Reactor-agent-case test -Dskip.tests=false
+```
+
+全仓回归（含本模块与 trigger）：
+
+```bash
+mvn test -Dskip.tests=false -Dmaven.test.failure.ignore=true
+```
+
+主链路回归仍走 `ai-agent-station-study-app` 的测试集（它有自己的 `${skipTests}` 属性与
+外部依赖排除列表，不受 `skip.tests` 影响）：
+
+```bash
+mvn -pl ai-agent-station-study-app test -am -DskipTests=false
 ```
 
 ---

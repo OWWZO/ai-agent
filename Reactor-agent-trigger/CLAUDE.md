@@ -96,8 +96,18 @@
 ## 测试与质量
 
 ### 测试类
-- `SimpleParserTest`: 简单解析测试
-- `TestDrawConfigParser`: 绘图配置解析测试
+- `CatalogTriggerBoundaryTest`（2 用例）: catalog 触发层边界守卫
+- `SkillAdminControllerMultipartTest`（3 用例）: skill 管理端 multipart 上传
+
+以下两个是手工执行的 `main` 脚本，**不含 JUnit 用例**，surefire 不会执行：
+`SimpleParserTest`、`TestDrawConfigParser`（读本地 JSON，路径硬编码，仅本地排查用）。
+
+**注意：根 `pom.xml` 的 surefire 默认跳过测试（`skip.tests` 缺省 `true`），
+必须显式开启才会执行本模块测试：**
+
+```bash
+mvn -pl Reactor-agent-trigger test -Dskip.tests=false
+```
 
 ---
 
