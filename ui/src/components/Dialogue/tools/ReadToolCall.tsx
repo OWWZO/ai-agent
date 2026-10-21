@@ -2,7 +2,7 @@ import { memo } from "react";
 import { SearchIcon } from "lucide-react";
 import { ToolRow, type ToolRowStackPosition } from "./ToolRow";
 import { ToolFileChip } from "./ToolFileChip";
-import { ToolArgStreamPreview } from "./ToolArgStreamPreview";
+import { ToolArgStreamCard } from "./ToolArgStreamCard";
 import { extractToolFilePath, normalizeToolName, toolLabel, toolSummary } from "./toolMeta";
 import {
   resolveTaskToolArg,
@@ -46,25 +46,14 @@ export const ReadToolCall = memo(function ReadToolCall({
 
   if (showArgStream) {
     return (
-      <div className="kimi-tool-arg-stream" data-testid="read-tool-arg-stream">
-        <div className="kimi-tool-arg-stream-head">
-          <span className="kimi-tool-arg-stream-glyph">
-            <SearchIcon className="size-4" />
-          </span>
-          <span className="kimi-tool-arg-stream-name">{toolLabel(name)}</span>
-          {summary ? (
-            <span className="kimi-tool-arg-stream-meta" title={summary}>
-              {summary}
-            </span>
-          ) : null}
-        </div>
-        <ToolArgStreamPreview
-          text={arg}
-          label="参数"
-          streaming={argStreaming}
-          prominent
-        />
-      </div>
+      <ToolArgStreamCard
+        icon={<SearchIcon className="size-4" />}
+        name={toolLabel(name)}
+        summary={summary}
+        text={arg}
+        streaming={argStreaming}
+        testId="read-tool-arg-stream"
+      />
     );
   }
 

@@ -66,6 +66,7 @@ export {
   resolveToolStreamPreview,
 } from "./toolStreamPreview";
 export { ToolArgStreamPreview } from "./ToolArgStreamPreview";
+export { ToolArgStreamCard } from "./ToolArgStreamCard";
 export {
   buildToolPreviewSource,
   type ToolPreviewSource,
