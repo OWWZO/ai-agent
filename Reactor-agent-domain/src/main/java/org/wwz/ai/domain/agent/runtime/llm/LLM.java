@@ -3,7 +3,6 @@ package org.wwz.ai.domain.agent.runtime.llm;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -21,14 +20,11 @@ import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.runtime.util.ToolSchemaNormalizer;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.model.McpToolInfo;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
-import org.wwz.ai.domain.agent.ledger.model.LlmInvocationFinishRecord;
-import org.wwz.ai.domain.agent.ledger.model.LlmInvocationStartRecord;
 import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
 import org.wwz.ai.domain.agent.runtime.ReactorLlmDependencies;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 
 import java.io.IOException;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -76,10 +72,10 @@ public class LLM {
     private final String interfaceUrl;
     /** 工具调用模式。 */
     private final String functionCallType;
-    /** JSON 工具。 */
-    private final ObjectMapper objectMapper;
     /** 原始模型配置，供 Spring AI 解析器复用。 */
     private final LLMSettings llmSettings;
+    /** 出站请求装配：domain Message / 工具集合 → LlmRequest（无状态，可共享）。 */
+    private static final LlmRequestAssembler REQUEST_ASSEMBLER = new LlmRequestAssembler();
 
     /** 显式注入的运行时依赖。 */
     private final transient ReactorRuntimeDependencies runtimeDependencies;
@@ -122,7 +118,6 @@ public class LLM {
                 ? config.getInterfaceUrl()
                 : "/v1/chat/completions";
         this.functionCallType = config.getFunctionCallType();
-        this.objectMapper = new ObjectMapper();
     }
 
     /**
@@ -209,31 +204,19 @@ public class LLM {
                             LlmPromptRequestSnapshotSupport.collapseSystemMessages(systemMsgs),
                             messages)
             );
-            LlmInvocationHandle invocationHandle = startLlmInvocation(
-                    context,
-                    callKind,
-                    stream
-            );
+            LlmInvocationLedger ledger = new LlmInvocationLedger(context, model);
+            LlmInvocationLedger.Handle invocationHandle = ledger.start(callKind, stream);
             if (context != null && context.isRunCancelled()) {
-                finishLlmInvocation(
-                        context,
-                        invocationHandle,
-                        ExecutionLedgerConstants.STATUS_STOPPED,
-                        null,
-                        0,
-                        null,
-                        null,
-                        "user_stop"
-                );
+                ledger.finish(invocationHandle, ExecutionLedgerConstants.STATUS_STOPPED,
+                        null, 0, null, null, "user_stop");
                 return failedFuture(new LlmCancelledException(context.getRunCancelReason(), null));
             }
-            LlmRequest request = buildRequest(
-                    context,
-                    mergeMessages(systemMsgs, messages),
+            LlmRequest request = REQUEST_ASSEMBLER.build(
+                    context, model, llmSettings,
+                    LlmRequestAssembler.merge(systemMsgs, messages),
                     List.of(),
                     null,
-                    temperature
-            );
+                    temperature);
 
             log.info("{} call llm ask via completion port, model={}, stream={}",
                     context.getRequestId(), model, stream);
@@ -253,44 +236,19 @@ public class LLM {
                                 : resolveResponseText(response);
                         LlmUsageSnapshot usage = LlmUsageSnapshot.resolve(response == null ? null : response.getUsage());
                         if (context != null && context.isRunCancelled()) {
-                            finishLlmInvocation(
-                                    context,
-                                    invocationHandle,
-                                    ExecutionLedgerConstants.STATUS_STOPPED,
-                                    content,
-                                    split.reasoningContent(),
-                                    0,
-                                    usage,
-                                    resolveFinishReason(response),
-                                    "user_stop"
-                            );
+                            ledger.write(invocationHandle, ExecutionLedgerConstants.STATUS_STOPPED,
+                                    content, split.reasoningContent(), 0, usage,
+                                    resolveFinishReason(response), "user_stop");
                             throw new LlmCancelledException(context.getRunCancelReason(), content);
                         }
-                        finishLlmInvocation(
-                                context,
-                                invocationHandle,
-                                ExecutionLedgerConstants.STATUS_SUCCESS,
-                                content,
-                                split.reasoningContent(),
-                                0,
-                                usage,
-                                resolveFinishReason(response),
-                                null
-                        );
+                        ledger.write(invocationHandle, ExecutionLedgerConstants.STATUS_SUCCESS,
+                                content, split.reasoningContent(), 0, usage,
+                                resolveFinishReason(response), null);
                         return content;
                     } catch (LlmCancelledException e) {
                         throw new CompletionException(e);
                     } catch (Exception e) {
-                        finishLlmInvocation(
-                                context,
-                                invocationHandle,
-                                resolveInvocationStatus(context, e),
-                                null,
-                                0,
-                                null,
-                                null,
-                                e.getMessage()
-                        );
+                        ledger.finish(invocationHandle, e);
                         throw new CompletionException(e);
                     }
                 }));
@@ -313,29 +271,16 @@ public class LLM {
             );
             streamFuture.whenComplete((result, throwable) -> {
                 if (throwable == null) {
-                    finishLlmInvocation(
-                            context,
-                            invocationHandle,
+                    ledger.finish(invocationHandle,
                             ExecutionLedgerConstants.STATUS_SUCCESS,
                             result == null ? null : result.getContent(),
                             0,
                             result == null ? null : result.getUsage(),
                             null,
-                            null
-                    );
+                            null);
                     return;
                 }
-                Throwable cause = unwrapCompletionThrowable(throwable);
-                finishLlmInvocation(
-                        context,
-                        invocationHandle,
-                        resolveInvocationStatus(context, cause),
-                        null,
-                        0,
-                        null,
-                        null,
-                        cause.getMessage()
-                );
+                ledger.finish(invocationHandle, unwrapCompletionThrowable(throwable));
             });
             return LlmRequestRetry.mapCancellable(streamFuture, result -> result == null ? null : result.getContent());
         } catch (Exception e) {
@@ -405,37 +350,27 @@ public class LLM {
             // 与正式发送一致的 system+messages+tools 快照（先观测再落账本 start）
             LlmPromptObservability.logRequest(
                     context, model, ExecutionLedgerConstants.CALL_KIND_ASK_TOOL, promptShape);
-            LlmInvocationHandle invocationHandle = startLlmInvocation(
-                    context,
-                    ExecutionLedgerConstants.CALL_KIND_ASK_TOOL,
-                    stream
-            );
+            LlmInvocationLedger ledger = new LlmInvocationLedger(context, model);
+            LlmInvocationLedger.Handle invocationHandle = ledger.start(
+                    ExecutionLedgerConstants.CALL_KIND_ASK_TOOL, stream);
             if (context != null && context.isRunCancelled()) {
-                finishLlmInvocation(
-                        context,
-                        invocationHandle,
-                        ExecutionLedgerConstants.STATUS_STOPPED,
-                        null,
-                        0,
-                        null,
-                        null,
-                        "user_stop"
-                );
+                ledger.finish(invocationHandle, ExecutionLedgerConstants.STATUS_STOPPED,
+                        null, 0, null, null, "user_stop");
                 return failedFuture(new LlmCancelledException(context.getRunCancelReason(), null));
             }
             long startTime = System.currentTimeMillis();
             if (protocol == LlmAskToolProtocol.STRUCT_PARSE) {
                 return askToolWithStructParse(
-                        context, messages, systemMsgs, tools, temperature, stream, timeout, startTime, invocationHandle);
+                        context, messages, systemMsgs, tools, temperature, stream, timeout,
+                        startTime, ledger, invocationHandle);
             }
             // function_call 主路径：Adapter 负责供应商 tools[] 与 tool_choice 映射。
-            LlmRequest request = buildRequest(
-                    context,
-                    mergeMessages(systemMsgs, messages),
-                    buildToolDefinitions(tools),
+            LlmRequest request = REQUEST_ASSEMBLER.build(
+                    context, model, llmSettings,
+                    LlmRequestAssembler.merge(systemMsgs, messages),
+                    REQUEST_ASSEMBLER.buildToolDefinitions(tools),
                     toolChoice.getValue(),
-                    temperature
-            );
+                    temperature);
 
             log.info("{} call llm askTool via completion port, model={}, stream={}, mode=function_call, invocationId={}, thread={}",
                     context.getRequestId(), model, stream, invocationHandle.invocationId(), Thread.currentThread().getName());
@@ -462,10 +397,10 @@ public class LLM {
                 abortOnRunCancel(context, call);
                 return call.whenComplete((response, throwable) -> {
                     if (throwable == null) {
-                        finishLlmInvocation(context, invocationHandle, response, null);
+                        ledger.finish(invocationHandle, response);
                         return;
                     }
-                    finishLlmInvocation(context, invocationHandle, null, unwrapCompletionThrowable(throwable));
+                    ledger.finish(invocationHandle, unwrapCompletionThrowable(throwable));
                 });
             }
 
@@ -515,10 +450,10 @@ public class LLM {
                     .thenCompose(f -> f)
                     .whenComplete((response, throwable) -> {
                         if (throwable == null) {
-                            finishLlmInvocation(context, invocationHandle, response, null);
+                            ledger.finish(invocationHandle, response);
                             return;
                         }
-                        finishLlmInvocation(context, invocationHandle, null, unwrapCompletionThrowable(throwable));
+                        ledger.finish(invocationHandle, unwrapCompletionThrowable(throwable));
                     });
         } catch (Exception e) {
             log.error("{} Unexpected error in askTool: {}", context.getRequestId(), e.getMessage(), e);
@@ -539,17 +474,17 @@ public class LLM {
             boolean stream,
             int timeout,
             long startTime,
-            LlmInvocationHandle invocationHandle
+            LlmInvocationLedger ledger,
+            LlmInvocationLedger.Handle invocationHandle
     ) {
         // struct_parse 不支持原生 tools[]，因此 system 中的工具 schema 和模型返回的 JSON 共同构成协议。
         Message mergedSystemMessage = buildStructParseSystemMessage(systemMsg, tools);
-        LlmRequest request = buildRequest(
-                context,
-                mergeMessages(mergedSystemMessage, messages),
+        LlmRequest request = REQUEST_ASSEMBLER.build(
+                context, model, llmSettings,
+                LlmRequestAssembler.merge(mergedSystemMessage, messages),
                 List.of(),
                 null,
-                temperature
-        );
+                temperature);
 
         log.info("{} call llm askTool via completion port, model={}, stream={}, mode=struct_parse, invocationId={}, thread={}",
                 context.getRequestId(), model, stream, invocationHandle.invocationId(), Thread.currentThread().getName());
@@ -579,15 +514,15 @@ public class LLM {
                                     if (context != null && context.isRunCancelled()) {
                                         LlmCancelledException cancelled = new LlmCancelledException(
                                                 context.getRunCancelReason(), toolCallResponse.getContent());
-                                        finishLlmInvocation(context, invocationHandle, null, cancelled);
+                                        ledger.finish(invocationHandle, cancelled);
                                         throw cancelled;
                                     }
-                                    finishLlmInvocation(context, invocationHandle, toolCallResponse, null);
+                                    ledger.finish(invocationHandle, toolCallResponse);
                                     return toolCallResponse;
                                 } catch (LlmCancelledException e) {
                                     throw new CompletionException(e);
                                 } catch (Exception e) {
-                                    finishLlmInvocation(context, invocationHandle, null, e);
+                                    ledger.finish(invocationHandle, e);
                                     throw new CompletionException(e);
                                 }
                             }),
@@ -623,10 +558,10 @@ public class LLM {
                 })
                 .whenComplete((response, throwable) -> {
                     if (throwable == null) {
-                        finishLlmInvocation(context, invocationHandle, response, null);
+                        ledger.finish(invocationHandle, response);
                         return;
                     }
-                    finishLlmInvocation(context, invocationHandle, null, unwrapCompletionThrowable(throwable));
+                    ledger.finish(invocationHandle, unwrapCompletionThrowable(throwable));
                 });
     }
 
@@ -677,153 +612,6 @@ public class LLM {
 
     private Message buildStructParseSystemMessage(Message systemMsg, ToolCollection tools) {
         return LlmPromptShapeFactory.buildStructParseSystemMessage(systemMsg, tools);
-    }
-
-    private LlmRequest buildRequest(AgentContext context,
-                                    List<Message> domainMessages,
-                                    List<LlmToolDefinition> tools,
-                                    String toolChoice,
-                                    Double overrideTemperature) {
-        Map<String, Object> metadata = new LinkedHashMap<>();
-        if (context != null) {
-            putIfNotNull(metadata, "requestId", context.getRequestId());
-            putIfNotNull(metadata, "sessionId", context.getSessionId());
-            if (context.getAgentRunState() != null) {
-                putIfNotNull(metadata, "agentName", context.getAgentRunState().getCurrentAgentName());
-                putIfNotNull(metadata, "stepNo", context.getAgentRunState().getCurrentStepNo());
-            }
-        }
-        return LlmRequest.builder()
-                .model(model)
-                .settings(llmSettings)
-                .messages(toLlmMessages(domainMessages))
-                .tools(toList(tools))
-                .toolChoice(toolChoice)
-                .temperature(overrideTemperature)
-                .sessionId(context == null ? null : context.getSessionId())
-                .metadata(metadata)
-                .build();
-    }
-
-    private List<LlmMessage> toLlmMessages(List<Message> messages) {
-        if (messages == null || messages.isEmpty()) {
-            return List.of();
-        }
-        List<LlmMessage> result = new ArrayList<>();
-        for (Message message : messages) {
-            if (message == null) {
-                continue;
-            }
-            List<LlmToolCall> toolCalls = new ArrayList<>();
-            if (message.getToolCalls() != null) {
-                for (ToolCall toolCall : message.getToolCalls()) {
-                    if (toolCall == null || toolCall.getFunction() == null) {
-                        continue;
-                    }
-                    toolCalls.add(LlmToolCall.builder()
-                            .id(toolCall.getId())
-                            .type(toolCall.getType())
-                            .name(toolCall.getFunction().getName())
-                            .arguments(toolCall.getFunction().getArguments())
-                            .build());
-                }
-            }
-            result.add(LlmMessage.builder()
-                    .role(message.getRole())
-                    .content(message.getContent())
-                    .reasoningContent(message.getReasoningContent())
-                    .base64Image(message.getBase64Image())
-                    .toolCallId(message.getToolCallId())
-                    .toolCalls(toolCalls)
-                    .build());
-        }
-        return result;
-    }
-
-    private List<LlmToolDefinition> buildToolDefinitions(ToolCollection tools) {
-        if (tools == null) {
-            return List.of();
-        }
-        List<LlmToolDefinition> definitions = new ArrayList<>();
-        List<BaseTool> localTools = tools.getToolMap() == null
-                ? List.of()
-                : tools.getToolMap().values().stream()
-                .filter(tool -> tool != null && StringUtils.isNotBlank(tool.getName()))
-                .sorted(Comparator.comparing(BaseTool::getName, String.CASE_INSENSITIVE_ORDER))
-                .toList();
-        for (BaseTool tool : localTools) {
-            LlmToolDefinition definition = ToolDefinitionCache.getOrCreateFromMap(
-                    tool.getName(), StringUtils.defaultString(tool.getDescription()), tool.toParams());
-            definitions.add(definition.withInvoker(input -> tool.execute(parseToolInput(input))));
-        }
-
-        List<McpToolInfo> mcpTools = tools.getMcpToolMap() == null
-                ? List.of()
-                : tools.getMcpToolMap().values().stream()
-                .filter(tool -> tool != null && StringUtils.isNotBlank(tool.getName()))
-                .sorted(Comparator.comparing(McpToolInfo::getName, String.CASE_INSENSITIVE_ORDER))
-                .toList();
-        for (McpToolInfo tool : mcpTools) {
-            LlmToolDefinition definition = ToolDefinitionCache.getOrCreateFromRawSchemaString(
-                    tool.getName(), StringUtils.defaultString(tool.getDesc()), tool.getParameters());
-            definitions.add(definition.withInvoker(input -> tools.execute(tool.getName(), input)));
-        }
-        return definitions;
-    }
-
-    private Object parseToolInput(String toolInput) {
-        if (StringUtils.isBlank(toolInput)) {
-            return new LinkedHashMap<String, Object>();
-        }
-        try {
-            return objectMapper.readValue(toolInput, Object.class);
-        } catch (Exception ignored) {
-            return toolInput;
-        }
-    }
-
-    private void putIfNotNull(Map<String, Object> target, String key, Object value) {
-        if (value != null) {
-            target.put(key, value);
-        }
-    }
-
-    private List<LlmToolDefinition> toList(List<LlmToolDefinition> tools) {
-        return tools == null || tools.isEmpty() ? List.of() : List.copyOf(tools);
-    }
-
-    private List<Message> mergeMessages(List<Message> systemMsgs, List<Message> messages) {
-        List<Message> mergedMessages = new ArrayList<>();
-        if (systemMsgs != null) {
-            for (Message systemMsg : systemMsgs) {
-                if (systemMsg != null) {
-                    mergedMessages.add(systemMsg);
-                }
-            }
-        }
-        if (messages != null) {
-            for (Message message : messages) {
-                if (message != null) {
-                    mergedMessages.add(message);
-                }
-            }
-        }
-        return mergedMessages;
-    }
-
-    private List<Message> mergeMessages(Message systemMsg, List<Message> messages) {
-        List<Message> mergedMessages = new ArrayList<>();
-        if (systemMsg != null) {
-            mergedMessages.add(systemMsg);
-        }
-        if (messages != null) {
-            for (Message message : messages) {
-                if (message != null) {
-                    mergedMessages.add(message);
-                }
-            }
-        }
-        return mergedMessages;
     }
 
     private boolean isStructParseMode() {
@@ -927,178 +715,6 @@ public class LLM {
         LlmUsageSnapshot.applyTo(response, usage);
     }
 
-    private LlmInvocationHandle startLlmInvocation(AgentContext context, String callKind, boolean stream) {
-        ReplayTiming runtimeTiming = ReplayTiming.startRuntime();
-        if (context == null || !context.hasActiveLedgerRun() || context.getAgentRunState() == null) {
-            return LlmInvocationHandle.disabled(runtimeTiming);
-        }
-        // invocation 的 prompt 估算和观测快照来自当前线程上下文，必须在异步切换前捕获。
-        // 若当前请求没有有效 run，则保持 fail-open，不让可选的持久化能力阻断模型调用。
-        LocalDateTime startedAt = runtimeTiming.getStartedAt();
-        int invocationSeq = context.getAgentRunState().nextInvocationSeq();
-        String agentName = context.getAgentRunState().getCurrentAgentName();
-        Integer stepNo = context.getAgentRunState().getCurrentStepNo();
-        if (StringUtils.isBlank(agentName)) {
-            log.error("{} skip llm invocation ledger insert: blank agentName, seq={}, stepNo={}, model={}, callKind={}, thread={}",
-                    context.getRequestId(), invocationSeq, stepNo, model, callKind, Thread.currentThread().getName());
-            return LlmInvocationHandle.disabled(runtimeTiming);
-        }
-        log.info("{} start llm invocation seq={} agentName={} stepNo={} model={} callKind={} stream={} thread={}",
-                context.getRequestId(), invocationSeq, agentName, stepNo, model, callKind, stream,
-                Thread.currentThread().getName());
-        LlmPromptObservability.ObservationBundle obs = LlmPromptObservability.current();
-        TokenCounter.PromptEstimate est = obs == null ? null : obs.getEstimate();
-        Long invocationId = context.getExecutionRecorder().createLlmInvocation(LlmInvocationStartRecord.builder()
-                .runId(context.getAgentRunState().getRunId())
-                .requestId(context.getRequestId())
-                .invocationSeq(invocationSeq)
-                .agentName(agentName)
-                .stepNo(stepNo)
-                .callKind(callKind)
-                .streaming(stream)
-                .modelName(model)
-                .startedAt(startedAt)
-                .systemFingerprint(obs == null ? null : obs.getSystemFingerprint())
-                .estTotalTokens(est == null ? null : est.getEstimatedTotalTokens())
-                .estSystemTokens(est == null ? null : est.getSystemTokens())
-                .estMessageTokens(est == null ? null : est.getMessageTokens())
-                .estToolTokens(est == null ? null : est.getToolTokens())
-                .messageCount(est == null ? null : est.getMessageCount())
-                .toolCount(est == null ? null : est.getToolCount())
-                .cacheStatus(obs == null ? null : obs.getCacheStatus())
-                .cacheRiskFlags(obs == null ? null : obs.getCacheRiskFlags())
-                .build());
-        context.getAgentRunState().bindCurrentLlmInvocationId(invocationId);
-        return new LlmInvocationHandle(invocationId, obs, runtimeTiming);
-    }
-
-    private void finishLlmInvocation(AgentContext context,
-                                     LlmInvocationHandle handle,
-                                     ToolCallResponse response,
-                                     Throwable throwable) {
-        restoreObservationBundle(handle);
-        if (throwable != null) {
-            finishLlmInvocation(
-                    context,
-                    handle,
-                    resolveInvocationStatus(context, throwable),
-                    null,
-                    null,
-                    0,
-                    null,
-                    null,
-                    throwable.getMessage()
-            );
-            return;
-        }
-        completeRuntimeTiming(handle == null ? null : handle.runtimeTiming());
-        if (response != null) {
-            response.setTiming(snapshotTiming(handle == null ? null : handle.runtimeTiming()));
-        }
-        long durationMs = handle == null || handle.runtimeTiming() == null
-                || handle.runtimeTiming().getDurationMs() == null
-                ? 0L
-                : handle.runtimeTiming().getDurationMs();
-        LlmUsageSnapshot usage = response == null ? LlmUsageSnapshot.empty() : response.toUsageSnapshot();
-        LlmPromptObservability.logResponse(
-                context,
-                model,
-                ExecutionLedgerConstants.CALL_KIND_ASK_TOOL,
-                usage,
-                durationMs
-        );
-        finishLlmInvocation(
-                context,
-                handle,
-                ExecutionLedgerConstants.STATUS_SUCCESS,
-                response == null ? null : response.getContent(),
-                response == null ? null : response.getReasoningContent(),
-                response == null || response.getToolCalls() == null ? 0 : response.getToolCalls().size(),
-                usage,
-                response == null ? null : response.getFinishReason(),
-                null
-        );
-    }
-
-    private void finishLlmInvocation(AgentContext context,
-                                     LlmInvocationHandle handle,
-                                     Integer status,
-                                     String responseText,
-                                     Integer toolCallCount,
-                                     LlmUsageSnapshot usage,
-                                     String finishReason,
-                                     String errorMsg) {
-        finishLlmInvocation(context, handle, status, responseText, null, toolCallCount, usage, finishReason, errorMsg);
-    }
-
-    private void finishLlmInvocation(AgentContext context,
-                                     LlmInvocationHandle handle,
-                                     Integer status,
-                                     String responseText,
-                                     String reasoningContent,
-                                     Integer toolCallCount,
-                                     LlmUsageSnapshot usage,
-                                     String finishReason,
-                                     String errorMsg) {
-        completeRuntimeTiming(handle == null ? null : handle.runtimeTiming());
-        if (context == null || handle == null || !handle.enabled() || handle.invocationId() == null) {
-            return;
-        }
-        // 完成时重新取回 invocation 创建阶段的观测快照，合并最终 token/cache 信息后一次性落账本。
-        // 清理当前线程观测是必要的，否则复用线程会把本次模型调用的数据带进下一请求。
-        restoreObservationBundle(handle);
-        LlmUsageSnapshot snapshot = usage == null ? LlmUsageSnapshot.empty() : usage;
-        LlmPromptObservability.ObservationBundle obs = LlmPromptObservability.current();
-        if (obs == null || obs.getUsage() == null || obs.getUsage().isEmpty()) {
-            if (!snapshot.isEmpty()) {
-                LlmPromptObservability.logResponse(context, model, "ask", snapshot, 0L);
-                obs = LlmPromptObservability.current();
-            }
-        }
-        context.getExecutionRecorder().finishLlmInvocation(LlmInvocationFinishRecord.builder()
-                .llmInvocationId(handle.invocationId())
-                .requestId(context.getRequestId())
-                .status(status)
-                .responseText(responseText)
-                .reasoningContent(reasoningContent)
-                .toolCallCount(toolCallCount)
-                .promptTokens(snapshot.getPromptTokens())
-                .completionTokens(snapshot.getCompletionTokens())
-                .totalTokens(snapshot.getTotalTokens())
-                .cachedPromptTokens(snapshot.getCachedPromptTokens())
-                .promptTextTokens(snapshot.getPromptTextTokens())
-                .promptAudioTokens(snapshot.getPromptAudioTokens())
-                .promptImageTokens(snapshot.getPromptImageTokens())
-                .completionTextTokens(snapshot.getCompletionTextTokens())
-                .completionAudioTokens(snapshot.getCompletionAudioTokens())
-                .reasoningTokens(snapshot.getReasoningTokens())
-                .cacheStatus(obs == null ? null : obs.getCacheStatus())
-                .cacheRiskFlags(obs == null ? null : obs.getCacheRiskFlags())
-                .finishReason(finishReason)
-                .errorMsg(errorMsg)
-                .finishedAt(handle.runtimeTiming() == null || handle.runtimeTiming().getFinishedAt() == null
-                        ? LocalDateTime.now()
-                        : handle.runtimeTiming().getFinishedAt())
-                .build());
-        LlmPromptObservability.clear();
-    }
-
-    private void restoreObservationBundle(LlmInvocationHandle handle) {
-        if (handle == null || handle.observationBundle() == null) {
-            return;
-        }
-        if (LlmPromptObservability.current() == null) {
-            LlmPromptObservability.restore(handle.observationBundle());
-        }
-    }
-
-    private void completeRuntimeTiming(ReplayTiming timing) {
-        ReplayTiming.finishRuntime(timing);
-    }
-
-    private ReplayTiming snapshotTiming(ReplayTiming timing) {
-        return ReplayTiming.copyOf(timing);
-    }
 
     private Throwable unwrapCompletionThrowable(Throwable throwable) {
         if ((throwable instanceof CompletionException || throwable instanceof ExecutionException)
@@ -1136,13 +752,6 @@ public class LLM {
         });
         future.whenComplete((ignored, error) -> unregister.run());
         return future;
-    }
-
-    private int resolveInvocationStatus(AgentContext context, Throwable throwable) {
-        if (context != null && context.isRunCancelled()) {
-            return ExecutionLedgerConstants.STATUS_STOPPED;
-        }
-        return ExecutionLedgerConstants.resolveFailureStatus(throwable);
     }
 
     /**
@@ -1235,18 +844,6 @@ public class LLM {
                     .completionAudioTokens(completionAudioTokens)
                     .reasoningTokens(reasoningTokens)
                     .build();
-        }
-    }
-
-    private record LlmInvocationHandle(Long invocationId,
-                                       LlmPromptObservability.ObservationBundle observationBundle,
-                                       ReplayTiming runtimeTiming) {
-        private static LlmInvocationHandle disabled(ReplayTiming runtimeTiming) {
-            return new LlmInvocationHandle(null, null, runtimeTiming);
-        }
-
-        private boolean enabled() {
-            return invocationId != null;
         }
     }
 
