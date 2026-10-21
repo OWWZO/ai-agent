@@ -561,10 +561,11 @@ export function resolveRunPhaseHint(
   if (phase === "queued" && options?.deepThink) {
     return "正在制定计划…";
   }
-  if (phase === "crafting" && options?.workspaceTitle) {
-    return options.workspaceTitle;
-  }
-  if (phase === "working" && options?.workspaceTitle) {
+  // 有具体产物标题时，crafting / working 都直接显示标题（两者的文案来源相同）
+  if (
+    (phase === "crafting" || phase === "working") &&
+    options?.workspaceTitle
+  ) {
     return options.workspaceTitle;
   }
   return PHASE_HINTS[phase];

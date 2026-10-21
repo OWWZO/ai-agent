@@ -13,6 +13,7 @@ import {
   isTimelineToolActive,
   isWorkspaceAttentionTask,
   resolveActionPanelVisibility,
+  resolveRunPhaseHint,
   resolveRunPresence,
   isWorkspaceRenderableTask,
   resolveWorkspaceCaption,
@@ -740,5 +741,39 @@ describe("工作区可见性判定链", () => {
     expect(canOpenTaskWorkspacePanel(task("file"))).toBe(true);
     // 隐藏类型 → 不能
     expect(canOpenTaskWorkspacePanel(task("plan_approval"))).toBe(false);
+  });
+});
+
+describe("resolveRunPhaseHint", () => {
+  it("queued + deepThink 走计划文案，与 planning 区分开", () => {
+    expect(resolveRunPhaseHint("queued", { deepThink: true })).toBe("正在制定计划…");
+    // 非 deepThink 时 queued 用自己的兜底文案
+    expect(resolveRunPhaseHint("queued")).toBe("正在理解问题…");
+    expect(resolveRunPhaseHint("queued", { deepThink: false })).toBe("正在理解问题…");
+  });
+
+  it("crafting / working 有产物标题时优先显示标题", () => {
+    expect(resolveRunPhaseHint("crafting", { workspaceTitle: "page.html" })).toBe(
+      "page.html"
+    );
+    expect(resolveRunPhaseHint("working", { workspaceTitle: "page.html" })).toBe(
+      "page.html"
+    );
+  });
+
+  it("crafting / working 没有标题时回落到各自的默认文案", () => {
+    expect(resolveRunPhaseHint("crafting")).toBe("正在整理产出…");
+    expect(resolveRunPhaseHint("working")).toBe("正在推进任务…");
+    expect(resolveRunPhaseHint("working", { workspaceTitle: "" })).toBe(
+      "正在推进任务…"
+    );
+  });
+
+  it("其余 phase 直接用默认文案表", () => {
+    expect(resolveRunPhaseHint("thinking")).toBe("正在梳理思路…");
+    expect(resolveRunPhaseHint("settling")).toBe("正在汇总结果…");
+    expect(resolveRunPhaseHint("failed")).toBe("本轮未能完成");
+    expect(resolveRunPhaseHint("stopped")).toBe("已停止");
+    expect(resolveRunPhaseHint("idle")).toBe("");
   });
 });
