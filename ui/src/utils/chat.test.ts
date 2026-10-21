@@ -7,6 +7,7 @@ import {
   combineData,
   getStableTaskIdentity,
   handleTaskData,
+  mergeToolCallStreamingTask,
   settleRootResultConclusion,
 } from "./chat";
 import {
@@ -3442,5 +3443,88 @@ describe("React 循环真实帧序列：中间回复必须夹在工具之间", (
       "reply:正在生成单文件页面，并把适配一起写入。",
       "tool:Read",
     ]);
+  });
+});
+
+describe("mergeToolCallStreamingTask", () => {
+  const tool = (
+    resultMap: Record<string, unknown>,
+    extra: Record<string, unknown> = {}
+  ) =>
+    ({
+      // task 层 messageType 优先于 resultMap 内的，需要 delta 语义时用 extra 覆盖
+      messageType: (extra.messageType as string) || "tool_call",
+      messageId: "m1",
+      toolCallId: "c1",
+      resultMap,
+      ...extra,
+    }) as unknown as MESSAGE.Task;
+
+  it("delta 帧把 argsStreaming 置真，并保留较长的一侧参数", () => {
+    const prev = tool(
+      { argumentsText: '{"a":1}' },
+      { messageId: "stream-key" }
+    );
+    const next = tool(
+      {
+        argumentsText: '{"a":12}',
+        streamToolKey: "stream-key",
+      },
+      { messageId: "stream-key", messageType: "tool_call_delta" }
+    );
+    const merged = mergeToolCallStreamingTask(prev, next);
+    expect(merged.resultMap?.argsStreaming).toBe(true);
+    expect(merged.resultMap?.argumentsText).toBe('{"a":12}');
+    // 稳定 messageId：沿用 previous 上的流式卡 id
+    expect(merged.messageId).toBe("stream-key");
+  });
+
+  it("参数回退时保留更长的 previous 文本", () => {
+    const prev = tool({ argumentsText: '{"a":123456789}' });
+    const next = tool({
+      messageType: "tool_call_delta",
+      argumentsText: '{"a":1}',
+    });
+
+    expect(mergeToolCallStreamingTask(prev, next).resultMap?.argumentsText).toBe(
+      '{"a":123456789}'
+    );
+  });
+
+  it("isFinal 或显式 false 时停止逐字", () => {
+    const prev = tool({ argumentsText: "x", argsStreaming: true });
+    const byFinal = mergeToolCallStreamingTask(
+      prev,
+      tool({ isFinal: true, argumentsText: "x" })
+    );
+    expect(byFinal.resultMap?.argsStreaming).toBe(false);
+
+    const byFalse = mergeToolCallStreamingTask(
+      prev,
+      tool({ argsStreaming: false, argumentsText: "x" })
+    );
+    expect(byFalse.resultMap?.argsStreaming).toBe(false);
+  });
+
+  it("状态按 streaming→running→success 升级，不回退", () => {
+    const running = mergeToolCallStreamingTask(
+      tool({ status: "running" }),
+      tool({ status: "streaming" })
+    );
+    expect(running.resultMap?.status).toBe("running");
+
+    const success = mergeToolCallStreamingTask(
+      tool({ status: "success" }),
+      tool({ status: "running" })
+    );
+    expect(success.resultMap?.status).toBe("success");
+  });
+
+  it("delta 的 messageType 被统一成 tool_call，避免渲染分流", () => {
+    const merged = mergeToolCallStreamingTask(
+      tool({}),
+      tool({ messageType: "tool_call_delta" })
+    );
+    expect(merged.resultMap?.messageType).toBe("tool_call");
   });
 });

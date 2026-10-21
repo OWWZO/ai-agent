@@ -182,6 +182,22 @@ const LEGACY_TIMING_TASK_KEYS: LegacyTimingTaskKey[] = [
   "subAgentElapsedMs",
 ];
 
+/**
+ * 工具状态的生命周期序：越大越靠后。合并流式帧时用来保证 status 只前进不倒退。
+ */
+const TOOL_STATUS_RANK: Record<string, number> = {
+  streaming: 1,
+  preparing: 1,
+  running: 2,
+  success: 3,
+  failed: 3,
+  error: 3,
+};
+
+function toolStatusRank(status?: string): number {
+  return TOOL_STATUS_RANK[String(status || "").toLowerCase()] ?? 0;
+}
+
 function mergeTaskTiming(
   previous?: MESSAGE.ReplayTiming,
   next?: MESSAGE.ReplayTiming
@@ -1643,7 +1659,7 @@ function normalizeIncomingToolCallTask(task: MESSAGE.Task): MESSAGE.Task {
  * - 状态按 streaming→running→success 升级
  * - argsStreaming 与 status 解耦：delta 期间 true，running 后仍可短暂保留已生成的完整 args 展示
  */
-function mergeToolCallStreamingTask(
+export function mergeToolCallStreamingTask(
   previous: MESSAGE.Task,
   next: MESSAGE.Task
 ): MESSAGE.Task {
@@ -1661,17 +1677,13 @@ function mergeToolCallStreamingTask(
   const mergedArgs =
     nextArgs.length >= prevArgs.length ? nextArgs : prevArgs || nextArgs;
 
-  const statusRank = (status?: string) => {
-    const s = String(status || "").toLowerCase();
-    if (s === "success" || s === "failed" || s === "error") return 3;
-    if (s === "running") return 2;
-    if (s === "streaming" || s === "preparing") return 1;
-    return 0;
-  };
   const prevStatus = String(prevMap.status || prevNested.status || "");
   const nextStatus = String(nextMap.status || nextNested.status || "");
   const mergedStatus =
-    statusRank(nextStatus) >= statusRank(prevStatus) ? nextStatus || prevStatus : prevStatus;
+    toolStatusRank(nextStatus) >= toolStatusRank(prevStatus)
+      ? nextStatus || prevStatus
+      : prevStatus;
+  const mergedStatusKey = mergedStatus.toLowerCase();
 
   const nextMessageType = String(
     next.messageType || nextMap.messageType || nextNested.messageType || ""
@@ -1692,11 +1704,11 @@ function mergeToolCallStreamingTask(
   } else if (
     nextMessageType === "tool_call_delta" ||
     nextArgsStreamingExplicit ||
-    String(mergedStatus).toLowerCase() === "streaming" ||
-    String(mergedStatus).toLowerCase() === "preparing"
+    mergedStatusKey === "streaming" ||
+    mergedStatusKey === "preparing"
   ) {
     mergedArgsStreaming = true;
-  } else if (prevArgsStreaming && String(mergedStatus).toLowerCase() === "running") {
+  } else if (prevArgsStreaming && mergedStatusKey === "running") {
     // running 刚到：参数已完整，停止逐字，但仍保留完整 args 文本供展示
     mergedArgsStreaming = false;
   } else {
