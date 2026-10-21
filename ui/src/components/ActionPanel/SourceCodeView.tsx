@@ -1,5 +1,6 @@
 import { memo, useCallback, useMemo, useState } from "react";
-import { Alert } from "antd";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Info } from "lucide-react";
 import type { BundledLanguage } from "shiki";
 import { useCodePreviewWrap } from "@/hooks/useCodePreviewWrap";
 import { dispatchCodeCommentAddToChat, type CodeCommentRange } from "@/lib/promptContexts";
@@ -113,12 +114,13 @@ const SourceCodeView: ReactorType.FC<SourceCodeViewProps> = (props) => {
           )}
         >
           <Alert
-            type="info"
-            showIcon
-            message="文件过大，已停用语法高亮"
-            description={`内容超过 ${Math.round(FILE_VIEWER_MAX_TEXT_BYTES / 1024)}KB，为避免页面卡顿不再高亮。请下载后查看完整内容。`}
+            variant="info"
             className="m-4"
-          />
+          >
+            <Info />
+            <AlertTitle>文件过大，已停用语法高亮</AlertTitle>
+            <AlertDescription>{`内容超过 ${Math.round(FILE_VIEWER_MAX_TEXT_BYTES / 1024)}KB，为避免页面卡顿不再高亮。请下载后查看完整内容。`}</AlertDescription>
+          </Alert>
           <pre
             className={cn(
               "px-2 py-1 font-mono text-[13px] leading-[1.7]",

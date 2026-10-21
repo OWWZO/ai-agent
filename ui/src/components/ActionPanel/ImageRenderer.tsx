@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState, type CSSProperties } from "react";
-import classNames from "classnames";
-import { Alert, Image } from "antd";
+import { cn } from "@/lib/utils";
+import { ZoomableImage } from "@/components/ui/zoomable-image";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { CircleAlert } from "lucide-react";
 
 const ERROR_CLASS =
-  "m-12 md:m-24 min-w-[260px] max-w-[calc(100%-24px)] md:max-w-[calc(100%-48px)] [&_.ant-alert-description]:break-words [&_.ant-alert-description]:whitespace-normal";
+  "m-12 md:m-24 min-w-[260px] max-w-[calc(100%-24px)] md:max-w-[calc(100%-48px)] [&_[data-slot=alert-description]]:break-words [&_[data-slot=alert-description]]:whitespace-normal";
 
 /**
  * 透明底的棋盘格。
@@ -61,8 +63,8 @@ const ImageRenderer: ReactorType.FC<ImageRendererProps> = React.memo((props) => 
 
   // 只有 Retina 素材（@2x/@3x）才需要知道自然尺寸，普通图片零开销。
   //
-  // 这里刻意**不用** antd `Image` 的 onLoad：rc-image 内部会用自己的 onLoad 覆盖透传的同名
-  // 属性，回调根本不会到我们手上（实测 @2x 素材不会折算）。用一个游离的 Image 预加载最稳。
+  // 这里刻意不用 `<img onLoad>`：组件可能因为尺寸变化重渲染，而预加载只关心
+  // 原始像素尺寸，用一个游离的 Image 预加载最稳，也不受展示层样式影响。
   useEffect(() => {
     if (pixelRatio <= 1 || !imageUrl) {
       setNaturalSize(null);
@@ -112,18 +114,19 @@ const ImageRenderer: ReactorType.FC<ImageRendererProps> = React.memo((props) => 
   if (missingReason || !imageUrl) {
     return (
       <Alert
-        type="error"
-        message="图片不可读取"
-        description={missingReason || "引用资源不存在或已失效"}
-        showIcon
+        variant="destructive"
         className={ERROR_CLASS}
-      />
+      >
+        <CircleAlert />
+        <AlertTitle>图片不可读取</AlertTitle>
+        <AlertDescription>{missingReason || "引用资源不存在或已失效"}</AlertDescription>
+      </Alert>
     );
   }
 
   return (
     <div
-      className={classNames(
+      className={cn(
         "ws-preview-stage flex min-h-full items-center justify-center px-4 py-6",
         className
       )}
@@ -132,12 +135,11 @@ const ImageRenderer: ReactorType.FC<ImageRendererProps> = React.memo((props) => 
         className="ws-doc-media mx-auto w-full max-w-[720px] overflow-hidden rounded-2xl border border-[var(--chat-border)]/70 p-3 shadow-[0_1px_2px_oklch(0%_0_0_/_0.03)] sm:p-4"
         style={CHECKERBOARD_STYLE}
       >
-        <Image
+        <ZoomableImage
           src={imageUrl}
           alt={fileName || "图片预览"}
-          className="!max-w-full"
+          className="max-w-full"
           style={imageStyle}
-          preview={{ mask: "点击放大" }}
         />
       </div>
     </div>

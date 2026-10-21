@@ -377,19 +377,6 @@
   opacity: 0.5;
 }
 
-.workspace-admin-multi-select .ant-select-selector {
-  min-height: 38px !important;
-  border-color: var(--color-line-strong) !important;
-  border-radius: var(--kimi-radius-md) !important;
-  background: var(--color-surface-raised) !important;
-  box-shadow: none !important;
-}
-
-.workspace-admin-multi-select.ant-select-focused .ant-select-selector {
-  border-color: var(--color-accent) !important;
-  box-shadow: var(--p-focus-ring) !important;
-}
-
 .workspace-admin-callout {
   display: flex;
   align-items: flex-start;

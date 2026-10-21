@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRequest } from "ahooks";
-import { Button } from "antd";
+import { Button } from "@/components/ui/button";
 import { Download } from "lucide-react";
 import type { Options } from "docx-preview";
 import { downloadFile } from "@/utils";
@@ -394,12 +394,8 @@ const WordRenderer: ReactorType.FC<WordRendererProps> = React.memo((props) => {
       hideHeader={hideChrome}
       headerRight={
         !hideChrome && resolvedDownload ? (
-          <Button
-            type="text"
-            size="small"
-            icon={<Download className="h-3.5 w-3.5" />}
-            onClick={() => downloadFile(resolvedDownload, fileName)}
-          >
+          <Button variant="ghost" size="sm" onClick={() => downloadFile(resolvedDownload, fileName)}>
+            <Download className="h-3.5 w-3.5" />
             下载
           </Button>
         ) : null

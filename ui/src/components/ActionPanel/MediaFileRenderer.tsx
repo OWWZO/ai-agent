@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState, type SyntheticEvent } from "react";
-import { Alert } from "antd";
-import { FileAudio, FileVideo } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { CircleAlert, FileAudio, FileVideo, TriangleAlert } from "lucide-react";
 import { normalizeFileUrlForBrowser } from "@/utils/fileUrl";
 import { cn } from "@/lib/utils";
 import Loading from "./Loading";
 
 const LOADING_CLASS = "mr-32";
 const ERROR_CLASS =
-  "m-6 min-w-[260px] max-w-[calc(100%-48px)] [&_.ant-alert-description]:break-words [&_.ant-alert-description]:whitespace-normal";
+  "m-6 min-w-[260px] max-w-[calc(100%-48px)] [&_[data-slot=alert-description]]:break-words [&_[data-slot=alert-description]]:whitespace-normal";
 
 interface MediaFileRendererProps {
   /** 播放类型。 */
@@ -58,12 +58,13 @@ const MediaFileRenderer: ReactorType.FC<MediaFileRendererProps> = React.memo((pr
     return (
       <div className={cn("flex h-full items-center justify-center bg-white p-6", className)}>
         <Alert
-          type="error"
-          showIcon
-          message={kind === "video" ? "视频不可播放" : "音频不可播放"}
-          description={missingReason || "引用资源不存在或已失效"}
+          variant="destructive"
           className={ERROR_CLASS}
-        />
+        >
+          <CircleAlert />
+          <AlertTitle>{kind === "video" ? "视频不可播放" : "音频不可播放"}</AlertTitle>
+          <AlertDescription>{missingReason || "引用资源不存在或已失效"}</AlertDescription>
+        </Alert>
       </div>
     );
   }
@@ -72,12 +73,13 @@ const MediaFileRenderer: ReactorType.FC<MediaFileRendererProps> = React.memo((pr
     return (
       <div className={cn("flex h-full items-center justify-center bg-white p-6", className)}>
         <Alert
-          type="warning"
-          showIcon
-          message={kind === "video" ? "无法播放该视频" : "无法播放该音频"}
-          description="当前浏览器不支持该文件使用的编码，或文件已损坏。请下载后用本地播放器打开。"
+          variant="warning"
           className={ERROR_CLASS}
-        />
+        >
+          <TriangleAlert />
+          <AlertTitle>{kind === "video" ? "无法播放该视频" : "无法播放该音频"}</AlertTitle>
+          <AlertDescription>当前浏览器不支持该文件使用的编码，或文件已损坏。请下载后用本地播放器打开。</AlertDescription>
+        </Alert>
       </div>
     );
   }

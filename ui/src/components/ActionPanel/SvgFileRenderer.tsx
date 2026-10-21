@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { useRequest } from "ahooks";
-import { Alert, Button } from "antd";
-import { Download } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { CircleAlert, Download } from "lucide-react";
 import { downloadFile } from "@/utils";
 import { normalizeFileUrlForBrowser } from "@/utils/fileUrl";
 import { ViewerPanelShell } from "@/components/ui/viewer-panel-shell";
@@ -12,7 +13,7 @@ import PreviewModeToggle, { type PreviewViewMode } from "./PreviewModeToggle";
 
 const LOADING_CLASS = "mr-32";
 const ERROR_CLASS =
-  "m-6 min-w-[260px] max-w-[calc(100%-48px)] [&_.ant-alert-description]:break-words [&_.ant-alert-description]:whitespace-normal";
+  "m-6 min-w-[260px] max-w-[calc(100%-48px)] [&_[data-slot=alert-description]]:break-words [&_[data-slot=alert-description]]:whitespace-normal";
 
 const CHECKERBOARD_STYLE: React.CSSProperties = {
   backgroundColor: "var(--chat-surface)",
@@ -96,12 +97,8 @@ const SvgFileRenderer: ReactorType.FC<SvgFileRendererProps> = React.memo((props)
         <>
           <PreviewModeToggle mode={mode} onChange={setMode} />
           {resolvedDownload ? (
-            <Button
-              type="text"
-              size="small"
-              icon={<Download className="h-3.5 w-3.5" />}
-              onClick={() => downloadFile(resolvedDownload, fileName)}
-            >
+            <Button variant="ghost" size="sm" onClick={() => downloadFile(resolvedDownload, fileName)}>
+              <Download className="h-3.5 w-3.5" />
               下载
             </Button>
           ) : null}
@@ -115,13 +112,11 @@ const SvgFileRenderer: ReactorType.FC<SvgFileRendererProps> = React.memo((props)
         </div>
       ) : displayError ? (
         <div className="p-4">
-          <Alert
-            type="error"
-            showIcon
-            message="SVG 不可预览"
-            description={displayError}
-            className={ERROR_CLASS}
-          />
+          <Alert variant="destructive" className={ERROR_CLASS}>
+            <CircleAlert />
+            <AlertTitle>SVG 不可预览</AlertTitle>
+            <AlertDescription>{displayError}</AlertDescription>
+          </Alert>
         </div>
       ) : mode === "source" ? (
         <SourceCodeView code={content || ""} language="xml" sourcePath={fileName} />

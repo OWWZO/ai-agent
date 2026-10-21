@@ -1,4 +1,13 @@
-import { Empty, Pagination, Spin } from "antd";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import { Spinner } from "@/components/ui/spinner";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ArrowLeft, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -61,7 +70,7 @@ export function FeaturedConversationsView(
 
         {props.loading ? (
           <div className="flex min-h-[360px] items-center justify-center rounded-[28px] border border-[var(--chat-border)] bg-[var(--chat-surface)]">
-            <Spin size="large" />
+            <Spinner className="size-8" />
           </div>
         ) : hasCards ? (
           <>
@@ -78,19 +87,55 @@ export function FeaturedConversationsView(
 
             {props.page.total > props.pageSize ? (
               <div className="mt-10 flex justify-center">
-                <Pagination
-                  current={props.pageNo}
-                  pageSize={props.pageSize}
-                  total={props.page.total}
-                  showSizeChanger={false}
-                  onChange={props.onPageChange}
-                />
+                <Pagination>
+                  <PaginationContent>
+                    {props.pageNo > 1 ? (
+                      <PaginationItem>
+                        <PaginationPrevious
+                          href="#"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            props.onPageChange(props.pageNo - 1);
+                          }}
+                        />
+                      </PaginationItem>
+                    ) : null}
+                    {Array.from(
+                      { length: Math.ceil(props.page.total / props.pageSize) },
+                      (_, index) => index + 1
+                    ).map((pageNo) => (
+                      <PaginationItem key={pageNo}>
+                        <PaginationLink
+                          href="#"
+                          isActive={pageNo === props.pageNo}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            props.onPageChange(pageNo);
+                          }}
+                        >
+                          {pageNo}
+                        </PaginationLink>
+                      </PaginationItem>
+                    ))}
+                    {props.pageNo < Math.ceil(props.page.total / props.pageSize) ? (
+                      <PaginationItem>
+                        <PaginationNext
+                          href="#"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            props.onPageChange(props.pageNo + 1);
+                          }}
+                        />
+                      </PaginationItem>
+                    ) : null}
+                  </PaginationContent>
+                </Pagination>
               </div>
             ) : null}
           </>
         ) : (
           <div className="rounded-[28px] border border-dashed border-[var(--chat-border)] bg-[var(--chat-surface)]/70 py-20">
-            <Empty description="暂无已发布的精品对话" />
+            <EmptyState title="暂无已发布的精品对话" />
           </div>
         )}
       </div>

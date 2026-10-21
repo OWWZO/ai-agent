@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { Alert } from "antd";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { CircleAlert, TriangleAlert } from "lucide-react";
 import { useRequest } from "ahooks";
 import { useIsDarkTheme } from "@/hooks/useIsDarkTheme";
 import { loadXlsx } from "@/lib/lazy/xlsx";
@@ -13,7 +14,7 @@ import PreviewErrorBoundary from "./PreviewErrorBoundary";
 import XlsxSheetTabs from "./XlsxSheetTabs";
 
 const ERROR_CLASS =
-  "m-12 md:m-24 min-w-[260px] max-w-[calc(100%-24px)] md:max-w-[calc(100%-48px)] [&_.ant-alert-description]:break-words [&_.ant-alert-description]:whitespace-normal";
+  "m-12 md:m-24 min-w-[260px] max-w-[calc(100%-24px)] md:max-w-[calc(100%-48px)] [&_[data-slot=alert-description]]:break-words [&_[data-slot=alert-description]]:whitespace-normal";
 
 const LOADING_CLASS = "mr-32";
 
@@ -124,12 +125,13 @@ const TableRenderer: ReactorType.FC<TableRendererProps> = memo((props) => {
   if (displayError) {
     return (
       <Alert
-        type="error"
-        message="内容不可读取"
-        description={resolveUnavailableReason(displayError as Error)}
-        showIcon
+        variant="destructive"
         className={ERROR_CLASS}
-      />
+      >
+        <CircleAlert />
+        <AlertTitle>内容不可读取</AlertTitle>
+        <AlertDescription>{resolveUnavailableReason(displayError as Error)}</AlertDescription>
+      </Alert>
     );
   }
 
@@ -191,21 +193,23 @@ const TableRenderer: ReactorType.FC<TableRendererProps> = memo((props) => {
           }
           errorState={(err: Error) => (
             <Alert
-              type="error"
-              message="内容不可读取"
-              description={resolveUnavailableReason(err)}
-              showIcon
+              variant="destructive"
               className={ERROR_CLASS}
-            />
+            >
+              <CircleAlert />
+              <AlertTitle>内容不可读取</AlertTitle>
+              <AlertDescription>{resolveUnavailableReason(err)}</AlertDescription>
+            </Alert>
           )}
           fileTooLargeState={() => (
             <Alert
-              type="warning"
-              message="文件过大"
-              description="该表格超出在线预览的大小上限，请下载后用本地 Excel / WPS 打开。"
-              showIcon
+              variant="warning"
               className={ERROR_CLASS}
-            />
+            >
+              <TriangleAlert />
+              <AlertTitle>文件过大</AlertTitle>
+              <AlertDescription>该表格超出在线预览的大小上限，请下载后用本地 Excel / WPS 打开。</AlertDescription>
+            </Alert>
           )}
         />
       </PreviewErrorBoundary>
