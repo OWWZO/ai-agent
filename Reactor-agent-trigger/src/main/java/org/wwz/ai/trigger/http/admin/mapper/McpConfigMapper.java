@@ -38,9 +38,7 @@ public class McpConfigMapper {
                 request.getMcpId(),
                 request.getMcpName(),
                 request.getTransportType(),
-                request.getStatus(),
-                request.getPageNum(),
-                request.getPageSize());
+                request.getStatus());
     }
 
     public Response<Boolean> toBooleanResponse(ApplicationResult<Boolean> result) {

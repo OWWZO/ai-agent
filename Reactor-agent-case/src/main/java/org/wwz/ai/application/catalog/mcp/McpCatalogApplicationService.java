@@ -6,9 +6,7 @@ import org.springframework.stereotype.Service;
 import org.wwz.ai.application.catalog.ApplicationResult;
 import org.wwz.ai.domain.agent.catalog.model.AiClientToolMcpConfig;
 import org.wwz.ai.domain.agent.catalog.model.CatalogMcp;
-import org.wwz.ai.domain.agent.catalog.model.McpRuntimeReloadResult;
 import org.wwz.ai.domain.agent.catalog.port.IAiClientToolMcpConfigRepository;
-import org.wwz.ai.domain.agent.catalog.port.IMcpRuntimeReloadPort;
 import org.wwz.ai.types.enums.ResponseCode;
 
 import java.time.LocalDateTime;
@@ -22,10 +20,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class McpCatalogApplicationService {
 
-    private static final String RELOAD_WARNING = "MCP 配置已写入，但运行时刷新失败";
-
     private final IAiClientToolMcpConfigRepository repository;
-    private final IMcpRuntimeReloadPort runtimeReloadPort;
+    private final McpWriteReloadSupport writeReloadSupport;
     private final McpConfigurationApplicationService configurationService;
 
     public ApplicationResult<List<CatalogMcp>> listMcps() {
@@ -42,7 +38,7 @@ public class McpCatalogApplicationService {
 
     public ApplicationResult<Boolean> createMcp(CatalogMcpCreateCommand command) {
         try {
-            return afterWrite(configurationService.createMcp(command));
+            return writeReloadSupport.afterWrite(configurationService.createMcp(command));
         } catch (IllegalArgumentException e) {
             return ApplicationResult.failure(ResponseCode.ILLEGAL_PARAMETER, e.getMessage(), false);
         } catch (Exception e) {
@@ -51,22 +47,6 @@ public class McpCatalogApplicationService {
         }
     }
 
-    private ApplicationResult<Boolean> afterWrite(boolean changed) {
-        if (!changed) {
-            return ApplicationResult.success(false);
-        }
-        try {
-            McpRuntimeReloadResult reload = runtimeReloadPort.reloadEnabledMcps();
-            if (reload == null || !reload.success()) {
-                log.warn("{}: {}", RELOAD_WARNING, reload == null ? "无明确结果" : reload.message());
-                return ApplicationResult.success(true, RELOAD_WARNING);
-            }
-        } catch (Exception e) {
-            log.warn("{}", RELOAD_WARNING, e);
-            return ApplicationResult.success(true, RELOAD_WARNING);
-        }
-        return ApplicationResult.success(true);
-    }
 
     private static CatalogMcp toCatalogMcp(AiClientToolMcpConfig config) {
         return new CatalogMcp(config.getMcpId(), config.getMcpName(), config.getTransportType(),
