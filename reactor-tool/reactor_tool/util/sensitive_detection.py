@@ -21,8 +21,6 @@ class SensitiveWordsReplace:
 
     ID_PATTERN = r"(?:[^\dA-Za-z_]|^)((?:[1-6][1-7]|50|71|81|82)\d{4}(?:19|20)\d{2}(?:0[1-9]|10|11|12)(?:[0-2][1-9]|10|20|30|31)\d{3}[0-9Xx])(?:[^\dA-Za-z_]|$)"
 
-    BANK_ID_PATTERN = r"(?:[^\dA-Za-z_]|^)(62(?:\d{14}|\d{17}))(?:[^\dA-Za-z_]|$"
-
     @classmethod
     def replace(cls, content, remove_email=True, remove_phone_number=True,
                 remove_id_number=True, remove_bank_id=True,

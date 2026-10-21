@@ -97,14 +97,6 @@ class SyncTool:
         raise NotImplementedError
 
 
-class BaseTool(SyncTool):
-    """Async-capable base; ports may implement execute() or execute_sync()."""
-
-    async def execute(self, params: dict[str, Any], context: ToolContext) -> Any:
-        # 同步工具通过线程/异步执行器复用同一实现，子类只需覆盖 execute_sync。
-        return self.execute_sync(params, context)
-
-
 class _StructLikeLogger:
     """Accept structlog-style keyword logging; forward to loguru."""
 

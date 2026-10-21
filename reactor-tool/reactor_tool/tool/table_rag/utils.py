@@ -6,17 +6,6 @@ import numpy as np
 import requests
 
 
-def select_topk_by_scores(doc_list, scores, k):
-    """
-    根据得分从高到低排序，返回对应的 top-k 文档
-    """
-    # 将文档和得分配对，按得分降序排序
-    ranked_pairs = sorted(zip(doc_list, scores), key=lambda x: x[1], reverse=True)
-    # 取出 top-k 的文档
-    topk_docs = [doc for doc, score in ranked_pairs[:k]]
-    return topk_docs
-
-
 def parse_code_from_string(input_string):
     """从 markdown 代码围栏或裸文本中提取可执行代码片段。"""
 

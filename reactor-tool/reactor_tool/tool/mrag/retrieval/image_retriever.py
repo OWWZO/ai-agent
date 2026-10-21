@@ -17,8 +17,6 @@
 """
 from typing import Dict, Optional
 
-from PIL import Image
-
 from ..embedding.image_embedding import get_image_embedding_model
 from ..runtime_mode import is_multimodal_image_index_enabled
 from ..storage import VectorStore
@@ -63,25 +61,6 @@ class ImageRetriever:
             logger.warning(f"text2image_search skipped because vector search is incompatible: {e}")
             return [[] for _ in queries]
 
-    def image2image_search(self,
-                           kb_id: str | list[str], image: Image.Image, limit: int = 10, score_threshold: float = 0.0,
-                           filter_conditions: Optional[Dict] = None):
-        """图像检索"""
-        # 单图查询返回第一组结果，而批量文本查询返回按 query 对齐的二维列表，两种接口契约不能混用。
-        if not self.image_vector_enabled:
-            logger.info("image2image_search skipped because MRAG image vector index is disabled")
-            return []
-        if not filter_conditions:
-            filter_conditions = {}
-        filter_conditions.update({"kb_id": kb_id})
-        image_embeddings = self.embedding_model.encode_image_batch([image])
-        return self.vector_store.search_image_vector(
-            query_vectors=image_embeddings,
-            limit=limit,
-            score_threshold=score_threshold,
-            filter_conditions=filter_conditions
-        )[0]
-
     def text2page_search(self, kb_id: str | list[str], queries: list[str], limit: int = 10, score_threshold: float = 0.0,
                          filter_conditions: Optional[Dict] = None):
         """文本到页面检索"""
@@ -106,24 +85,6 @@ class ImageRetriever:
         except ValueError as e:
             logger.warning(f"text2page_search skipped because vector search is incompatible: {e}")
             return [[] for _ in queries]
-
-    def image2page_search(self,
-                          kb_id: str | list[str], image: Image.Image, limit: int = 10, score_threshold: float = 0.0,
-                          filter_conditions: Optional[Dict] = None):
-        """图像到页面检索"""
-        if not self.image_vector_enabled:
-            logger.info("image2page_search skipped because MRAG image vector index is disabled")
-            return [[]]
-        if not filter_conditions:
-            filter_conditions = {}
-        filter_conditions.update({"kb_id": kb_id})
-        image_embeddings = self.embedding_model.encode_image_batch([image])
-        return self.vector_store.search_page_vector(
-            query_vectors=image_embeddings,
-            limit=limit,
-            score_threshold=score_threshold,
-            filter_conditions=filter_conditions
-        )
 
     @staticmethod
     def _has_empty_vectors(vectors: list[list[float]]) -> bool:

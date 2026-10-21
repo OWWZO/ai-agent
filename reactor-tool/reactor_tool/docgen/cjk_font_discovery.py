@@ -1,4 +1,4 @@
-﻿"""Shared CJK font path discovery for PDF, matplotlib, and other generators.
+"""Shared CJK font path discovery for PDF, matplotlib, and other generators.
 
 Pan-Unicode fonts only; avoid Latin-stripped supplemental fallbacks as sole body font.
 Discovery is cached for the process lifetime; restart to pick up fonts installed later.
@@ -13,17 +13,6 @@ from typing import Any
 
 
 _DISCOVERY_CACHE: dict[bool, str | None] = {}
-# Tools that write CJK text into rendered artifacts through user-authored
-# code (charts, scripts). document_generate / slides_generate are NOT listed:
-# their font handling is fully automatic via reactor_tool.docgen.fonts.
-_REGULAR_GENERATION_TOOLS: frozenset[str] = frozenset(
-    {
-        "code_execution",
-        "script_agent",
-        "coding_agent",
-        "chart_generator",
-    }
-)
 
 
 def cjk_font_search_roots() -> list[str]:
@@ -126,11 +115,6 @@ def discover_cjk_font_file(*, is_bold: bool) -> str | None:
     return None
 
 
-def clear_cjk_font_discovery_cache() -> None:
-    """Clear discovery cache for tests."""
-    _DISCOVERY_CACHE.clear()
-
-
 def _managed_font_path(*, is_bold: bool) -> str | None:
     """Font previously auto-downloaded by ``reactor_tool.docgen.fonts.FontManager``.
 
@@ -174,49 +158,3 @@ def resolve_cjk_bold_path(*, explicit: str | None = None) -> str | None:
     if managed:
         return managed
     return discover_cjk_font_file(is_bold=True)
-
-
-def build_cjk_generation_turn_extra(*, tools: Any | None) -> str:
-    """Return a short prompt hint for CJK-capable generation tools."""
-    if tools is None:
-        return ""
-
-    def _has(name: str) -> bool:
-        has = getattr(tools, "has", None)
-        if not callable(has):
-            return False
-        try:
-            return bool(has(name))
-        except Exception:  # noqa: BLE001 - prompt hints must never break a turn
-            return False
-
-    active = [name for name in _REGULAR_GENERATION_TOOLS if _has(name)]
-    if not active:
-        return ""
-
-    regular = resolve_cjk_regular_path()
-    bold = resolve_cjk_bold_path()
-    active_tools = ", ".join(sorted(active))
-    lines = [
-        "### CJK Font Guidance for Generated Artifacts",
-        f"Active generation tools: {active_tools}.",
-        "For Chinese or mixed Chinese/Latin charts, PDF, DOCX, or PPTX output, use a pan-Unicode CJK font and avoid relying on guessed OS paths.",
-    ]
-    if regular:
-        lines.append(f"Resolved regular CJK font path: `{regular}`.")
-        lines.append(
-            "Use this path for ReportLab `TTFont`, python-docx/python-pptx font setup, and matplotlib `font_manager` when writing custom scripts. "
-            "(`document_generate` / `slides_generate` handle fonts automatically — no path needed there.)"
-        )
-    if bold and bold != regular:
-        lines.append(f"Resolved bold CJK font path: `{bold}`.")
-    if regular:
-        lines.append(
-            "`code_execution` also receives `LEAGENT_CJK_FONT` and auto-configures matplotlib when source imports/uses matplotlib, pyplot, plt., mpl., pylab, or font_manager."
-        )
-    else:
-        lines.append(
-            "No local CJK font path was discovered; prefer asking the user to install `fonts-noto-cjk` or `fonts-wqy-microhei`, or set `LEAGENT_CJK_FONT` to an absolute .otf/.ttf/.ttc path."
-        )
-    lines.append("中文生成任务优先使用上面的真实字体路径，避免凭空编造字体路径。")
-    return "\n".join(lines)

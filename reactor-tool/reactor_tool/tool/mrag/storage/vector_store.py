@@ -17,7 +17,6 @@
 6. 混合搜索（文本+图像+页面）
 """
 
-from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Tuple, Optional
 import threading
 
@@ -183,48 +182,6 @@ class VectorStore:
         except Exception as e:
             logger.error(f"页面向量集合创建失败: {e}")
 
-    def drop_all_collections(self):
-        """删除所有向量集合"""
-        try:
-            self.text_store.drop_collection()
-            logger.info("文本向量集合删除成功")
-        except Exception as e:
-            logger.error(f"文本向量集合删除失败: {e}")
-
-        if not self.image_vector_enabled:
-            logger.info("MRAG 图片向量集合已关闭，跳过 image/page collection 删除")
-            return
-
-        try:
-            self.image_store.drop_collection()
-            logger.info("图像向量集合删除成功")
-        except Exception as e:
-            logger.error(f"图像向量集合删除失败: {e}")
-
-        try:
-            self.page_store.drop_collection()
-            logger.info("页面向量集合删除成功")
-        except Exception as e:
-            logger.error(f"页面向量集合删除失败: {e}")
-
-    # ==================== 获取存储实例 ====================
-
-    def get_text_store(self):
-        """获取文本向量存储实例"""
-        return self.text_store
-
-    def get_image_store(self):
-        """获取图像向量存储实例"""
-        if not self.image_vector_enabled:
-            return None
-        return self.image_store
-
-    def get_page_store(self):
-        """获取页面向量存储实例"""
-        if not self.image_vector_enabled:
-            return None
-        return self.page_store
-
     # ==================== 添加向量 ====================
 
     def add_text_chunks(self, text_chunks: List[Dict]):
@@ -384,89 +341,10 @@ class VectorStore:
             filter_conditions=filter_conditions
         )
 
-    def hybrid_search(self,
-                      text_vectors: Optional[List[List[float]]],
-                      image_vectors: Optional[List[List[float]]],
-                      page_vectors: Optional[List[List[float]]],
-                      limit: int = 10,
-                      score_threshold: float = 0.0,
-                      filter_conditions: Optional[Dict] = None):
-        """
-        混合搜索 - 并发执行三个维度的向量检索
-
-        Args:
-            text_vectors: 文本查询向量
-            image_vectors: 图像查询向量
-            page_vectors: 页面查询向量
-            limit: 返回结果数量限制
-            score_threshold: 相似度阈值
-            filter_conditions: 过滤条件
-
-        Returns:
-            Tuple[List[Dict], List[Dict], List[Dict]]: (文本结果, 图像结果, 页面结果)
-        """
-
-        def search_text():
-            """文本向量搜索任务"""
-            if text_vectors is None:
-                return []
-            return self.search_text_vector(
-                query_vectors=text_vectors,
-                limit=limit,
-                score_threshold=score_threshold,
-                filter_conditions=filter_conditions
-            )
-
-        def search_image():
-            """图像向量搜索任务"""
-            if image_vectors is None:
-                return []
-            return self.search_image_vector(
-                query_vectors=image_vectors,
-                limit=limit,
-                score_threshold=score_threshold,
-                filter_conditions=filter_conditions
-            )
-
-        def search_page():
-            """页面向量搜索任务"""
-            if page_vectors is None:
-                return []
-            return self.search_page_vector(
-                query_vectors=page_vectors,
-                limit=limit,
-                score_threshold=score_threshold,
-                filter_conditions=filter_conditions
-            )
-
-        # 使用线程池并发执行三个搜索任务
-        # 三路检索彼此独立，但结果槽位固定为 text/image/page，不能按完成顺序拼接。
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            # 提交所有搜索任务
-            text_future = executor.submit(search_text)
-            image_future = executor.submit(search_image)
-            page_future = executor.submit(search_page)
-
-            # 等待所有任务完成并获取结果
-            text_results = text_future.result()
-            image_results = image_future.result()
-            page_results = page_future.result()
-
-        return text_results, image_results, page_results
-
     # ==================== 删除向量 ====================
-
     def delete_text_by_kb_id(self, kb_id: str):
         """根据知识库ID删除文本向量"""
         return self.text_store.delete_by_kb_id(kb_id)
-
-    def delete_text_by_doc_ids(self, doc_ids: List[int]):
-        """根据文档ID列表删除文本向量"""
-        return self.text_store.delete_by_doc_ids(doc_ids)
-
-    def delete_text_by_chunk_ids(self, chunk_ids: List[int]):
-        """根据文档块ID列表删除文本向量"""
-        return self.text_store.delete_by_chunk_ids(chunk_ids)
 
     def delete_image_by_kb_id(self, kb_id: str):
         """根据知识库ID删除图像向量"""
@@ -474,69 +352,11 @@ class VectorStore:
             return True
         return self.image_store.delete_by_kb_id(kb_id)
 
-    def delete_image_by_doc_ids(self, doc_ids: List[int]):
-        """根据文档ID列表删除图像向量"""
-        if not self.image_vector_enabled:
-            return True
-        return self.image_store.delete_by_doc_ids(doc_ids)
-
     def delete_page_by_kb_id(self, kb_id: str):
         """根据知识库ID删除页面向量"""
         if not self.image_vector_enabled:
             return True
         return self.page_store.delete_by_kb_id(kb_id)
-
-    def delete_page_by_doc_ids(self, doc_ids: List[int]):
-        """根据文档ID列表删除页面向量"""
-        if not self.image_vector_enabled:
-            return True
-        return self.page_store.delete_by_doc_ids(doc_ids)
-
-    # ==================== 集合信息 ====================
-
-    def get_text_collection_info(self):
-        """获取文本集合信息"""
-        try:
-            return self.base_store.get_collection_info(self.config.text_collection)
-        except Exception as e:
-            logger.error(f"获取文本集合信息失败: {e}")
-            return {'error': str(e)}
-
-    def get_image_collection_info(self):
-        """获取图像集合信息"""
-        if not self.image_vector_enabled:
-            return {'disabled': True, 'mode': self.config.image_index_mode}
-        try:
-            return self.base_store.get_collection_info(self.config.image_collection)
-        except Exception as e:
-            logger.error(f"获取图像集合信息失败: {e}")
-            return {'error': str(e)}
-
-    def get_page_collection_info(self):
-        """获取页面集合信息"""
-        if not self.image_vector_enabled:
-            return {'disabled': True, 'mode': self.config.image_index_mode}
-        try:
-            return self.base_store.get_collection_info(self.config.page_collection)
-        except Exception as e:
-            logger.error(f"获取页面集合信息失败: {e}")
-            return {'error': str(e)}
-
-    def count_text_points(self, filter_conditions: Optional[Dict] = None):
-        """统计文本向量点数量"""
-        return self.base_store.count_vectors(self.config.text_collection, filter_conditions)
-
-    def count_image_points(self, filter_conditions: Optional[Dict] = None):
-        """统计图像向量点数量"""
-        if not self.image_vector_enabled:
-            return 0
-        return self.base_store.count_vectors(self.config.image_collection, filter_conditions)
-
-    def count_page_points(self, filter_conditions: Optional[Dict] = None):
-        """统计页面向量点数量"""
-        if not self.image_vector_enabled:
-            return 0
-        return self.base_store.count_vectors(self.config.page_collection, filter_conditions)
 
     def delete_by_file_ids(self, kb_id: str, file_ids: List[str]):
         self.text_store.delete_by_file_ids(kb_id, file_ids)

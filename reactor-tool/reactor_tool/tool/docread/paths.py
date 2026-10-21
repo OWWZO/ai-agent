@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import Iterable
 
 from reactor_tool.docgen.paths import OUTPUT_DIR, UPLOAD_DIR
 
@@ -125,37 +124,4 @@ def resolve_output_path(
         return p.resolve()
     out = (base / text).resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
-    return out
-
-
-def rewrite_path_params(
-    params: dict,
-    path_keys: Iterable[str],
-    *,
-    request_id: str,
-    workspace_root: str | None,
-    create: bool = False,
-) -> dict:
-    out = dict(params)
-    for key in path_keys:
-        val = out.get(key)
-        if not val or not isinstance(val, str):
-            continue
-        if create:
-            out[key] = str(
-                resolve_output_path(val, request_id=request_id, workspace_root=workspace_root, default_name=Path(val).name)
-            )
-        else:
-            try:
-                out[key] = str(
-                    resolve_input_path(val, request_id=request_id, workspace_root=workspace_root, must_exist=True)
-                )
-            except FileNotFoundError:
-                # leave unresolved for tools that create missing paths later
-                if create:
-                    out[key] = str(
-                        resolve_output_path(val, request_id=request_id, workspace_root=workspace_root)
-                    )
-                else:
-                    raise
     return out

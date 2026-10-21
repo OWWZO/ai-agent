@@ -28,59 +28,6 @@ from reactor_tool.model.document import Doc
 
 
 @timer()
-async def get_file_content(file_name: str) -> str:
-    """读取文件正文：本地路径直接读，否则按 URL 从文件服务下载。"""
-    # 工具调用既可能拿到工作区路径，也可能拿到文件服务 URL；先判定来源，避免把本地路径当成 HTTP 地址。
-    if _is_local_file_reference(file_name):
-        local_path = _normalize_local_path(file_name)
-        try:
-            with open(local_path, "r", encoding="utf-8") as rf:
-                return rf.read()
-        except UnicodeDecodeError:
-            # UTF-8失败时尝试GBK
-            with open(local_path, "r", encoding="gbk") as rf:
-                return rf.read()
-    # 远端响应按块读取，统一在内存中解码；UTF-8 失败时兼容历史中文文件常见的 GBK 编码。
-    else:
-        b_content = b""
-        async with aiohttp.ClientSession() as session:
-            async with session.get(file_name, timeout=99999) as response:
-                while True:
-                    chunk = await response.content.read(1024)
-                    if not chunk:
-                        break
-                    b_content += chunk
-        try:
-            return b_content.decode("utf-8")
-        except UnicodeDecodeError:
-            return b_content.decode("gbk", errors="ignore")
-
-
-@timer()
-async def download_all_files(file_names: list[str]) -> List[Dict[str, Any]]:
-    """批量下载文件内容，单文件失败时写入占位文案，不中断整体。"""
-    file_contents = []
-    for file_name in file_names:
-        # 单个附件不可用不应吞掉整个请求，调用方仍能看到原文件名和失败占位内容。
-        try:
-            file_contents.append(
-                {
-                    "file_name": file_name,
-                    "content": await get_file_content(file_name),
-                }
-            )
-        except Exception as e:
-            logger.warning(f"Failed to download file {file_name}. Exception: {e}")
-            file_contents.append(
-                {
-                    "file_name": file_name,
-                    "content": "Failed to get content.",
-                }
-            )
-    return file_contents
-
-
-@timer()
 def truncate_files(
     files: List[Dict[str, Any]] | List[Doc], max_tokens: int
 ) -> List[Dict[str, Any]] | List[Doc]:
@@ -235,18 +182,6 @@ def generate_secure_random_string(length):
     characters = string.ascii_letters + string.digits
     secure_random = secrets.SystemRandom()
     return "".join(secure_random.choice(characters) for _ in range(length))
-
-
-def flatten_search_file(s_file: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """展开搜索结果文件 JSON 为扁平文档列表。"""
-    flat_files = []
-    try:
-        contents = json.loads(s_file["content"])
-        for k, v in contents.items():
-            flat_files.extend(v)
-    except Exception as e:
-        logger.warning(f"parser file error: {e}")
-    return flat_files
 
 
 @timer()

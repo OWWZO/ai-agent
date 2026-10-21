@@ -17,12 +17,9 @@
 import concurrent.futures
 import os
 
-import requests
-
 from .image_retriever import ImageRetriever
 from .text_retriever import TextRetriever
 from ..runtime_mode import is_multimodal_image_index_enabled
-from ..utils.logger_utils import logger
 
 
 class BaseRetriever:
@@ -63,37 +60,3 @@ class BaseRetriever:
                         res[i].extend(current_res[i])
 
         return res
-
-    def retrieval_image(self, image_path: str):
-        pass
-
-    def retrieval_lightrag(self, kb_id: str | list[str], queries: list[str]):
-        url = f"{os.getenv('LIGHTRAG_SERVER_BASE_URL')}/query/data"
-
-        data = {
-            "query": "",
-            "mode": "global",
-            "top_k": 10
-        }
-
-        def make_query(query):
-            # LightRAG 是可选外部服务；单条 query 失败时返回空结果，不影响同批其他 query。
-            data["query"] = query
-            try:
-                response = requests.post(url, json=data, timeout=300)
-                if response.status_code == 200:
-                    return response.json()
-                else:
-                    return []
-            except Exception as e:
-                import traceback
-                logger.error(traceback.format_exc())
-                logger.error(f"LightRAG 请求失败: {e}")
-                return []
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            tasks = [executor.submit(make_query, query) for query in queries]
-            results = [task.result() for task in tasks]
-
-
-        return results

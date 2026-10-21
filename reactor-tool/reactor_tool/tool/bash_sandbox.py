@@ -145,7 +145,6 @@ async def run_bash_sandbox(body: BashSandboxRequest) -> BashSandboxResponse:
                 disabled,
                 int(body.timeout_seconds),
                 int(body.max_output_chars),
-                None,
                 produced_paths,
                 owner_key,
             )
@@ -204,15 +203,44 @@ async def run_bash_sandbox(body: BashSandboxRequest) -> BashSandboxResponse:
 # ── skill 库（无 workspace 中转拷贝）────────────────────────────────────────
 
 
-def _list_enabled_skill_names(lib_root: Path, disabled: set[str]) -> List[str]:
-    names: List[str] = []
+def _iter_enabled_skill_dirs(lib_root: Path, disabled: set[str]):
+    """按名字序遍历启用的 skill 目录（跳过隐藏目录与 disabled 清单）。
+
+    ``_list_enabled_skill_names`` 与 ``_link_skills_for_local`` 原先各自复制了
+    这段过滤逻辑；改成单一来源后，"哪些 skill 算启用"只有一处定义。
+    """
     for child in sorted(lib_root.iterdir()):
         if not child.is_dir() or child.name.startswith("."):
             continue
         if child.name in disabled:
             continue
-        names.append(child.name)
-    return names
+        yield child
+
+
+def _list_enabled_skill_names(lib_root: Path, disabled: set[str]) -> List[str]:
+    return [child.name for child in _iter_enabled_skill_dirs(lib_root, disabled)]
+
+
+def _iter_skill_files(skill_dir: Path):
+    """遍历 skill 目录内可推送的文件，产出 ``(相对路径, 绝对路径)``。
+
+    ``_e2b_push_skills_incremental`` / ``_exec_e2b`` 的 record_uploaded 循环
+    原本各复制了这段过滤（is_file + 非 symlink + 相对路径换算 + 隐藏/_SKIP_DIR_NAMES 跳过），
+    漏掉任一条都会让不同步的两边行为不一致。
+    """
+    skill_root = skill_dir.resolve()
+    for path in skill_dir.rglob("*"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        try:
+            rel = path.resolve().relative_to(skill_root)
+        except ValueError:
+            continue
+        if any(part.startswith(".") for part in rel.parts):
+            continue
+        if any(part in _SKIP_DIR_NAMES for part in rel.parts):
+            continue
+        yield rel, path
 
 
 def _link_skills_for_local(
@@ -224,11 +252,7 @@ def _link_skills_for_local(
     skills_view.mkdir(parents=True, exist_ok=True)
 
     names: List[str] = []
-    for child in sorted(lib_root.iterdir()):
-        if not child.is_dir() or child.name.startswith("."):
-            continue
-        if child.name in disabled:
-            continue
+    for child in _iter_enabled_skill_dirs(lib_root, disabled):
         _link_dir(child, skills_view / child.name)
         names.append(child.name)
     logger.info("[bash_sandbox] local link skills={} -> {}", names, skills_view)
@@ -406,7 +430,6 @@ def _exec_e2b(
     disabled: set[str],
     timeout_sec: int,
     max_output_chars: int,
-    use_skill_session: bool | None = None,
     produced_paths: Optional[List[Path]] = None,
     owner_key: str | None = None,
 ) -> Tuple[Optional[int], str, str, bool, bool, List[str]]:
@@ -448,17 +471,7 @@ def _exec_e2b(
                     skill_dir = lib_root / skill_name
                     if not skill_dir.is_dir():
                         continue
-                    for path in skill_dir.rglob("*"):
-                        if not path.is_file() or path.is_symlink():
-                            continue
-                        try:
-                            rel = path.resolve().relative_to(skill_dir.resolve())
-                        except ValueError:
-                            continue
-                        if any(part.startswith(".") for part in rel.parts):
-                            continue
-                        if any(part in _SKIP_DIR_NAMES for part in rel.parts):
-                            continue
+                    for rel, path in _iter_skill_files(skill_dir):
                         record_uploaded(
                             workspace,
                             f"{SKILLS_DIR}/{skill_name}/{rel.as_posix()}",
@@ -574,17 +587,7 @@ def _e2b_push_skills_incremental(
             continue
         if only_names is not None and skill_dir.name not in only_names:
             continue
-        for path in skill_dir.rglob("*"):
-            if not path.is_file() or path.is_symlink():
-                continue
-            try:
-                rel = path.resolve().relative_to(skill_dir.resolve())
-            except ValueError:
-                continue
-            if any(part.startswith(".") for part in rel.parts):
-                continue
-            if any(part in _SKIP_DIR_NAMES for part in rel.parts):
-                continue
+        for rel, path in _iter_skill_files(skill_dir):
             remote_path = f"{remote_skills}/{skill_dir.name}/{rel.as_posix()}"
             if not _e2b_remote_path_ok(remote_path):
                 logger.warning(

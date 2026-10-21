@@ -85,30 +85,6 @@ def _build_chat_completions_url(api_base: str) -> str:
     return f"{base}/chat/completions"
 
 
-def _safe_int(value: Any) -> Optional[int]:
-    try:
-        return int(value)
-    except Exception:
-        return None
-
-
-def _timeout_to_seconds(value: Any) -> float:
-    try:
-        timeout_value = float(value)
-    except Exception:
-        timeout_value = 600000.0
-    if timeout_value > 10000:
-        return timeout_value / 1000.0
-    return timeout_value
-
-
-def _decode_utf8(content: bytes) -> str:
-    try:
-        return content.decode("utf-8")
-    except Exception:
-        return content.decode("utf-8", errors="replace")
-
-
 def _normalize_message_value(value: Any) -> Any:
     if isinstance(value, dict):
         return {

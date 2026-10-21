@@ -30,21 +30,6 @@ from ..utils.logger_utils import logger
 from ..utils.time_utils import time_it
 
 
-def beautify_messages(messages: List):
-    """日志友好：截断消息内容便于打印。"""
-    output_content = ""
-    for message in messages:
-        content = message["content"]
-        if isinstance(content, list):
-            content = "\n".join([c["text"][:100] if c["type"] == "text" else "[图片]" for c in content])
-        else:
-            content = message["content"]
-            if len(content) > 100:
-                content = content[:100] + "..."
-        output_content += f"[{message['role']}]: {content}\n"
-    return output_content
-
-
 def display_chunks(chunks: List[Dict]):
     """调试打印检索 chunk 摘要。"""
     for i, chunk in enumerate(chunks):

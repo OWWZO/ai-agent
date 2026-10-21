@@ -1119,11 +1119,6 @@ class PdfParser(DocumentParser):
             logger.error(f"拆分PDF失败 (页码 {start_page}-{end_page}): {e}")
             return False
 
-    @staticmethod
-    def _mineru_max_upload_bytes() -> int:
-        """MinerU 官方上传上限约 200MB，默认留 20MB 余量。"""
-        return int(os.getenv("MINERU_MAX_UPLOAD_BYTES", str(180 * 1024 * 1024)))
-
     def _resolve_mineru_wait_timeout_seconds(self, pdf_path: str) -> int:
         """按页数放大 MinerU 轮询超时，避免 150 页 VLM 任务卡死在默认 300s。"""
         configured = (os.getenv("MINERU_WAIT_TIMEOUT_SECONDS") or "").strip()
@@ -1139,64 +1134,6 @@ class PdfParser(DocumentParser):
             page_count = max(1, self._get_pdf_page_count())
         per_page = int(os.getenv("MINERU_WAIT_SECONDS_PER_PAGE", "25"))
         return max(300, min(page_count * per_page, 3600))
-
-    def _extract_pdf_page_range_text(self, start_page: int, end_page: int) -> str:
-        """从原 PDF 按页抽文本，避免打开被撑爆的临时分块导致 worker OOM。"""
-        try:
-            import fitz
-
-            with fitz.open(self._file_path) as doc:
-                total_pages = doc.page_count
-                start_page = max(0, min(start_page, total_pages - 1))
-                end_page = max(start_page, min(end_page, total_pages - 1))
-                texts = [
-                    doc[page_num].get_text() or ""
-                    for page_num in range(start_page, end_page + 1)
-                ]
-            return "\n".join(texts).strip()
-        except Exception as e:
-            logger.error(f"按页提取 PDF 文本失败 (页码 {start_page}-{end_page}): {e}")
-            return ""
-
-    @staticmethod
-    def _remove_if_exists(path: str) -> None:
-        try:
-            if os.path.exists(path):
-                os.remove(path)
-        except OSError:
-            pass
-
-    def _split_pdf_range_under_limit(
-        self,
-        start_page: int,
-        end_page: int,
-        output_path: str,
-        max_bytes: int,
-    ) -> list:
-        """把页范围拆到 MinerU 可上传的体积；单页仍超限则放弃该页的 MinerU 路径。"""
-        if not self._split_pdf_by_pages(start_page, end_page, output_path):
-            return []
-        size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
-        if size <= max_bytes:
-            logger.info(f"PDF分块页 {start_page + 1}-{end_page + 1} 大小 {size} bytes")
-            return [(start_page, end_page, output_path)]
-        if start_page == end_page:
-            logger.error(
-                f"单页 PDF 仍超过 MinerU 上传限制: page={start_page + 1}, size={size}, limit={max_bytes}"
-            )
-            self._remove_if_exists(output_path)
-            return []
-        logger.warning(
-            f"PDF分块页 {start_page + 1}-{end_page + 1} 大小 {size} bytes 超过限制 {max_bytes}，对半拆分"
-        )
-        self._remove_if_exists(output_path)
-        mid = (start_page + end_page) // 2
-        stem, ext = os.path.splitext(output_path)
-        left_path = f"{stem}_{start_page}_{mid}{ext}"
-        right_path = f"{stem}_{mid + 1}_{end_page}{ext}"
-        return self._split_pdf_range_under_limit(
-            start_page, mid, left_path, max_bytes
-        ) + self._split_pdf_range_under_limit(mid + 1, end_page, right_path, max_bytes)
 
     def _call_mineru_api(self, file_url: str) -> str:
         """调用MinerU API处理单个PDF文件"""
@@ -1318,36 +1255,6 @@ class PdfParser(DocumentParser):
             return bundled_poppler_dir
 
         return None
-
-    def _download_and_extract_mineru_result(
-        self, full_zip_url: str, output_dir: str
-    ) -> Optional[str]:
-        """下载并解压MinerU处理结果"""
-        # ZIP 只是传输容器，解析阶段真正消费的是其中的 Markdown；临时 ZIP
-        # 无论成功或失败都在 finally 删除，避免长任务污染共享临时目录。
-        tmp_file_path = os.path.join(output_dir, f"{uuid.uuid4().hex}.zip")
-        try:
-            download_utils.download_file(full_zip_url, tmp_file_path)
-            logger.info(f"Downloaded MinerU result to: {tmp_file_path}")
-
-            # 解压文件
-            zipfile.ZipFile(tmp_file_path, "r").extractall(output_dir)
-
-            # 找到markdown文件
-            md_files = [file for file in os.listdir(output_dir) if file.endswith(".md")]
-            if md_files:
-                return os.path.join(output_dir, md_files[0])
-            else:
-                logger.error("No markdown file found in MinerU result")
-                return None
-
-        except Exception as e:
-            logger.error(f"下载或解压MinerU结果失败: {e}")
-            return None
-        finally:
-            # 清理临时zip文件
-            if os.path.exists(tmp_file_path):
-                os.remove(tmp_file_path)
 
     def _process_single_pdf_chunk(
         self, pdf_path: str, chunk_index: int

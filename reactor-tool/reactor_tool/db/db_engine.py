@@ -9,7 +9,7 @@
 文件服务元数据默认落在 SQLITE_DB_PATH（默认 autobots.db）。
 """
 import os
-from typing import Callable, AsyncGenerator
+from typing import Callable
 
 from loguru import logger
 from sqlalchemy import AsyncAdaptedQueuePool, create_engine
@@ -34,12 +34,6 @@ async_engine = create_async_engine(
 )
 
 async_session_local: Callable[..., AsyncSession] = sessionmaker(bind=async_engine, class_=AsyncSession)
-
-
-async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
-    """session 生成器，可作为 FastAPI Depends 注入。"""
-    async with async_session_local() as session:
-        yield session
 
 
 def init_db():

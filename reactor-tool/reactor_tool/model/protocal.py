@@ -517,19 +517,3 @@ class DocgenRequest(BaseModel):
     # remaining fields accepted via extra="allow" and forwarded as params
 
 
-class DocgenResponse(BaseModel):
-    """统一文档生成响应。"""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    request_id: str = Field(alias="requestId")
-    success: bool = True
-    message: str = "ok"
-    file_info: List[ScriptRunnerFileInfo] = Field(
-        default_factory=list, alias="fileInfo"
-    )
-    output_path: Optional[str] = Field(default=None, alias="outputPath")
-    stats: Dict[str, Any] = Field(default_factory=dict)
-    warnings: List[Any] = Field(default_factory=list)
-    rendered: Optional[str] = None
-    extra: Dict[str, Any] = Field(default_factory=dict)
