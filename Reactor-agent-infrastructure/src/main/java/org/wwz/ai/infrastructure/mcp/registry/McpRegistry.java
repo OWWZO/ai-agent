@@ -11,12 +11,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Service;
-import org.wwz.ai.domain.agent.adapter.repository.IAgentRepository;
 import org.wwz.ai.domain.agent.model.valobj.AiClientToolMcpVO;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.model.McpResourceInfo;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.model.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.model.McpToolNamePolicy;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.port.McpToolExecutor;
+import org.wwz.ai.infrastructure.adapter.repository.AgentRepository;
 import org.wwz.ai.infrastructure.mcp.adapter.RegistryBackedToolCallback;
 import org.wwz.ai.infrastructure.mcp.client.McpClientFactory;
 import org.wwz.ai.infrastructure.mcp.client.McpClientRuntime;
@@ -48,7 +48,7 @@ public class McpRegistry implements McpToolExecutor {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Resource
-    private IAgentRepository repository;
+    private AgentRepository repository;
 
     @Resource
     private McpClientFactory runtimeFactory;

@@ -3,55 +3,48 @@ package org.wwz.ai.infrastructure.adapter.repository;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
-import org.wwz.ai.domain.agent.adapter.repository.IAgentRepository;
+import org.wwz.ai.domain.agent.catalog.model.AiClientToolMcpConfig;
+import org.wwz.ai.domain.agent.catalog.port.IAiClientToolMcpConfigRepository;
 import org.wwz.ai.domain.agent.model.valobj.AiClientToolMcpVO;
-import org.wwz.ai.infrastructure.dao.IAiClientToolMcpDao;
-import org.wwz.ai.infrastructure.dao.po.AiClientToolMcp;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 /**
- * MCP 配置仓储适配器。
+ * MCP 配置仓储适配器：把 catalog 配置模型翻译成运行时描述。
+ * <p>
+ * 读路径复用 {@link IAiClientToolMcpConfigRepository}，与管理端写入同源，
+ * 避免同一张表出现两套 PO/Mapper/端口。
  */
 @Slf4j
 @Repository
-public class AgentRepository implements IAgentRepository {
+@RequiredArgsConstructor
+public class AgentRepository {
 
-    @Resource
-    private IAiClientToolMcpDao aiClientToolMcpDao;
+    private final IAiClientToolMcpConfigRepository mcpConfigRepository;
 
-    @Override
     public List<AiClientToolMcpVO> queryEnabledAiClientToolMcpVOList() {
-        List<AiClientToolMcp> enabledMcps = aiClientToolMcpDao.queryEnabledMcps();
-        return toAiClientToolMcpVOList(enabledMcps);
+        return toAiClientToolMcpVOList(mcpConfigRepository.findEnabled());
     }
 
-    @Override
-    public List<AiClientToolMcpVO> queryAllAiClientToolMcpVOList() {
-        return toAiClientToolMcpVOList(aiClientToolMcpDao.queryAll());
-    }
-
-    private List<AiClientToolMcpVO> toAiClientToolMcpVOList(List<AiClientToolMcp> mcps) {
+    private List<AiClientToolMcpVO> toAiClientToolMcpVOList(List<AiClientToolMcpConfig> mcps) {
         if (mcps == null || mcps.isEmpty()) {
             return List.of();
         }
-
         return mcps.stream()
                 .map(this::toAiClientToolMcpVO)
                 .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**
      * 将 MCP 持久化配置转换为运行时描述，并按 transportType 解析多态 JSON。
      */
-    private AiClientToolMcpVO toAiClientToolMcpVO(AiClientToolMcp toolMcp) {
+    private AiClientToolMcpVO toAiClientToolMcpVO(AiClientToolMcpConfig toolMcp) {
         if (toolMcp == null) {
             return null;
         }
@@ -106,5 +99,4 @@ public class AgentRepository implements IAgentRepository {
 
         return mcpVO;
     }
-
 }
