@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bot, Loader2, Plus, RefreshCcw, Trash2 } from "lucide-react";
-import { Modal, Select, Switch } from "antd";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { MultiSelect } from "@/components/ui/multi-select";
+import { Switch } from "@/components/ui/switch";
+import { confirm } from "@/components/ui/confirm-dialog";
 
 import WorkspaceAdminHeader from "@/components/WorkspaceAdminHeader";
 import { Button } from "@/components/ui/button";
@@ -13,7 +22,7 @@ import {
   type SubAgentDefinitionRecord,
   type SubAgentDefinitionUpsertPayload,
 } from "@/services/subAgentDefinitionAdmin";
-import { showMessage } from "@/utils";
+import { toast } from "sonner";
 
 type Draft = SubAgentDefinitionUpsertPayload & { isNew: boolean };
 
@@ -110,7 +119,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
         return null;
       });
     } catch (error) {
-      showMessage()?.error(
+      toast.error(
         error instanceof Error ? error.message : "加载子 Agent 列表失败",
       );
     } finally {
@@ -152,11 +161,11 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
     }
     // 先校验最小可运行契约，再统一 trim 文本并把空数组转为未配置。
     if (!draft.agentKey.trim()) {
-      showMessage()?.error("agentKey 不能为空");
+      toast.error("agentKey 不能为空");
       return;
     }
     if (!draft.whenToUse.trim() || !draft.systemPrompt.trim()) {
-      showMessage()?.error("whenToUse 与 systemPrompt 必填");
+      toast.error("whenToUse 与 systemPrompt 必填");
       return;
     }
     setSaving(true);
@@ -187,15 +196,15 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
         } else {
           await subAgentDefinitionAdminApi.create(payload);
         }
-        showMessage()?.success("已创建并热加载");
+        toast.success("已创建并热加载");
       } else {
         await subAgentDefinitionAdminApi.update(payload);
-        showMessage()?.success("已更新并热加载");
+        toast.success("已更新并热加载");
       }
       await refresh();
       setSelectedKey(payload.agentKey);
     } catch (error) {
-      showMessage()?.error(error instanceof Error ? error.message : "保存失败");
+      toast.error(error instanceof Error ? error.message : "保存失败");
     } finally {
       setSaving(false);
     }
@@ -206,20 +215,20 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
     if (readOnly || !selectedKey || draft.isNew) {
       return;
     }
-    Modal.confirm({
+    confirm({
       title: "删除子 Agent",
       content: `确认软删除「${selectedKey}」？主 Agent 将无法再调度该类型。`,
       okText: "删除",
-      okButtonProps: { danger: true },
+      danger: true,
       onOk: async () => {
         try {
           await subAgentDefinitionAdminApi.remove(selectedKey);
-          showMessage()?.success("已删除并热加载");
+          toast.success("已删除并热加载");
           setSelectedKey(null);
           setDraft(EMPTY_DRAFT());
           await refresh();
         } catch (error) {
-          showMessage()?.error(
+          toast.error(
             error instanceof Error ? error.message : "删除失败",
           );
         }
@@ -234,10 +243,10 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
     }
     try {
       const count = await subAgentDefinitionAdminApi.reload();
-      showMessage()?.success(`Registry 已重载，配置条数 ${count}`);
+      toast.success(`Registry 已重载，配置条数 ${count}`);
       await refresh();
     } catch (error) {
-      showMessage()?.error(error instanceof Error ? error.message : "重载失败");
+      toast.error(error instanceof Error ? error.message : "重载失败");
     }
   };
 
@@ -445,20 +454,9 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
                         工具装配方式
                       </span>
                       <Select
-                        className="workspace-admin-multi-select w-full"
                         disabled={draftLocked || saving}
                         value={draft.toolPolicyMode || "inherit"}
-                        options={[
-                          {
-                            label: "继承主 Agent 工具策略",
-                            value: "inherit",
-                          },
-                          {
-                            label: "自定义工具装配",
-                            value: "custom",
-                          },
-                        ]}
-                        onChange={(value) =>
+                        onValueChange={(value) =>
                           setDraft((d) => ({
                             ...d,
                             toolPolicyMode: value as "inherit" | "custom",
@@ -466,22 +464,28 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
                               value === "custom" ? d.deferredTools : [],
                           }))
                         }
-                      />
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="inherit">继承主 Agent 工具策略</SelectItem>
+                          <SelectItem value="custom">自定义工具装配</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </label>
                     <label>
                       <span className="workspace-admin-field-label">
                         延迟加载工具
                       </span>
-                      <Select
-                        mode="multiple"
-                        className="workspace-admin-multi-select w-full"
-                        disabled={draftLocked || saving || draft.toolPolicyMode !== "custom"}
+                      <MultiSelect
                         options={deferredToolOptions}
                         value={draft.deferredTools || []}
+                        disabled={draftLocked || saving || draft.toolPolicyMode !== "custom"}
                         onChange={(value) =>
                           setDraft((d) => ({
                             ...d,
-                            deferredTools: value as string[],
+                            deferredTools: value,
                           }))
                         }
                         placeholder={
@@ -545,16 +549,14 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
                       <span className="workspace-admin-field-label">
                         允许工具（* 表示全部）
                       </span>
-                      <Select
-                        mode="multiple"
-                        className="workspace-admin-multi-select w-full"
-                        disabled={draftLocked || saving}
+                      <MultiSelect
                         options={toolOptions}
                         value={draft.allowedTools || []}
+                        disabled={draftLocked || saving}
                         onChange={(value) =>
                           setDraft((d) => ({
                             ...d,
-                            allowedTools: value as string[],
+                            allowedTools: value,
                           }))
                         }
                         placeholder="选择工具"
@@ -564,16 +566,14 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
                       <span className="workspace-admin-field-label">
                         禁止工具
                       </span>
-                      <Select
-                        mode="multiple"
-                        className="workspace-admin-multi-select w-full"
-                        disabled={draftLocked || saving}
+                      <MultiSelect
                         options={toolOptions.filter((o) => o.value !== "*")}
                         value={draft.disallowedTools || []}
+                        disabled={draftLocked || saving}
                         onChange={(value) =>
                           setDraft((d) => ({
                             ...d,
-                            disallowedTools: value as string[],
+                            disallowedTools: value,
                           }))
                         }
                         placeholder="可选"
