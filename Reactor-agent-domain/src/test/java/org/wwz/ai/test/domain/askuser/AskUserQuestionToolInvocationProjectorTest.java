@@ -117,6 +117,44 @@ public class AskUserQuestionToolInvocationProjectorTest {
         Assert.assertEquals("React", castMap(payload.get("answers")).get("选框架？"));
     }
 
+    @Test
+    public void replaySurvivesWhenYieldStateLookupThrows() {
+        // 历史回放不能因附属状态读失败而中断：读不到就按 observation 里的痕迹投影
+        ToolInvocationView invocation = ToolInvocationView.builder()
+                .id(9L)
+                .sessionId("s-boom")
+                .toolCallId("tool-call-ask-009")
+                .toolName("AskUserQuestion")
+                .inputJson("{\"questions\":[{\"question\":\"选框架？\"}]}")
+                .llmObservation("{\"questionId\":\"uq_9\",\"status\":\"waiting_user_input\"}")
+                .build();
+        IUserQuestionRepository repository = new IUserQuestionRepository() {
+            @Override public Optional<UserQuestionRecord> findByQuestionId(String questionId) {
+                throw new IllegalStateException("ledger read failed");
+            }
+            @Override public void insert(UserQuestionRecord record) { }
+            @Override public Optional<UserQuestionRecord> findByResumeRequestId(String resumeRequestId) { return Optional.empty(); }
+            @Override public List<UserQuestionRecord> listOpenBySessionId(String sessionId) {
+                throw new IllegalStateException("ledger read failed");
+            }
+            @Override public boolean hasOpenBySessionId(String sessionId) { return false; }
+            @Override public boolean casAnswerPending(String questionId, String userId, Map<String, String> answers, String resumeRequestId) { return false; }
+            @Override public boolean casClaimResume(String resumeRequestId, String userId) { return false; }
+            @Override public boolean markAnswered(String questionId) { return false; }
+            @Override public boolean markStatus(String questionId, String status) { return false; }
+            @Override public boolean casCancel(String questionId, String userId) { return false; }
+        };
+
+        List<ProjectedReplayEvent> events = new AskUserQuestionToolInvocationProjector(repository)
+                .project(invocation, List.of(), new AgentStreamAccumulator());
+
+        Assert.assertEquals(1, events.size());
+        Map<String, Object> payload = castMap(castMap(events.get(0).getResultMap()).get("resultMap"));
+        Assert.assertEquals("ask_user_question", payload.get("messageType"));
+        Assert.assertEquals("pending", payload.get("status"));
+        Assert.assertEquals("uq_9", payload.get("questionId"));
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, Object> castMap(Object value) {
         return (Map<String, Object>) value;
