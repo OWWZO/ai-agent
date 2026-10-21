@@ -12,7 +12,6 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 /**
  * 全局挂起问询注册表（进程内）。
@@ -75,7 +74,8 @@ public class PendingUserQuestionRegistry {
      * 用户提交答案。返回 false 表示不存在或已结束。
      */
     public boolean answer(String questionId, Map<String, String> answers) {
-        PendingUserQuestion item = pending.get(StringUtils.trimToEmpty(questionId));
+        String key = StringUtils.trimToEmpty(questionId);
+        PendingUserQuestion item = pending.get(key);
         if (item == null) {
             return false;
         }
@@ -87,11 +87,14 @@ public class PendingUserQuestionRegistry {
             item.setStatus(PendingUserQuestion.STATUS_ANSWERED);
             item.getFuture().complete(item.getAnswers());
         }
+        // 终态即驱逐：awaitAnswers 删除后，这里是 pending 唯一的清理点。
+        pending.remove(key, item);
         return true;
     }
 
     public boolean cancel(String questionId, String reason) {
-        PendingUserQuestion item = pending.get(StringUtils.trimToEmpty(questionId));
+        String key = StringUtils.trimToEmpty(questionId);
+        PendingUserQuestion item = pending.get(key);
         if (item == null) {
             return false;
         }
@@ -103,6 +106,8 @@ public class PendingUserQuestionRegistry {
             item.getFuture().completeExceptionally(
                     new IllegalStateException(StringUtils.defaultIfBlank(reason, "cancelled")));
         }
+        // 终态即驱逐：避免已结束的问询长期滞留在进程级 map 里。
+        pending.remove(key, item);
         return true;
     }
 
@@ -115,33 +120,6 @@ public class PendingUserQuestionRegistry {
                     && PendingUserQuestion.STATUS_PENDING.equals(item.getStatus())) {
                 cancel(item.getQuestionId(), reason);
             }
-        }
-    }
-
-    /**
-     * 阻塞等待答案（在 Agent 工作线程调用，勿在 servlet 线程上用）。
-     */
-    public Map<String, String> awaitAnswers(PendingUserQuestion item)
-            throws TimeoutException, InterruptedException {
-        try {
-            return item.getFuture().get(item.getTimeoutMs(), TimeUnit.MILLISECONDS);
-        } catch (TimeoutException e) {
-            synchronized (item) {
-                if (PendingUserQuestion.STATUS_PENDING.equals(item.getStatus())) {
-                    item.setStatus(PendingUserQuestion.STATUS_TIMEOUT);
-                    item.getFuture().completeExceptionally(e);
-                }
-            }
-            throw e;
-        } catch (java.util.concurrent.ExecutionException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof RuntimeException runtimeException) {
-                throw runtimeException;
-            }
-            throw new IllegalStateException(cause == null ? e.getMessage() : cause.getMessage(), cause);
-        } finally {
-            // 保留一段时间供查询，也可立即 remove
-            pending.remove(item.getQuestionId());
         }
     }
 }

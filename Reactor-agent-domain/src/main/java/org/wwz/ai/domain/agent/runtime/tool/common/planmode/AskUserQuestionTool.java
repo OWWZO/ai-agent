@@ -6,6 +6,7 @@ import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.askuser.UserInputRequiredException;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ToolArgs;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 
 import java.util.ArrayList;
@@ -119,7 +120,7 @@ public class AskUserQuestionTool implements BaseTool {
             return fail("AskUserQuestion 不能在子 Agent 中使用");
         }
 
-        Map<String, Object> params = coerceMap(input);
+        Map<String, Object> params = ToolArgs.mapStrict(input);
         List<Map<String, Object>> questions = normalizeQuestions(params.get("questions"));
         if (questions.isEmpty()) {
             return fail("questions 不能为空（1–4 题）");
@@ -148,14 +149,6 @@ public class AskUserQuestionTool implements BaseTool {
             return result.subList(0, 4);
         }
         return result;
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> coerceMap(Object input) {
-        if (input instanceof Map<?, ?> map) {
-            return (Map<String, Object>) map;
-        }
-        return Map.of();
     }
 
     private static ToolResultPayload fail(String msg) {

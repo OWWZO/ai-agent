@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 import static org.wwz.ai.domain.agent.reactor.model.constant.Constants.RUNNING;
 import static org.wwz.ai.domain.agent.reactor.model.constant.Constants.SUCCESS;
@@ -29,6 +30,34 @@ import static org.wwz.ai.domain.agent.reactor.model.constant.Constants.SUCCESS;
  */
 @Slf4j
 public class BaseAgentStreamEventHandler {
+    /**
+     * 只回传 resultMap + 子 Agent 嵌套标签的消息类型。
+     * 这些类型的展示载荷完全由上游按 resultMap 提供，handler 不解释其内容。
+     */
+    private static final Set<String> RESULT_MAP_AND_NESTING_TYPES = Set.of(
+            "tool_call",
+            "tool_call_delta",
+            "ask_user_question",
+            "desktop_control",
+            "plan_approval",
+            "plan_mode_entered",
+            "session_tasks",
+            "llm_retry",
+            "subagent_progress",
+            "browser",
+            "browser_viewport",
+            "code",
+            "html",
+            "markdown",
+            "ppt",
+            "file",
+            "knowledge",
+            "deep_search",
+            "data_analysis",
+            "ui_tree",
+            "ui_patch"
+    );
+
     private final ReplayProjector replayProjector;
 
     protected BaseAgentStreamEventHandler(ReplayProjector replayProjector) {
@@ -319,34 +348,6 @@ public class BaseAgentStreamEventHandler {
                 // 子 Agent 嵌套标签在 resultMap（SubAgentPrinter），需透传到前端
                 appendSubAgentNestingTags(payload, agentResponse.getResultMap());
                 break;
-            case "tool_call":
-            case "tool_call_delta":
-            case "ask_user_question":
-            case "desktop_control":
-            case "plan_approval":
-            case "plan_mode_entered":
-            case "session_tasks":
-            case "llm_retry":
-            case "subagent_progress":
-            case "browser":
-            case "browser_viewport":
-            case "code":
-            case "html":
-            case "markdown":
-            case "ppt":
-            case "file":
-            case "knowledge":
-            case "deep_search":
-            case "data_analysis":
-            case "ui_tree":
-            case "ui_patch":
-                if (agentResponse.getResultMap() != null) {
-                    payload.put("resultMap", new LinkedHashMap<>(agentResponse.getResultMap()));
-                }
-                // 子 Agent 嵌套标签需同时出现在外层 envelope 与内层 resultMap，
-                // 否则前端 resolveParentToolUseId 在部分结构下读不到 parentToolUseId。
-                appendSubAgentNestingTags(payload, agentResponse.getResultMap());
-                break;
             case "agent_stream":
                 payload.put("result", agentResponse.getResult());
                 // StreamResponseHandler 通过 resultMap 附带 moreRounds（本轮之后是否还有模型轮），
@@ -379,7 +380,14 @@ public class BaseAgentStreamEventHandler {
                 appendSubAgentNestingTags(payload, agentResponse.getResultMap());
                 break;
             default:
-                if (agentResponse.getResultMap() != null) {
+                if (RESULT_MAP_AND_NESTING_TYPES.contains(agentResponse.getMessageType())) {
+                    if (agentResponse.getResultMap() != null) {
+                        payload.put("resultMap", new LinkedHashMap<>(agentResponse.getResultMap()));
+                    }
+                    // 子 Agent 嵌套标签需同时出现在外层 envelope 与内层 resultMap，
+                    // 否则前端 resolveParentToolUseId 在部分结构下读不到 parentToolUseId。
+                    appendSubAgentNestingTags(payload, agentResponse.getResultMap());
+                } else if (agentResponse.getResultMap() != null) {
                     payload.put("resultMap", new LinkedHashMap<>(agentResponse.getResultMap()));
                 }
                 break;

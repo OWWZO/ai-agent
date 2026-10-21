@@ -7,7 +7,5 @@ public record McpConfigQueryCommand(
         String mcpId,
         String mcpName,
         String transportType,
-        Integer status,
-        Integer pageNum,
-        Integer pageSize) {
+        Integer status) {
 }

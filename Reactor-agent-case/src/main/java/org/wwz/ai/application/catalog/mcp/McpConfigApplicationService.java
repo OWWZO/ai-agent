@@ -5,12 +5,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.application.catalog.ApplicationResult;
-import org.wwz.ai.application.catalog.mcp.McpConfigCommand;
-import org.wwz.ai.application.catalog.mcp.McpConfigQueryCommand;
 import org.wwz.ai.domain.agent.catalog.model.AiClientToolMcpConfig;
-import org.wwz.ai.domain.agent.catalog.model.McpRuntimeReloadResult;
 import org.wwz.ai.domain.agent.catalog.port.IAiClientToolMcpConfigRepository;
-import org.wwz.ai.domain.agent.catalog.port.IMcpRuntimeReloadPort;
 import org.wwz.ai.types.enums.ResponseCode;
 
 import java.time.LocalDateTime;
@@ -24,10 +20,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class McpConfigApplicationService {
 
-    private static final String RELOAD_WARNING = "MCP 配置已写入，但运行时刷新失败";
-
     private final IAiClientToolMcpConfigRepository repository;
-    private final IMcpRuntimeReloadPort runtimeReloadPort;
+    private final McpWriteReloadSupport writeReloadSupport;
 
     public ApplicationResult<Boolean> create(McpConfigCommand command) {
         try {
@@ -36,8 +30,11 @@ public class McpConfigApplicationService {
             LocalDateTime now = LocalDateTime.now();
             config.setCreateTime(now);
             config.setUpdateTime(now);
+            // 与普通目录创建共用同一组默认值，避免两条创建路径对同一个 MCP
+            // 给出不同的 transportType / requestTimeout / status 语义。
+            applyWriteDefaults(config);
             boolean changed = repository.insert(config);
-            return afterWrite(changed);
+            return writeReloadSupport.afterWrite(changed);
         } catch (IllegalArgumentException e) {
             return ApplicationResult.failure(ResponseCode.ILLEGAL_PARAMETER, e.getMessage(), false);
         } catch (Exception e) {
@@ -53,8 +50,9 @@ public class McpConfigApplicationService {
         try {
             AiClientToolMcpConfig config = toConfig(command);
             config.setUpdateTime(LocalDateTime.now());
+            applyWriteDefaults(config);
             boolean changed = repository.updateById(config);
-            return afterWrite(changed);
+            return writeReloadSupport.afterWrite(changed);
         } catch (Exception e) {
             log.error("根据 ID 更新 MCP 客户端配置失败", e);
             return ApplicationResult.failure(ResponseCode.UN_ERROR, ResponseCode.UN_ERROR.getInfo(), false);
@@ -68,8 +66,9 @@ public class McpConfigApplicationService {
         try {
             AiClientToolMcpConfig config = toConfig(command);
             config.setUpdateTime(LocalDateTime.now());
+            applyWriteDefaults(config);
             boolean changed = repository.updateByMcpId(config);
-            return afterWrite(changed);
+            return writeReloadSupport.afterWrite(changed);
         } catch (Exception e) {
             log.error("根据 MCP ID 更新 MCP 客户端配置失败", e);
             return ApplicationResult.failure(ResponseCode.UN_ERROR, ResponseCode.UN_ERROR.getInfo(), false);
@@ -79,7 +78,7 @@ public class McpConfigApplicationService {
     public ApplicationResult<Boolean> deleteById(Long id) {
         try {
             boolean changed = repository.deleteById(id);
-            return afterWrite(changed);
+            return writeReloadSupport.afterWrite(changed);
         } catch (Exception e) {
             log.error("根据 ID 删除 MCP 客户端配置失败", e);
             return ApplicationResult.failure(ResponseCode.UN_ERROR, ResponseCode.UN_ERROR.getInfo(), false);
@@ -89,7 +88,7 @@ public class McpConfigApplicationService {
     public ApplicationResult<Boolean> deleteByMcpId(String mcpId) {
         try {
             boolean changed = repository.deleteByMcpId(mcpId);
-            return afterWrite(changed);
+            return writeReloadSupport.afterWrite(changed);
         } catch (Exception e) {
             log.error("根据 MCP ID 删除 MCP 客户端配置失败", e);
             return ApplicationResult.failure(ResponseCode.UN_ERROR, ResponseCode.UN_ERROR.getInfo(), false);
@@ -171,6 +170,23 @@ public class McpConfigApplicationService {
         }
     }
 
+    /**
+     * 补齐写入默认值，create / update 都必须走。
+     * <p>
+     * Mapper 的 UPDATE 是静态赋值（{@code transport_type = #{transportType}}），
+     * 不补默认值就会把 NULL 写进可空列，之后 buildDescriptor 三个分支全部落空，
+     * 该 MCP 从运行时静默消失。
+     */
+    private static void applyWriteDefaults(AiClientToolMcpConfig config) {
+        if (StringUtils.isBlank(config.getTransportType())) {
+            config.setTransportType(McpDefaults.DEFAULT_TRANSPORT_TYPE);
+        }
+        if (config.getRequestTimeout() == null) {
+            config.setRequestTimeout(McpDefaults.DEFAULT_REQUEST_TIMEOUT);
+        }
+        config.setStatus(McpDefaults.normalizeStatus(config.getStatus()));
+    }
+
     private static AiClientToolMcpConfig toConfig(McpConfigCommand command) {
         return AiClientToolMcpConfig.builder()
                 .id(command.id())
@@ -183,22 +199,6 @@ public class McpConfigApplicationService {
                 .build();
     }
 
-    private ApplicationResult<Boolean> afterWrite(boolean changed) {
-        if (!changed) {
-            return ApplicationResult.success(false);
-        }
-        try {
-            McpRuntimeReloadResult reload = runtimeReloadPort.reloadEnabledMcps();
-            if (reload == null || !reload.success()) {
-                log.warn("{}: {}", RELOAD_WARNING, reload == null ? "无明确结果" : reload.message());
-                return ApplicationResult.success(true, RELOAD_WARNING);
-            }
-        } catch (Exception e) {
-            log.warn("{}", RELOAD_WARNING, e);
-            return ApplicationResult.success(true, RELOAD_WARNING);
-        }
-        return ApplicationResult.success(true);
-    }
 
     private void assertMcpIdAvailable(McpConfigCommand command) {
         if (command != null && StringUtils.isNotBlank(command.mcpId())

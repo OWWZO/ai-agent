@@ -67,7 +67,7 @@ public class McpCatalogApplicationServiceTest {
             InMemoryRepository repository, IMcpRuntimeReloadPort reloadPort) {
         return new McpCatalogApplicationService(
                 repository,
-                reloadPort,
+                new McpWriteReloadSupport(reloadPort),
                 new McpConfigurationApplicationService(repository));
     }
 

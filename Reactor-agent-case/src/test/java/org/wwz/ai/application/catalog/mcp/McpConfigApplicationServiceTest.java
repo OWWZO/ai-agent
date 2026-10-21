@@ -18,7 +18,7 @@ public class McpConfigApplicationServiceTest {
         Repository repository = new Repository();
         repository.existing = AiClientToolMcpConfig.builder().mcpId("mcp-1").build();
         McpConfigApplicationService service = new McpConfigApplicationService(repository,
-                McpRuntimeReloadResult::succeeded);
+                reloadSupport(McpRuntimeReloadResult::succeeded));
 
         ApplicationResult<Boolean> result = service.create(new McpConfigCommand(
                 null, "mcp-1", "MCP", "streamable_http", "{}", 5, 1));
@@ -32,7 +32,7 @@ public class McpConfigApplicationServiceTest {
     public void shouldReportReloadFailureAfterAdminWrite() {
         Repository repository = new Repository();
         McpConfigApplicationService service = new McpConfigApplicationService(repository,
-                () -> McpRuntimeReloadResult.failed("internal client error"));
+                reloadSupport(() -> McpRuntimeReloadResult.failed("internal client error")));
 
         ApplicationResult<Boolean> result = service.create(new McpConfigCommand(
                 null, "mcp-1", "MCP", "streamable_http", "{}", 5, 1));
@@ -40,6 +40,10 @@ public class McpConfigApplicationServiceTest {
         Assert.assertEquals("0000", result.code());
         Assert.assertTrue(result.data());
         Assert.assertEquals("MCP 配置已写入，但运行时刷新失败", result.info());
+    }
+
+    private static McpWriteReloadSupport reloadSupport(IMcpRuntimeReloadPort port) {
+        return new McpWriteReloadSupport(port);
     }
 
     private static final class Repository implements IAiClientToolMcpConfigRepository {

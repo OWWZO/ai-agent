@@ -12,6 +12,7 @@ import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ToolArgs;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 
@@ -86,7 +87,7 @@ public class WebFetchTool implements BaseTool {
         String rawUrl = "";
         String prompt = "";
         try {
-            Map<String, Object> params = coerceMap(input);
+            Map<String, Object> params = ToolArgs.mapStrict(input);
             rawUrl = StringUtils.trimToEmpty(valueAsString(params.get("url")));
             prompt = StringUtils.trimToEmpty(valueAsString(params.get("prompt")));
             if (StringUtils.isBlank(rawUrl)) {
@@ -337,13 +338,6 @@ public class WebFetchTool implements BaseTool {
         return detail;
     }
 
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> coerceMap(Object input) {
-        if (input instanceof Map<?, ?> map) {
-            return (Map<String, Object>) map;
-        }
-        return Map.of();
-    }
 
     private String valueAsString(Object value) {
         return value == null ? null : String.valueOf(value);

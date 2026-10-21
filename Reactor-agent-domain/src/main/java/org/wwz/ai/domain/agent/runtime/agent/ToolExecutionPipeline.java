@@ -1,21 +1,12 @@
 package org.wwz.ai.domain.agent.runtime.agent;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.ledger.model.ArtifactRecordCommand;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
-import org.wwz.ai.domain.agent.ledger.model.ToolInvocationBatchStartRecord;
-import org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord;
-import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
-import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanModeToolPolicy;
-import org.wwz.ai.domain.agent.runtime.printer.Printer;
-import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.canvas.CanvasPublishArgSalvage;
@@ -23,67 +14,59 @@ import org.wwz.ai.domain.agent.runtime.tool.canvas.EmitUiTreeArgSalvage;
 import org.wwz.ai.domain.agent.runtime.askuser.UserInputRequiredException;
 import org.wwz.ai.domain.agent.runtime.desktopcontrol.DesktopControlRequiredException;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalRequiredException;
-import org.wwz.ai.domain.agent.runtime.subagent.BackgroundSubAgentExecutor;
-import org.wwz.ai.domain.agent.runtime.tool.common.AgentDispatchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.mcp.McpToolNames;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.AskUserQuestionTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.RequestDesktopControlTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskToolNames;
 import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolCatalog;
-import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolSource;
 import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolCall;
 
-import java.time.LocalDateTime;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Function;
 
 /**
  * 工具执行管线：预登记 → 执行 → observation 收口 → 账本/产物/SSE 终态。
+ * <p>
+ * 协作方：{@link ToolLedgerRecorder} 写账本，{@link ToolBatchRunner} 管并发与取消，
+ * {@link ToolCallEventEmitter} 装配 SSE 协议，{@link ToolTimingTracker} 记墙钟。
+ * 本类只保留编排顺序与单工具执行语义。
  */
 @Slf4j
 final class ToolExecutionPipeline {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
-    private static final long TOOL_BATCH_CANCEL_POLL_INTERVAL_MILLIS = 100L;
-
     private final BaseAgent agent;
-    private final Map<String, ReplayTiming> runtimeTimings = new ConcurrentHashMap<>();
+    private final ToolTimingTracker timings = new ToolTimingTracker();
+    private final ToolLedgerRecorder ledger;
+    private final ToolBatchRunner batchRunner;
+    private final ToolCallEventEmitter events;
 
     ToolExecutionPipeline(BaseAgent agent) {
         this.agent = agent;
+        this.ledger = new ToolLedgerRecorder(agent, timings);
+        this.batchRunner = new ToolBatchRunner(agent);
+        this.events = new ToolCallEventEmitter(agent, timings, ledger);
     }
 
     ToolExecutionOutcome executeOne(ToolCall command) {
         List<ToolCall> commands = command == null ? List.of() : List.of(command);
-        ensureRuntimeTimings(commands);
-        Map<String, Dispatch> dispatches = resolveAll(commands);
+        timings.start(commands);
+        Map<String, ToolDispatch> dispatches = resolveAll(commands);
         Map<String, Long> toolInvocationIds = ensureToolInvocationIds(dispatches, commands);
         AgentContext context = agent.getContext();
         if (context != null && context.getAgentRunState() != null && !toolInvocationIds.isEmpty()) {
             context.getAgentRunState().bindToolInvocationIds(toolInvocationIds);
         }
         Map<String, Integer> dispatchIndexMapping = buildDispatchIndexMapping(commands);
-        emitToolCallRunningEvents(commands, dispatches, dispatchIndexMapping);
-        Dispatch dispatch = dispatches.get(command == null ? null : command.getId());
+        events.emitRunning(commands, dispatches, dispatchIndexMapping);
+        ToolDispatch dispatch = dispatches.get(command == null ? null : command.getId());
         ToolExecutionOutcome outcome = finalizeOutcome(command, executeInternal(dispatch, command));
-        attachFinishedTiming(command, outcome);
-        finishToolInvocation(command, dispatch, outcome);
-        recordToolArtifacts(command);
-        emitToolCallFinishedEvent(command, dispatch, dispatchIndexMapping.get(command == null ? null : command.getId()), outcome);
-        clearRuntimeTiming(command);
+        settle(command, dispatch, dispatchIndexMapping.get(command == null ? null : command.getId()), outcome);
         return outcome;
     }
 
@@ -93,7 +76,7 @@ final class ToolExecutionPipeline {
             return result;
         }
 
-        ensureRuntimeTimings(commands);
+        timings.start(commands);
 
         AgentContext context = agent.getContext();
         if (context != null && context.isRunCancelled()) {
@@ -102,75 +85,38 @@ final class ToolExecutionPipeline {
 
         String soleYieldViolation = detectSoleYieldToolViolation(commands);
         if (soleYieldViolation != null) {
-            Map<String, Integer> dispatchIndexMapping = buildDispatchIndexMapping(commands);
-            String code;
-            String msg;
-            if ("EXIT_PLAN_MODE".equals(soleYieldViolation)) {
-                code = "EXIT_PLAN_MODE_MUST_BE_SOLE";
-                msg = "ExitPlanMode 必须是本轮唯一 tool call，不能与其他工具并行";
-            } else if ("DESKTOP_CONTROL".equals(soleYieldViolation)) {
-                code = "DESKTOP_CONTROL_MUST_BE_SOLE";
-                msg = "RequestDesktopControl 必须是本轮唯一 tool call，不能与其他工具并行";
-            } else {
-                code = "ASK_USER_QUESTION_MUST_BE_SOLE";
-                msg = "AskUserQuestion 必须是本轮唯一 tool call，不能与其他工具并行";
-            }
-            for (ToolCall command : commands) {
-                if (command == null || StringUtils.isBlank(command.getId())) {
-                    continue;
-                }
-                completeToolOutcome(
-                        result,
-                        command,
-                        Map.of(),
-                        toolFailureOutcome(msg, code),
-                        dispatchIndexMapping,
-                        true);
-            }
-            Map<String, ToolExecutionOutcome> ordered = new LinkedHashMap<>(commands.size());
-            for (ToolCall command : commands) {
-                if (command == null || StringUtils.isBlank(command.getId())) {
-                    continue;
-                }
-                ordered.put(command.getId(), result.get(command.getId()));
-            }
-            return ordered;
+            return rejectMixedYieldBatch(commands, soleYieldViolation);
         }
 
         Map<String, Integer> dispatchIndexMapping = buildDispatchIndexMapping(commands);
-        Map<String, Dispatch> dispatches = resolveAll(commands);
+        Map<String, ToolDispatch> dispatches = resolveAll(commands);
         Map<String, Long> toolInvocationIds = ensureToolInvocationIds(dispatches, commands);
         if (context != null && context.getAgentRunState() != null) {
             context.getAgentRunState().bindToolInvocationIds(toolInvocationIds);
         }
-        emitToolCallRunningEvents(commands, dispatches, dispatchIndexMapping);
+        events.emitRunning(commands, dispatches, dispatchIndexMapping);
 
         AtomicReference<RuntimeException> yieldSignal = new AtomicReference<>();
         List<CompletableFuture<Void>> futures = new ArrayList<>(commands.size());
         List<CompletableFuture<?>> executionFutures = new ArrayList<>(commands.size());
         for (ToolCall toolCall : commands) {
-            Executor executor = resolveExecutorForTool(toolCall);
-            String scene = isAgentDispatchTool(toolCall) ? "subAgentBatch" : "toolBatch";
+            Executor executor = batchRunner.executorFor(toolCall);
+            String scene = batchRunner.isAgentDispatchTool(toolCall) ? "subAgentBatch" : "toolBatch";
             CompletableFuture<ToolExecutionOutcome> executionFuture = AgentExecutorSupport
                     .supplyAsync(executor, scene, context,
                             () -> finalizeOutcome(toolCall, executeInternal(dispatches.get(toolCall.getId()), toolCall)));
             executionFutures.add(executionFuture);
             futures.add(executionFuture.handle((outcome, error) -> {
-                if (error != null && unwrapExecutionError(error) instanceof CancellationException) {
+                if (ToolBatchRunner.isCancellation(error)) {
                     return null;
                 }
                 if (error != null) {
-                    Throwable root = unwrapExecutionError(error);
-                    if (root instanceof UserInputRequiredException userInputRequired) {
-                        yieldSignal.compareAndSet(null, userInputRequired);
-                        return null;
-                    }
-                    if (root instanceof DesktopControlRequiredException desktopControlRequired) {
-                        yieldSignal.compareAndSet(null, desktopControlRequired);
-                        return null;
-                    }
-                    if (root instanceof PlanApprovalRequiredException planApprovalRequired) {
-                        yieldSignal.compareAndSet(null, planApprovalRequired);
+                    Throwable root = ToolBatchRunner.unwrap(error);
+                    // 让出类工具的异常不是失败，而是本轮执行要中断的信号，交给上层收口。
+                    if (root instanceof UserInputRequiredException
+                            || root instanceof DesktopControlRequiredException
+                            || root instanceof PlanApprovalRequiredException) {
+                        yieldSignal.compareAndSet(null, (RuntimeException) root);
                         return null;
                     }
                     String msg = root.getMessage() == null
@@ -186,7 +132,7 @@ final class ToolExecutionPipeline {
             }));
         }
 
-        awaitToolBatch(futures, executionFutures, commands);
+        batchRunner.await(futures, executionFutures, commands);
         if (yieldSignal.get() != null) {
             throw yieldSignal.get();
         }
@@ -205,14 +151,7 @@ final class ToolExecutionPipeline {
                     dispatchIndexMapping,
                     false);
         }
-
-        Map<String, ToolExecutionOutcome> ordered = new LinkedHashMap<>(commands.size());
-        for (ToolCall command : commands) {
-            if (command != null && StringUtils.isNotBlank(command.getId())) {
-                ordered.put(command.getId(), result.get(command.getId()));
-            }
-        }
-        return ordered;
+        return orderedOutcomes(commands, result);
     }
 
     Map<String, Object> parseToolParam(ToolCall command) {
@@ -242,88 +181,21 @@ final class ToolExecutionPipeline {
         return ensureToolInvocationIds(resolveAll(commands), commands);
     }
 
-    private Map<String, Long> ensureToolInvocationIds(Map<String, Dispatch> dispatches, List<ToolCall> commands) {
-        AgentContext context = agent.getContext();
-        if (context == null || context.getAgentRunState() == null || commands == null || commands.isEmpty()) {
-            return Map.of();
-        }
-        Map<String, Long> existing = new LinkedHashMap<>();
-        List<ToolCall> missingCommands = new ArrayList<>();
-        for (ToolCall command : commands) {
-            if (command == null || StringUtils.isBlank(command.getId())) {
-                continue;
-            }
-            Long existingInvocationId = context.getAgentRunState().resolveToolInvocationId(command.getId());
-            if (existingInvocationId != null) {
-                existing.put(command.getId(), existingInvocationId);
-            } else {
-                missingCommands.add(command);
-            }
-        }
-        if (missingCommands.isEmpty()) {
-            return existing;
-        }
-        Map<String, Long> created = preRegisterToolInvocations(missingCommands, dispatches);
-        if (existing.isEmpty()) {
-            return created;
-        }
-        if (created.isEmpty()) {
-            return existing;
-        }
-        existing.putAll(created);
-        return existing;
+    private Map<String, Long> ensureToolInvocationIds(Map<String, ToolDispatch> dispatches, List<ToolCall> commands) {
+        return ledger.ensureIds(dispatches, commands);
     }
 
     Map<String, Long> preRegisterToolInvocations(List<ToolCall> commands) {
-        return preRegisterToolInvocations(commands, resolveAll(commands));
+        return ledger.preRegister(commands, resolveAll(commands));
     }
 
-    private Map<String, Long> preRegisterToolInvocations(List<ToolCall> commands, Map<String, Dispatch> dispatches) {
-        ensureRuntimeTimings(commands);
-        AgentContext context = agent.getContext();
-        if (context == null || !context.hasActiveLedgerRun() || context.getAgentRunState() == null) {
-            return Map.of();
-        }
-        Long llmInvocationId = context.getAgentRunState().getCurrentLlmInvocationId();
-        if (llmInvocationId == null) {
-            return Map.of();
-        }
-        List<ToolInvocationBatchStartRecord.Item> items = new ArrayList<>(commands.size());
-        int dispatchIndex = 1;
-        for (ToolCall command : commands) {
-            if (command == null || command.getFunction() == null || StringUtils.isBlank(command.getFunction().getName())) {
-                continue;
-            }
-            Dispatch dispatch = dispatches == null ? null : dispatches.get(command.getId());
-            String toolName = dispatch == null ? command.getFunction().getName() : dispatch.toolName;
-            items.add(ToolInvocationBatchStartRecord.Item.builder()
-                    .toolCallId(command.getId())
-                    .parentToolCallId(context.getParentToolUseId())
-                    .subAgentId(context.getSubAgentId())
-                    .subAgentType(context.getSubAgentType())
-                    .subAgentDescription(context.getSubAgentDescription())
-                    .dispatchIndex(dispatchIndex++)
-                    .toolName(toolName)
-                    .toolProvider(resolveToolProvider(toolName))
-                    .inputJson(dispatch == null ? normalizeToolPayload(command.getFunction().getArguments())
-                            : dispatch.inputJson)
-                    .startedAt(resolveRuntimeTiming(command).getStartedAt())
-                    .build());
-        }
-        if (items.isEmpty()) {
-            return Map.of();
-        }
-        return context.getExecutionRecorder().createToolInvocations(ToolInvocationBatchStartRecord.builder()
-                .runId(context.getAgentRunState().getRunId())
-                .requestId(context.getRequestId())
-                .llmInvocationId(llmInvocationId)
-                .agentName(agent.getName())
-                .stepNo(agent.getCurrentStep())
-                .items(items)
-                .build());
+    void awaitToolBatch(List<CompletableFuture<Void>> futures,
+                        List<CompletableFuture<?>> executionFutures,
+                        List<ToolCall> commands) {
+        batchRunner.await(futures, executionFutures, commands);
     }
 
-    private ToolExecutionOutcome executeInternal(Dispatch dispatch, ToolCall command) {
+    private ToolExecutionOutcome executeInternal(ToolDispatch dispatch, ToolCall command) {
         AgentContext context = agent.getContext();
         if (command == null || command.getFunction() == null
                 || StringUtils.isBlank(command.getFunction().getName())) {
@@ -417,7 +289,9 @@ final class ToolExecutionPipeline {
     }
 
     /**
-     * @return "ASK_USER" / "EXIT_PLAN_MODE" when a yield tool is mixed with others; otherwise null
+     * 让出类工具必须独占一轮，否则模型会把用户答复和其他工具的结果混在一起。
+     *
+     * @return "ASK_USER" / "EXIT_PLAN_MODE" / "DESKTOP_CONTROL"；未违规返回 null
      */
     private String detectSoleYieldToolViolation(List<ToolCall> commands) {
         boolean hasAsk = false;
@@ -452,78 +326,34 @@ final class ToolExecutionPipeline {
         return null;
     }
 
-    void awaitToolBatch(List<CompletableFuture<Void>> futures,
-                       List<CompletableFuture<?>> executionFutures,
-                       List<ToolCall> commands) {
-        if (futures == null || futures.isEmpty()) {
-            return;
+    private Map<String, ToolExecutionOutcome> rejectMixedYieldBatch(List<ToolCall> commands, String violation) {
+        String code;
+        String msg;
+        if ("EXIT_PLAN_MODE".equals(violation)) {
+            code = "EXIT_PLAN_MODE_MUST_BE_SOLE";
+            msg = "ExitPlanMode 必须是本轮唯一 tool call，不能与其他工具并行";
+        } else if ("DESKTOP_CONTROL".equals(violation)) {
+            code = "DESKTOP_CONTROL_MUST_BE_SOLE";
+            msg = "RequestDesktopControl 必须是本轮唯一 tool call，不能与其他工具并行";
+        } else {
+            code = "ASK_USER_QUESTION_MUST_BE_SOLE";
+            msg = "AskUserQuestion 必须是本轮唯一 tool call，不能与其他工具并行";
         }
-        CompletableFuture<Void> all = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
-        long timeoutSeconds = containsTaskOutput(commands) ? 0L : resolveToolBatchTimeoutSeconds();
-        AgentContext context = agent.getContext();
-        long deadlineNanos = timeoutSeconds > 0L
-                ? System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
-                : Long.MAX_VALUE;
-        try {
-            while (true) {
-                if (context != null && context.isRunCancelled()) {
-                    log.info("{} tool batch cancelled, cancelling unfinished tools",
-                            context.getRequestId());
-                    cancelToolExecutions(executionFutures);
-                    return;
-                }
-
-                long waitNanos = TimeUnit.MILLISECONDS.toNanos(TOOL_BATCH_CANCEL_POLL_INTERVAL_MILLIS);
-                if (deadlineNanos != Long.MAX_VALUE) {
-                    long remainingNanos = deadlineNanos - System.nanoTime();
-                    if (remainingNanos <= 0L) {
-                        log.error("{} tool batch timed out after {}s",
-                                context == null ? "-" : context.getRequestId(), timeoutSeconds);
-                        cancelToolExecutions(executionFutures);
-                        return;
-                    }
-                    waitNanos = Math.min(waitNanos, remainingNanos);
-                }
-
-                try {
-                    all.get(waitNanos, TimeUnit.NANOSECONDS);
-                    return;
-                } catch (TimeoutException ignored) {
-                    // Recheck cancellation and the original batch deadline.
-                }
+        Map<String, Integer> dispatchIndexMapping = buildDispatchIndexMapping(commands);
+        Map<String, ToolExecutionOutcome> collected = new ConcurrentHashMap<>();
+        for (ToolCall command : commands) {
+            if (command == null || StringUtils.isBlank(command.getId())) {
+                continue;
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.warn("{} tool batch interrupted, cancelling unfinished tools",
-                    context == null ? "-" : context.getRequestId());
-            cancelToolExecutions(executionFutures);
-        } catch (ExecutionException e) {
-            Throwable root = unwrapExecutionError(e.getCause());
-            if (root instanceof TimeoutException) {
-                log.error("{} tool batch timed out after {}s",
-                        context == null ? "-" : context.getRequestId(), timeoutSeconds);
-                cancelToolExecutions(executionFutures);
-            } else {
-                log.error("{} tool batch join failed",
-                        context == null ? "-" : context.getRequestId(), root);
-            }
+            completeToolOutcome(collected, command, Map.of(),
+                    toolFailureOutcome(msg, code), dispatchIndexMapping, true);
         }
-    }
-
-    private void cancelToolExecutions(List<CompletableFuture<?>> executionFutures) {
-        if (executionFutures == null) {
-            return;
-        }
-        for (CompletableFuture<?> executionFuture : executionFutures) {
-            if (executionFuture != null && !executionFuture.isDone()) {
-                executionFuture.cancel(true);
-            }
-        }
+        return orderedOutcomes(commands, collected);
     }
 
     private void completeToolOutcome(Map<String, ToolExecutionOutcome> result,
                                      ToolCall toolCall,
-                                     Map<String, Dispatch> dispatches,
+                                     Map<String, ToolDispatch> dispatches,
                                      ToolExecutionOutcome outcome,
                                      Map<String, Integer> dispatchIndexMapping,
                                      boolean recordArtifacts) {
@@ -534,14 +364,38 @@ final class ToolExecutionPipeline {
             return;
         }
         result.put(toolCall.getId(), outcome);
-        Dispatch dispatch = dispatches == null ? null : dispatches.get(toolCall.getId());
-        attachFinishedTiming(toolCall, outcome);
-        finishToolInvocation(toolCall, dispatch, outcome);
+        ToolDispatch dispatch = dispatches == null ? null : dispatches.get(toolCall.getId());
+        settle(toolCall, dispatch, dispatchIndexMapping.get(toolCall.getId()), outcome, recordArtifacts);
+    }
+
+    /** 单次工具调用的收口顺序：计时 → 账本终态 → 产物 → SSE 终态 → 释放计时。 */
+    private void settle(ToolCall command, ToolDispatch dispatch, Integer dispatchIndex, ToolExecutionOutcome outcome) {
+        settle(command, dispatch, dispatchIndex, outcome, true);
+    }
+
+    private void settle(ToolCall command,
+                        ToolDispatch dispatch,
+                        Integer dispatchIndex,
+                        ToolExecutionOutcome outcome,
+                        boolean recordArtifacts) {
+        timings.attachFinished(command, outcome);
+        ledger.finish(command, dispatch, outcome);
         if (recordArtifacts) {
-            recordToolArtifacts(toolCall);
+            ledger.recordArtifacts(command);
         }
-        emitToolCallFinishedEvent(toolCall, dispatch, dispatchIndexMapping.get(toolCall.getId()), outcome);
-        clearRuntimeTiming(toolCall);
+        events.emitFinished(command, dispatch, dispatchIndex, outcome);
+        timings.clear(command);
+    }
+
+    private static Map<String, ToolExecutionOutcome> orderedOutcomes(List<ToolCall> commands,
+                                                                     Map<String, ToolExecutionOutcome> result) {
+        Map<String, ToolExecutionOutcome> ordered = new LinkedHashMap<>(commands.size());
+        for (ToolCall command : commands) {
+            if (command != null && StringUtils.isNotBlank(command.getId())) {
+                ordered.put(command.getId(), result.get(command.getId()));
+            }
+        }
+        return ordered;
     }
 
     private static ToolExecutionOutcome toolFailureOutcome(String message, String errorMsg) {
@@ -552,7 +406,7 @@ final class ToolExecutionPipeline {
         return toolFailureOutcome(message, "USER_STOP");
     }
 
-    private static boolean isUserStop(ToolExecutionOutcome outcome) {
+    static boolean isUserStop(ToolExecutionOutcome outcome) {
         return outcome != null && "USER_STOP".equals(outcome.getErrorMsg());
     }
 
@@ -567,8 +421,8 @@ final class ToolExecutionPipeline {
     }
 
     private Map<String, ToolExecutionOutcome> finishCancelledBeforeStart(List<ToolCall> commands) {
-        ensureRuntimeTimings(commands);
-        Map<String, Dispatch> dispatches = resolveAll(commands);
+        timings.start(commands);
+        Map<String, ToolDispatch> dispatches = resolveAll(commands);
         Map<String, Long> toolInvocationIds = ensureToolInvocationIds(dispatches, commands);
         AgentContext context = agent.getContext();
         if (context != null && context.getAgentRunState() != null) {
@@ -580,57 +434,7 @@ final class ToolExecutionPipeline {
         for (ToolCall command : commands) {
             completeToolOutcome(result, command, dispatches, cancelled, dispatchIndexMapping, false);
         }
-        Map<String, ToolExecutionOutcome> ordered = new LinkedHashMap<>(commands.size());
-        for (ToolCall command : commands) {
-            if (command != null && StringUtils.isNotBlank(command.getId())) {
-                ordered.put(command.getId(), result.get(command.getId()));
-            }
-        }
-        return ordered;
-    }
-
-    private static Throwable unwrapExecutionError(Throwable error) {
-        Throwable current = error;
-        while (current instanceof CompletionException && current.getCause() != null) {
-            current = current.getCause();
-        }
-        return current == null ? error : current;
-    }
-
-    private boolean isAgentDispatchTool(ToolCall toolCall) {
-        return toolCall != null
-                && toolCall.getFunction() != null
-                && AgentDispatchTool.NAME.equals(toolCall.getFunction().getName());
-    }
-
-    private Executor resolveExecutorForTool(ToolCall toolCall) {
-        if (isAgentDispatchTool(toolCall)) {
-            return resolveExecutor(ReactorRuntimeDependencies::requireTaskExecutor);
-        }
-        return resolveExecutor(ReactorRuntimeDependencies::requireToolExecutor);
-    }
-
-    private static boolean containsTaskOutput(List<ToolCall> commands) {
-        if (commands == null) {
-            return false;
-        }
-        for (ToolCall command : commands) {
-            if (command == null || command.getFunction() == null) {
-                continue;
-            }
-            if (TaskToolNames.TASK_OUTPUT.equals(command.getFunction().getName())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private long resolveToolBatchTimeoutSeconds() {
-        AgentContext context = agent.getContext();
-        if (context == null || context.getRuntimeDependencies() == null) {
-            return 600L;
-        }
-        return context.getRuntimeDependencies().resolveToolBatchTimeoutSeconds();
+        return orderedOutcomes(commands, result);
     }
 
     private Map<String, Integer> buildDispatchIndexMapping(List<ToolCall> commands) {
@@ -648,106 +452,10 @@ final class ToolExecutionPipeline {
         return dispatchIndexMapping;
     }
 
-    private void emitToolCallRunningEvents(List<ToolCall> commands,
-                                           Map<String, Dispatch> dispatches,
-                                           Map<String, Integer> dispatchIndexMapping) {
-        if (commands == null || commands.isEmpty()) {
-            return;
-        }
-        for (ToolCall command : commands) {
-            Dispatch dispatch = dispatches == null ? null : dispatches.get(command == null ? null : command.getId());
-            emitToolCallEvent(command, dispatch, dispatchIndexMapping.get(command == null ? null : command.getId()),
-                    "running", false, null);
-        }
-    }
-
-    private void emitToolCallFinishedEvent(ToolCall command,
-                                           Dispatch dispatch,
-                                           Integer dispatchIndex,
-                                           ToolExecutionOutcome outcome) {
-        String status = outcome != null && outcome.isSuccess()
-                ? "success"
-                : isUserStop(outcome) ? "cancelled" : "failed";
-        emitToolCallEvent(command, dispatch, dispatchIndex, status, true, outcome);
-    }
-
-    private void emitToolCallEvent(ToolCall command,
-                                   Dispatch dispatch,
-                                   Integer dispatchIndex,
-                                   String status,
-                                   boolean isFinal,
-                                   ToolExecutionOutcome outcome) {
-        Printer printer = agent.getPrinter();
-        if (printer == null || command == null || command.getFunction() == null) {
-            return;
-        }
-        String toolCallId = command.getId();
-        String toolName = dispatch == null ? command.getFunction().getName() : dispatch.toolName;
-        if (StringUtils.isBlank(toolCallId) || StringUtils.isBlank(toolName)) {
-            return;
-        }
-
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("messageType", "tool_call");
-        payload.put("status", status);
-        payload.put("toolName", toolName);
-        payload.put("toolCallId", toolCallId);
-        payload.put("streamToolKey", toolCallId);
-        payload.put("toolProvider", resolveToolProvider(toolName));
-        if (dispatchIndex != null) {
-            payload.put("dispatchIndex", dispatchIndex);
-        }
-
-        AgentContext context = agent.getContext();
-        Long toolInvocationId = context == null || context.getAgentRunState() == null
-                ? null
-                : context.getAgentRunState().resolveToolInvocationId(toolCallId);
-        if (toolInvocationId != null) {
-            payload.put("toolInvocationId", String.valueOf(toolInvocationId));
-        }
-
-        // 解包后的入参给前端卡片；Memory 仍保留模型发出的 ToolCall。
-        String rawArguments = dispatch == null ? command.getFunction().getArguments() : dispatch.inputJson;
-        if (StringUtils.isNotBlank(rawArguments)) {
-            payload.put("argumentsText", rawArguments);
-            payload.put("argumentsRaw", rawArguments);
-        }
-
-        Object input = parseToolCallInput(rawArguments);
-        if (input != null) {
-            payload.put("input", input);
-        }
-
-        payload.put("summary", buildToolCallSummary(toolName, status));
-        payload.put("isFinal", isFinal);
-
-        ReplayTiming timing = outcome == null
-                ? resolveRuntimeTiming(command)
-                : outcome.getTiming();
-        if (timing != null) {
-            payload.put("timing", snapshotTiming(timing));
-        }
-
-        if (outcome != null && StringUtils.isNotBlank(outcome.getErrorMsg())) {
-            payload.put("errorMsg", outcome.getErrorMsg());
-        }
-
-        printer.send(toolCallId, "tool_call", payload, isFinal);
-    }
-
-    private Object parseToolCallInput(String arguments) {
-        String normalizedPayload = normalizeToolPayload(arguments);
-        try {
-            return JSON.readValue(normalizedPayload, Object.class);
-        } catch (Exception ignore) {
-            return null;
-        }
-    }
-
     private Object parseToolArguments(String toolName, String arguments) throws Exception {
-        String normalizedPayload = normalizeToolPayload(arguments);
+        String normalizedPayload = ToolCallJson.normalize(arguments);
         try {
-            return JSON.readValue(normalizedPayload, Object.class);
+            return ToolCallJson.MAPPER.readValue(normalizedPayload, Object.class);
         } catch (Exception parseError) {
             Map<String, Object> salvaged = trySalvageToolArguments(toolName, normalizedPayload, parseError);
             if (salvaged != null) {
@@ -780,120 +488,6 @@ final class ToolExecutionPipeline {
             }
         }
         return null;
-    }
-
-    private String buildToolCallSummary(String toolName, String status) {
-        if ("success".equals(status)) {
-            return toolName + " 调用完成";
-        }
-        if ("cancelled".equals(status)) {
-            return toolName + " 已取消";
-        }
-        if ("failed".equals(status)) {
-            return toolName + " 调用失败";
-        }
-        return "正在调用 " + toolName;
-    }
-
-    private void finishToolInvocation(ToolCall command, Dispatch dispatch, ToolExecutionOutcome outcome) {
-        AgentContext context = agent.getContext();
-        if (context == null || !context.hasActiveLedgerRun() || context.getAgentRunState() == null || command == null) {
-            return;
-        }
-        Long toolInvocationId = context.getAgentRunState().resolveToolInvocationId(command.getId());
-        if (toolInvocationId == null) {
-            return;
-        }
-        String toolName = dispatch == null || command.getFunction() == null
-                ? (command.getFunction() == null ? null : command.getFunction().getName())
-                : dispatch.toolName;
-        ReplayTiming timing = outcome == null ? resolveRuntimeTiming(command) : outcome.getTiming();
-        LocalDateTime finishedAt = timing == null || timing.getFinishedAt() == null
-                ? LocalDateTime.now()
-                : timing.getFinishedAt();
-        String observation = outcome == null ? null : StringUtils.defaultIfBlank(
-                outcome.getLedgerObservation(), outcome.getLlmObservation());
-        // 后台 ACK 不是工具完成：子 Agent 还在后台跑。此时必须保持 status=RUNNING、
-        // finished_at=null，否则 settle（persistLedgerSettlement）的终态更新会被
-        // updateToolInvocationFinish 的守卫（status=0 AND finished_at IS NULL）挡掉，
-        // 结算 observation 静默丢失，历史回放把陈旧 ACK 当"运行中"展示。
-        boolean backgroundAck =
-                (AgentDispatchTool.NAME.equals(toolName) || TaskToolNames.SEND_MESSAGE.equals(toolName))
-                        && BackgroundSubAgentExecutor.isBackgroundAckObservation(observation);
-        int ledgerStatus = backgroundAck ? ExecutionLedgerConstants.STATUS_RUNNING : ledgerStatus(outcome);
-        LocalDateTime ledgerFinishedAt = backgroundAck ? null : finishedAt;
-        context.getExecutionRecorder().finishToolInvocation(ToolInvocationFinishRecord.builder()
-                .toolInvocationId(toolInvocationId)
-                .runId(context.getAgentRunState().getRunId())
-                .requestId(context.getRequestId())
-                .sessionId(context.getSessionId())
-                .toolCallId(command.getId())
-                .toolName(toolName)
-                .status(ledgerStatus)
-                    .llmObservation(observation)
-                .structuredOutput(outcome == null ? null : outcome.getStructuredOutput())
-                .errorMsg(outcome == null ? null : outcome.getErrorMsg())
-                .finishedAt(ledgerFinishedAt)
-                .build());
-        if (command.getFunction() != null
-                && (AgentDispatchTool.NAME.equals(command.getFunction().getName())
-                || TaskToolNames.SEND_MESSAGE.equals(command.getFunction().getName()))) {
-            BackgroundSubAgentExecutor.settleLedgerIfTerminal(
-                    context,
-                    command.getId(),
-                    command.getFunction().getName(),
-                    outcome == null ? null : outcome.getLlmObservation());
-        }
-    }
-
-    private void recordToolArtifacts(ToolCall command) {
-        AgentContext context = agent.getContext();
-        if (context == null || !context.hasActiveLedgerRun() || context.getAgentRunState() == null || command == null) {
-            return;
-        }
-        Long toolInvocationId = context.getAgentRunState().resolveToolInvocationId(command.getId());
-        if (toolInvocationId == null) {
-            return;
-        }
-        List<ArtifactRecordCommand> artifactCommands = new ArrayList<>();
-        for (var binding : context.getArtifactBindingsByToolCallId(command.getId())) {
-            if (binding == null || binding.getSource() == null || binding.getFile() == null) {
-                continue;
-            }
-            File file = binding.getFile();
-            artifactCommands.add(ArtifactRecordCommand.builder()
-                    .runId(context.getAgentRunState().getRunId())
-                    .requestId(context.getRequestId())
-                    .toolInvocationId(toolInvocationId)
-                    .toolCallId(command.getId())
-                    .artifactRole(ExecutionLedgerConstants.ARTIFACT_ROLE_OUTPUT)
-                    .visibility(binding.isInternalFile()
-                            ? ExecutionLedgerConstants.VISIBILITY_INTERNAL
-                            : ExecutionLedgerConstants.VISIBILITY_VISIBLE)
-                    .sourceType(ExecutionLedgerConstants.SOURCE_TYPE_TOOL_OUTPUT)
-                    .sourceName(binding.getSource().getToolName())
-                    .fileName(file.getFileName())
-                    .storageKey(resolveStorageKey(file))
-                    .downloadUrl(file.getOssUrl())
-                    .previewUrl(file.getDomainUrl())
-                    .fileSize(file.getFileSize() == null ? null : file.getFileSize().longValue())
-                    .metadataJson(buildArtifactMetadata(file))
-                    .build());
-        }
-        if (!artifactCommands.isEmpty()) {
-            context.getExecutionRecorder().recordArtifacts(artifactCommands);
-        }
-    }
-
-    private String normalizeToolPayload(String payload) {
-        if (StringUtils.isBlank(payload)) {
-            return "{}";
-        }
-        try {
-            return JSON.readTree(payload).toString();
-        } catch (Exception ignore) {
-            return "{}";
-        }
     }
 
     private ToolResultPayload normalizeToolResultPayload(Object rawResult) {
@@ -940,78 +534,6 @@ final class ToolExecutionPipeline {
                 .build();
     }
 
-    private String resolveToolProvider(String toolName) {
-        ToolCollection availableTools = agent.getAvailableTools();
-        if (availableTools == null || StringUtils.isBlank(toolName)) {
-            return ExecutionLedgerConstants.TOOL_PROVIDER_LOCAL;
-        }
-        if (availableTools.getMcpToolMap() != null && availableTools.getMcpToolMap().containsKey(toolName)) {
-            return ExecutionLedgerConstants.TOOL_PROVIDER_MCP;
-        }
-        DeferredToolCatalog catalog = availableTools.getDeferredToolCatalog();
-        if (catalog != null) {
-            var entry = catalog.get(toolName);
-            if (entry != null && entry.getSource() == DeferredToolSource.MCP) {
-                return ExecutionLedgerConstants.TOOL_PROVIDER_MCP;
-            }
-        }
-        return ExecutionLedgerConstants.TOOL_PROVIDER_LOCAL;
-    }
-
-    private Executor resolveExecutor(Function<ReactorRuntimeDependencies, Executor> picker) {
-        AgentContext context = agent.getContext();
-        if (context == null || context.getRuntimeDependencies() == null) {
-            return Runnable::run;
-        }
-        return picker.apply(context.getRuntimeDependencies());
-    }
-
-    private String resolveStorageKey(File file) {
-        if (file == null) {
-            return "";
-        }
-        if (StringUtils.isNotBlank(file.getOriginOssUrl())) {
-            return file.getOriginOssUrl();
-        }
-        if (StringUtils.isNotBlank(file.getOssUrl())) {
-            return file.getOssUrl();
-        }
-        if (StringUtils.isNotBlank(file.getOriginDomainUrl())) {
-            return file.getOriginDomainUrl();
-        }
-        if (StringUtils.isNotBlank(file.getDomainUrl())) {
-            return file.getDomainUrl();
-        }
-        return StringUtils.defaultString(file.getFileName());
-    }
-
-    private String buildArtifactMetadata(File file) {
-        if (file == null) {
-            return null;
-        }
-        Map<String, Object> metadata = new LinkedHashMap<>();
-        if (StringUtils.isNotBlank(file.getDescription())) {
-            metadata.put("description", file.getDescription());
-        }
-        if (StringUtils.isNotBlank(file.getOriginFileName())) {
-            metadata.put("originFileName", file.getOriginFileName());
-        }
-        if (StringUtils.isNotBlank(file.getRelativePath())) {
-            metadata.put("relativePath", file.getRelativePath());
-        }
-        if (StringUtils.isNotBlank(file.getOriginDomainUrl())) {
-            metadata.put("originDomainUrl", file.getOriginDomainUrl());
-        }
-        if (metadata.isEmpty()) {
-            return null;
-        }
-        try {
-            return JSON.writeValueAsString(metadata);
-        } catch (Exception ignore) {
-            return null;
-        }
-    }
-
     private ToolExecutionOutcome finalizeOutcome(ToolCall command, ToolExecutionOutcome outcome) {
         if (outcome == null) {
             return null;
@@ -1020,64 +542,8 @@ final class ToolExecutionPipeline {
         return outcome.setLlmObservation(agent.buildFinalLlmObservation(outcome.getLlmObservation(), toolCallId));
     }
 
-    private void ensureRuntimeTimings(List<ToolCall> commands) {
-        if (commands == null) {
-            return;
-        }
-        for (ToolCall command : commands) {
-            if (command == null || StringUtils.isBlank(command.getId())) {
-                continue;
-            }
-            runtimeTimings.computeIfAbsent(command.getId(), ignored -> ReplayTiming.builder()
-                    .startedAt(LocalDateTime.now())
-                    .source(ReplayTiming.SOURCE_RUNTIME)
-                    .build());
-        }
-    }
-
-    private ReplayTiming resolveRuntimeTiming(ToolCall command) {
-        if (command == null || StringUtils.isBlank(command.getId())) {
-            return null;
-        }
-        ensureRuntimeTimings(List.of(command));
-        return runtimeTimings.get(command.getId());
-    }
-
-    private void attachFinishedTiming(ToolCall command, ToolExecutionOutcome outcome) {
-        if (outcome == null) {
-            return;
-        }
-        ReplayTiming timing = resolveRuntimeTiming(command);
-        if (timing == null) {
-            return;
-        }
-        LocalDateTime finishedAt = LocalDateTime.now();
-        timing.setFinishedAt(finishedAt);
-        timing.setDurationMs(Math.max(0L, Duration.between(timing.getStartedAt(), finishedAt).toMillis()));
-        timing.setSource(ReplayTiming.SOURCE_RUNTIME);
-        outcome.setTiming(timing);
-    }
-
-    private void clearRuntimeTiming(ToolCall command) {
-        if (command != null && StringUtils.isNotBlank(command.getId())) {
-            runtimeTimings.remove(command.getId());
-        }
-    }
-
-    private ReplayTiming snapshotTiming(ReplayTiming timing) {
-        if (timing == null) {
-            return null;
-        }
-        return ReplayTiming.builder()
-                .startedAt(timing.getStartedAt())
-                .finishedAt(timing.getFinishedAt())
-                .durationMs(timing.getDurationMs())
-                .source(timing.getSource())
-                .build();
-    }
-
-    private Map<String, Dispatch> resolveAll(List<ToolCall> commands) {
-        Map<String, Dispatch> resolved = new LinkedHashMap<>();
+    private Map<String, ToolDispatch> resolveAll(List<ToolCall> commands) {
+        Map<String, ToolDispatch> resolved = new LinkedHashMap<>();
         if (commands == null) {
             return resolved;
         }
@@ -1090,10 +556,10 @@ final class ToolExecutionPipeline {
         return resolved;
     }
 
-    private Dispatch resolveDispatch(ToolCall command) {
+    private ToolDispatch resolveDispatch(ToolCall command) {
         if (command == null || command.getFunction() == null
                 || StringUtils.isBlank(command.getFunction().getName())) {
-            return new Dispatch(null, null, false, "{}", null);
+            return new ToolDispatch(null, null, false, "{}", null);
         }
         String originalName = command.getFunction().getName();
         String originalArgs = command.getFunction().getArguments();
@@ -1104,16 +570,16 @@ final class ToolExecutionPipeline {
             if (catalog != null && catalog.contains(originalName)) {
                 String message = "Tool " + originalName
                         + " is deferred. Invoke it via ToolCall.";
-                return new Dispatch(originalName, null, true, normalizeToolPayload(originalArgs),
+                return new ToolDispatch(originalName, null, true, ToolCallJson.normalize(originalArgs),
                         ToolExecutionOutcome.failure(message, message, null, "DEFERRED_TOOL_DIRECT_CALL"));
             }
-            return new Dispatch(originalName, null, false, normalizeToolPayload(originalArgs), null);
+            return new ToolDispatch(originalName, null, false, ToolCallJson.normalize(originalArgs), null);
         }
         Object parsed;
         try {
             parsed = parseToolArguments(originalName, originalArgs);
         } catch (Exception e) {
-            return new Dispatch(originalName, Map.of(), true, normalizeToolPayload(originalArgs),
+            return new ToolDispatch(originalName, Map.of(), true, ToolCallJson.normalize(originalArgs),
                     ToolExecutionOutcome.failure(
                             "Error: Invalid function call format",
                             "Error: Invalid function call format",
@@ -1131,36 +597,8 @@ final class ToolExecutionPipeline {
                     : ToolExecutionOutcome.success(toolResult, observation, payload.getStructuredOutput(),
                     payload.getBase64Image(), payload.getImageMimeType())
                     .setLedgerObservation(payload.getLedgerObservation());
-            return new Dispatch(originalName, parsed, true, normalizeToolPayload(originalArgs), early);
+            return new ToolDispatch(originalName, parsed, true, ToolCallJson.normalize(originalArgs), early);
         }
-        return new Dispatch(result.name(), result.arguments(), true, toJson(result.arguments()), null);
-    }
-
-    private String toJson(Object value) {
-        try {
-            return JSON.writeValueAsString(value);
-        } catch (Exception ignored) {
-            return "{}";
-        }
-    }
-
-    private static final class Dispatch {
-        private final String toolName;
-        private final Object args;
-        private final boolean argsReady;
-        private final String inputJson;
-        private final ToolExecutionOutcome earlyOutcome;
-
-        private Dispatch(String toolName,
-                         Object args,
-                         boolean argsReady,
-                         String inputJson,
-                         ToolExecutionOutcome earlyOutcome) {
-            this.toolName = toolName;
-            this.args = args;
-            this.argsReady = argsReady;
-            this.inputJson = inputJson;
-            this.earlyOutcome = earlyOutcome;
-        }
+        return new ToolDispatch(result.name(), result.arguments(), true, ToolCallJson.write(result.arguments()), null);
     }
 }

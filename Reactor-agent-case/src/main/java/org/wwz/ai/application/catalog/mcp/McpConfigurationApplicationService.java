@@ -28,10 +28,12 @@ public class McpConfigurationApplicationService {
         AiClientToolMcpConfig config = AiClientToolMcpConfig.builder()
                 .mcpId(mcpId)
                 .mcpName(mcpName)
-                .transportType(defaultIfBlank(command.transportType(), "streamable_http"))
+                .transportType(defaultIfBlank(command.transportType(), McpDefaults.DEFAULT_TRANSPORT_TYPE))
                 .transportConfig(command.transportConfig())
-                .requestTimeout(command.requestTimeout() == null ? 5 : command.requestTimeout())
-                .status(normalizeStatus(command.status()))
+                .requestTimeout(command.requestTimeout() == null
+                        ? McpDefaults.DEFAULT_REQUEST_TIMEOUT
+                        : command.requestTimeout())
+                .status(McpDefaults.normalizeStatus(command.status()))
                 .createTime(LocalDateTime.now())
                 .updateTime(LocalDateTime.now())
                 .build();
@@ -39,10 +41,6 @@ public class McpConfigurationApplicationService {
             throw new IllegalStateException("MCP 写入失败");
         }
         return true;
-    }
-
-    private static int normalizeStatus(Integer status) {
-        return status != null && status == 0 ? 0 : 1;
     }
 
     private static String requireText(String value, String message) {

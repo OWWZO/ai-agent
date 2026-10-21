@@ -23,7 +23,8 @@ public class OpenUiAutofixLiveTest {
         Assume.assumeTrue("未设置 THESYS_API_KEY，跳过真机联调", key != null && !key.isBlank());
 
         OpenUiAutofixService service = new OpenUiAutofixService(
-                new OkHttpRemoteHttpAdapter(), true, key, "https://api.thesys.dev/v1/autofix", 90L);
+                new OkHttpRemoteHttpAdapter(), null, null, true, false, key,
+                "https://api.thesys.dev/v1/autofix", 90L);
 
         OpenUiFixResult result = service.fix(
                 "root = Col([head, a])\nhead = Title(\"Q3 营收\", \"xl\")\na = FancyThing(\"x\")",

@@ -47,11 +47,6 @@ public class ToolArtifactRegistry {
         return binding;
     }
 
-    /** 获取所有绑定（返回副本，防外部修改） */
-    public synchronized List<ToolArtifactBinding> listBindings() {
-        return new ArrayList<>(bindings);
-    }
-
     /** 按工具调用ID查找绑定 */
     public synchronized List<ToolArtifactBinding> findBindingsByToolCallId(String toolCallId) {
         if (StringUtils.isBlank(toolCallId)) {

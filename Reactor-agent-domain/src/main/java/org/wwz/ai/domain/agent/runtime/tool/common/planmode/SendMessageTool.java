@@ -1,6 +1,5 @@
 package org.wwz.ai.domain.agent.runtime.tool.common.planmode;
 
-import com.alibaba.fastjson.JSON;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -12,6 +11,7 @@ import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRunner;
 import org.wwz.ai.domain.agent.runtime.tasklist.RuntimeBackgroundTask;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionAgentMailboxHub;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ToolArgs;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 
 import java.util.LinkedHashMap;
@@ -78,7 +78,6 @@ public class SendMessageTool implements BaseTool {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public Object execute(Object input) {
         try {
             if (agentContext == null) {
@@ -88,10 +87,10 @@ public class SendMessageTool implements BaseTool {
                         null,
                         "no context");
             }
-            Map<String, Object> params = coerceMap(input);
-            String to = trim(params.get("to"));
-            String message = trim(params.get("message"));
-            String summary = trim(params.get("summary"));
+            Map<String, Object> params = ToolArgs.map(input);
+            String to = ToolArgs.str(params.get("to"));
+            String message = ToolArgs.str(params.get("message"));
+            String summary = ToolArgs.str(params.get("summary"));
             if (StringUtils.isBlank(to) || StringUtils.isBlank(message)) {
                 return ToolResultPayload.failure(
                         "SendMessage 失败：to 与 message 必填",
@@ -245,18 +244,5 @@ public class SendMessageTool implements BaseTool {
     private record ResolvedTarget(String agentId, String taskId, RuntimeBackgroundTask task) {
     }
 
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> coerceMap(Object input) {
-        if (input instanceof Map<?, ?> map) {
-            return (Map<String, Object>) map;
-        }
-        if (input == null) {
-            return Map.of();
-        }
-        return JSON.parseObject(JSON.toJSONString(input), Map.class);
-    }
 
-    private static String trim(Object value) {
-        return value == null ? "" : String.valueOf(value).trim();
-    }
 }

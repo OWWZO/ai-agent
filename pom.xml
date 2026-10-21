@@ -39,6 +39,10 @@
              固定版本避免 polyglot / truffle / js-language 三者版本错配。
              使用 js-community（UPL/MIT），不引入 truffle-enterprise。-->
         <graalvm.version>23.1.12</graalvm.version>
+        <!-- 默认跳过测试：surefire 插件配置在 pluginManagement 里读的是这个属性，
+             命令行 -Dskip.tests=false 可以覆盖，硬编码 true 则无法覆盖（会让
+             case / trigger 两个模块的测试永远不执行）。 -->
+        <skip.tests>true</skip.tests>
     </properties>
 
     <developers>
@@ -261,7 +265,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.0.0-M7</version>
                 <configuration>
-                    <skipTests>true</skipTests>
+                    <skipTests>${skip.tests}</skipTests>
                 </configuration>
             </plugin>
         </plugins>

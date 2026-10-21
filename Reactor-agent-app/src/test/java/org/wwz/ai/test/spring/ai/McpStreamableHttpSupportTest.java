@@ -15,7 +15,7 @@ import org.wwz.ai.infrastructure.mcp.client.McpClientRuntime;
 import org.wwz.ai.infrastructure.mcp.model.McpServerDescriptor;
 import org.wwz.ai.infrastructure.mcp.registry.McpRegistry;
 import org.wwz.ai.infrastructure.adapter.repository.AgentRepository;
-import org.wwz.ai.infrastructure.dao.po.AiClientToolMcp;
+import org.wwz.ai.domain.agent.catalog.model.AiClientToolMcpConfig;
 import reactor.netty.DisposableServer;
 import reactor.netty.http.server.HttpServer;
 
@@ -32,11 +32,11 @@ public class McpStreamableHttpSupportTest {
 
     @Test
     public void test_parseStreamableHttpTransportConfig() throws Exception {
-        AgentRepository repository = new AgentRepository();
-        Method method = AgentRepository.class.getDeclaredMethod("toAiClientToolMcpVO", AiClientToolMcp.class);
+        AgentRepository repository = new AgentRepository(null);
+        Method method = AgentRepository.class.getDeclaredMethod("toAiClientToolMcpVO", AiClientToolMcpConfig.class);
         method.setAccessible(true);
 
-        AiClientToolMcp toolMcp = AiClientToolMcp.builder()
+        AiClientToolMcpConfig toolMcp = AiClientToolMcpConfig.builder()
                 .mcpId("streamable-test")
                 .mcpName("测试Streamable工具")
                 .transportType("streamable_http")

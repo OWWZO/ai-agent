@@ -379,7 +379,7 @@ public abstract class BaseAgent {
      * 纯函数规范化：同输入必得同字节，不依赖 SessionPromptFreeze 内存。
      * tools 只走 API tools[]（忽略 toolPrompt 正文），避免 system 与 schema 双轨。
      */
-    protected String buildStableSystemPrompt(String template, String toolPrompt, String extraPlaceholder, String extraValue) {
+    protected String buildStableSystemPrompt(String template, String extraPlaceholder, String extraValue) {
         String systemTemplate = normalizeSystemSource(template);
         String basePrompt = context == null || context.getBasePrompt() == null
                 ? ""
@@ -438,7 +438,7 @@ public abstract class BaseAgent {
      * 兼容旧的单参数调用方，统一复用当前稳定 system prompt 规范化逻辑。
      */
     protected String buildStableSystemPrompt(String template) {
-        return buildStableSystemPrompt(template, null, null, null);
+        return buildStableSystemPrompt(template, null, null);
     }
 
     private String appendSkillPromptIndex(String systemTemplate) {
@@ -549,49 +549,25 @@ public abstract class BaseAgent {
 
 
 
-    /**
-     * 从工具集合构建工具提示词。
-     */
-    protected String buildToolPrompt(ToolCollection tools) {
-        if (tools == null || tools.getToolMap() == null || tools.getToolMap().isEmpty()) {
-            return "";
-        }
-        // 与 toolCallbacks 一致：按 name 排序，避免 system 内 {{tools}} 文本顺序漂移打爆 cache
-        StringBuilder toolPrompt = new StringBuilder();
-        tools.getToolMap().values().stream()
-                .filter(tool -> tool != null && tool.getName() != null)
-                .sorted(java.util.Comparator.comparing(BaseTool::getName, String.CASE_INSENSITIVE_ORDER))
-                .forEach(tool -> toolPrompt.append(String.format("工具名：%s 工具描述：%s\n",
-                        tool.getName(), tool.getDescription())));
-        return toolPrompt.toString();
-    }
-
-        /**
-     * 初始化稳定 system prompt
-     * query/date/history 进入 memory messages，不写入 system
-     */
     protected void initializePromptsWithHistoryOnlyInSystem(Map<String, String> systemPromptMap,
                                                             Map<String, String> nextStepPromptMap,
                                                             String defaultSystemPrompt,
                                                             String defaultNextStepPrompt,
-                                                            String toolPrompt,
                                                             String extraPlaceholder,
                                                             String extraValue) {
         Map<String, String> map = systemPromptMap == null ? Map.of() : systemPromptMap;
         String template = AgentPrompt.ensureUserFacingReplyContract(
                 map.getOrDefault("default", defaultSystemPrompt));
-        setSystemPrompt(buildStableSystemPrompt(template, toolPrompt, extraPlaceholder, extraValue));
+        setSystemPrompt(buildStableSystemPrompt(template, extraPlaceholder, extraValue));
         setNextStepPrompt(null);
     }
 
     protected void initializeSystemPrompt(Map<String, String> systemPromptMap, String defaultSystemPrompt) {
-        String toolPrompt = buildToolPrompt(context == null ? null : context.getToolCollection());
         initializePromptsWithHistoryOnlyInSystem(
                 systemPromptMap,
                 null,
                 defaultSystemPrompt,
                 null,
-                toolPrompt,
                 null,
                 null);
     }
@@ -601,8 +577,7 @@ public abstract class BaseAgent {
      */
     public void applySubAgentSystemPrompt(String typeDirective) {
         String template = AgentPrompt.composeSubAgentSystemPrompt(typeDirective);
-        String toolPrompt = buildToolPrompt(context == null ? null : context.getToolCollection());
-        setSystemPrompt(buildStableSystemPrompt(template, toolPrompt, null, null));
+        setSystemPrompt(buildStableSystemPrompt(template, null, null));
     }
 
     /**
@@ -610,8 +585,7 @@ public abstract class BaseAgent {
      */
     public void applyPlanSolveSystemPrompt() {
         String template = AgentPrompt.composePlanSolveSystemPrompt();
-        String toolPrompt = buildToolPrompt(context == null ? null : context.getToolCollection());
-        setSystemPrompt(buildStableSystemPrompt(template, toolPrompt, null, null));
+        setSystemPrompt(buildStableSystemPrompt(template, null, null));
     }
 
     /**
