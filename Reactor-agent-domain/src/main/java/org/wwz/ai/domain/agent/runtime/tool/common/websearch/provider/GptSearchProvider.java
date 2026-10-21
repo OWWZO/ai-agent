@@ -89,7 +89,7 @@ public final class GptSearchProvider implements SearchProvider {
             }
         }
         if (StringUtils.isBlank(summary)) {
-            summary = extractAssistantContent(root);
+            summary = SearchSupport.extractAssistantContent(root);
         }
         if (StringUtils.isBlank(summary) && hits.isEmpty()) {
             throw new IllegalStateException("no content/citations from gpt");
@@ -133,38 +133,4 @@ public final class GptSearchProvider implements SearchProvider {
     }
 
     /** Responses API 与 Chat Completions 的正文位置不同，这里统一兜底。 */
-    private String extractAssistantContent(JSONObject root) {
-        JSONArray choices = root.getJSONArray("choices");
-        if (choices == null || choices.isEmpty()) {
-            return "";
-        }
-        JSONObject first = choices.getJSONObject(0);
-        if (first == null) {
-            return "";
-        }
-        JSONObject message = first.getJSONObject("message");
-        if (message == null) {
-            return first.getString("text");
-        }
-        Object content = message.get("content");
-        if (content instanceof String text) {
-            return text;
-        }
-        if (content instanceof JSONArray parts) {
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < parts.size(); i++) {
-                Object part = parts.get(i);
-                if (part instanceof String s) {
-                    sb.append(s);
-                } else if (part instanceof JSONObject obj) {
-                    String t = obj.getString("text");
-                    if (StringUtils.isNotBlank(t)) {
-                        sb.append(t);
-                    }
-                }
-            }
-            return sb.toString();
-        }
-        return message.getString("content");
-    }
 }
