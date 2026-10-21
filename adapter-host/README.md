@@ -176,8 +176,28 @@ When the site you need is not yet covered, use the `opencli-adapter-author` skil
 | `OPENCLI_BROWSER_COMMAND_TIMEOUT` | `60` | Seconds to wait for a single browser command |
 | `OPENCLI_CDP_ENDPOINT` | — | Chrome DevTools Protocol endpoint for remote browser or Electron apps |
 | `OPENCLI_CDP_TARGET` | — | Filter CDP targets by URL substring (e.g. `detail.1688.com`) |
+| `BROWSER_BACKEND` | `opencli` | Select the browser driver. `opencli` = the original BrowserBridge/CDPBridge (default, unchanged behavior). `bsk` = the bsk extension backend via `src/bsk/**` (bsk wire protocol over a WebSocket relay). |
+| `OPENCLI_BSK_RELAY_URL` | — | **bsk only.** WebSocket URL of the bsk relay gateway (Java WS gateway). Required for `BROWSER_BACKEND=bsk` and for the standalone `bsk-cli`. ⚠️ Not `OPENCLI_RELAY_URL` — that one is the legacy relay's *HTTP* base URL, and one variable cannot carry both semantics (see `specs/021-browser-adapter-pipeline-bsk-backend/KNOWN-FIXES.md` P0-3). |
+| `OPENCLI_BSK_VISITOR_ID` | — | **bsk only.** User id sent as the `user_id` query parameter; the gateway uses it to route the CLI's requests to that user's extension. |
+| `OPENCLI_BSK_SESSION_ID` | — | **bsk only.** Default `--session <id>`. The host injects one per request so consecutive `bsk-cli` invocations share a session and `@eN` refs stay valid. |
+| `OPENCLI_RELAY_BROWSER_ID` | — | **bsk only.** Browser instance id used to select which connected cloud browser to drive. |
 | `OPENCLI_VERBOSE` | `false` | Enable verbose logging (`-v` flag also works) |
 | `DEBUG_SNAPSHOT` | — | Set to `1` for DOM snapshot debug output |
+
+### Dual browser backends (021)
+
+`src/page/` hosts two `IPage` implementations selected by `BROWSER_BACKEND` (`src/runtime.ts::getBrowserFactory`):
+
+| Backend | File | Transport | Notes |
+|---|---|---|---|
+| `opencli` (default) | `src/browser/page.ts` via `OpenCliPage` | BrowserBridge / CDPBridge | Original behavior, byte-identical when the env var is unset |
+| `bsk` | `src/page/reactor-page.ts` | `BskClient` → WebSocket relay → bsk extension → `chrome.debugger` | Adds bsk primitives (observe, emulate, cancel, request-help). `tool.wait_ms` / `tool.upload` / `tool.download` are daemon-only and are not supported over the relay. |
+
+The bsk command layer is also available as a **library** (`import { click, fill, navigate } from './src/bsk/index.js'`) and as a **CLI** (`npx tsx src/bsk-cli.ts --help`, 31 subcommands) — both reach the same implementation in `src/bsk/commands/`. `bsk-cli` speaks bsk natively and is the entry for bsk-series commands; `opencli browser *` keeps its original command surface untouched.
+
+`bsk-cli` treats `--session` as a **root** option (`bsk-cli --session s1 click @e3`), and the host injects it via `OPENCLI_BSK_SESSION_ID`. Root options written after the subcommand (`bsk-cli click @e3 --session s1`) are hoisted before parsing, so both orders work. Sessions live in the extension's in-memory `SessionManager`, so they vanish on extension reconnect; when a command fails with `not_found: session <id> unknown`, `bsk-cli` starts the session (`tool.session_start`) once and retries — callers never manage sessions by hand.
+
+`browser.list` is answered **by the gateway**, not forwarded: it is a daemon-level method and the extension does not implement it (forwarding would return `unknown_method`). `session.start` / `session.stop` are daemon-level too, so `bsk-cli session start|stop` use the extension-level `tool.session_start` / `tool.session_stop` instead.
 
 `opencli browser *` requires an explicit `<session>` positional, uses a foreground browser window by default, and keeps that session's tab lease until `opencli browser <session> close` or idle cleanup. Browser-backed adapters use a background adapter window and release one-shot tab leases by default. Interactive adapters can declare `siteSession: 'persistent'` to keep a stable site tab for continuity; pass `--site-session ephemeral` for a one-shot tab.
 
