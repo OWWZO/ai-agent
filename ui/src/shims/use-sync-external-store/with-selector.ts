@@ -84,3 +84,6 @@ export function useSyncExternalStoreWithSelector<Snapshot, Selection>(
 
   return value;
 }
+
+// zustand v4 的 ESM 入口按默认导入取这个函数，具名导出之外再补一个默认导出。
+export default useSyncExternalStoreWithSelector;
