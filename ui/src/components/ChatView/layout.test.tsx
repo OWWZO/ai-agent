@@ -79,8 +79,6 @@ vi.mock("@/utils/constants", () => {
 
 vi.mock("ahooks", () => ({useMemoizedFn: (fn: unknown) => fn,}));
 
-vi.mock("antd", () => ({Modal: {useModal: () => [{ info: vi.fn() }, null],},}));
-
 const workspaceLayoutState = vi.hoisted(() => ({
   rightCollapsed: false,
   showAction: false,
@@ -98,6 +96,9 @@ vi.mock("@/components/ai-elements/conversation", () => ({
 
 vi.mock("lucide-react", () => ({
   ExternalLink: () => <span>external</span>,
+  CircleAlert: () => <span>alert</span>,
+  Info: () => <span>info</span>,
+  TriangleAlert: () => <span>warn</span>,
   FolderOpen: () => <span>folder</span>,
   Monitor: () => <span>monitor</span>,
   PanelLeftClose: () => <span>left</span>,
@@ -127,22 +128,22 @@ vi.mock("./useConversationStream", () => ({
 }));
 
 vi.mock("./useWorkspacePanels", () => ({
+  MIN_LEFT_WIDTH: 24,
+  MAX_LEFT_WIDTH: 56,
   useWorkspacePanels: () => ({
     leftPanelWidth: 50,
-    isDragging: false,
     isLeftCollapsed: false,
     isRightCollapsed: workspaceLayoutState.rightCollapsed,
     isFocusMode: false,
-    containerRef: { current: null },
-    handleDragStart: vi.fn(),
-    handleDragMove: vi.fn(),
-    handleDragEnd: vi.fn(),
+    setIsLeftCollapsed: vi.fn(),
     setIsRightCollapsed: vi.fn(),
     setIsFocusMode: vi.fn(),
     toggleLeftPanel: vi.fn(),
     toggleRightPanel: vi.fn(),
     toggleFocusMode: vi.fn(),
     exitFocusMode: vi.fn(),
+    handleLayoutChange: vi.fn(),
+    notifyResizeEnd: vi.fn(),
   }),
 }));
 
@@ -407,9 +408,10 @@ describe("ChatView layout", () => {
 
       expect(html).toContain('data-workspace-open="false"');
       expect(html).toContain("reactor-single-chat-shell");
-      expect(html).toMatch(/class="reactor-chat-panel-left[^"]*max-w-\[980px\]/);
+      // 单栏不套 Panel（库会给外层硬塞 flexBasis、内层塞 maxWidth:100%，
+      // 把居中的 max-w-[980px] 压坏），所以断言落在会话列自身上。
+      expect(html).toMatch(/class="[^"]*max-w-\[980px\][^"]*" id="chat-view"/);
       expect(html).not.toContain("reactor-workspace-panel");
-      expect(html).not.toContain('style="width:50%"');
     } finally {
       workspaceLayoutState.rightCollapsed = false;
       workspaceLayoutState.showAction = false;
