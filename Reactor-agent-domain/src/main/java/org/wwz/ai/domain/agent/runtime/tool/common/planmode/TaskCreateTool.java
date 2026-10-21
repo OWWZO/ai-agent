@@ -1,6 +1,5 @@
 package org.wwz.ai.domain.agent.runtime.tool.common.planmode;
 
-import com.alibaba.fastjson.JSON;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -8,6 +7,7 @@ import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionTaskItem;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionTaskListPublisher;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ToolArgs;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 
 import java.util.LinkedHashMap;
@@ -63,13 +63,12 @@ public class TaskCreateTool implements BaseTool {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public Object execute(Object input) {
         try {
-            Map<String, Object> params = coerceMap(input);
-            String subject = trim(params.get("subject"));
-            String description = trim(params.get("description"));
-            String activeForm = trim(params.get("activeForm"));
+            Map<String, Object> params = ToolArgs.map(input);
+            String subject = ToolArgs.str(params.get("subject"));
+            String description = ToolArgs.str(params.get("description"));
+            String activeForm = ToolArgs.str(params.get("activeForm"));
             if (StringUtils.isBlank(subject) || StringUtils.isBlank(description)) {
                 return ToolResultPayload.failure(
                         "TaskCreate 失败：subject 与 description 必填",
@@ -94,18 +93,5 @@ public class TaskCreateTool implements BaseTool {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> coerceMap(Object input) {
-        if (input instanceof Map<?, ?> map) {
-            return (Map<String, Object>) map;
-        }
-        if (input == null) {
-            return Map.of();
-        }
-        return JSON.parseObject(JSON.toJSONString(input), Map.class);
-    }
 
-    private static String trim(Object value) {
-        return value == null ? "" : String.valueOf(value).trim();
-    }
 }

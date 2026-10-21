@@ -12,6 +12,7 @@ import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ToolArgs;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
@@ -63,7 +64,7 @@ public abstract class AbstractDocReadTool implements BaseTool {
     public Object execute(Object input) {
         try {
             // 工具输入可能来自 JSON 字符串或结构化 Map，先统一成字符串键的参数表。
-            Map<String, Object> params = coerceMap(input);
+            Map<String, Object> params = ToolArgs.map(input);
             ReactorConfig config = requireReactorConfig();
             String base = StringUtils.trimToEmpty(config.getCodeInterpreterUrl());
             if (StringUtils.isBlank(base)) {
@@ -228,24 +229,6 @@ public abstract class AbstractDocReadTool implements BaseTool {
         return agentContext.getRuntimeDependencies().requireRemoteHttpPort();
     }
 
-    protected Map<String, Object> coerceMap(Object input) {
-        if (input instanceof Map<?, ?> map) {
-            Map<String, Object> out = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> e : map.entrySet()) {
-                if (e.getKey() != null) {
-                    out.put(String.valueOf(e.getKey()), e.getValue());
-                }
-            }
-            return out;
-        }
-        if (input instanceof String s && StringUtils.isNotBlank(s)) {
-            JSONObject obj = JSON.parseObject(s);
-            if (obj != null) {
-                return new LinkedHashMap<>(obj);
-            }
-        }
-        return new LinkedHashMap<>();
-    }
 
     protected static Map<String, Object> stringProp(String description) {
         Map<String, Object> m = new LinkedHashMap<>();

@@ -1,12 +1,12 @@
 package org.wwz.ai.domain.agent.runtime.tool.common.planmode;
 
-import com.alibaba.fastjson.JSON;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tasklist.RuntimeBackgroundTask;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ToolArgs;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 
 import java.util.LinkedHashMap;
@@ -62,8 +62,8 @@ public class TaskStopTool implements BaseTool {
     @SuppressWarnings("unchecked")
     public Object execute(Object input) {
         try {
-            Map<String, Object> params = coerceMap(input);
-            String id = firstNonBlank(trim(params.get("task_id")), trim(params.get("shell_id")));
+            Map<String, Object> params = ToolArgs.map(input);
+            String id = firstNonBlank(ToolArgs.str(params.get("task_id")), ToolArgs.str(params.get("shell_id")));
             if (StringUtils.isBlank(id)) {
                 return ToolResultPayload.failure(
                         "TaskStop 失败：需要 task_id 或 shell_id",
@@ -111,19 +111,7 @@ public class TaskStopTool implements BaseTool {
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> coerceMap(Object input) {
-        if (input instanceof Map<?, ?> map) {
-            return (Map<String, Object>) map;
-        }
-        if (input == null) {
-            return Map.of();
-        }
-        return JSON.parseObject(JSON.toJSONString(input), Map.class);
-    }
 
-    private static String trim(Object value) {
-        return value == null ? "" : String.valueOf(value).trim();
-    }
 
     private static String firstNonBlank(String a, String b) {
         if (StringUtils.isNotBlank(a)) {

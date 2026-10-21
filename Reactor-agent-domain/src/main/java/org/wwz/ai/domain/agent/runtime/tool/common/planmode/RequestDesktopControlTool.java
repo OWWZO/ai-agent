@@ -10,6 +10,7 @@ import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.desktopcontrol.DesktopControlRequiredException;
 import org.wwz.ai.domain.agent.runtime.desktopcontrol.DesktopSessionRemote;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ToolArgs;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 
 import java.util.LinkedHashMap;
@@ -64,7 +65,7 @@ public class RequestDesktopControlTool implements BaseTool {
         if (agentContext.getRuntimeDependencies() == null) {
             return fail("RequestDesktopControl 未正确装配");
         }
-        Map<String, Object> params = coerceMap(input);
+        Map<String, Object> params = ToolArgs.mapStrict(input);
         String reason = params.get("reason") == null ? "" : String.valueOf(params.get("reason")).trim();
         if (reason.isBlank()) {
             return fail("reason 不能为空");
@@ -100,13 +101,6 @@ public class RequestDesktopControlTool implements BaseTool {
         return owner.asOwnerKey();
     }
 
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> coerceMap(Object input) {
-        if (input instanceof Map<?, ?> map) {
-            return (Map<String, Object>) map;
-        }
-        return Map.of();
-    }
 
     private static ToolResultPayload fail(String msg) {
         return ToolResultPayload.failureFrom(msg, null);

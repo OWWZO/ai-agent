@@ -1,6 +1,5 @@
 package org.wwz.ai.domain.agent.runtime.tool.common.planmode;
 
-import com.alibaba.fastjson.JSON;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -10,6 +9,7 @@ import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalRequiredException;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanArtifactStore;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanModeState;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ToolArgs;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 
 import java.util.LinkedHashMap;
@@ -76,7 +76,6 @@ public class ExitPlanModeTool implements BaseTool {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public Object execute(Object input) {
         try {
             if (agentContext == null) {
@@ -87,9 +86,9 @@ public class ExitPlanModeTool implements BaseTool {
                 return fail("ExitPlanMode 失败：当前不在 plan mode");
             }
 
-            Map<String, Object> params = coerceMap(input);
-            String planFromArg = trim(params.get("plan"));
-            String planFilePathArg = trim(params.get("planFilePath"));
+            Map<String, Object> params = ToolArgs.map(input);
+            String planFromArg = ToolArgs.str(params.get("plan"));
+            String planFilePathArg = ToolArgs.str(params.get("planFilePath"));
 
             String planContent = planFromArg;
             if (StringUtils.isBlank(planContent) && planArtifactStore != null) {
@@ -133,18 +132,5 @@ public class ExitPlanModeTool implements BaseTool {
         return ToolResultPayload.failureFrom(msg, null);
     }
 
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> coerceMap(Object input) {
-        if (input instanceof Map<?, ?> map) {
-            return (Map<String, Object>) map;
-        }
-        if (input == null) {
-            return Map.of();
-        }
-        return JSON.parseObject(JSON.toJSONString(input), Map.class);
-    }
 
-    private static String trim(Object value) {
-        return value == null ? "" : String.valueOf(value).trim();
-    }
 }

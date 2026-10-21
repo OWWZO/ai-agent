@@ -1,6 +1,5 @@
 package org.wwz.ai.domain.agent.runtime.tool.common.planmode;
 
-import com.alibaba.fastjson.JSON;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
@@ -8,6 +7,7 @@ import org.wwz.ai.domain.agent.runtime.tasklist.SessionTaskItem;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionTaskListPublisher;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionTaskListStore;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ToolArgs;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 
 import java.util.ArrayList;
@@ -78,7 +78,7 @@ public class TodoWriteTool implements BaseTool {
             if (agentContext == null) {
                 return ToolResultPayload.failure("TodoWrite 失败：无 AgentContext", "TodoWrite 失败：无 AgentContext", null, "no context");
             }
-            Map<String, Object> params = coerceMap(input);
+            Map<String, Object> params = ToolArgs.map(input);
             Object rawTodos = params.get("todos");
             if (!(rawTodos instanceof List<?> list)) {
                 return ToolResultPayload.failure("TodoWrite 失败：todos 必须为数组", "TodoWrite 失败：todos 必须为数组", null, "bad todos");
@@ -105,16 +105,5 @@ public class TodoWriteTool implements BaseTool {
             String msg = "TodoWrite 失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
             return ToolResultPayload.failureFrom(msg, null);
         }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> coerceMap(Object input) {
-        if (input instanceof Map<?, ?> map) {
-            return (Map<String, Object>) map;
-        }
-        if (input == null) {
-            return Map.of();
-        }
-        return JSON.parseObject(JSON.toJSONString(input), Map.class);
     }
 }

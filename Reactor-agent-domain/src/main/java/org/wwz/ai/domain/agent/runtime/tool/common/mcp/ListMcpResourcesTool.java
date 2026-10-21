@@ -6,6 +6,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.model.McpResourceInfo;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ToolArgs;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.port.McpToolExecutor;
 
@@ -59,7 +60,7 @@ public class ListMcpResourcesTool implements BaseTool {
                 return ToolResultPayload.failure("ListMcpResources 失败：McpToolExecutor 不可用",
                         "ListMcpResources 失败：McpToolExecutor 不可用", null, "no executor");
             }
-            Map<String, Object> args = coerceMap(input);
+            Map<String, Object> args = ToolArgs.map(input);
             String server = stringArg(args, "server");
             List<McpResourceInfo> resources = StringUtils.isBlank(server)
                     ? executor.listGlobalResources()
@@ -101,30 +102,4 @@ public class ListMcpResourcesTool implements BaseTool {
         return value == null ? null : String.valueOf(value).trim();
     }
 
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> coerceMap(Object input) {
-        if (input == null) {
-            return Collections.emptyMap();
-        }
-        if (input instanceof Map<?, ?> map) {
-            Map<String, Object> result = new LinkedHashMap<>();
-            map.forEach((k, v) -> {
-                if (k != null) {
-                    result.put(String.valueOf(k), v);
-                }
-            });
-            return result;
-        }
-        if (input instanceof String str && StringUtils.isNotBlank(str)) {
-            try {
-                Object parsed = com.alibaba.fastjson.JSON.parse(str);
-                if (parsed instanceof Map<?, ?>) {
-                    return coerceMap(parsed);
-                }
-            } catch (Exception ignored) {
-                // fall through
-            }
-        }
-        return Collections.emptyMap();
-    }
 }

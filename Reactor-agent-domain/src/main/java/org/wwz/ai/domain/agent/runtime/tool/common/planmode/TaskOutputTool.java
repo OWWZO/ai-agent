@@ -1,12 +1,12 @@
 package org.wwz.ai.domain.agent.runtime.tool.common.planmode;
 
-import com.alibaba.fastjson.JSON;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tasklist.RuntimeBackgroundTask;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ToolArgs;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 
 import java.util.LinkedHashMap;
@@ -61,8 +61,8 @@ public class TaskOutputTool implements BaseTool {
     @SuppressWarnings("unchecked")
     public Object execute(Object input) {
         try {
-            Map<String, Object> params = coerceMap(input);
-            String taskId = trim(params.get("task_id"));
+            Map<String, Object> params = ToolArgs.map(input);
+            String taskId = ToolArgs.str(params.get("task_id"));
             if (StringUtils.isBlank(taskId)) {
                 return ToolResultPayload.failure(
                         "TaskOutput 失败：task_id 必填",
@@ -166,19 +166,7 @@ public class TaskOutputTool implements BaseTool {
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> coerceMap(Object input) {
-        if (input instanceof Map<?, ?> map) {
-            return (Map<String, Object>) map;
-        }
-        if (input == null) {
-            return Map.of();
-        }
-        return JSON.parseObject(JSON.toJSONString(input), Map.class);
-    }
 
-    private static String trim(Object value) {
-        return value == null ? "" : String.valueOf(value).trim();
-    }
 
     private static boolean coerceBoolean(Object value, boolean defaultValue) {
         if (value == null) {

@@ -1,6 +1,5 @@
 package org.wwz.ai.domain.agent.runtime.tool.common.planmode;
 
-import com.alibaba.fastjson.JSON;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -8,6 +7,7 @@ import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionTaskItem;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionTaskListPublisher;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ToolArgs;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 
 import java.util.ArrayList;
@@ -68,18 +68,17 @@ public class TaskUpdateTool implements BaseTool {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public Object execute(Object input) {
         try {
-            Map<String, Object> params = coerceMap(input);
-            String taskId = trim(params.get("taskId"));
+            Map<String, Object> params = ToolArgs.map(input);
+            String taskId = ToolArgs.str(params.get("taskId"));
             if (StringUtils.isBlank(taskId)) {
                 return fail("TaskUpdate 失败：taskId 必填");
             }
             if (agentContext == null) {
                 return fail("TaskUpdate 失败：无 AgentContext");
             }
-            String status = trim(params.get("status"));
+            String status = ToolArgs.str(params.get("status"));
             if ("deleted".equalsIgnoreCase(status)) {
                 boolean removed = agentContext.requireSessionTaskList().delete(taskId);
                 if (!removed) {
@@ -97,7 +96,7 @@ public class TaskUpdateTool implements BaseTool {
             List<String> addBlockedBy = asStringList(params.get("addBlockedBy"));
             Optional<SessionTaskItem> updated = agentContext.requireSessionTaskList().update(
                     taskId,
-                    emptyToNull(trim(params.get("subject"))),
+                    emptyToNull(ToolArgs.str(params.get("subject"))),
                     params.containsKey("description") ? String.valueOf(params.get("description")) : null,
                     StringUtils.isBlank(status) ? null : status,
                     params.containsKey("activeForm") ? String.valueOf(params.get("activeForm")) : null,
@@ -132,7 +131,6 @@ public class TaskUpdateTool implements BaseTool {
         return ToolResultPayload.softFailData(TaskToolNames.TASK_UPDATE, fields);
     }
 
-    @SuppressWarnings("unchecked")
     private static List<String> asStringList(Object raw) {
         if (!(raw instanceof List<?> list) || list.isEmpty()) {
             return null;
@@ -150,18 +148,5 @@ public class TaskUpdateTool implements BaseTool {
         return StringUtils.isBlank(value) ? null : value;
     }
 
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> coerceMap(Object input) {
-        if (input instanceof Map<?, ?> map) {
-            return (Map<String, Object>) map;
-        }
-        if (input == null) {
-            return Map.of();
-        }
-        return JSON.parseObject(JSON.toJSONString(input), Map.class);
-    }
 
-    private static String trim(Object value) {
-        return value == null ? "" : String.valueOf(value).trim();
-    }
 }

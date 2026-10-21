@@ -11,6 +11,7 @@ import org.wwz.ai.domain.agent.adapter.port.RemoteHttpRequest;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ToolArgs;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 
@@ -98,7 +99,7 @@ public class WebSearchTool implements BaseTool {
     public Object execute(Object input) {
         long start = System.currentTimeMillis();
         try {
-            Map<String, Object> params = coerceMap(input);
+            Map<String, Object> params = ToolArgs.mapStrict(input);
             String query = StringUtils.trimToEmpty(valueAsString(params.get("query")));
             if (StringUtils.isBlank(query) || query.length() < 2) {
                 return failure("WebSearch 失败：query 至少 2 个字符");
@@ -912,13 +913,6 @@ public class WebSearchTool implements BaseTool {
         return ToolResultPayload.failureFrom(message, null);
     }
 
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> coerceMap(Object input) {
-        if (input instanceof Map<?, ?> map) {
-            return (Map<String, Object>) map;
-        }
-        return Map.of();
-    }
 
     private List<String> readStringList(Object value) {
         List<String> result = new ArrayList<>();
