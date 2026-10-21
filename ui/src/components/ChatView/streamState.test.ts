@@ -410,6 +410,51 @@ describe("streamState presence & attention", () => {
     expect(presence.attention).toBe("workspace");
     expect(resolveWorkspaceCaption(task, true)).toContain("正在产出");
   });
+
+  it("settling 与 working 阶段的注意力都指向时间线", () => {
+    const workingTask = {
+      messageType: "tool_call",
+      resultMap: { isFinal: false },
+    } as CHAT.Task;
+
+    const working = resolveRunPresence({
+      loading: true,
+      taskList: [workingTask],
+      chat: {
+        loading: true,
+        multiAgent: { tasks: [[workingTask]] },
+        metrics: { status: "RUNNING" },
+      } as unknown as CHAT.ChatItem,
+    });
+    expect(working.phase).toBe("working");
+    expect(working.attention).toBe("timeline");
+
+    const settling = resolveRunPresence({
+      loading: true,
+      chat: {
+        loading: true,
+        conclusion: { messageType: "agent_stream" },
+        multiAgent: { tasks: [] },
+        metrics: { status: "RUNNING" },
+      } as unknown as CHAT.ChatItem,
+    });
+    expect(settling.phase).toBe("settling");
+    expect(settling.attention).toBe("timeline");
+  });
+
+  it("深度研究首包前、无计划无思考时仍是 queued", () => {
+    const presence = resolveRunPresence({
+      loading: true,
+      deepThink: true,
+      chat: {
+        loading: true,
+        multiAgent: { tasks: [] },
+        metrics: { status: "RUNNING" },
+      } as unknown as CHAT.ChatItem,
+    });
+
+    expect(presence.phase).toBe("queued");
+  });
 });
 
 describe("HITL yield parking", () => {

@@ -650,17 +650,12 @@ export function resolveRunPresence(params: {
     phase = "planning";
   } else if (hasThought) {
     phase = "thinking";
-  } else if (deepThink) {
-    // 深度研究首包前仍属 queued，文案走“制定计划”
-    phase = "queued";
   }
+  // deepThink 首包前保持 queued，文案走“制定计划”（即 phase 的初值）
 
+  // crafting 且能定位到产物时指向工作区，其余阶段一律看时间线
   const attention: RunAttention =
-    phase === "crafting" && attentionTask
-      ? "workspace"
-      : phase === "settling"
-        ? "timeline"
-        : "timeline";
+    phase === "crafting" && attentionTask ? "workspace" : "timeline";
 
   return {
     phase,
