@@ -52,6 +52,25 @@ public final class BrowserCliSupport {
         return Math.max(0L, budgetMs - elapsed);
     }
 
+    /** 两个浏览器工具暴露给模型的参数表完全一致。 */
+    public static Map<String, Object> toParams() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("args", Map.of(
+                "type", "array",
+                "items", Map.of("type", "string"),
+                "description", "CLI argv 参数数组。先用 list 查看可用命令，再用 <site> --help 或 <site> <command> --help 查询参数；下载命令必须传入当前任务专属的 --output 目录，并行下载使用不同目录；每项命令行参数分别传入。"
+        ));
+        properties.put("timeout_ms", Map.of(
+                "type", "integer",
+                "description", "超时毫秒，默认 180000"
+        ));
+        return Map.of(
+                "type", "object",
+                "properties", properties,
+                "required", List.of("args")
+        );
+    }
+
     public static void appendArtifacts(Map<String, Object> fields, CliArtifactMaterialization materialization) {
         if (materialization == null) {
             return;
