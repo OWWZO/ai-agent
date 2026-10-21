@@ -17,6 +17,8 @@ const reads = new Set([
   "tool.evaluate",
   "tool.console",
   "tool.network",
+  "tool.cookies",
+  "tool.frames",
 ]);
 const pageTools = new Set([
   ...reads,
@@ -38,6 +40,7 @@ const pageTools = new Set([
   "tool.emulate",
   "tool.wait_for_navigation",
   "tool.screenshot_full_page",
+  "tool.cdp",
 ]);
 
 /** Prepare only explicitly controlled targets, before page reads or readiness waits.

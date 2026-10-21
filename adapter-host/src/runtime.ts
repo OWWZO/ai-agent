@@ -3,6 +3,7 @@ import type { IPage } from './types.js';
 import { TimeoutError } from './errors.js';
 import { isElectronApp } from './electron-apps.js';
 import { DEFAULT_BROWSER_COMMAND_TIMEOUT, DEFAULT_BROWSER_CONNECT_TIMEOUT } from './browser/config.js';
+import { BskBrowserFactory } from './page/bsk-browser-factory.js';
 
 export { DEFAULT_BROWSER_COMMAND_TIMEOUT, DEFAULT_BROWSER_CONNECT_TIMEOUT };
 
@@ -12,6 +13,7 @@ export { DEFAULT_BROWSER_COMMAND_TIMEOUT, DEFAULT_BROWSER_CONNECT_TIMEOUT };
  * and all other sites use BrowserBridge.
  */
 export function getBrowserFactory(site?: string): new () => IBrowserFactory {
+  if (process.env.BROWSER_BACKEND === 'bsk') return BskBrowserFactory;
   if (process.env.OPENCLI_CDP_ENDPOINT) return CDPBridge;
   if (site && isElectronApp(site)) return CDPBridge;
   return BrowserBridge;

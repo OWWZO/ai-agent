@@ -102,6 +102,7 @@ export default defineBackground(() => {
   const popupSnapshotRefreshers = new Set<() => void>();
   const controlModes = new Map<string, OverlayMode>();
 
+  // watchRemoteAuthorization 内部一并挂载 watchWebPairing（021 宿主页面一键配对）。
   watchRemoteAuthorization();
   const daemonPort = watchDaemonConnection(
     (url, remote) => {

@@ -159,6 +159,7 @@ export function watchRemoteAuthorization() {
     );
     return true;
   });
+  watchWebPairing();
   let disposed = false;
   let running: Promise<void> | undefined;
   let dirty = false;
@@ -208,4 +209,33 @@ export function watchRemoteAuthorization() {
       chrome.storage.onChanged.removeListener(changed);
     },
   };
+}
+
+/**
+ * 宿主页面一键配对（021）：接受本扩展 content script（bsk-pair.content.ts）
+ * 转发的 `bsk-browser-pair` 配对串，走与 popup 完全相同的
+ * {@link updateRemoteConnection} 验证/存储/重连路径。
+ *
+ * 来源校验：只接受本扩展自身 content script 的消息（sender.id 必须是本
+ * 扩展且 sender.url 是被注入的网页而非扩展页面），配对串的格式校验交给
+ * parseRemoteEndpoint —— 非法串在 activate 阶段被拒并回传错误。
+ */
+export function watchWebPairing() {
+  chrome.runtime.onMessage.addListener((message, sender, reply) => {
+    if (message?.kind !== "bsk-web-pairing") return false;
+    if (
+      sender.id !== chrome.runtime.id ||
+      typeof sender.url !== "string" ||
+      sender.url.startsWith(chrome.runtime.getURL("")) ||
+      typeof message.pairing !== "string"
+    ) {
+      reply({ error: "Invalid web pairing request" });
+      return false;
+    }
+    void updateRemoteConnection(message.pairing).then(
+      (url) => reply({ url }),
+      () => reply({ error: "Unable to pair; request a fresh pairing link and try again" }),
+    );
+    return true;
+  });
 }

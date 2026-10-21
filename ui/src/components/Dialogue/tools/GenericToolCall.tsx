@@ -14,7 +14,7 @@ import { getTaskFiles } from "@/utils/taskArtifacts";
 import { ToolRow, type ToolRowStackPosition } from "./ToolRow";
 import { ToolOutputBlock } from "./ToolOutputBlock";
 import { ToolParametersBlock } from "./ToolParametersBlock";
-import { ToolArgStreamPreview } from "./ToolArgStreamPreview";
+import { ToolArgStreamCard } from "./ToolArgStreamCard";
 import {
   extractExecuteCommand,
   normalizeToolName,
@@ -204,32 +204,18 @@ export const GenericToolCall = memo(function GenericToolCall({
   const stacked = stackPosition !== "single";
   const expandable = showArgStream || canExpand;
 
-  // 入参流：像终答一样直接铺在工具名下方（不依赖折叠 body / status）
+  // 入参流：铺在工具名下方（不依赖折叠 body / status），入参本身默认折叠
   if (showArgStream) {
     return (
-      <div
-        className="kimi-tool-arg-stream"
-        data-testid="generic-tool-arg-stream"
-      >
-        <div className="kimi-tool-arg-stream-head">
-          <span className="kimi-tool-arg-stream-glyph">{toolGlyph(name)}</span>
-          <span className="kimi-tool-arg-stream-name">{toolLabel(name)}</span>
-          {summary ? (
-            <span className="kimi-tool-arg-stream-meta" title={summary}>
-              {summary}
-            </span>
-          ) : null}
-          {chip ? (
-            <span className="kimi-tool-arg-stream-chip">{chip}</span>
-          ) : null}
-        </div>
-        <ToolArgStreamPreview
-          text={arg}
-          label="参数"
-          streaming={argStreaming}
-          prominent
-        />
-      </div>
+      <ToolArgStreamCard
+        icon={toolGlyph(name)}
+        name={toolLabel(name)}
+        summary={summary}
+        chip={chip}
+        text={arg}
+        streaming={argStreaming}
+        testId="generic-tool-arg-stream"
+      />
     );
   }
 

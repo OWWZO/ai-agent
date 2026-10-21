@@ -224,6 +224,30 @@ describe("toolRegistry", () => {
     expect(html).not.toContain("found Controller");
   });
 
+  it("入参流默认折叠：参数不进 DOM，点头部才展开", () => {
+    const html = renderToStaticMarkup(
+      createElement(GenericToolCall, {
+        tool: toolTask({
+          finish: false,
+          isFinal: false,
+          resultMap: {
+            toolName: "Bash",
+            status: "streaming",
+            argsStreaming: true,
+            argumentsText: '{"command":"ls -la"}',
+          },
+        }),
+        chat: {} as CHAT.ChatItem,
+        changeActiveChat: () => undefined,
+      })
+    );
+
+    expect(html).toContain('data-testid="generic-tool-arg-stream"');
+    // 头部可点且默认收起 —— 入参不会自己摊开
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain("ls -la");
+  });
+
   it("renders canvas_publish as a previewable tool card", () => {
     const html = renderToStaticMarkup(
       createElement(GenericToolCall, {

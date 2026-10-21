@@ -4,7 +4,7 @@ import { ToolRow, type ToolRowStackPosition } from "./ToolRow";
 import { ToolFileChip } from "./ToolFileChip";
 import { ToolOutputBlock } from "./ToolOutputBlock";
 import { ToolParametersBlock } from "./ToolParametersBlock";
-import { ToolArgStreamPreview } from "./ToolArgStreamPreview";
+import { ToolArgStreamCard } from "./ToolArgStreamCard";
 import { EditInlineDiffContent } from "./EditInlineDiffContent";
 import {
   buildWriteDiffCode,
@@ -152,26 +152,15 @@ export const EditToolCall = memo(function EditToolCall({
 
   if (showArgStream) {
     return (
-      <div className="kimi-tool-arg-stream" data-testid="edit-tool-arg-stream">
-        <div className="kimi-tool-arg-stream-head">
-          <span className="kimi-tool-arg-stream-glyph">{icon}</span>
-          <span className="kimi-tool-arg-stream-name">{toolLabel(name)}</span>
-          {summary ? (
-            <span className="kimi-tool-arg-stream-meta" title={summary}>
-              {summary}
-            </span>
-          ) : null}
-          {streamChip ? (
-            <span className="kimi-tool-arg-stream-chip">{streamChip}</span>
-          ) : null}
-        </div>
-        <ToolArgStreamPreview
-          text={arg}
-          label="参数"
-          streaming={argStreaming}
-          prominent
-        />
-      </div>
+      <ToolArgStreamCard
+        icon={icon}
+        name={toolLabel(name)}
+        summary={summary}
+        chip={streamChip}
+        text={arg}
+        streaming={argStreaming}
+        testId="edit-tool-arg-stream"
+      />
     );
   }
 

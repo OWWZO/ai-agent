@@ -22,6 +22,8 @@ public class OpenUiAutofixLiveTest {
         String key = System.getenv("THESYS_API_KEY");
         Assume.assumeTrue("未设置 THESYS_API_KEY，跳过真机联调", key != null && !key.isBlank());
 
+        // fix() 只走 RemoteHttpPort；completionPort / modelCatalog 仅 fixIntent() 需要，
+        // 这里传 null（fixIntent 自己会做 null 检查并返回「模型出站能力未装配」）。
         OpenUiAutofixService service = new OpenUiAutofixService(
                 new OkHttpRemoteHttpAdapter(), null, null, true, false, key,
                 "https://api.thesys.dev/v1/autofix", 90L);

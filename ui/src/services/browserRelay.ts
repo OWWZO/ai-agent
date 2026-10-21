@@ -11,6 +11,8 @@ export type BrowserPairing = {
   code: string;
   relayUrl: string;
   expiresAt: number;
+  /** bsk 扩展的配对链接（url#token）；网关未启用时为空。 */
+  bskPairingUrl?: string | null;
 };
 
 export const browserRelayApi = {
