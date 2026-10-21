@@ -5,8 +5,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord;
@@ -14,6 +12,7 @@ import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
 import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReActAgent;
+import org.wwz.ai.domain.agent.runtime.yieldcard.AfterCommitCardSender;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.AskUserQuestionTool;
 
 import java.time.LocalDateTime;
@@ -31,6 +30,7 @@ public class UserQuestionYieldService {
 
     private final IUserQuestionRepository userQuestionRepository;
     private final SessionWorkingMemoryService sessionWorkingMemoryService;
+    private final org.wwz.ai.domain.agent.runtime.yieldcard.AfterCommitCardSender afterCommitCardSender;
 
     @Transactional(rollbackFor = Exception.class)
     public UserQuestionRecord yieldAndNotify(AgentContext agentContext,
@@ -108,34 +108,10 @@ public class UserQuestionYieldService {
                 "WAITING_USER_INPUT",
                 "等待用户回答 AskUserQuestion"
         );
-
-        scheduleAskCardAfterCommit(agentContext, record);
+        afterCommitCardSender.send(agentContext, record.getQuestionId(), "ask_user_question", () -> AskUserQuestionObservationSupport.toClientPayload(record));
         log.info("{} yielded AskUserQuestion questionId={} toolCallId={}",
                 agentContext.getRequestId(), questionId, toolCallId);
         return record;
     }
 
-    private void scheduleAskCardAfterCommit(AgentContext agentContext, UserQuestionRecord record) {
-        Runnable send = () -> {
-            if (agentContext.getPrinter() == null) {
-                return;
-            }
-            agentContext.getPrinter().send(
-                    record.getQuestionId(),
-                    "ask_user_question",
-                    AskUserQuestionObservationSupport.toClientPayload(record),
-                    false
-            );
-        };
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    send.run();
-                }
-            });
-            return;
-        }
-        send.run();
-    }
 }
