@@ -78,11 +78,13 @@ public final class ReasoningContentExtractor {
         if (metadata == null || metadata.isEmpty()) {
             return null;
         }
+        // 流式单 chunk 的 reasoning 走这里：只做 "null" 归一，不能 trim，
+        // 否则 token 边界的前导空格/换行会被逐 chunk 吃掉，思考正文粘成一行。
         return firstNonEmpty(
-                asStringTrimmed(metadata.get(METADATA_REASONING_CONTENT)),
-                asStringTrimmed(metadata.get(METADATA_REASONING)),
-                asStringTrimmed(metadata.get(METADATA_THINKING)),
-                asStringTrimmed(metadata.get("reasoning_content")));
+                asStringOrNull(metadata.get(METADATA_REASONING_CONTENT)),
+                asStringOrNull(metadata.get(METADATA_REASONING)),
+                asStringOrNull(metadata.get(METADATA_THINKING)),
+                asStringOrNull(metadata.get("reasoning_content")));
     }
 
     private record ThinkSplit(String content, String reasoning) {
@@ -140,11 +142,12 @@ public final class ReasoningContentExtractor {
         return null;
     }
 
-    private static String asStringTrimmed(Object value) {
+    /** 保留首尾空白的取值：流式 delta 依赖它保住 token 边界的空格与换行。 */
+    private static String asStringOrNull(Object value) {
         if (value == null) {
             return null;
         }
-        String text = String.valueOf(value).trim();
+        String text = String.valueOf(value);
         return text.isEmpty() || "null".equals(text) ? null : text;
     }
 
