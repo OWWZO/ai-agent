@@ -30,14 +30,13 @@ class BaseVectorStore(ABC):
     的客户端对象或异常类型；具体实现负责把后端差异转换成这些稳定返回值。
     """
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Any = None):
+        """初始化向量数据库。
+
+        ``config`` 仅为兼容既有构造签名保留：当前唯一后端（Qdrant）不读取它，
+        连接参数由 ``resolve_shared_qdrant_config()`` 从环境变量解析。
+        不要在这里添加依赖该参数的逻辑 —— 它是死状态，删掉会破坏调用方签名。
         """
-        初始化向量数据库
-        
-        Args:
-            config: 数据库配置
-        """
-        self.config = config
 
     @abstractmethod
     def create_collection(self, collection_name: str, **kwargs) -> bool:
@@ -287,10 +286,16 @@ class BaseCollectionVectorStore(ABC):
         """根据键值删除向量"""
         pass
 
+    @abstractmethod
     def delete_by_file_ids(self, kb_id: str, file_ids: List[str]) -> bool:
-        """根据文件ID列表删除向量"""
+        """根据文件ID列表删除向量。
+
+        这里必须是 abstractmethod：它曾被写成普通方法并 ``pass``，导致某个子类
+        忘记覆写时删除静默失效（元数据删了、向量还在）。
+        """
         pass
 
+    @abstractmethod
     def scroll_payloads(self,
                         kb_id: str,
                         limit: int = 100,
@@ -298,6 +303,3 @@ class BaseCollectionVectorStore(ABC):
         """按知识库滚动读取 payload。"""
         pass
 
-
-BaseTextVectorStore = BaseCollectionVectorStore
-BaseImageVectorStore = BaseCollectionVectorStore

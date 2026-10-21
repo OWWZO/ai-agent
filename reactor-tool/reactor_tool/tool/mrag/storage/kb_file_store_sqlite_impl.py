@@ -10,7 +10,6 @@ from sqlalchemy import Column, Integer, String, DateTime, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
-from reactor_tool.tool.mrag.storage.kb_file_store import KBFileStore
 from reactor_tool.tool.mrag.storage.models.kb_file_model import KBFileModel as KBFilePydanticModel
 
 Base = declarative_base()
@@ -75,7 +74,7 @@ class KBFileSQLModel(Base):
         )
 
 
-class KBFileSQLite(KBFileStore):
+class KBFileSQLite:
     """KBFileStore 的 SQLite 落地。"""
     __tablename__ = "t_kb_file"
 
@@ -98,28 +97,6 @@ class KBFileSQLite(KBFileStore):
             session.add(sql_model)
             session.commit()
             return True
-        except Exception as e:
-            session.rollback()
-            raise e
-        finally:
-            session.close()
-
-    def delete_file(self, kb_file: KBFilePydanticModel) -> bool:
-        """Delete a file from the knowledge base"""
-        session = self._get_session()
-        try:
-            # 删除采用 deleted=1 软删除，保留 file_id 与解析历史，查询路径统一过滤已删除行。
-            # Find the file by file_id and kb_id
-            file_to_delete = session.query(KBFileSQLModel).filter(
-                KBFileSQLModel.file_id == kb_file.file_id,
-                KBFileSQLModel.kb_id == kb_file.kb_id
-            ).first()
-
-            if file_to_delete:
-                file_to_delete.deleted = 1
-                session.commit()
-                return True
-            return False
         except Exception as e:
             session.rollback()
             raise e
@@ -164,27 +141,6 @@ class KBFileSQLite(KBFileStore):
             return False
         except Exception as e:
             session.rollback()
-            raise e
-        finally:
-            session.close()
-
-    def get_files(self, kb_id: str, page_no: int, page_size: int) -> List[KBFilePydanticModel]:
-        """Get files from the knowledge base with pagination"""
-        session = self._get_session()
-        try:
-            # 分页和 deleted 过滤在数据库完成，避免把整个知识库文件表加载进进程再截取。
-            # Calculate offset for pagination
-            offset = (page_no - 1) * page_size
-
-            # Query files with pagination and filtering
-            files = session.query(KBFileSQLModel).filter(
-                KBFileSQLModel.kb_id == kb_id,
-                KBFileSQLModel.deleted == 0
-            ).order_by(KBFileSQLModel.create_time.desc()).offset(offset).limit(page_size).all()
-
-            # Convert SQLAlchemy models to Pydantic models
-            return [file.to_pydantic() for file in files]
-        except Exception as e:
             raise e
         finally:
             session.close()

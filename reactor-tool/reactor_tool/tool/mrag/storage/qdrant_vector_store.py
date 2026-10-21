@@ -49,12 +49,11 @@ def _supports_sparse_collection_config() -> bool:
 class QdrantVectorStore(BaseVectorStore):
     """Qdrant 向量数据库实现"""
 
-    def __init__(self, config: Dict[str, Any]):
-        """
-        初始化 Qdrant 客户端
-        
-        Args:
-            config: Qdrant 配置
+    def __init__(self, config: Any = None):
+        """初始化 Qdrant 客户端。
+
+        ``config`` 不再参与连接构造：``_create_client`` 直接读环境变量，
+        保留参数只为不破坏既有调用方（含测试）。
         """
         super().__init__(config)
         self.client = self._create_client()
@@ -775,6 +774,18 @@ class QdrantGenericVectorStore(BaseCollectionVectorStore):
             filter_conditions={key: values}
         )
 
+    def delete_by_file_ids(self, kb_id: str, file_ids: List[str]) -> bool:
+        """按文件 ID 删除该集合内的向量。
+
+        基类把该方法声明成可选（默认返回 None），此前 QdrantGenericVectorStore
+        没有覆写，导致 ``VectorStore.delete_by_file_ids`` 对 image/page 集合的删除
+        静默失效 —— 文件从元数据里删掉了，但向量还留着，后续检索会召回幽灵内容。
+        """
+        return self.vector_store.delete_vectors(
+            collection_name=self.collection_name,
+            filter_conditions={"kb_id": kb_id, "file_id": file_ids},
+        )
+
     def scroll_payloads(self,
                         kb_id: str,
                         limit: int = 100,
@@ -787,6 +798,3 @@ class QdrantGenericVectorStore(BaseCollectionVectorStore):
             filter_conditions={"kb_id": kb_id},
         )
 
-
-QdrantImageVectorStore = QdrantGenericVectorStore
-QdrantPageVectorStore = QdrantGenericVectorStore

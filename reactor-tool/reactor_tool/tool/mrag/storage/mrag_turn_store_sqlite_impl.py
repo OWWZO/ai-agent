@@ -7,7 +7,6 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, sessionmaker
 
 from .models.mrag_turn_model import MRagTurnModel
-from .mrag_turn_store import MRagTurnStore
 
 Base = declarative_base()
 
@@ -50,7 +49,7 @@ class MRagTurnSQLModel(Base):
         )
 
 
-class MRagTurnSQLite(MRagTurnStore):
+class MRagTurnSQLite:
     """MRagTurnStore 的 SQLite 落地。"""
 
     def __init__(self, engine):

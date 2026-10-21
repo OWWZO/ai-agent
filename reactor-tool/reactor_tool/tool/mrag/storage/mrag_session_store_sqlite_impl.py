@@ -8,7 +8,6 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, sessionmaker
 
 from .models.mrag_session_model import MRagSessionModel
-from .mrag_session_store import MRagSessionStore
 
 Base = declarative_base()
 
@@ -47,7 +46,7 @@ class MRagSessionSQLModel(Base):
         )
 
 
-class MRagSessionSQLite(MRagSessionStore):
+class MRagSessionSQLite:
     """MRagSessionStore 的 SQLite 落地。"""
 
     def __init__(self, engine):

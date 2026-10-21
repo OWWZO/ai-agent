@@ -6,9 +6,7 @@ from typing import List
 from sqlalchemy import Column, Integer, String, DATETIME
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
-from typing_extensions import override
 
-from .kb_store import KBStore
 from .models.kb_model import KBModel
 
 Base = declarative_base()
@@ -31,11 +29,10 @@ class KnowledgeBase(Base):
     creator = Column(String, nullable=True)
 
 
-class KBStoreSQLite(KBStore):
+class KBStoreSQLite:
     """KBStore 的 SQLite 落地。"""
 
     def __init__(self, engine):
-        super().__init__()
         self._engine = engine
         self._session_factory = sessionmaker(bind=engine)
         Base.metadata.create_all(self._engine)
@@ -77,8 +74,6 @@ class KBStoreSQLite(KBStore):
             modify_time=kb_orm.modify_time,
             creator=kb_orm.creator
         )
-
-    @override
     def create_kb(self, kb_model: KBModel) -> bool:
         """创建知识库。"""
         session = self._get_session()
@@ -103,8 +98,6 @@ class KBStoreSQLite(KBStore):
             raise e
         finally:
             session.close()
-
-    @override
     def delete_kb(self, kb_model: KBModel) -> bool:
         """Soft delete a knowledge base"""
         session = self._get_session()
@@ -129,46 +122,6 @@ class KBStoreSQLite(KBStore):
             raise e
         finally:
             session.close()
-
-    @override
-    def update_kb(self, kb_model: KBModel) -> bool:
-        """Update knowledge base metadata"""
-        session = self._get_session()
-        try:
-            # Find the knowledge base
-            kb_orm = session.query(KnowledgeBase).filter_by(
-                kb_id=kb_model.kb_id,
-                deleted=0
-            ).first()
-
-            if not kb_orm:
-                return False
-
-            # Update fields
-            if kb_model.kb_name is not None:
-                kb_orm.kb_name = kb_model.kb_name
-            if kb_model.kb_desc is not None:
-                kb_orm.kb_desc = kb_model.kb_desc
-            if kb_model.chunk_type is not None:
-                kb_orm.chunk_type = kb_model.chunk_type
-            if kb_model.chunk_size is not None:
-                kb_orm.chunk_size = kb_model.chunk_size
-            if kb_model.chunk_overlap_size is not None:
-                kb_orm.chunk_overlap_size = kb_model.chunk_overlap_size
-            if kb_model.creator is not None:
-                kb_orm.creator = kb_model.creator
-
-            kb_orm.modify_time = datetime.now()
-            session.commit()
-            return True
-
-        except Exception as e:
-            session.rollback()
-            raise e
-        finally:
-            session.close()
-
-    @override
     def get_kbs(self, page_no: int, page_size: int) -> List[KBModel]:
         """Get knowledge bases with pagination"""
         session = self._get_session()

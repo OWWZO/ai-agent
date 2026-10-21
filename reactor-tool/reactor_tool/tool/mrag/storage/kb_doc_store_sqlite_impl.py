@@ -10,7 +10,6 @@ from sqlalchemy import Column, Integer, String, DateTime, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
-from reactor_tool.tool.mrag.storage.kb_doc_store import KBDocStore
 from reactor_tool.tool.mrag.storage.models.kb_doc_model import (
     CANONICAL_FULL_TEXT_CHUNK_TYPE,
     KBDocModel as KBDocPydanticModel,
@@ -77,7 +76,7 @@ class KBDocSQLModel(Base):
         )
 
 
-class KBDocSQLite(KBDocStore):
+class KBDocSQLite:
     __tablename__ = "t_kb_doc"
 
     def __init__(self, engine):
@@ -89,100 +88,6 @@ class KBDocSQLite(KBDocStore):
     def _get_session(self) -> Session:
         # 每个仓储操作独立创建并在 finally 关闭会话，避免长连接把 SQLite 事务状态带到下一次请求。
         return self._session_factory()
-
-    def add_doc(self, kb_doc: KBDocPydanticModel) -> bool:
-        """Add a new document to the knowledge base"""
-        session = self._get_session()
-        try:
-            # Convert Pydantic model to SQLAlchemy model
-            sql_model = KBDocSQLModel.from_pydantic(kb_doc)
-            session.add(sql_model)
-            session.commit()
-            return True
-        except Exception as e:
-            session.rollback()
-            raise e
-        finally:
-            session.close()
-
-    def delete_doc(self, kb_doc: KBDocPydanticModel) -> bool:
-        """Delete a document from the knowledge base"""
-        session = self._get_session()
-        try:
-            # Find the document by doc_id and kb_id
-            doc_to_delete = session.query(KBDocSQLModel).filter(
-                KBDocSQLModel.doc_id == kb_doc.doc_id,
-                KBDocSQLModel.kb_id == kb_doc.kb_id
-            ).first()
-            
-            if doc_to_delete:
-                doc_to_delete.deleted = 1
-                doc_to_delete.modify_time = datetime.now()
-                session.commit()
-                return True
-            return False
-        except Exception as e:
-            session.rollback()
-            raise e
-        finally:
-            session.close()
-
-    def update_doc(self, kb_doc: KBDocPydanticModel) -> bool:
-        """Update an existing document in the knowledge base"""
-        session = self._get_session()
-        try:
-            # Find the document by doc_id and kb_id
-            doc_to_update = session.query(KBDocSQLModel).filter(
-                KBDocSQLModel.doc_id == kb_doc.doc_id,
-                KBDocSQLModel.kb_id == kb_doc.kb_id
-            ).first()
-            
-            if doc_to_update:
-                # Update fields
-                if kb_doc.text is not None:
-                    doc_to_update.text = kb_doc.text
-                if kb_doc.chunk_type is not None:
-                    doc_to_update.chunk_type = kb_doc.chunk_type
-                if kb_doc.file_id is not None:
-                    doc_to_update.file_id = kb_doc.file_id
-                if kb_doc.title is not None:
-                    doc_to_update.title = kb_doc.title
-                if kb_doc.file_url is not None:
-                    doc_to_update.file_url = kb_doc.file_url
-                if kb_doc.parent_id is not None:
-                    doc_to_update.parent_id = kb_doc.parent_id
-                doc_to_update.modify_time = datetime.now()
-                if kb_doc.modifier is not None:
-                    doc_to_update.modifier = kb_doc.modifier
-                
-                session.commit()
-                return True
-            return False
-        except Exception as e:
-            session.rollback()
-            raise e
-        finally:
-            session.close()
-
-    def get_docs(self, file_id: str, page_no: int, page_size: int) -> List[KBDocPydanticModel]:
-        """Get documents from the knowledge base with pagination"""
-        session = self._get_session()
-        try:
-            # Calculate offset for pagination
-            offset = (page_no - 1) * page_size
-            
-            # Query documents with pagination and filtering
-            docs = session.query(KBDocSQLModel).filter(
-                KBDocSQLModel.file_id == file_id,
-                KBDocSQLModel.deleted == 0
-            ).order_by(KBDocSQLModel.create_time.desc()).offset(offset).limit(page_size).all()
-            
-            # Convert SQLAlchemy models to Pydantic models
-            return [doc.to_pydantic() for doc in docs]
-        except Exception as e:
-            raise e
-        finally:
-            session.close()
 
     def upsert_canonical_doc(self, kb_doc: KBDocPydanticModel) -> bool:
         """按文件覆盖 canonical 正文记录，保证回显内容稳定且唯一。"""
