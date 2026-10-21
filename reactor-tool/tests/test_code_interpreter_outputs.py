@@ -16,6 +16,8 @@ class FakeFinalAnswerStep:
 
 def load_code_interpreter_module():
     # 这些依赖只影响真正的模型执行；当前测试只验证产物回传逻辑，补最小桩即可。
+    # 桩只在导入 code_interpreter 期间生效并立即还原，避免污染同进程里其它测试的导入。
+    patched: dict[str, types.ModuleType] = {}
     if "smolagents" not in sys.modules:
         smolagents_stub = types.ModuleType("smolagents")
         for name in (
@@ -27,19 +29,24 @@ def load_code_interpreter_module():
             "ChatMessageStreamDelta",
         ):
             setattr(smolagents_stub, name, type(name, (), {}))
-        sys.modules["smolagents"] = smolagents_stub
+        patched["smolagents"] = smolagents_stub
 
     if "reactor_tool.tool.ci_agent" not in sys.modules:
         ci_agent_stub = types.ModuleType("reactor_tool.tool.ci_agent")
         ci_agent_stub.CIAgent = type("CIAgent", (), {})
-        sys.modules["reactor_tool.tool.ci_agent"] = ci_agent_stub
+        patched["reactor_tool.tool.ci_agent"] = ci_agent_stub
 
     if "reactor_tool.util.llm_util" not in sys.modules:
         llm_util_stub = types.ModuleType("reactor_tool.util.llm_util")
         llm_util_stub.ask_llm_sync_iter = lambda *args, **kwargs: iter(())
-        sys.modules["reactor_tool.util.llm_util"] = llm_util_stub
+        patched["reactor_tool.util.llm_util"] = llm_util_stub
 
-    return importlib.import_module("reactor_tool.tool.code_interpreter")
+    sys.modules.update(patched)
+    try:
+        return importlib.import_module("reactor_tool.tool.code_interpreter")
+    finally:
+        for name in patched:
+            sys.modules.pop(name, None)
 
 
 class CodeInterpreterOutputUploadTest(unittest.IsolatedAsyncioTestCase):

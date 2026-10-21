@@ -64,3 +64,10 @@ dependencies = [
     "e2b-code-interpreter>=1.5.0",
     "websockets>=15.0",
 ]
+
+# 测试依赖独立成组：运行时镜像不需要 pytest，本地/CI 用 `uv sync --group dev`。
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]

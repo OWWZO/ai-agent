@@ -213,6 +213,8 @@ __marimo__/
 ./vscode/
 file_db_dir/
 autobots.db*
+# 测试/本地运行默认的 MRAG 元数据库（STORE_TYPE 的 SQLITE_PATH 默认值）
+kb_file.db*
 skilloutput/
 
 /.reactor-code-execution/
