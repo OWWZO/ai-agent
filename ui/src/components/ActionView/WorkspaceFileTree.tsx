@@ -1,5 +1,5 @@
 import { memo, useState } from "react";
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 import {
   ChevronDown,
   ChevronRight,
@@ -71,7 +71,7 @@ const getFileIcon = (type: string) => {
  * 不铺实心底色（`border-input-border-focused`）。
  */
 const treeRowClass = (active: boolean) =>
-  classNames(
+  cn(
     "group/file-tree-row relative flex h-7 w-full min-w-0 items-center gap-1.5 rounded-lg border pr-2 py-1 text-left text-ui-base text-foreground outline-none transition-colors",
     active
       ? "border-input-border-focused hover:bg-surface-hover"

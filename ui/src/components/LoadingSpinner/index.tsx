@@ -1,4 +1,4 @@
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 import { motion } from "motion/react";
 
 interface LoadingSpinnerProps {
@@ -21,8 +21,8 @@ const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
   size = "md",
 }) => {
   return (
-    <div className={classNames("flex items-center gap-2", className)}>
-      <div className={classNames("relative shrink-0", sizeMap[size])}>
+    <div className={cn("flex items-center gap-2", className)}>
+      <div className={cn("relative shrink-0", sizeMap[size])}>
         <div
           className="reactor-spinner absolute inset-0 rounded-full"
           style={{ color: color === "white" ? "var(--color-accent)" : color }}
@@ -42,7 +42,7 @@ export const GradientSpinner: React.FC<{
 }> = ({ className, size = 20 }) => {
   return (
     <motion.div
-      className={classNames("relative", className)}
+      className={cn("relative", className)}
       style={{ width: size, height: size }}
       animate={{ rotate: 360 }}
       transition={{
@@ -78,7 +78,7 @@ export const GradientSpinner: React.FC<{
  */
 export const PulseDots: React.FC<{ className?: string }> = ({ className }) => {
   return (
-    <div className={classNames("flex items-center gap-1", className)}>
+    <div className={cn("flex items-center gap-1", className)}>
       {[0, 1, 2].map((i) => (
         <motion.span
           key={i}
@@ -113,7 +113,7 @@ export const RingSpinner: React.FC<{
     : circumference * 0.25;
 
   return (
-    <div className={classNames("relative", className)} style={{ width: size, height: size }}>
+    <div className={cn("relative", className)} style={{ width: size, height: size }}>
       <motion.svg
         viewBox={`0 0 ${size} ${size}`}
         className="w-full h-full -rotate-90"

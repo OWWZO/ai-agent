@@ -1,5 +1,5 @@
 import { FC, memo, type ReactNode } from "react";
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "motion/react";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import GenUiChart from "./GenUiChart";
@@ -193,10 +193,10 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
       );
     }
     case "TableRow":
-      return <tr key={key} className={classNames(props.highlight && "bg-[var(--chat-surface-soft)]")}>{renderChildren()}</tr>;
+      return <tr key={key} className={cn(props.highlight && "bg-[var(--chat-surface-soft)]")}>{renderChildren()}</tr>;
     case "TableCell":
       return (
-        <td key={key} className={classNames("px-3 py-2 text-[var(--chat-text)]", props.bold && "font-semibold")}>
+        <td key={key} className={cn("px-3 py-2 text-[var(--chat-text)]", props.bold && "font-semibold")}>
           {props.value || props.text || renderChildren()}
         </td>
       );
@@ -211,7 +211,7 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
       ) : null;
     case "Icon":
       return (
-        <span key={key} className={classNames("inline-flex text-[16px]", textColor(props.color))}>
+        <span key={key} className={cn("inline-flex text-[16px]", textColor(props.color))}>
           {props.name || "•"}
         </span>
       );

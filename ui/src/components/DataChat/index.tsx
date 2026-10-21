@@ -1,7 +1,7 @@
 import Chart from "./Chart";
 import SimpleTable from "./SimpleTable";
 import Card from "./Card";
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 import { memo, useState, useMemo } from "react";
 import {
   buildChartConfig,
@@ -50,7 +50,7 @@ const TypeBar: ReactorType.FC<{
                   key={item.type}
                   type="button"
                   title={item.label}
-                  className={classNames(
+                  className={cn(
                     "inline-flex h-8 items-center gap-1 rounded-md px-2.5 text-[12px] transition-colors",
                     active
                       ? "bg-white font-medium text-[var(--chat-text)] shadow-sm"

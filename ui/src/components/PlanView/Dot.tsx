@@ -1,8 +1,8 @@
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 
 const Dot: ReactorType.FC = (props) => {
   const { className } = props;
-  return <div className={classNames('size-14 bg-primary inline-block rounded-[50%]', className)}></div>;
+  return <div className={cn('size-14 bg-primary inline-block rounded-[50%]', className)}></div>;
 };
 
 export default Dot;

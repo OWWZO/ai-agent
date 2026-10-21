@@ -1,5 +1,5 @@
 import { memo } from "react";
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 
 import type { ConversationSessionItem } from "@/services/agentConversation";
 import { formatTimestamp } from "@/utils";
@@ -52,7 +52,7 @@ const RecentSessionList = memo((props: RecentSessionListProps) => {
               type="button"
               data-session-id={session.sessionId}
               onClick={() => onSelect(session)}
-              className={classNames(
+              className={cn(
                 "flex w-full items-start justify-between gap-4 rounded-[20px] border px-4 py-3 text-left transition-[background-color,border-color,box-shadow,color] duration-150",
                 isActive
                   ? "border-[var(--chat-border-strong)] bg-[var(--chat-surface-soft)]"

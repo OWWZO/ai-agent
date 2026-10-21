@@ -1,4 +1,4 @@
-import classNames from 'classnames';
+import { cn } from "@/lib/utils";
 import logo from './logo.png';
 
 const Logo: ReactorType.FC<{
@@ -6,7 +6,7 @@ const Logo: ReactorType.FC<{
 }> = (props) => {
   const { className, hideSplit } = props;
 
-  return <div className={classNames('flex items-center', className)}>
+  return <div className={cn('flex items-center', className)}>
     <img src={logo} alt="logo" width={20}/>
     <div
       className='ml-8 text-lg font-bold text-transparent bg-clip-text text-[16px]'

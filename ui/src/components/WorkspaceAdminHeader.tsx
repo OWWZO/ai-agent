@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { ArrowLeft, type LucideIcon } from "lucide-react";
 import { Link } from "react-router-dom";
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 
 import WorkspaceToolSwitcher from "@/components/WorkspaceToolSwitcher";
 import { ROUTES } from "@/router/routes";
@@ -26,7 +26,7 @@ export default function WorkspaceAdminHeader({
   return (
     <header className="workspace-admin-header">
       <div
-        className={classNames(
+        className={cn(
           "workspace-admin-header-inner",
           embedded && "workspace-admin-header-inner-embedded",
         )}

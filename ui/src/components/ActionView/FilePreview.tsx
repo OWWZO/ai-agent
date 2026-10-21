@@ -1,4 +1,4 @@
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 import { memo, useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import ActionPanel, { PanelItemType } from "../ActionPanel";
@@ -83,7 +83,7 @@ const FilePreview: React.FC<{
   }
 
   return (
-    <div className={classNames("flex h-full flex-col", className)}>
+    <div className={cn("flex h-full flex-col", className)}>
       {/* Content — 删除内部 Header，直接上内容 */}
       <div className="flex-1 overflow-hidden">
         <div className="flex h-full flex-col">

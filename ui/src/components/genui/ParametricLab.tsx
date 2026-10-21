@@ -1,5 +1,5 @@
 import { FC, memo, useMemo, useState } from "react";
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 import {
   clamp,
   evalLabExpr,
@@ -521,7 +521,7 @@ const ParametricLab: FC<ParametricLabProps> = memo((props) => {
       </div>
 
       <div
-        className={classNames(
+        className={cn(
           "mx-3 mt-2 overflow-hidden rounded-xl bg-[var(--chat-surface)]",
           STAGE_CLASS,
           scene !== "custom_svg" && "ring-1 ring-[var(--chat-border)]/50"
@@ -539,7 +539,7 @@ const ParametricLab: FC<ParametricLabProps> = memo((props) => {
       </div>
 
       <div className="space-y-3 px-4 py-3">
-        <div className={classNames(
+        <div className={cn(
           "grid gap-x-6 gap-y-2",
           initialParams.length > 1 ? "sm:grid-cols-2" : "grid-cols-1"
         )}>

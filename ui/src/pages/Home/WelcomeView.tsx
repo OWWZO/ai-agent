@@ -1,4 +1,4 @@
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -156,13 +156,13 @@ export default function WelcomeView(props: {
   return (
     <div className="h-full w-full overflow-y-auto px-6 md:px-12 lg:px-16">
       <div
-        className={classNames(
+        className={cn(
           "mx-auto flex min-h-full w-full max-w-[1280px] flex-col items-center py-8 lg:py-10",
           hasFeaturedCards ? "justify-start" : "justify-center"
         )}
       >
         <div
-          className={classNames(
+          className={cn(
             "flex w-full flex-col items-center",
             // 欢迎态主视觉整体下移，避免标题和输入区过于贴近顶部。
             hasFeaturedCards ? "pt-10 md:pt-12 lg:pt-16" : "pt-12 md:pt-16 lg:pt-20"
@@ -196,7 +196,7 @@ export default function WelcomeView(props: {
               duration: reduce ? DURATION.reduced : 0.22,
               ease: EASE_OUT,
             }}
-            className={classNames(
+            className={cn(
               "mx-auto w-full max-w-[960px] overflow-visible",
               hasSuggestedQuestions
                 ? "mb-8 pointer-events-auto lg:mb-10"
@@ -214,7 +214,7 @@ export default function WelcomeView(props: {
                     key={category}
                     type="button"
                     aria-pressed={active}
-                    className={classNames(
+                    className={cn(
                       "shrink-0 rounded-full border px-4 py-2 text-[13px] font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chat-accent)]/25",
                       active
                         ? "border-[oklch(0.83_0.03_90)] bg-[oklch(0.94_0.03_90)] text-[var(--chat-text)]"
@@ -239,7 +239,7 @@ export default function WelcomeView(props: {
                     onClick={() => props.onSendQuestion(item)}
                   >
                     <Icon
-                      className={classNames(
+                      className={cn(
                         "size-[17px] shrink-0 stroke-[1.8]",
                         SUGGESTION_ICON_CLASS[item.icon]
                       )}

@@ -1,4 +1,4 @@
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 import { Pin, Star, Trash2 } from "lucide-react";
 
 import type { ConversationSessionItem } from "@/services/agentConversation";
@@ -29,7 +29,7 @@ export default function ConversationSessionActionMenu(
           canManageFeatured ? undefined : "请先让该会话至少产生一轮内容，再设为精品"
         }
         onClick={() => onManageFeatured(session)}
-        className={classNames(
+        className={cn(
           menuItemClassName,
           canManageFeatured
             ? "text-[var(--chat-text-soft)] hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
