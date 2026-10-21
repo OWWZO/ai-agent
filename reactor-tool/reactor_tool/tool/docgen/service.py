@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Docgen service: document/excel/slides/checklist/template generators."""
 
 from __future__ import annotations
@@ -166,21 +166,9 @@ def generate_document(params: dict[str, Any], output_path: Path) -> dict[str, An
     logger.info(
         f"document_generate_start path={output_path} format={fmt} blocks={len(spec.blocks)}"
     )
-    if fmt == "pdf":
-        from reactor_tool.docgen.renderers.pdf import render_pdf
+    from reactor_tool.docgen.renderers.registry import get_renderer
 
-        return render_pdf(spec, output_path)
-    if fmt == "docx":
-        from reactor_tool.docgen.renderers.docx import render_docx
-
-        return render_docx(spec, output_path)
-    if fmt == "html":
-        from reactor_tool.docgen.renderers.html import render_html
-
-        return render_html(spec, output_path)
-    from reactor_tool.docgen.renderers.html import render_markdown
-
-    return render_markdown(spec, output_path)
+    return get_renderer(fmt)(spec, output_path)
 
 
 def generate_slides(params: dict[str, Any], output_path: Path) -> dict[str, Any]:
@@ -267,21 +255,9 @@ def generate_checklist(params: dict[str, Any], output_path: Path) -> dict[str, A
             "blocks": [block],
         }
     )
-    if fmt == "pdf":
-        from reactor_tool.docgen.renderers.pdf import render_pdf
+    from reactor_tool.docgen.renderers.registry import get_renderer
 
-        return render_pdf(spec, output_path)
-    if fmt == "docx":
-        from reactor_tool.docgen.renderers.docx import render_docx
-
-        return render_docx(spec, output_path)
-    if fmt == "html":
-        from reactor_tool.docgen.renderers.html import render_html
-
-        return render_html(spec, output_path)
-    from reactor_tool.docgen.renderers.html import render_markdown
-
-    return render_markdown(spec, output_path)
+    return get_renderer(fmt)(spec, output_path)
 
 
 def generate_excel(params: dict[str, Any], output_path: Path) -> dict[str, Any]:

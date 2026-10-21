@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 import reactor_tool.docgen._structlog as structlog
 
+from reactor_tool.docgen.renderers._common import looks_chinese as _looks_chinese
 from reactor_tool.docgen.charts import render_chart_png
 from reactor_tool.docgen.checklist import checklist_stats, priority_meta, status_meta
 from reactor_tool.docgen.images import resolve_image
@@ -829,13 +830,6 @@ def render_docx(spec: DocumentSpec, output_path: Path) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # OOXML helpers
 # ---------------------------------------------------------------------------
-
-
-def _looks_chinese(spec: DocumentSpec) -> bool:
-    sample = spec.title + "".join(
-        getattr(b, "text", "") for b in spec.blocks[:8] if hasattr(b, "text")
-    )
-    return any("\u4e00" <= ch <= "\u9fff" for ch in sample)
 
 
 def _apply_page_setup(section: Any, spec: DocumentSpec, wd_orient: Any, emu: Any) -> None:

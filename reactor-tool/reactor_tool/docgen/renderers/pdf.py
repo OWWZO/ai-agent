@@ -37,6 +37,7 @@ from xml.sax.saxutils import escape
 
 import reactor_tool.docgen._structlog as structlog
 
+from reactor_tool.docgen.renderers._common import looks_chinese as _looks_chinese
 from reactor_tool.docgen.charts import render_chart_png
 from reactor_tool.docgen.checklist import (
     checklist_stats,
@@ -1664,13 +1665,6 @@ def render_pdf(spec: DocumentSpec, output_path: Path) -> dict[str, Any]:
         **stats,
     )
     return result
-
-
-def _looks_chinese(spec: DocumentSpec) -> bool:
-    sample = spec.title + "".join(
-        getattr(b, "text", "") for b in spec.blocks[:8] if hasattr(b, "text")
-    )
-    return any("\u4e00" <= ch <= "\u9fff" for ch in sample)
 
 
 def _postprocess_pdf(
