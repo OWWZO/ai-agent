@@ -50,20 +50,10 @@ public class PlanApprovalResumeContext {
         return parsed == null ? new PlanApprovalResumeContext() : parsed;
     }
 
-    public void applyPlanModeTo(AgentContext agentContext) {
-        if (agentContext == null || planMode == null) {
-            return;
-        }
-        PlanModeState state = agentContext.requirePlanModeState();
-        state.setMode(StringUtils.defaultIfBlank(planMode.getMode(), PlanModeState.MODE_DEFAULT));
-        state.setPrePlanMode(planMode.getPrePlanMode());
-        state.setPlanContent(planMode.getPlanContent());
-        state.setPlanFilePath(planMode.getPlanFilePath());
-        state.setHasExitedPlanMode(planMode.isHasExitedPlanMode());
-        state.setExitPendingApproval(planMode.isExitPendingApproval());
-        state.setPendingPlanContent(planMode.getPendingPlanContent());
-        state.setStepsSincePlanAttachment(planMode.getStepsSincePlanAttachment());
-        state.setPlanAttachmentCount(planMode.getPlanAttachmentCount());
-        state.setNeedsPlanModeExitAttachment(planMode.isNeedsPlanModeExitAttachment());
-    }
+    /**
+     * plan mode 恢复由 {@link UserQuestionResumeContext#applyPlanModeTo(AgentContext)} 承担：
+     * PrepareAgentContextNode 只认这一份，此处不再保留一份逐字相同的副本。
+     * 续跑时把本快照的 planMode 交给它即可：
+     * {@code UserQuestionResumeContext.builder().planMode(ctx.getPlanMode()).build().applyPlanModeTo(agentContext)}
+     */
 }
