@@ -2137,40 +2137,46 @@ function isSelfReferentialParentId(
  * @param multiAgent 多智能体数据
  * @returns 处理后的数据对象
  */
+/**
+ * 需要在主时间线上出条目卡的消息类型。
+ *
+ * 模块级 Set：原来它是函数里的数组，每次 SSE 事件进来都重建一次，
+ * 而实际只做一次 `includes` 查询。
+ */
+const TIMELINE_MESSAGE_TYPES = new Set([
+  "tool_call",
+  "tool_result",
+  "ask_user_question",
+  "desktop_control",
+  "plan_approval",
+  "session_tasks",
+  "user_brief",
+  "browser",
+  "browser_viewport",
+  "code",
+  "html",
+  "file",
+  "knowledge",
+  "result",
+  "deep_search",
+  "markdown",
+  "ppt",
+  "data_analysis",
+  "ui_tree",
+  "ui_patch",
+]);
+
 export const handleTaskData = (
   currentChat: CHAT.ChatItem,
   deepThink?: boolean,
   multiAgent?: MESSAGE.MultiAgent
 ) => {
+  // 该函数是唯一的派生层：原始 multiAgent.tasks 保留事件事实，chat.tasks/taskList/conclusion 只从事实重建。
   const {
     plan: fullPlan,
     tasks: fullTasks,
     plan_thought: planThought,
   } = multiAgent ?? {};
-
-  // 该函数是唯一的派生层：原始 multiAgent.tasks 保留事件事实，chat.tasks/taskList/conclusion 只从事实重建。
-  const TOOL_TYPES = [
-    "tool_call",
-    "tool_result",
-    "ask_user_question",
-    "desktop_control",
-    "plan_approval",
-    "session_tasks",
-    "user_brief",
-    "browser",
-    "browser_viewport",
-    "code",
-    "html",
-    "file",
-    "knowledge",
-    "result",
-    "deep_search",
-    "markdown",
-    "ppt",
-    "data_analysis",
-    "ui_tree",
-    "ui_patch",
-  ];
 
   currentChat.thought = planThought || "";
 
@@ -2267,7 +2273,7 @@ export const handleTaskData = (
         }
       }
 
-      if (TOOL_TYPES.includes(task?.messageType)) {
+      if (TIMELINE_MESSAGE_TYPES.has(task?.messageType)) {
         // 工作区列表：子工具不进顶层 taskList，只挂在 Agent 下
         if (!parentToolUseId) {
           taskList.push(...processedInfo);
