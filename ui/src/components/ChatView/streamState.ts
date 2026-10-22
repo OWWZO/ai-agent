@@ -880,11 +880,13 @@ function markHITLCardsSettled(
           tool.messageId ||
           ""
       );
-      if (options.id && currentId && currentId !== options.id) {
+      // 三个函数的守卫语义一致：卡片自身取不到 ID 时 currentId 为 ""，
+      // `"" !== id` 成立，一律跳过。plan_approval 原代码少了
+      // `currentId &&` 那一项，但走到这里结果相同，故不做分支。
+      if (options.id && currentId !== options.id) {
         return tool;
       }
-      const nested = {
-        ...nestedMap,
+      const nested = {        ...nestedMap,
         status: options.status,
         ...(options.extra || {}),
       };

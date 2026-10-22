@@ -875,3 +875,47 @@ describe("HITL 卡片本地标记", () => {
     expect((chat.multiAgent?.tasks?.[0]?.[0] as CHAT.Task).resultMap?.status).toBe(before);
   });
 });
+
+describe("HITL 卡片 ID 守卫：取不到 ID 时一律跳过", () => {
+  // 三份原代码的守卫措辞不同（plan_approval 少了  那一项），
+  // 但走到 currentId 为 "" 时结果相同："" !== id 成立，都跳过。
+  const card = (messageType: string, idField: string, withId: boolean) =>
+    ({
+      messageType,
+      // 故意不留 messageId：两处都取不到 ID 时 currentId 为 ""
+      resultMap: withId ? { [idField]: "hit" } : {},
+    }) as unknown as CHAT.Task;
+
+  const chatWith = (...cards: CHAT.Task[]) =>
+    ({ multiAgent: { tasks: [cards] } }) as unknown as CHAT.ChatItem;
+
+  const statusOf = (chat: CHAT.ChatItem) =>
+    (chat.multiAgent?.tasks?.[0]?.[0] as CHAT.Task).resultMap?.status;
+
+  it.each([
+    ["plan_approval", "approvalId", markPlanApprovalsDecided],
+    ["ask_user_question", "questionId", markAskUserQuestionsAnswered],
+    ["desktop_control", "controlId", markDesktopControlCompleted],
+  ] as const)("%s：卡片取不到 ID 时跳过", (messageType, idField, mark) => {
+    const chat = chatWith(card(messageType, idField, false));
+    expect(statusOf(mark(chat, "some-id"))).toBeUndefined();
+  });
+
+  it.each([
+    ["plan_approval", "approvalId", markPlanApprovalsDecided],
+    ["ask_user_question", "questionId", markAskUserQuestionsAnswered],
+    ["desktop_control", "controlId", markDesktopControlCompleted],
+  ] as const)("%s：ID 不匹配时跳过", (messageType, idField, mark) => {
+    const chat = chatWith(card(messageType, idField, true));
+    expect(statusOf(mark(chat, "other"))).toBeUndefined();
+  });
+
+  it.each([
+    ["plan_approval", "approvalId", markPlanApprovalsDecided],
+    ["ask_user_question", "questionId", markAskUserQuestionsAnswered],
+    ["desktop_control", "controlId", markDesktopControlCompleted],
+  ] as const)("%s：ID 匹配时标记", (messageType, idField, mark) => {
+    const chat = chatWith(card(messageType, idField, true));
+    expect(statusOf(mark(chat, "hit"))).toBeDefined();
+  });
+});
