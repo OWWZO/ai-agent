@@ -3528,3 +3528,36 @@ describe("mergeToolCallStreamingTask", () => {
     expect(merged.resultMap?.messageType).toBe("tool_call");
   });
 });
+
+describe("buildAction 的表查找安全性", () => {
+  it("原型键不会命中原型方法", () => {
+    // 直接下标会让这些键命中 Object.prototype 上的方法，返回 function。
+    for (const key of ["toString", "constructor", "hasOwnProperty", "valueOf"]) {
+      const result = buildAction({ messageType: key } as CHAT.Task);
+      expect(typeof result).toBe("object");
+      expect(result.action).toBe("正在调用工具");
+      expect(result.tool).toBe(key);
+    }
+  });
+
+  it("返回的是副本，改写不会污染模块级表", () => {
+    const first = buildAction({ messageType: "session_tasks" } as CHAT.Task);
+    first.name = "被改坏了";
+    const second = buildAction({ messageType: "session_tasks" } as CHAT.Task);
+    expect(second.name).toBe("Todo");
+  });
+
+  it("两次调用返回不同对象引用", () => {
+    const a = buildAction({ messageType: "session_tasks" } as CHAT.Task);
+    const b = buildAction({ messageType: "session_tasks" } as CHAT.Task);
+    expect(a).not.toBe(b);
+  });
+
+  it("表内类型仍返回正确的固定文案", () => {
+    expect(buildAction({ messageType: "ask_user_question" } as CHAT.Task)).toEqual({
+      action: "等待你的回答",
+      tool: "AskUserQuestion",
+      name: "选择题",
+    });
+  });
+});
