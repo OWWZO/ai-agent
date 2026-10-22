@@ -29,6 +29,27 @@ public class ReactTurnCloseSupport {
     @Resource
     private WorkspaceReadStateStore workspaceReadStateStore;
 
+    /**
+     * 两个 Close 节点的公共收口入口。
+     * <p>
+     * React 与 PlanSolve 的 Close 节点各有自己的 DynamicContext 泛型（wrench 策略树
+     * 要求节点绑定各自的上下文类型），但节点体逐字相同，只有链路名前缀、异常文案与
+     * ledger 入口标识三个字符串不同。这里收掉节点体，两个节点只传自己的标识。
+     *
+     * @param linkName 链路名，用于日志与异常消息定位（"React" / "PlanSolve"）
+     * @param entryAgent ledger 入口标识（ENTRY_AGENT_REACT / ENTRY_AGENT_PLAN_SOLVE）
+     */
+    public void closeFromNode(AgentContext agentContext,
+                              ReActAgent executor,
+                              String finalAnswer,
+                              String linkName,
+                              String entryAgent) {
+        if (agentContext == null || executor == null) {
+            throw new IllegalStateException(linkName + " Close: agentContext/executor is null, Run must run first.");
+        }
+        closeSuccessfulTurn(agentContext, executor, finalAnswer, entryAgent);
+    }
+
     public void closeSuccessfulTurn(AgentContext agentContext,
                                     ReActAgent executor,
                                     String rawFinalAnswer,

@@ -12,6 +12,9 @@ import org.wwz.ai.domain.agent.service.execute.support.ReactTurnCloseSupport;
 
 /**
  * PlanSolve 逻辑树 - Close：发送终答并收口账本 / 记忆。
+ * <p>
+ * 收口流程与 React 共用 {@link ReactTurnCloseSupport#closeFromNode}，
+ * 本节点只提供链路标识与 ledger 入口。
  */
 @Slf4j
 @Service("planSolveCloseTurnNode")
@@ -25,15 +28,11 @@ public class CloseTurnNode extends AbstractExecuteSupport {
                              DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("PlanSolve Close: final answer for requestId: {}", requestParameter.getRequestId());
 
-        AgentContext agentContext = dynamicContext.getAgentContext();
-        if (agentContext == null || dynamicContext.getExecutor() == null) {
-            throw new IllegalStateException("PlanSolve Close: agentContext/executor is null, Run must run first.");
-        }
-
-        reactTurnCloseSupport.closeSuccessfulTurn(
-                agentContext,
+        reactTurnCloseSupport.closeFromNode(
+                dynamicContext.getAgentContext(),
                 dynamicContext.getExecutor(),
                 dynamicContext.getFinalAnswer(),
+                "PlanSolve",
                 ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE
         );
         return "success";
