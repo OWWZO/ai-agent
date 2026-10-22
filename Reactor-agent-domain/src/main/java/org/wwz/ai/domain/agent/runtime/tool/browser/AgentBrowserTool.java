@@ -1,7 +1,6 @@
 package org.wwz.ai.domain.agent.runtime.tool.browser;
 
 import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
 import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.adapter.port.AgentBrowserSession;
@@ -17,20 +16,16 @@ import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactCaptureCoordinator;
 import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactCaptureLease;
 import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactCapturePlan;
-import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactFailure;
 import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactMaterialization;
-import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactMaterializeCommand;
 import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactMaterializer;
 import org.wwz.ai.domain.agent.runtime.tool.cli.OpenCliArgv;
 import org.wwz.ai.types.agent.config.OpenCliProperties;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 @Setter
 public class AgentBrowserTool implements BaseTool {

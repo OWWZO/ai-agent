@@ -2,7 +2,6 @@ package org.wwz.ai.domain.agent.runtime.tool.browser;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
-import lombok.extern.slf4j.Slf4j;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliResult;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
@@ -31,7 +30,6 @@ import java.util.Set;
  * 但 argv 解析、产物捕获、viewport 发布、字段构建与缓存目录规则逐字相同。
  * 这些共有部分收敛到此处，两端各自只保留后端接入。
  */
-@Slf4j
 public final class BrowserCliSupport {
 
     private static final long DEFAULT_TIMEOUT_FALLBACK_MS = 60_000L;

@@ -726,7 +726,6 @@ public class AgentToolCollectionFactory {
         toolCollection.addTool(tool);
     }
 
-
     /**
      * 白名单组判定：组名或组内任一工具别名命中即装配整组。
      * <p>

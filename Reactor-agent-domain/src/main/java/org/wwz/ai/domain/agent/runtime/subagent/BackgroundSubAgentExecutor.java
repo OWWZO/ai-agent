@@ -360,8 +360,6 @@ public final class BackgroundSubAgentExecutor {
         }
     }
 
-
-
     private static String trimToString(Object value) {
         return value == null ? "" : String.valueOf(value).trim();
     }

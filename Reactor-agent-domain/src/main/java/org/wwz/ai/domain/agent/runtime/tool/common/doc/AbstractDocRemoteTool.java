@@ -41,8 +41,6 @@ public abstract class AbstractDocRemoteTool implements BaseTool {
     private static final long WRITE_TIMEOUT_SECONDS = 60L;
     /** 调用总超时在读超时之外预留的余量，覆盖排队与响应体接收。 */
     private static final long CALL_TIMEOUT_MARGIN_SECONDS = 30L;
-    /** data 字段进 llmData 前的本地上限（最终仍受 BaseAgent maxObserve / 96k 约束）。 */
-    private static final int DATA_FIELD_LIMIT = 12_000;
 
     protected AgentContext agentContext;
 
@@ -72,6 +70,16 @@ public abstract class AbstractDocRemoteTool implements BaseTool {
 
     /** 子类把远端响应的额外字段并入 LLM data；读侧用此注入截断后的 data/message。 */
     protected void extraLlmData(JSONObject json, Map<String, Object> data) {
+    }
+
+    /**
+     * 是否把「带 fileInfo 的 success=false」当作可放行的部分成功。
+     * <p>
+     * 生成侧需要：reactor-tool 会因 lint warnings 之类非致命问题标 success=false，
+     * 但文件已经产出，此时应照常登记 artifact；读侧没有这个语义。
+     */
+    protected boolean treatsFileInfoAsSuccess() {
+        return false;
     }
 
     @Override
@@ -122,6 +130,14 @@ public abstract class AbstractDocRemoteTool implements BaseTool {
             JSONObject json = JSON.parseObject(responseText);
             if (json == null) {
                 return failure(getName() + " 执行失败：空响应");
+            }
+            // 生成侧特有的早退：带 fileInfo 即视为已产出文件，即便 success=false 也放行，
+            // 让 lint warnings 这类非致命问题不影响交付；读侧没有这个语义。
+            if (treatsFileInfoAsSuccess()
+                    && json.containsKey("message")
+                    && !json.getBooleanValue("success")
+                    && !json.containsKey("fileInfo")) {
+                return failure(getName() + " 执行失败：" + json.getString("message"));
             }
             boolean success = !json.containsKey("success") || json.getBooleanValue("success");
             if (!success) {

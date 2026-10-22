@@ -167,6 +167,98 @@ public class DocToolRemoteProtocolTest {
     }
 
     @Test
+    public void genAcceptsFileInfoBearingResponseWithoutSuccessKey() {
+        // 生成侧特有语义：响应带 fileInfo 但没有 success 键时，guard 不得早退，
+        // 随后的 success 检查因缺键而放行——文件已产出就该登记，不能被 message 文案带崩。
+        http.response = "{\"message\":\"generated with notes\","
+                + "\"fileInfo\":[{\"fileName\":\"out.pdf\",\"ossUrl\":\"https://oss/x.pdf\"}]}";
+        GenTool tool = new GenTool();
+        tool.bind(context);
+        context.bindCurrentToolArtifactSource(
+                ToolArtifactSource.builder().toolCallId("call-partial").toolName("doc_gen").build());
+
+        ToolResultPayload payload = (ToolResultPayload) tool.execute(ToolArgs.map("{}"));
+
+        Assert.assertFalse("带 fileInfo 且无 success 键的响应不得判失败", payload.getFailed());
+        Assert.assertFalse(context.getArtifactBindingsByToolCallId("call-partial").isEmpty());
+    }
+
+    @Test
+    public void genStillFailsWhenMessagePresentWithoutFileInfo() {
+        // 与上例互补：没有 fileInfo 的 message 是真正的失败，早退必须仍然生效。
+        http.response = "{\"message\":\"document_generate failed: boom\"}";
+        GenTool tool = new GenTool();
+        tool.bind(context);
+        context.bindCurrentToolArtifactSource(
+                ToolArtifactSource.builder().toolCallId("call-gen-fail").toolName("doc_gen").build());
+
+        ToolResultPayload payload = (ToolResultPayload) tool.execute(ToolArgs.map("{}"));
+
+        Assert.assertTrue(payload.getFailed());
+        Assert.assertTrue(payload.getToolResult().contains("boom"));
+    }
+
+    @Test
+    public void readHasNoFileInfoEarlyExitSoMessageAloneStillFails() {
+        // 读侧没有生成侧那道 guard：单有 message 时靠 success 检查判失败。
+        // 这条测试钉住两端的差异——guard 是生成侧特有的，不是公共基类的行为。
+        http.response = "{\"success\":false,\"message\":\"parse failed\"}";
+        ReadTool tool = new ReadTool();
+        tool.bind(context);
+        context.bindCurrentToolArtifactSource(
+                ToolArtifactSource.builder().toolCallId("call-read-partial").toolName("doc_read").build());
+
+        ToolResultPayload payload = (ToolResultPayload) tool.execute(ToolArgs.map("{}"));
+
+        Assert.assertTrue(payload.getFailed());
+        Assert.assertTrue(payload.getToolResult().contains("parse failed"));
+    }
+
+    @Test
+    public void readKeepsStructuredDataAsObjectWhenUnderLimit() {
+        // 结构化 data 未超限时保留原对象：读侧下游按 Map 消费，恒串化会让它们看到 String
+        http.response = "{\"success\":true,\"data\":{\"rows\":[{\"a\":1}],\"columns\":[\"a\"]}}";
+        ReadTool tool = new ReadTool();
+        tool.bind(context);
+        context.bindCurrentToolArtifactSource(
+                ToolArtifactSource.builder().toolCallId("call-read-obj").toolName("doc_read").build());
+
+        ToolResultPayload payload = (ToolResultPayload) tool.execute(ToolArgs.map("{}"));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) payload.getLlmData();
+        Assert.assertTrue("未超限的结构化 data 必须是 Map",
+                data.get("data") instanceof Map);
+        Assert.assertEquals(List.of("a"), ((Map<String, Object>) data.get("data")).get("columns"));
+    }
+
+    @Test
+    public void readTruncatesStructuredDataWhenOverLimit() {
+        // 超限时才降级为截断后的 JSON 字符串
+        StringBuilder rows = new StringBuilder("[");
+        for (int i = 0; i < 400; i++) {
+            if (i > 0) {
+                rows.append(',');
+            }
+            rows.append("{\"col\":\"").append("z".repeat(100)).append("\"}");
+        }
+        rows.append(']');
+        http.response = "{\"success\":true,\"data\":{\"rows\":" + rows + "}}";
+        ReadTool tool = new ReadTool();
+        tool.bind(context);
+        context.bindCurrentToolArtifactSource(
+                ToolArtifactSource.builder().toolCallId("call-read-big").toolName("doc_read").build());
+
+        ToolResultPayload payload = (ToolResultPayload) tool.execute(ToolArgs.map("{}"));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) payload.getLlmData();
+        Assert.assertTrue("超限的结构化 data 必须降级为字符串",
+                data.get("data") instanceof String);
+        Assert.assertTrue(((String) data.get("data")).endsWith("...[truncated]"));
+    }
+
+    @Test
     public void bothFailOnRemoteErrorResponse() {
         http.response = "{\"success\":false,\"message\":\"boom\"}";
 

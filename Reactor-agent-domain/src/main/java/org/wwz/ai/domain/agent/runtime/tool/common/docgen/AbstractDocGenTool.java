@@ -34,6 +34,11 @@ public abstract class AbstractDocGenTool extends AbstractDocRemoteTool {
     }
 
     @Override
+    protected boolean treatsFileInfoAsSuccess() {
+        return true;
+    }
+
+    @Override
     protected void extraLlmData(com.alibaba.fastjson.JSONObject json, Map<String, Object> data) {
         putIfPresent(data, json, "stats");
         putIfPresent(data, json, "message");

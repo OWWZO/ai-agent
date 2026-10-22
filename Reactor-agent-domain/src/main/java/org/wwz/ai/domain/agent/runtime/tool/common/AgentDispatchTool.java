@@ -186,8 +186,6 @@ public class AgentDispatchTool implements BaseTool {
         BackgroundSubAgentExecutor.settleLedgerIfTerminal(parent, parentToolUseId, runningObservation);
     }
 
-
-
     /**
      * 后台任务清空后，只有父 run 已经 finishRun 才允许关观察流。
      */
