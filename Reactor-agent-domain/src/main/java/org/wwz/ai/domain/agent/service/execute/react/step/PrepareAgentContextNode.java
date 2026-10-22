@@ -35,7 +35,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
                 request,
                 dynamicContext.getPrinter(),
                 ExecutionLedgerConstants.ENTRY_AGENT_REACT,
-                false
+                PrepareAgentContextAssembly.ToolScope.SINGLE
         ).context());
         return router(request, dynamicContext);
     }

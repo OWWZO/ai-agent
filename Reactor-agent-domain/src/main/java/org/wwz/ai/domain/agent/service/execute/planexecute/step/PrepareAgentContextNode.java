@@ -47,7 +47,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
                 request,
                 dynamicContext.getPrinter(),
                 ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE,
-                true
+                PrepareAgentContextAssembly.ToolScope.PLAN_SOLVE_MAIN_AND_SUB
         );
         org.wwz.ai.domain.agent.runtime.agent.AgentContext agentContext = assembled.context();
 

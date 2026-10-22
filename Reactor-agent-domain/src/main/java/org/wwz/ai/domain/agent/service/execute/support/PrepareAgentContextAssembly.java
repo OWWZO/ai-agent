@@ -73,6 +73,16 @@ public class PrepareAgentContextAssembly {
     private PlanArtifactStore planArtifactStore;
 
     /**
+     * 工具池形态。与「用哪个工厂入口」是两个关注点，故不用一个布尔同时表达。
+     */
+    public enum ToolScope {
+        /** 单池：主代理直接用它。 */
+        SINGLE,
+        /** 主池按白名单过滤，全量池留给派生子 Agent 时筛选。 */
+        PLAN_SOLVE_MAIN_AND_SUB
+    }
+
+    /**
      * 装配结果：AgentContext 加上 resume 结论（PlanSolve 据此判定是否自动进入 plan mode）。
      */
     public record Assembled(AgentContext context, boolean resumedApprovedPlan) {
@@ -82,12 +92,12 @@ public class PrepareAgentContextAssembly {
      * 两条链路的差异点：入口标识与工具池构造方式。
      *
      * @param entryAgent  ledger run 的 entryAgent（ENTRY_AGENT_REACT / ENTRY_AGENT_PLAN_SOLVE）
-     * @param planSolve   PlanSolve 链路需分流主/子工具池，React 链路只有一套
+     * @param toolScope   工具池形态：React 单池，PlanSolve 分流主/子池
      */
     public Assembled assemble(AgentExecutionCommand request,
                               Printer printer,
                               String entryAgent,
-                              boolean planSolve) {
+                              ToolScope toolScope) {
         var disabled = sessionCapabilityService.loadDisabled(request.getSessionId());
         AgentContext agentContext = AgentContext.builder()
                 .requestId(request.getRequestId())
@@ -128,7 +138,7 @@ public class PrepareAgentContextAssembly {
                 request,
                 entryAgent
         );
-        bindTools(agentContext, request, planSolve);
+        bindTools(agentContext, request, toolScope);
         bindActiveRunIfPresent(agentContext);
         return new Assembled(agentContext, resumedApprovedPlan);
     }
@@ -148,17 +158,17 @@ public class PrepareAgentContextAssembly {
         return applyPlanApprovalDecision(agentContext, request);
     }
 
-    private void bindTools(AgentContext agentContext, AgentExecutionCommand request, boolean planSolve) {
-        ToolCollection fullToolCollection = planSolve
+    private void bindTools(AgentContext agentContext, AgentExecutionCommand request, ToolScope toolScope) {
+        ToolCollection toolCollection = toolScope == ToolScope.PLAN_SOLVE_MAIN_AND_SUB
                 ? agentToolCollectionFactory.buildForPlanSolve(agentContext, request)
                 : agentToolCollectionFactory.buildForReact(agentContext, request);
-        if (planSolve) {
-            // 主代理只看白名单工具；完整工具池留给派生子 Agent 时筛选。
-            agentContext.setSubAgentToolCollection(fullToolCollection);
-            agentContext.setToolCollection(agentToolCollectionFactory.filterForPlanSolveMain(fullToolCollection));
+        if (toolScope != ToolScope.PLAN_SOLVE_MAIN_AND_SUB) {
+            agentContext.setToolCollection(toolCollection);
             return;
         }
-        agentContext.setToolCollection(fullToolCollection);
+        // 主代理只看白名单工具；完整工具池留给派生子 Agent 时筛选。
+        agentContext.setSubAgentToolCollection(toolCollection);
+        agentContext.setToolCollection(agentToolCollectionFactory.filterForPlanSolveMain(toolCollection));
     }
 
     private boolean applyPlanApprovalDecision(AgentContext agentContext, AgentExecutionCommand request) {
