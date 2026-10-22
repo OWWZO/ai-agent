@@ -101,6 +101,10 @@ function copyViaExecCommand(value: string): boolean {
   try {
     const input = document.createElement("textarea");
     input.value = value;
+    // readonly + 移出视口：iOS Safari 等环境下，可编辑且可见的 textarea
+    // 获得焦点会弹出系统菜单，盖住页面。
+    input.setAttribute("readonly", "");
+    input.style.cssText = "position:fixed;top:-9999px;opacity:0;pointer-events:none";
     document.body.appendChild(input);
     input.focus();
     input.select();

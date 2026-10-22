@@ -16,7 +16,7 @@
 ui/
 ├── src/                    # 源代码主目录
 │   ├── main.tsx            # 入口文件，挂载 React 应用到 DOM
-│   ├── App.tsx             # 根组件，配置 Ant Design 中文环境 + 路由
+│   ├── App.tsx             # 根组件，装配路由
 │   ├── global.css          # 全局样式
 │   ├── vite-env.d.ts       # Vite 环境变量类型声明
 │   │
@@ -24,7 +24,7 @@ ui/
 │   │   └── index.tsx       # 定义 "/" 主页和 404 页面，懒加载组件
 │   │
 │   ├── layout/             # 布局层
-│   │   └── index.tsx       # 最外层布局，初始化全局 message，包裹 <Outlet>
+│   │   └── index.tsx       # 最外层布局，挂载 Toaster / ConfirmDialogHost，包裹 <Outlet>
 │   │
 │   ├── pages/              # 页面
 │   │   └── Home/index.tsx  # 主页面：未输入时显示欢迎页+案例展示，输入后切换到对话视图
@@ -37,7 +37,7 @@ ui/
 │   │   ├── ActionView/     # 右侧"任务面板"，展示 Agent 执行过程、文件、浏览行为
 │   │   │   ├── FileList.tsx      # 文件列表
 │   │   │   ├── FilePreview.tsx   # 文件预览
-│   │   │   ├── BrowserList.tsx   # 浏览行为列表
+│   │   │   └── WorkspaceTabOverview.tsx  # 工作区标签总览（替代旧的 BrowserList/Title）
 │   │   ├── ActionPanel/    # 内容渲染面板（根据消息类型选择渲染器）
 │   │   │   ├── MarkdownRenderer.tsx   # Markdown 渲染
 │   │   │   ├── HTMLRenderer.tsx       # HTML 渲染
@@ -46,12 +46,11 @@ ui/
 │   │   │   └── FileRenderer.tsx       # 文件渲染
 │   │   ├── PlanView/       # 任务计划展示（Agent 执行计划步骤可视化）
 │   │   ├── DataChat/       # 数据分析对话组件（图表 + 卡片 + 表格）
-│   │   ├── DataListDrawer/ # 数据模型选择抽屉（选择要查询的数据库模型）
-│   │   ├── Slogn/          # 首页标语动画组件（打字机效果）
+│   │   ├── genui/          # GenUI 渲染树（画布、图表、表单等）
+│   │   ├── ai-elements/    # shadcn 风格 AI 组件（message / reasoning / prompt-input 等）
+│   │   ├── ui/             # shadcn/ui 原语（Nova 风格）
 │   │   ├── AttachmentList/ # 附件列表（显示上传的文件）
-│   │   ├── LoadingDot/     # 加载中三点动画
 │   │   ├── LoadingSpinner/ # 加载旋转动画
-│   │   ├── Logo/           # Logo 组件
 │   │   └── NotFound.tsx    # 404 页面
 │   │
 │   ├── hooks/              # 自定义 Hook
@@ -211,21 +210,23 @@ pnpm fix       # 自动修复
 |-----|------|
 | 框架 | React 19 + TypeScript 5.7 |
 | 构建工具 | Vite 6 |
-| UI 组件库 | Ant Design 5.26 |
-| 样式方案 | Tailwind CSS 4.1 |
+| UI 组件库 | shadcn/ui（Nova 风格）+ Tailwind CSS 4.1 |
+| 图标 | Lucide |
+| 动画 | Motion |
+| 布局 | react-resizable-panels |
+| 状态管理 | Zustand |
 | 路由 | React Router 7 |
 | HTTP 客户端 | Axios |
 | SSE 通信 | @microsoft/fetch-event-source |
 | 图表 | ECharts 6 |
-| 动画 | Framer Motion |
 | Markdown 渲染 | react-markdown + remark-gfm |
-| 代码高亮 | react-syntax-highlighter |
+| 代码高亮 | Shiki |
 
 ---
 
 ## 测试策略
 
-当前项目暂未配置测试框架，建议后续集成：
+项目已配置 Vitest（`pnpm test`），测试与源文件同目录放置（`*.test.ts` / `*.test.tsx`）：
 
 - **单元测试**: Vitest + React Testing Library
 - **E2E 测试**: Playwright
@@ -271,7 +272,7 @@ pnpm fix       # 自动修复
 
 - 全局样式：`src/global.css`
 - 组件样式：使用 Tailwind CSS 类名
-- 主题配置：`src/App.tsx` 中的 Ant Design ConfigProvider
+- 主题：Tailwind v4 `@theme inline` token（见 `src/global.css`），无 ConfigProvider
 
 ### 添加 API 接口
 

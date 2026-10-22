@@ -11,6 +11,8 @@ type FakeTextarea = {
   value: string;
   focus: () => void;
   select: () => void;
+  setAttribute: (name: string, value: string) => void;
+  style: { cssText: string };
 };
 
 function installFakeDocument(execCommand: () => boolean) {
@@ -22,6 +24,8 @@ function installFakeDocument(execCommand: () => boolean) {
         value: "",
         focus: () => undefined,
         select: () => undefined,
+        setAttribute: () => undefined,
+        style: { cssText: "" },
       };
       created.push(el);
       return el;
