@@ -3561,3 +3561,36 @@ describe("buildAction 的表查找安全性", () => {
     });
   });
 });
+
+describe("mergeToolCallStreamingTask 的状态排序安全性", () => {
+  const tool = (status: string) =>
+    ({
+      messageType: "tool_call",
+      messageId: "m1",
+      resultMap: { status },
+    }) as unknown as MESSAGE.Task;
+
+  it("prev 是原型键时，真实状态能正常顶替它", () => {
+    // 裸下标时 toolStatusRank("constructor") 返回 Object 构造函数，
+    // 而 `2 >= Object` 恒为 false，于是 mergedStatus 保留 prev="constructor"，
+    // 卡片会显示一个不是状态的垃圾值。
+    // 修复后 rank 降级为 0，`2 >= 0` 成立，next 的真实状态胜出。
+    const merged = mergeToolCallStreamingTask(
+      tool("constructor"),
+      tool("running")
+    );
+    expect(merged.resultMap?.status).toBe("running");
+  });
+
+  it("正常状态仍按 streaming < running < success 排序", () => {
+    expect(
+      mergeToolCallStreamingTask(tool("running"), tool("streaming")).resultMap?.status
+    ).toBe("running");
+    expect(
+      mergeToolCallStreamingTask(tool("running"), tool("success")).resultMap?.status
+    ).toBe("success");
+    expect(
+      mergeToolCallStreamingTask(tool("success"), tool("running")).resultMap?.status
+    ).toBe("success");
+  });
+});
