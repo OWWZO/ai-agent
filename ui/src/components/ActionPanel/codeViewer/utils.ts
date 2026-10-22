@@ -1,5 +1,6 @@
 import type { FileContents, SupportedLanguages } from "@pierre/diffs";
 import type { BundledTheme } from "shiki";
+import { hashContent } from "@/lib/hashContent";
 import type {
   CodeCommentLabels,
   CodeCommentRange,
@@ -83,11 +84,7 @@ export function toCssString(value: string): string {
 }
 
 export function hashCodeViewerContent(code: string): string {
-  let hash = 5381;
-  for (let index = 0; index < code.length; index += 1) {
-    hash = (hash * 33) ^ code.charCodeAt(index);
-  }
-  return (hash >>> 0).toString(36);
+  return hashContent(code);
 }
 
 /**

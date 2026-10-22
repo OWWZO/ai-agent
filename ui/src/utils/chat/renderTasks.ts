@@ -1,4 +1,5 @@
 import { resolveToolCallTargetName } from "./toolCalls";
+import { hashContent } from "@/lib/hashContent";
 
 type RenderSearchResult = {
   query: string[];
@@ -143,15 +144,16 @@ function getChaptersSignature(resultMap?: MESSAGE.ResultMap): string {
  * 但直接放全文也不行：这个签名每帧对每个 task 都要重算，一次几百 KB 的
  * 工具入参会把字符串拼接和比较都放大到不可忽略的量级。
  *
- * 哈希是 O(n) 但只产出一个短串，拼接与比较都是常数级；比全文进签名省得多，
- * 又比长度安全。（与 codeViewer 的 hashCodeViewerContent 同一思路。）
+ * 哈希是 O(n) 但只产出一个短串，拼接与比较都是常数级。
+ *
+ * **残留风险**：djb2 是 32 位，长内容下仍有非零碰撞概率 —— 一旦碰撞，
+ * WeakMap 会返回上一次的渲染结果，卡片短暂显示过期入参，直到长度或哈希
+ * 再次变化。这个窗口很小（碰撞需要内容恰好落到同一个 32 位值），
+ * 且后果是显示陈旧而非崩溃，所以没有换成更强的哈希；真要根除得把内容
+ * 本身进签名，代价是每帧的 O(n) 字符串比较。
  */
 function hashTextForSignature(text: string): string {
-  let hash = 5381;
-  for (let index = 0; index < text.length; index += 1) {
-    hash = (hash * 33) ^ text.charCodeAt(index);
-  }
-  return `${text.length}:${(hash >>> 0).toString(36)}`;
+  return `${text.length}:${hashContent(text)}`;
 }
 
 function getArtifactSignature(task: RenderableTask): string {
