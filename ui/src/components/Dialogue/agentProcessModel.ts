@@ -231,12 +231,17 @@ function resolveToolCallId(tool: CHAT.Task): string {
 }
 
 /**
- * 消息类型 → 步骤类型。
+ * 消息类型 → 步骤类型：只在 `isUserBriefTask` / `isSubAgentParentTask` **之前**
+ * 生效的那些常量映射。
  *
- * 纯常量映射，提到模块级避免每条 task 重建判断链。表内查不到的类型
- * 继续走下面的「子任务 → 工具名关键字」判定。
+ * 顺序是刻意的：master 的判断链是
+ *   thinking / assistant_reply → user_brief → 子 Agent → 其余常量 → 工具名关键字
+ * 子 Agent 判定看的是 toolName / input（与 messageType 无关），所以它必须先于
+ * 其余常量表 —— 否则 messageType 为 deep_search / code / file … 的 Agent 派发卡
+ * 会被表抢先命中，降级成 search / code / artifact，子 Agent 的进度行、时长、
+ * liveText 和 Dock 详情全部不渲染。
  */
-const STEP_KIND_BY_MESSAGE_TYPE: Record<string, ProcessStepKind> = {
+const STEP_KIND_BEFORE_SUBAGENT: Record<string, ProcessStepKind> = {
   llm_reasoning: "thinking",
   plan_thought: "thinking",
   // agent_stream 是 react 主 agent 的正文流行模型：中间轮（moreRounds=true）
@@ -245,6 +250,10 @@ const STEP_KIND_BY_MESSAGE_TYPE: Record<string, ProcessStepKind> = {
   // 而不是沉到对话底部。
   tool_thought: "assistant_reply",
   agent_stream: "assistant_reply",
+};
+
+/** 消息类型 → 步骤类型：子 Agent 判定之后的常量映射。 */
+const STEP_KIND_AFTER_SUBAGENT: Record<string, ProcessStepKind> = {
   ask_user_question: "interactive",
   desktop_control: "interactive",
   plan_approval: "interactive",
@@ -266,21 +275,42 @@ const STEP_KIND_BY_MESSAGE_TYPE: Record<string, ProcessStepKind> = {
  * 工具名关键字 → 步骤类型。按顺序匹配，命中即返回。
  *
  * 工具名没有统一命名规范（同一语义在不同模型下叫法不同），只能靠关键字兜底。
+ *
+ * 拍平成单个有序数组而不是「关键字组」的嵌套表：每个 timeline task 都要过一遍
+ * 这里，嵌套表要为每组新建一个 `.some()` 闭包，长会话下是白费的 GC 压力。
  */
 const STEP_KIND_BY_TOOL_NAME_KEYWORD: ReadonlyArray<
-  readonly [keywords: readonly string[], kind: ProcessStepKind]
+  readonly [keyword: string, kind: ProcessStepKind]
 > = [
-  [["read", "cat", "view", "open"], "read"],
-  [["edit", "write", "create", "patch", "replace"], "edit"],
-  [["bash", "shell", "terminal", "exec", "run"], "terminal"],
-  [["search", "grep", "web", "crawl"], "search"],
+  ["read", "read"],
+  ["cat", "read"],
+  ["view", "read"],
+  ["open", "read"],
+  ["edit", "edit"],
+  ["write", "edit"],
+  ["create", "edit"],
+  ["patch", "edit"],
+  ["replace", "edit"],
+  ["bash", "terminal"],
+  ["shell", "terminal"],
+  ["terminal", "terminal"],
+  ["exec", "terminal"],
+  ["run", "terminal"],
+  ["search", "search"],
+  ["grep", "search"],
+  ["web", "search"],
+  ["crawl", "search"],
 ];
 
 export function resolveProcessStepKind(tool: CHAT.Task): ProcessStepKind {
   const messageType = tool.messageType || "";
-  const byType = STEP_KIND_BY_MESSAGE_TYPE[messageType];
-  if (byType) {
-    return byType;
+
+  // 两张表都用 Object.hasOwn 查：messageType 是后端传来的字符串，
+  // 直接下标会让 "toString" / "constructor" 这类键命中原型方法。
+
+  // 子 Agent 判定之前的常量映射
+  if (Object.hasOwn(STEP_KIND_BEFORE_SUBAGENT, messageType)) {
+    return STEP_KIND_BEFORE_SUBAGENT[messageType];
   }
 
   if (isUserBriefTask(tool)) {
@@ -291,9 +321,14 @@ export function resolveProcessStepKind(tool: CHAT.Task): ProcessStepKind {
     return "agent";
   }
 
+  // 子 Agent 判定之后的常量映射
+  if (Object.hasOwn(STEP_KIND_AFTER_SUBAGENT, messageType)) {
+    return STEP_KIND_AFTER_SUBAGENT[messageType];
+  }
+
   const toolName = resolveToolName(tool);
-  for (const [keywords, kind] of STEP_KIND_BY_TOOL_NAME_KEYWORD) {
-    if (keywords.some((keyword) => toolName.includes(keyword))) {
+  for (const [keyword, kind] of STEP_KIND_BY_TOOL_NAME_KEYWORD) {
+    if (toolName.includes(keyword)) {
       return kind;
     }
   }

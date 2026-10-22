@@ -975,3 +975,41 @@ describe("interactive 步骤会切开前面的工具组", () => {
     ).toContain("ask1");
   });
 });
+
+describe("resolveProcessStepKind 的子 Agent 优先级", () => {
+  // 子 Agent 判定看的是 toolName（Agent 派发），与 messageType 无关，
+  // 所以它必须先于 messageType 常量表生效。
+  const agentTask = (messageType: string) =>
+    ({
+      messageType,
+      messageId: "m1",
+      resultMap: { toolName: "Agent" },
+    }) as unknown as CHAT.Task;
+
+  it.each([
+    ["deep_search"],
+    ["knowledge"],
+    ["code"],
+    ["html"],
+    ["file"],
+    ["markdown"],
+    ["ppt"],
+    ["data_analysis"],
+    ["browser"],
+  ])("messageType=%s 的 Agent 派发卡仍判为 agent", (messageType) => {
+    expect(resolveProcessStepKind(agentTask(messageType))).toBe("agent");
+  });
+
+  it("非 Agent 派发时这些 messageType 仍走各自的常量映射", () => {
+    const plain = (messageType: string) =>
+      ({
+        messageType,
+        messageId: "m1",
+        resultMap: {}
+      }) as unknown as CHAT.Task;
+    expect(resolveProcessStepKind(plain("deep_search"))).toBe("search");
+    expect(resolveProcessStepKind(plain("code"))).toBe("code");
+    expect(resolveProcessStepKind(plain("file"))).toBe("file");
+    expect(resolveProcessStepKind(plain("markdown"))).toBe("artifact");
+  });
+});

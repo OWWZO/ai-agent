@@ -4,7 +4,6 @@ import {
   memo,
   useMemo,
   type ComponentType,
-  type CSSProperties,
 } from "react";
 import type { FileDiffOptions, PatchDiffProps } from "@pierre/diffs/react";
 import { useIsDarkTheme } from "@/hooks/useIsDarkTheme";
@@ -19,6 +18,7 @@ import {
 } from "@/lib/patchPreview";
 import { cn } from "@/lib/utils";
 import { buildDiffViewerStyle } from "./utils";
+import type { CodeViewerStyle } from "./types";
 import Loading from "../Loading";
 
 /**
@@ -44,14 +44,6 @@ const MAX_PATCH_SAFE_LINE_COUNT = 1_200;
 const MAX_PATCH_SAFE_CHAR_COUNT = 180_000;
 
 const LOADING_CLASS = "mr-32";
-
-type PatchViewerStyle = CSSProperties & {
-  "--diffs-bg"?: string;
-  "--diffs-light-bg"?: string;
-  "--diffs-dark-bg"?: string;
-  "--diffs-font-family"?: string;
-  "--diffs-font-size"?: string;
-};
 
 type PatchViewerProps = {
   /** unified diff 文本（后端 `workspace_edit` 的 `diff` 字段） */
@@ -81,7 +73,7 @@ export const PatchViewer = memo(function PatchViewer({ patch, className }: Patch
     return lines > MAX_PATCH_SAFE_LINE_COUNT;
   }, [patch]);
 
-  const viewerStyle = useMemo<PatchViewerStyle>(
+  const viewerStyle = useMemo<CodeViewerStyle>(
     () => ({
       // 主题适配与 CodeViewer 共用，见 buildDiffViewerStyle 的说明
       ...buildDiffViewerStyle({

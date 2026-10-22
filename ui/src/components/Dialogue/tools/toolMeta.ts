@@ -274,7 +274,11 @@ export function toolSummary(name: string, arg: string, full = false): string {
           str(d.pattern) ?? str(d.query) ?? str(d.regex) ?? str(d.q);
         const path = str(d.path) ?? str(d.glob) ?? str(d.include);
         if (pattern && path) return c(`${pattern}  in ${path}`);
-        return pattern ? c(pattern) : fallback();
+        if (pattern) return c(pattern);
+        // 与 glob 同一形状：没有 pattern 时退回路径本身，用上面算好的 path，
+        // 别漏掉 glob / include 兜底的那几种入参形态。
+        if (path) return c(path);
+        return fallback();
       }
       case "glob": {
         const pattern = str(d.pattern) ?? str(d.glob) ?? str(d.query);

@@ -79,19 +79,25 @@ export const scrollToTop = (dom: Element) => {
 /**
  * 复制文本，返回是否成功。
  *
- * 没有 `navigator.clipboard` 时（非安全上下文、老浏览器）退到
- * `execCommand("copy")`，那条路拿不到结果，只能假定成功。
+ * `execCommand("copy")` 兜底只在 Clipboard API **整体缺失**时走
+ * （非安全上下文、老浏览器）。API 存在但写入被拒时不兜底 —— 有些调用点
+ * 靠返回值区分「不可用」和「这次失败」，兜底会把两种原因搅在一起，
+ * 也让「复制成功」的 UI 反馈失去意义。
  */
 export async function copyToClipboard(text?: string | number): Promise<boolean> {
   const value = (text ?? "") + "";
-  if (navigator.clipboard) {
-    try {
-      await navigator.clipboard.writeText(value);
-      return true;
-    } catch {
-      // 权限被拒或非安全上下文：继续走兜底
-    }
+  if (!navigator.clipboard) {
+    return copyViaExecCommand(value);
   }
+  try {
+    await navigator.clipboard.writeText(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function copyViaExecCommand(value: string): boolean {
   try {
     const input = document.createElement("textarea");
     input.value = value;

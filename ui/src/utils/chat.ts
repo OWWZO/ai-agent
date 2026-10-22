@@ -195,7 +195,10 @@ const TOOL_STATUS_RANK: Record<string, number> = {
 };
 
 function toolStatusRank(status?: string): number {
-  return TOOL_STATUS_RANK[String(status || "").toLowerCase()] ?? 0;
+  const key = String(status || "").toLowerCase();
+  // hasOwn 而非直接下标：status 是后端传来的字符串，"constructor" 这类键
+  // 会命中原型属性并返回 Object 构造函数，比较结果全错。
+  return Object.hasOwn(TOOL_STATUS_RANK, key) ? TOOL_STATUS_RANK[key] : 0;
 }
 
 function mergeTaskTiming(
@@ -2376,28 +2379,81 @@ export const buildConversationTaskData = (
   return handleTaskData(snapshotChat, deepThink, snapshotChat.multiAgent);
 };
 
+type TaskAction = { action: string; tool: string; name: string };
+
 /**
  * 消息类型 → 静态动作文案。
  *
  * 这些分支不依赖 task，只是常量映射；放在模块级避免每次调用重建，
  * 也让「哪些类型有固定文案」一眼可查。需要读 task 的类型不在此表内，
  * 走下面的 switch 分支。
+ *
+ * 两个坑，都是这次重构踩过的：
+ * - 查找必须走 `Object.hasOwn`：`messageType` 是后端传来的字符串，直接下标
+ *   会让 `"toString"` / `"constructor"` 这类键命中原型方法，返回 function。
+ * - 返回前复制一份：表是模块级共享的，调用方改写字段会永久污染它。
  */
-type TaskAction = { action: string; tool: string; name: string };
-
-const STATIC_TASK_ACTIONS: Record<string, TaskAction> = {
-  ask_user_question: { action: "等待你的回答", tool: "AskUserQuestion", name: "选择题" },
-  desktop_control: { action: "等待你操作桌面", tool: "RequestDesktopControl", name: "桌面控制" },
-  plan_approval: { action: "等待批准计划", tool: "ExitPlanMode", name: "计划批准" },
-  session_tasks: { action: "任务列表已更新", tool: "TaskList", name: "Todo" },
-  code: { action: "正在执行代码", tool: "编辑器", name: "" },
-  html: { action: "正在生成web页面", tool: "编辑器", name: "" },
-  ui_tree: { action: "正在生成界面组件", tool: "GenUI", name: "画布" },
-  ui_patch: { action: "正在更新界面组件", tool: "GenUI", name: "补丁" },
-  plan_thought: { action: "正在思考下一步计划", tool: "", name: "" },
-  plan: { action: "更新任务列表", tool: "", name: "" },
-  knowledge: { action: "正在调用知识库", tool: "文件编辑器", name: "查询知识库" },
-  markdown: { action: "正在生成报告", tool: "markdown", name: "" },
+const STATIC_TASK_ACTIONS: Record<string, Readonly<TaskAction>> = {
+  ask_user_question: {
+    action: "等待你的回答",
+    tool: "AskUserQuestion",
+    name: "选择题"
+  },
+  desktop_control: {
+    action: "等待你操作桌面",
+    tool: "RequestDesktopControl",
+    name: "桌面控制"
+  },
+  plan_approval: {
+    action: "等待批准计划",
+    tool: "ExitPlanMode",
+    name: "计划批准"
+  },
+  session_tasks: {
+    action: "任务列表已更新",
+    tool: "TaskList",
+    name: "Todo"
+  },
+  code: {
+    action: "正在执行代码",
+    tool: "编辑器",
+    name: ""
+  },
+  html: {
+    action: "正在生成web页面",
+    tool: "编辑器",
+    name: ""
+  },
+  ui_tree: {
+    action: "正在生成界面组件",
+    tool: "GenUI",
+    name: "画布"
+  },
+  ui_patch: {
+    action: "正在更新界面组件",
+    tool: "GenUI",
+    name: "补丁"
+  },
+  plan_thought: {
+    action: "正在思考下一步计划",
+    tool: "",
+    name: ""
+  },
+  plan: {
+    action: "更新任务列表",
+    tool: "",
+    name: ""
+  },
+  knowledge: {
+    action: "正在调用知识库",
+    tool: "文件编辑器",
+    name: "查询知识库"
+  },
+  markdown: {
+    action: "正在生成报告",
+    tool: "markdown",
+    name: ""
+  },
 };
 
 /**
@@ -2406,9 +2462,11 @@ const STATIC_TASK_ACTIONS: Record<string, TaskAction> = {
  * @returns 包含action、tool和name的动作信息对象
  */
 export const buildAction = (task: CHAT.Task): TaskAction => {
-  const staticAction = STATIC_TASK_ACTIONS[task.messageType || ""];
-  if (staticAction) {
-    return staticAction;
+  const messageType = task.messageType || "";
+  // hasOwn 而非直接下标：挡住 "toString" / "constructor" 这类原型键
+  if (Object.hasOwn(STATIC_TASK_ACTIONS, messageType)) {
+    // 复制一份，避免调用方改写字段污染模块级表
+    return { ...STATIC_TASK_ACTIONS[messageType] };
   }
 
   switch (task.messageType) {
