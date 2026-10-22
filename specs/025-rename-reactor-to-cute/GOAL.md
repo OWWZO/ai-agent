@@ -16,7 +16,7 @@
 2. `mvn -pl Cute-agent-app test -Dtest='*BoundaryTest' -DskipTests=false` 全绿
 3. `cd ui && pnpm install && pnpm build` 通过
 4. `docker compose config` 无报错
-5. 仓库内 `Reactor` / `reactor` 词边界命中清零，**含归档文档与历史文件名**（L4 库引用除外，见 §3）
+5. 仓库内 `Reactor` / `reactor` 词边界命中清零，**`specs/` 与 `openspec/` 两个未跟踪目录除外**（L4 库引用除外，见 §3）
 6. 无 `Cute` 误伤：`execute` 等词未被破坏
 
 ---
@@ -129,17 +129,16 @@ cd ui && pnpm install && pnpm build
 
 > ⚠️ 本阶段完成后旧部署不可用：JWT 全部失效、`cute-data` 是新卷、浏览器扩展必须同步升级。
 
-> ⚠️ 归档文档不豁免：`openspec/changes/archive/` 下的历史目录名与文件名也要改。目录改名用 `git mv` 保留历史；`openspec/changes/archive/` 内的 change 名若被 `.openspec` 索引引用，需同步索引。
+> ⚠️ `openspec/changes/**` 虽含大量 Reactor，但整个 `openspec/` 未被 git 跟踪，本轮不改。
 
 ### Phase 4 — L3 文档与品牌
 
 - [ ] README、`CLAUDE.md`（根 + 各模块）、`docs/**` 中作为**项目名**出现的 Reactor
 - [ ] UI 标题 / `index.html` / banner / 产品名
-- [ ] **归档文档同样改名**：`docs/superpowers/plans/`、`docs/superpowers/specs/`、`openspec/changes/**`（含 `archive/`）、`specs/0xx-*/`
-- [ ] 归档目录与文件名中的 `reactor` 也改（如 `2026-05-04-reactor-ddd-phase1-boundary-convergence.md` → `...-cute-ddd-phase1-...`）
-- [ ] 归档目录名改（如 `openspec/changes/reactor-ddd-phase1-boundary-convergence/` → `cute-ddd-phase1-boundary-convergence/`）
+- [ ] `docs/superpowers/plans/`、`docs/superpowers/specs/` 下的历史文件名与内容同样改名（这些目录已被 git 跟踪）
+- [ ] **`specs/` 与 `openspec/` 不参与改名**：二者被 `.gitignore` 排除、不在版本控制内，改动无 diff 无回滚点，本轮明确跳过
 
-**验证：** 词边界 grep 全仓清零，无归档例外
+**验证：** 词边界 grep 清零，排除 `specs/`、`openspec/`
 
 ### Phase 5 — 全量验证
 
