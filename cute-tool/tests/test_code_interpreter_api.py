@@ -1,0 +1,51 @@
+# -*- coding: utf-8 -*-
+import unittest
+from unittest.mock import AsyncMock, patch
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from cute_tool.api.tool import router
+from cute_tool.model.code import ActionOutput
+
+
+class CodeInterpreterApiTest(unittest.TestCase):
+    def test_should_forward_permission_profile_to_code_interpreter_agent(self):
+        app = FastAPI()
+        app.include_router(router)
+        captured_kwargs = {}
+
+        async def fake_agent(**kwargs):
+            captured_kwargs.update(kwargs)
+            yield ActionOutput(content="ok", file_list=[])
+
+        with (
+            patch(
+                "cute_tool.tool.code_interpreter.code_interpreter_agent",
+                new=fake_agent,
+            ),
+            patch(
+                "cute_tool.api.tool.upload_file",
+                new=AsyncMock(return_value={"fileName": "code_output.md"}),
+            ) as upload,
+        ):
+            client = TestClient(app)
+            response = client.post(
+                "/code_interpreter",
+                json={
+                    "requestId": "req-api-1",
+                    "task": "生成一个汇总文件",
+                    "fileName": "汇总报告.md",
+                    "permissionProfile": "workspace",
+                    "stream": False,
+                },
+            )
+
+        self.assertEqual(200, response.status_code)
+        self.assertEqual("workspace", captured_kwargs.get("permission_profile"))
+        self.assertEqual("汇总报告.md", captured_kwargs.get("report_file_name"))
+        self.assertEqual("汇总报告.md", upload.await_args.kwargs["file_name"])
+
+
+if __name__ == "__main__":
+    unittest.main()

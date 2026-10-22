@@ -13,15 +13,15 @@
 ### Task 1: Lossless Memory Projection
 
 **Files:**
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/memory/PromptMemoryScope.java`
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/memory/PromptMemoryStreamKey.java`
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/memory/PromptMemoryMessage.java`
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/memory/PromptMemoryProjector.java`
-- Modify: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/dto/Memory.java`
-- Test: `Reactor-agent-app/src/test/java/org/wwz/ai/test/domain/PromptMemoryProjectorTest.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/memory/PromptMemoryScope.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/memory/PromptMemoryStreamKey.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/memory/PromptMemoryMessage.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/memory/PromptMemoryProjector.java`
+- Modify: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/dto/Memory.java`
+- Test: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/PromptMemoryProjectorTest.java`
 
 - [ ] Write a failing test for a `USER -> ASSISTANT(tool_calls) -> TOOL -> ASSISTANT` round trip and a second test that trims an unmatched assistant tool-call suffix.
-- [ ] Run `mvn -pl Reactor-agent-app test -Dtest=PromptMemoryProjectorTest -DskipTests=false`; expect compilation failure because the projector does not exist.
+- [ ] Run `mvn -pl Cute-agent-app test -Dtest=PromptMemoryProjectorTest -DskipTests=false`; expect compilation failure because the projector does not exist.
 - [ ] Implement these exact contracts:
 
 ```java
@@ -40,18 +40,18 @@ public List<Message> validPrefix(List<Message> messages);
 ### Task 2: Prompt-Memory Persistence and Lease
 
 **Files:**
-- Modify: `Reactor-agent-app/src/main/resources/db/schema.sql`
-- Create: `Reactor-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor/IPromptMemoryStreamDao.java`
-- Create: `Reactor-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor/IPromptMemoryTurnDao.java`
-- Create: `Reactor-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor/IPromptMemoryMessageDao.java`
-- Create: `Reactor-agent-app/src/main/resources/mybatis/mapper/prompt_memory_stream_mapper.xml`
-- Create: `Reactor-agent-app/src/main/resources/mybatis/mapper/prompt_memory_turn_mapper.xml`
-- Create: `Reactor-agent-app/src/main/resources/mybatis/mapper/prompt_memory_message_mapper.xml`
-- Create: `Reactor-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/adapter/repository/PromptMemoryRepository.java`
-- Test: `Reactor-agent-app/src/test/java/org/wwz/ai/test/domain/PromptMemoryRepositoryTest.java`
+- Modify: `Cute-agent-app/src/main/resources/db/schema.sql`
+- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor/IPromptMemoryStreamDao.java`
+- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor/IPromptMemoryTurnDao.java`
+- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor/IPromptMemoryMessageDao.java`
+- Create: `Cute-agent-app/src/main/resources/mybatis/mapper/prompt_memory_stream_mapper.xml`
+- Create: `Cute-agent-app/src/main/resources/mybatis/mapper/prompt_memory_turn_mapper.xml`
+- Create: `Cute-agent-app/src/main/resources/mybatis/mapper/prompt_memory_message_mapper.xml`
+- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/adapter/repository/PromptMemoryRepository.java`
+- Test: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/PromptMemoryRepositoryTest.java`
 
 - [ ] Write failing tests that: load committed rows in `turn_seq, seq_no` order; persist only one delta for each request; reject a second non-expired lease for the same stream.
-- [ ] Run `mvn -pl Reactor-agent-app test -Dtest=PromptMemoryRepositoryTest -DskipTests=false`; expect compilation failure.
+- [ ] Run `mvn -pl Cute-agent-app test -Dtest=PromptMemoryRepositoryTest -DskipTests=false`; expect compilation failure.
 - [ ] Add three tables: `ai_agent_prompt_memory_stream`, `ai_agent_prompt_memory_turn`, and `ai_agent_prompt_memory_message`. The stream table has unique stream identity, `latest_turn_seq`, `active_request_id`, `lease_expire_at`, and `version`; turn has unique `(stream_id, turn_seq)`; message has unique `(turn_id, seq_no)`.
 - [ ] Implement compare-and-set acquire/release and transactional publish:
 
@@ -67,23 +67,23 @@ public void publish(PromptMemoryLease lease, List<PromptMemoryMessage> delta) {
 ```
 
 - [ ] Do not hold a database transaction while a model streams.
-- [ ] Run `mvn -pl Reactor-agent-app test -Dtest='PromptMemoryRepositoryTest,ReactorMapperNamespaceBindingTest' -DskipTests=false`; expect PASS.
+- [ ] Run `mvn -pl Cute-agent-app test -Dtest='PromptMemoryRepositoryTest,ReactorMapperNamespaceBindingTest' -DskipTests=false`; expect PASS.
 - [ ] Commit with `git commit -m "feat: persist prompt memory log"`.
 
 ### Task 3: Domain Lifecycle Service
 
 **Files:**
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/memory/PromptMemoryRepository.java`
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/memory/PromptMemoryExecution.java`
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/memory/PromptMemoryService.java`
-- Create: `Reactor-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/reactor/service/PromptMemoryServiceImpl.java`
-- Modify: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/ReactorRuntimeDependencies.java`
-- Modify: `Reactor-agent-app/src/main/java/org/wwz/ai/config/reactor/ReactorRuntimeAutoConfiguration.java`
-- Modify: `Reactor-agent-app/src/test/java/org/wwz/ai/test/domain/support/ReactorRuntimeTestSupport.java`
-- Test: `Reactor-agent-app/src/test/java/org/wwz/ai/test/domain/PromptMemoryServiceTest.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/memory/PromptMemoryRepository.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/memory/PromptMemoryExecution.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/memory/PromptMemoryService.java`
+- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/reactor/service/PromptMemoryServiceImpl.java`
+- Modify: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/ReactorRuntimeDependencies.java`
+- Modify: `Cute-agent-app/src/main/java/org/wwz/ai/config/reactor/ReactorRuntimeAutoConfiguration.java`
+- Modify: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/support/ReactorRuntimeTestSupport.java`
+- Test: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/PromptMemoryServiceTest.java`
 
 - [ ] Write a failing test that seeds `old`, opens a stream, appends `new`, completes it, and asserts that the second turn contains only `new` while hydration returns `old, new`.
-- [ ] Run `mvn -pl Reactor-agent-app test -Dtest=PromptMemoryServiceTest -DskipTests=false`; expect compilation failure.
+- [ ] Run `mvn -pl Cute-agent-app test -Dtest=PromptMemoryServiceTest -DskipTests=false`; expect compilation failure.
 - [ ] Implement the lifecycle:
 
 ```java
@@ -101,16 +101,16 @@ public interface PromptMemoryService {
 ### Task 4: Static Prompt Contract
 
 **Files:**
-- Modify: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/agent/BaseAgent.java`
-- Modify: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/agent/ReactImplAgent.java`
-- Modify: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/agent/PlanningAgent.java`
-- Modify: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/agent/ExecutorAgent.java`
-- Modify: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/agent/SummaryAgent.java`
-- Modify: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/tool/ToolCollection.java`
-- Test: `Reactor-agent-app/src/test/java/org/wwz/ai/test/domain/PromptCacheContractTest.java`
+- Modify: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/agent/BaseAgent.java`
+- Modify: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/agent/ReactImplAgent.java`
+- Modify: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/agent/PlanningAgent.java`
+- Modify: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/agent/ExecutorAgent.java`
+- Modify: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/agent/SummaryAgent.java`
+- Modify: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/tool/ToolCollection.java`
+- Test: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/PromptCacheContractTest.java`
 
 - [ ] Write failing tests asserting that different query/date/file contexts create equal system prompts, and that a tool result does not append a synthetic next-step user message.
-- [ ] Run `mvn -pl Reactor-agent-app test -Dtest=PromptCacheContractTest -DskipTests=false`; expect FAIL.
+- [ ] Run `mvn -pl Cute-agent-app test -Dtest=PromptCacheContractTest -DskipTests=false`; expect FAIL.
 - [ ] Remove default history injection and remove query/date/files/request base/SOP replacements from every system prompt. Keep a stable continuation rule in the system prompt. Append dynamic context only as a persisted user message before the actual query.
 
 ```java
@@ -123,33 +123,33 @@ protected void appendRuntimeContext(String content) {
 ```
 
 - [ ] Remove every `lastMessage != USER` branch that appends `nextStepPrompt`. Sort local and MCP tools by name for both rendering and `toolContractId` calculation.
-- [ ] Run `mvn -pl Reactor-agent-app test -Dtest='PromptCacheContractTest,PlanningAgentTest,SummaryAgentArtifactSelectionTest' -DskipTests=false`; expect PASS.
+- [ ] Run `mvn -pl Cute-agent-app test -Dtest='PromptCacheContractTest,PlanningAgentTest,SummaryAgentArtifactSelectionTest' -DskipTests=false`; expect PASS.
 - [ ] Commit with `git commit -m "refactor: stabilize agent prompt prefix"`.
 
 ### Task 5: Hydrate and Publish the Four Scopes
 
 **Files:**
-- Modify: `Reactor-agent-case/src/main/java/org/wwz/ai/application/agent/execute/react/ReactAgentExecuteStrategy.java`
-- Modify: `Reactor-agent-case/src/main/java/org/wwz/ai/application/agent/execute/planexecute/PlanSolveAgentExecuteStrategy.java`
-- Modify: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/service/execute/react/step/RunReactNode.java`
-- Modify: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/service/execute/react/step/SummaryResultNode.java`
-- Modify: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/service/execute/planexecute/step/Step2PlanExecuteNode.java`
-- Test: `Reactor-agent-app/src/test/java/org/wwz/ai/test/domain/PromptMemoryIntegrationTest.java`
+- Modify: `Cute-agent-case/src/main/java/org/wwz/ai/application/agent/execute/react/ReactAgentExecuteStrategy.java`
+- Modify: `Cute-agent-case/src/main/java/org/wwz/ai/application/agent/execute/planexecute/PlanSolveAgentExecuteStrategy.java`
+- Modify: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/service/execute/react/step/RunReactNode.java`
+- Modify: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/service/execute/react/step/SummaryResultNode.java`
+- Modify: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/service/execute/planexecute/step/Step2PlanExecuteNode.java`
+- Test: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/PromptMemoryIntegrationTest.java`
 
 - [ ] Write failing integration tests for two React requests that restore the first request's prefix before the second query, and for Plan/Executor/Summary streams that remain separate.
-- [ ] Run `mvn -pl Reactor-agent-app test -Dtest=PromptMemoryIntegrationTest -DskipTests=false`; expect FAIL.
+- [ ] Run `mvn -pl Cute-agent-app test -Dtest=PromptMemoryIntegrationTest -DskipTests=false`; expect FAIL.
 - [ ] Remove text-history preparation from both application strategies. Open/hydrate/complete `REACT` around the React executor and `SUMMARY` around summary generation. Open/hydrate/complete `PLAN`, `EXECUTOR`, and `SUMMARY` around PlanSolve components. Abort unfinished leases in every exception or stop branch. Persist child executor messages only after deterministic merge into parent memory.
-- [ ] Run `mvn -pl Reactor-agent-app test -Dtest='PromptMemoryIntegrationTest,ReactExecutionLedgerIntegrationTest,PlanSolveExecutionLedgerIntegrationTest,PlanSolveNestedConcurrencyHardeningTest' -DskipTests=false`; expect PASS.
+- [ ] Run `mvn -pl Cute-agent-app test -Dtest='PromptMemoryIntegrationTest,ReactExecutionLedgerIntegrationTest,PlanSolveExecutionLedgerIntegrationTest,PlanSolveNestedConcurrencyHardeningTest' -DskipTests=false`; expect PASS.
 - [ ] Commit with `git commit -m "feat: restore prompt memory across scopes"`.
 
 ### Task 6: Boundary and Full Verification
 
 **Files:**
-- Modify: `Reactor-agent-app/src/test/java/org/wwz/ai/test/domain/ReactorPersistenceBoundaryTest.java`
-- Modify: `Reactor-agent-app/src/test/java/org/wwz/ai/test/domain/ReactorMapperNamespaceBindingTest.java`
+- Modify: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/ReactorPersistenceBoundaryTest.java`
+- Modify: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/ReactorMapperNamespaceBindingTest.java`
 
 - [ ] Add assertions that React and PlanSolve no longer call `buildHistoryDialogue`, prompt-memory mapper namespaces point to infrastructure DAOs, and UI replay remains ledger-backed.
-- [ ] Run `mvn -pl Reactor-agent-app test -Dtest='ReactorPersistenceBoundaryTest,ReactorMapperNamespaceBindingTest,*PromptMemory*' -DskipTests=false`; expect PASS.
-- [ ] Run `mvn -pl Reactor-agent-app test -DskipTests=false`; expect PASS with existing external-service exclusions.
+- [ ] Run `mvn -pl Cute-agent-app test -Dtest='ReactorPersistenceBoundaryTest,ReactorMapperNamespaceBindingTest,*PromptMemory*' -DskipTests=false`; expect PASS.
+- [ ] Run `mvn -pl Cute-agent-app test -DskipTests=false`; expect PASS with existing external-service exclusions.
 - [ ] Run `mvn clean compile`; expect `BUILD SUCCESS`.
 - [ ] Commit with `git commit -m "test: verify prompt memory boundaries"`.

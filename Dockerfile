@@ -4,7 +4,7 @@ FROM maven:3.9-eclipse-temurin-21 AS backend-build
 
 WORKDIR /workspace
 COPY . .
-RUN mvn -B -pl Reactor-agent-app -am package \
+RUN mvn -B -pl Cute-agent-app -am package \
     -DskipTests \
     -Dmaven.test.skip=true
 
@@ -20,7 +20,7 @@ RUN npm run build && npm prune --omit=dev
 FROM eclipse-temurin:21-jre AS backend
 
 WORKDIR /app
-COPY --from=backend-build /workspace/Reactor-agent-app/target/Reactor-agent-app.jar /app/app.jar
+COPY --from=backend-build /workspace/Cute-agent-app/target/Cute-agent-app.jar /app/app.jar
 COPY runtime/skills /app/runtime/skills
 COPY --from=node:22-bookworm-slim /usr/local /usr/local
 COPY --from=opencli-build /opt/opencli/dist /opt/opencli/dist
@@ -42,7 +42,7 @@ EXPOSE 8100
 
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar --spring.profiles.active=${SPRING_PROFILES_ACTIVE:-prod}"]
 
-FROM python:3.11-slim-bookworm AS reactor-tool
+FROM python:3.11-slim-bookworm AS cute-tool
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -56,7 +56,7 @@ RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debia
     && pip install --no-cache-dir uv
 
 WORKDIR /app
-COPY reactor-tool/ /app/
+COPY cute-tool/ /app/
 RUN uv sync --frozen --no-dev --no-cache \
     && chmod +x /app/start.sh /app/start-split.sh \
     && mkdir -p /data/skilloutput /data/logs

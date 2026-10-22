@@ -7,15 +7,15 @@ $ErrorActionPreference = "Stop"
 $repo = $PSScriptRoot
 $bundle = Join-Path $repo "docs\dev-ops\ubuntu\server-bundle"
 
-$jarSource = Join-Path $repo "Reactor-agent-app\target\Reactor-agent-app.jar"
+$jarSource = Join-Path $repo "Cute-agent-app\target\Cute-agent-app.jar"
 $uiDistSource = Join-Path $repo "ui\dist"
-$toolSource = Join-Path $repo "reactor-tool"
+$toolSource = Join-Path $repo "cute-tool"
 $certPemSource = Join-Path $CertDir "_.owwzo.top.pem"
 $certKeySource = Join-Path $CertDir "_.owwzo.top.key"
 
 $payloadBackend = Join-Path $bundle "payload\backend"
 $payloadUi = Join-Path $bundle "payload\ui-dist"
-$payloadTool = Join-Path $bundle "payload\reactor-tool"
+$payloadTool = Join-Path $bundle "payload\cute-tool"
 $payloadCerts = Join-Path $bundle "payload\certs"
 
 function Assert-PathExists {
@@ -31,7 +31,7 @@ function Assert-PathExists {
 
 Assert-PathExists -TargetPath $jarSource -Label "Backend jar"
 Assert-PathExists -TargetPath $uiDistSource -Label "Frontend dist"
-Assert-PathExists -TargetPath $toolSource -Label "reactor-tool directory"
+Assert-PathExists -TargetPath $toolSource -Label "cute-tool directory"
 Assert-PathExists -TargetPath $certPemSource -Label "Certificate pem"
 Assert-PathExists -TargetPath $certKeySource -Label "Certificate key"
 
@@ -47,12 +47,12 @@ Get-ChildItem $payloadTool -Force -ErrorAction SilentlyContinue | Remove-Item -R
 Get-ChildItem $payloadCerts -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host "Copying backend jar..."
-Copy-Item $jarSource (Join-Path $payloadBackend "Reactor-agent-app.jar") -Force
+Copy-Item $jarSource (Join-Path $payloadBackend "Cute-agent-app.jar") -Force
 
 Write-Host "Copying frontend dist..."
 Copy-Item (Join-Path $uiDistSource "*") $payloadUi -Recurse -Force
 
-Write-Host "Copying reactor-tool (lean bundle)..."
+Write-Host "Copying cute-tool (lean bundle)..."
 
 $toolIncludePaths = @(
     ".env_template",
@@ -64,7 +64,7 @@ $toolIncludePaths = @(
     "server.py",
     "start.sh",
     "start.ps1",
-    "reactor_tool",
+    "cute_tool",
     "tests"
 )
 

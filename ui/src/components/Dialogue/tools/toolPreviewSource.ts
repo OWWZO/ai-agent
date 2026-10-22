@@ -109,7 +109,7 @@ function extractWriteContent(arg: string): string | undefined {
 /**
  * 从 read 工具的结果里取文件正文。
  *
- * Reactor-agent 的 `workspace_read` 返回结构化结果
+ * Cute-agent 的 `workspace_read` 返回结构化结果
  * `{ type: "text", path, startLine, endLine, numLines, totalLines, content, truncated? }`
  * —— **正文就在结果里**，不需要再去会话产物清单里找 URL。
  * 这条路径覆盖「读工作区任意文件」，正好绕开决策点 B（前端没有按绝对路径读文件的接口）。

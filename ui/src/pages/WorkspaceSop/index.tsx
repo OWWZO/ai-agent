@@ -285,7 +285,7 @@ const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
                 </h1>
               </div>
               <p className="text-xs text-slate-400">
-                管理 PlanSolve 语义召回的标准作业程序（直连 reactor-tool / Qdrant）
+                管理 PlanSolve 语义召回的标准作业程序（直连 cute-tool / Qdrant）
               </p>
             </div>
           </div>

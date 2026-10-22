@@ -37,7 +37,7 @@ describe("planComposerModel", () => {
 
   it("reads absolute planFilePath through live SSE extra resultMap wrapping", () => {
     const planFilePath =
-      "D:\\Java Code\\ai-agent\\Reactor-agent\\reactor-tool\\skilloutput\\session-1788672643180-455\\.reactor\\plan.md";
+      "D:\\Java Code\\ai-agent\\Cute-agent\\cute-tool\\skilloutput\\session-1788672643180-455\\.reactor\\plan.md";
     const task = {
       messageType: "plan_approval",
       resultMap: {

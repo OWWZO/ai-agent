@@ -4,7 +4,7 @@
 
 **Goal:** Add admin-managed featured conversation publishing with a public homepage section, public list page, and read-only public detail page that reuses the existing live conversation history replay chain.
 
-**Architecture:** Keep publish metadata in a dedicated featured-conversation table and repository, orchestrate public/admin behavior in `Reactor-agent-case`, and reuse `ConversationHistoryReplayService` plus `hydrateConversationFromReplayFrames` for live read-only detail rendering. Public APIs remain separate from visitor-owned session APIs so owner-only semantics on `/api/agent/conversation/sessions/**` do not change.
+**Architecture:** Keep publish metadata in a dedicated featured-conversation table and repository, orchestrate public/admin behavior in `Cute-agent-case`, and reuse `ConversationHistoryReplayService` plus `hydrateConversationFromReplayFrames` for live read-only detail rendering. Public APIs remain separate from visitor-owned session APIs so owner-only semantics on `/api/agent/conversation/sessions/**` do not change.
 
 **Tech Stack:** Java 17, Spring Boot 3.4.3, MyBatis Mapper XML, existing execution ledger/history replay services, React 19, TypeScript 5.7, React Router 7, Vitest.
 
@@ -14,55 +14,55 @@
 
 ### Backend
 
-- Modify: `Reactor-agent-app/src/main/resources/db/schema.sql`
+- Modify: `Cute-agent-app/src/main/resources/db/schema.sql`
   - Add `ai_agent_featured_conversation`
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/entity/FeaturedConversation.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/entity/FeaturedConversation.java`
   - Domain entity for publish metadata
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationCardView.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationCardView.java`
   - Lightweight public card/list projection
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationPageResult.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationPageResult.java`
   - Domain-side page wrapper to avoid leaking trigger VO types into case/domain
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationPublicDetail.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationPublicDetail.java`
   - Public detail aggregate: publish head + history detail + content availability
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationAdminView.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationAdminView.java`
   - Admin query projection
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationQueryCondition.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationQueryCondition.java`
   - Admin list filtering condition
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationUpsertCommand.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationUpsertCommand.java`
   - Admin create/update command
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/IFeaturedConversationRepository.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/IFeaturedConversationRepository.java`
   - Repository port
-- Create: `Reactor-agent-case/src/main/java/org/wwz/ai/application/agent/featured/FeaturedConversationPublicQueryApplicationService.java`
+- Create: `Cute-agent-case/src/main/java/org/wwz/ai/application/agent/featured/FeaturedConversationPublicQueryApplicationService.java`
   - Public homepage/list/detail orchestration
-- Create: `Reactor-agent-case/src/main/java/org/wwz/ai/application/agent/featured/FeaturedConversationAdminApplicationService.java`
+- Create: `Cute-agent-case/src/main/java/org/wwz/ai/application/agent/featured/FeaturedConversationAdminApplicationService.java`
   - Admin create/update/online/offline/query orchestration
-- Create: `Reactor-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/po/FeaturedConversationPO.java`
+- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/po/FeaturedConversationPO.java`
   - Persistence object
-- Create: `Reactor-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor/IFeaturedConversationDao.java`
+- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor/IFeaturedConversationDao.java`
   - MyBatis DAO
-- Create: `Reactor-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/adapter/repository/FeaturedConversationRepository.java`
+- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/adapter/repository/FeaturedConversationRepository.java`
   - Repository adapter
-- Create: `Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/agent/AgentFeaturedConversationController.java`
+- Create: `Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/agent/AgentFeaturedConversationController.java`
   - Public controller
-- Create: `Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/FeaturedConversationAdminController.java`
+- Create: `Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/FeaturedConversationAdminController.java`
   - Admin controller
-- Create: `Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/FeaturedConversationCardRespVO.java`
+- Create: `Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/FeaturedConversationCardRespVO.java`
   - Public home/list item VO
-- Create: `Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/FeaturedConversationDetailRespVO.java`
+- Create: `Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/FeaturedConversationDetailRespVO.java`
   - Public detail VO
-- Create: `Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/vo/FeaturedConversationAdminUpsertReqVO.java`
+- Create: `Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/vo/FeaturedConversationAdminUpsertReqVO.java`
   - Admin create/update request
-- Create: `Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/vo/FeaturedConversationAdminQueryReqVO.java`
+- Create: `Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/vo/FeaturedConversationAdminQueryReqVO.java`
   - Admin query-list request
-- Create: `Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/vo/FeaturedConversationAdminRespVO.java`
+- Create: `Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/vo/FeaturedConversationAdminRespVO.java`
   - Admin item/detail VO
-- Create: `Reactor-agent-app/src/main/resources/mybatis/mapper/featured_conversation_mapper.xml`
+- Create: `Cute-agent-app/src/main/resources/mybatis/mapper/featured_conversation_mapper.xml`
   - SQL mapping
-- Create: `Reactor-agent-app/src/test/java/org/wwz/ai/test/domain/FeaturedConversationPublicControllerTest.java`
+- Create: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/FeaturedConversationPublicControllerTest.java`
   - Public API regression
-- Create: `Reactor-agent-app/src/test/java/org/wwz/ai/test/domain/FeaturedConversationAdminControllerTest.java`
+- Create: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/FeaturedConversationAdminControllerTest.java`
   - Admin API regression
-- Create: `Reactor-agent-app/src/test/java/org/wwz/ai/test/domain/FeaturedConversationRepositoryTest.java`
+- Create: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/FeaturedConversationRepositoryTest.java`
   - Repository serialization and status update regression
 
 ### Frontend
@@ -103,16 +103,16 @@
 ### Task 1: Public Featured Backend Contract
 
 **Files:**
-- Create: `Reactor-agent-app/src/test/java/org/wwz/ai/test/domain/FeaturedConversationPublicControllerTest.java`
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/entity/FeaturedConversation.java`
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationCardView.java`
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationPageResult.java`
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationPublicDetail.java`
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/IFeaturedConversationRepository.java`
-- Create: `Reactor-agent-case/src/main/java/org/wwz/ai/application/agent/featured/FeaturedConversationPublicQueryApplicationService.java`
-- Create: `Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/agent/AgentFeaturedConversationController.java`
-- Create: `Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/FeaturedConversationCardRespVO.java`
-- Create: `Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/FeaturedConversationDetailRespVO.java`
+- Create: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/FeaturedConversationPublicControllerTest.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/entity/FeaturedConversation.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationCardView.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationPageResult.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationPublicDetail.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/IFeaturedConversationRepository.java`
+- Create: `Cute-agent-case/src/main/java/org/wwz/ai/application/agent/featured/FeaturedConversationPublicQueryApplicationService.java`
+- Create: `Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/agent/AgentFeaturedConversationController.java`
+- Create: `Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/FeaturedConversationCardRespVO.java`
+- Create: `Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/FeaturedConversationDetailRespVO.java`
 
 - [ ] **Step 1: Write the failing public controller regression test**
 
@@ -242,14 +242,14 @@ public class FeaturedConversationPublicControllerTest {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `mvn -pl Reactor-agent-app test -Dtest=FeaturedConversationPublicControllerTest -DskipTests=false`
+Run: `mvn -pl Cute-agent-app test -Dtest=FeaturedConversationPublicControllerTest -DskipTests=false`
 
 Expected: FAIL with compilation errors like `package org.wwz.ai.application.agent.featured does not exist` and `cannot find symbol AgentFeaturedConversationController`.
 
 - [ ] **Step 3: Add the shared domain model and repository port**
 
 ```java
-// Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/entity/FeaturedConversation.java
+// Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/entity/FeaturedConversation.java
 @Data
 @Builder
 @NoArgsConstructor
@@ -271,7 +271,7 @@ public class FeaturedConversation {
     private LocalDateTime updatedAt;
 }
 
-// Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationCardView.java
+// Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationCardView.java
 @Data
 @Builder
 @NoArgsConstructor
@@ -287,7 +287,7 @@ public class FeaturedConversationCardView {
     private LocalDateTime contentLastActiveAt;
 }
 
-// Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationPageResult.java
+// Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationPageResult.java
 @Data
 @Builder
 @NoArgsConstructor
@@ -297,7 +297,7 @@ public class FeaturedConversationPageResult<T> {
     private List<T> list;
 }
 
-// Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationPublicDetail.java
+// Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationPublicDetail.java
 @Data
 @Builder
 @NoArgsConstructor
@@ -317,7 +317,7 @@ public class FeaturedConversationPublicDetail {
     private ConversationHistoryDetail historyDetail;
 }
 
-// Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/IFeaturedConversationRepository.java
+// Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/IFeaturedConversationRepository.java
 public interface IFeaturedConversationRepository {
     FeaturedConversation queryByFeaturedId(String featuredId);
     List<FeaturedConversation> queryOnlineList(int offset, int limit);
@@ -328,7 +328,7 @@ public interface IFeaturedConversationRepository {
 - [ ] **Step 4: Implement the public application service, controller, and response VOs**
 
 ```java
-// Reactor-agent-case/src/main/java/org/wwz/ai/application/agent/featured/FeaturedConversationPublicQueryApplicationService.java
+// Cute-agent-case/src/main/java/org/wwz/ai/application/agent/featured/FeaturedConversationPublicQueryApplicationService.java
 @Service
 @RequiredArgsConstructor
 public class FeaturedConversationPublicQueryApplicationService {
@@ -393,7 +393,7 @@ public class FeaturedConversationPublicQueryApplicationService {
     }
 }
 
-// Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/agent/AgentFeaturedConversationController.java
+// Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/agent/AgentFeaturedConversationController.java
 @RestController
 @RequestMapping("/api/agent/featured-conversations")
 public class AgentFeaturedConversationController {
@@ -470,39 +470,39 @@ public class AgentFeaturedConversationController {
 
 - [ ] **Step 5: Run the public controller test to verify it passes**
 
-Run: `mvn -pl Reactor-agent-app test -Dtest=FeaturedConversationPublicControllerTest -DskipTests=false`
+Run: `mvn -pl Cute-agent-app test -Dtest=FeaturedConversationPublicControllerTest -DskipTests=false`
 
 Expected: PASS with `Tests run: 3, Failures: 0, Errors: 0`.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add Reactor-agent-app/src/test/java/org/wwz/ai/test/domain/FeaturedConversationPublicControllerTest.java \
-        Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/entity/FeaturedConversation.java \
-        Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationCardView.java \
-        Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationPageResult.java \
-        Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationPublicDetail.java \
-        Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/IFeaturedConversationRepository.java \
-        Reactor-agent-case/src/main/java/org/wwz/ai/application/agent/featured/FeaturedConversationPublicQueryApplicationService.java \
-        Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/agent/AgentFeaturedConversationController.java \
-        Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/FeaturedConversationCardRespVO.java \
-        Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/FeaturedConversationDetailRespVO.java
+git add Cute-agent-app/src/test/java/org/wwz/ai/test/domain/FeaturedConversationPublicControllerTest.java \
+        Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/entity/FeaturedConversation.java \
+        Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationCardView.java \
+        Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationPageResult.java \
+        Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationPublicDetail.java \
+        Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/IFeaturedConversationRepository.java \
+        Cute-agent-case/src/main/java/org/wwz/ai/application/agent/featured/FeaturedConversationPublicQueryApplicationService.java \
+        Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/agent/AgentFeaturedConversationController.java \
+        Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/FeaturedConversationCardRespVO.java \
+        Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/FeaturedConversationDetailRespVO.java
 git commit -m "feat: add public featured conversation query flow"
 ```
 
 ### Task 2: Admin Featured Backend Contract
 
 **Files:**
-- Create: `Reactor-agent-app/src/test/java/org/wwz/ai/test/domain/FeaturedConversationAdminControllerTest.java`
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationAdminView.java`
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationQueryCondition.java`
-- Create: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationUpsertCommand.java`
-- Modify: `Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/IFeaturedConversationRepository.java`
-- Create: `Reactor-agent-case/src/main/java/org/wwz/ai/application/agent/featured/FeaturedConversationAdminApplicationService.java`
-- Create: `Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/FeaturedConversationAdminController.java`
-- Create: `Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/vo/FeaturedConversationAdminUpsertReqVO.java`
-- Create: `Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/vo/FeaturedConversationAdminQueryReqVO.java`
-- Create: `Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/vo/FeaturedConversationAdminRespVO.java`
+- Create: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/FeaturedConversationAdminControllerTest.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationAdminView.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationQueryCondition.java`
+- Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationUpsertCommand.java`
+- Modify: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/IFeaturedConversationRepository.java`
+- Create: `Cute-agent-case/src/main/java/org/wwz/ai/application/agent/featured/FeaturedConversationAdminApplicationService.java`
+- Create: `Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/FeaturedConversationAdminController.java`
+- Create: `Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/vo/FeaturedConversationAdminUpsertReqVO.java`
+- Create: `Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/vo/FeaturedConversationAdminQueryReqVO.java`
+- Create: `Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/vo/FeaturedConversationAdminRespVO.java`
 
 - [ ] **Step 1: Write the failing admin controller regression test**
 
@@ -567,14 +567,14 @@ public class FeaturedConversationAdminControllerTest {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `mvn -pl Reactor-agent-app test -Dtest=FeaturedConversationAdminControllerTest -DskipTests=false`
+Run: `mvn -pl Cute-agent-app test -Dtest=FeaturedConversationAdminControllerTest -DskipTests=false`
 
 Expected: FAIL with compilation errors like `cannot find symbol FeaturedConversationAdminController`.
 
 - [ ] **Step 3: Extend the repository port and add admin commands/views**
 
 ```java
-// Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationQueryCondition.java
+// Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationQueryCondition.java
 @Data
 @Builder
 @NoArgsConstructor
@@ -587,7 +587,7 @@ public class FeaturedConversationQueryCondition {
     private int limit;
 }
 
-// Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationUpsertCommand.java
+// Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationUpsertCommand.java
 @Data
 @Builder
 @NoArgsConstructor
@@ -604,7 +604,7 @@ public class FeaturedConversationUpsertCommand {
     private String operator;
 }
 
-// Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationAdminView.java
+// Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationAdminView.java
 @Data
 @Builder
 @NoArgsConstructor
@@ -622,7 +622,7 @@ public class FeaturedConversationAdminView {
     private LocalDateTime updatedAt;
 }
 
-// Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/IFeaturedConversationRepository.java
+// Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/IFeaturedConversationRepository.java
 FeaturedConversation queryBySessionId(String sessionId);
 FeaturedConversationPageResult<FeaturedConversationAdminView> queryAdminList(FeaturedConversationQueryCondition condition);
 boolean upsert(FeaturedConversationUpsertCommand command);
@@ -632,7 +632,7 @@ boolean updateStatus(String featuredId, String status, String operator);
 - [ ] **Step 4: Implement the admin application service and admin controller**
 
 ```java
-// Reactor-agent-case/src/main/java/org/wwz/ai/application/agent/featured/FeaturedConversationAdminApplicationService.java
+// Cute-agent-case/src/main/java/org/wwz/ai/application/agent/featured/FeaturedConversationAdminApplicationService.java
 @Service
 @RequiredArgsConstructor
 public class FeaturedConversationAdminApplicationService {
@@ -677,7 +677,7 @@ public class FeaturedConversationAdminApplicationService {
     }
 }
 
-// Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/FeaturedConversationAdminController.java
+// Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/FeaturedConversationAdminController.java
 @RestController
 @RequestMapping("/api/v1/admin/featured-conversations")
 public class FeaturedConversationAdminController {
@@ -769,35 +769,35 @@ public class FeaturedConversationAdminController {
 
 - [ ] **Step 5: Run the admin controller test to verify it passes**
 
-Run: `mvn -pl Reactor-agent-app test -Dtest=FeaturedConversationAdminControllerTest -DskipTests=false`
+Run: `mvn -pl Cute-agent-app test -Dtest=FeaturedConversationAdminControllerTest -DskipTests=false`
 
 Expected: PASS with `Tests run: 3, Failures: 0, Errors: 0`.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add Reactor-agent-app/src/test/java/org/wwz/ai/test/domain/FeaturedConversationAdminControllerTest.java \
-        Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationAdminView.java \
-        Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationQueryCondition.java \
-        Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationUpsertCommand.java \
-        Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/IFeaturedConversationRepository.java \
-        Reactor-agent-case/src/main/java/org/wwz/ai/application/agent/featured/FeaturedConversationAdminApplicationService.java \
-        Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/FeaturedConversationAdminController.java \
-        Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/vo/FeaturedConversationAdminUpsertReqVO.java \
-        Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/vo/FeaturedConversationAdminQueryReqVO.java \
-        Reactor-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/vo/FeaturedConversationAdminRespVO.java
+git add Cute-agent-app/src/test/java/org/wwz/ai/test/domain/FeaturedConversationAdminControllerTest.java \
+        Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationAdminView.java \
+        Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationQueryCondition.java \
+        Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/model/FeaturedConversationUpsertCommand.java \
+        Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/ledger/IFeaturedConversationRepository.java \
+        Cute-agent-case/src/main/java/org/wwz/ai/application/agent/featured/FeaturedConversationAdminApplicationService.java \
+        Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/FeaturedConversationAdminController.java \
+        Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/vo/FeaturedConversationAdminUpsertReqVO.java \
+        Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/vo/FeaturedConversationAdminQueryReqVO.java \
+        Cute-agent-trigger/src/main/java/org/wwz/ai/trigger/http/admin/vo/FeaturedConversationAdminRespVO.java
 git commit -m "feat: add admin featured conversation flow"
 ```
 
 ### Task 3: Featured Conversation Persistence Wiring
 
 **Files:**
-- Create: `Reactor-agent-app/src/test/java/org/wwz/ai/test/domain/FeaturedConversationRepositoryTest.java`
-- Modify: `Reactor-agent-app/src/main/resources/db/schema.sql`
-- Create: `Reactor-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/po/FeaturedConversationPO.java`
-- Create: `Reactor-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor/IFeaturedConversationDao.java`
-- Create: `Reactor-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/adapter/repository/FeaturedConversationRepository.java`
-- Create: `Reactor-agent-app/src/main/resources/mybatis/mapper/featured_conversation_mapper.xml`
+- Create: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/FeaturedConversationRepositoryTest.java`
+- Modify: `Cute-agent-app/src/main/resources/db/schema.sql`
+- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/po/FeaturedConversationPO.java`
+- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor/IFeaturedConversationDao.java`
+- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/adapter/repository/FeaturedConversationRepository.java`
+- Create: `Cute-agent-app/src/main/resources/mybatis/mapper/featured_conversation_mapper.xml`
 
 - [ ] **Step 1: Write a failing repository adapter test around tag serialization and status updates**
 
@@ -842,14 +842,14 @@ public class FeaturedConversationRepositoryTest {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `mvn -pl Reactor-agent-app test -Dtest=FeaturedConversationRepositoryTest -DskipTests=false`
+Run: `mvn -pl Cute-agent-app test -Dtest=FeaturedConversationRepositoryTest -DskipTests=false`
 
 Expected: FAIL with compilation errors like `cannot find symbol FeaturedConversationRepository`.
 
 - [ ] **Step 3: Add the schema, PO, DAO, and repository adapter**
 
 ```sql
--- Reactor-agent-app/src/main/resources/db/schema.sql
+-- Cute-agent-app/src/main/resources/db/schema.sql
 CREATE TABLE IF NOT EXISTS ai_agent_featured_conversation (
     id                 BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     featured_id        VARCHAR(64)  NOT NULL COMMENT '公共精品ID',
@@ -876,7 +876,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_featured_conversation (
 ```
 
 ```java
-// Reactor-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/po/FeaturedConversationPO.java
+// Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/po/FeaturedConversationPO.java
 @Data
 @Builder
 @NoArgsConstructor
@@ -899,7 +899,7 @@ public class FeaturedConversationPO {
     private Integer deleted;
 }
 
-// Reactor-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor/IFeaturedConversationDao.java
+// Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor/IFeaturedConversationDao.java
 @Mapper
 public interface IFeaturedConversationDao {
     int upsert(FeaturedConversationPO po);
@@ -916,7 +916,7 @@ public interface IFeaturedConversationDao {
     Integer countAdminList(FeaturedConversationQueryCondition condition);
 }
 
-// Reactor-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/adapter/repository/FeaturedConversationRepository.java
+// Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/adapter/repository/FeaturedConversationRepository.java
 @Repository
 @RequiredArgsConstructor
 public class FeaturedConversationRepository implements IFeaturedConversationRepository {
@@ -949,7 +949,7 @@ public class FeaturedConversationRepository implements IFeaturedConversationRepo
 - [ ] **Step 4: Add the mapper XML**
 
 ```xml
-<!-- Reactor-agent-app/src/main/resources/mybatis/mapper/featured_conversation_mapper.xml -->
+<!-- Cute-agent-app/src/main/resources/mybatis/mapper/featured_conversation_mapper.xml -->
 <mapper namespace="org.wwz.ai.infrastructure.dao.reactor.IFeaturedConversationDao">
 
     <resultMap id="featuredConversationResultMap" type="org.wwz.ai.infrastructure.dao.po.FeaturedConversationPO">
@@ -996,8 +996,8 @@ public class FeaturedConversationRepository implements IFeaturedConversationRepo
 Run:
 
 ```bash
-mvn -pl Reactor-agent-app test -Dtest=FeaturedConversationRepositoryTest,FeaturedConversationPublicControllerTest,FeaturedConversationAdminControllerTest -DskipTests=false
-mvn -pl Reactor-agent-app -am compile -DskipTests
+mvn -pl Cute-agent-app test -Dtest=FeaturedConversationRepositoryTest,FeaturedConversationPublicControllerTest,FeaturedConversationAdminControllerTest -DskipTests=false
+mvn -pl Cute-agent-app -am compile -DskipTests
 ```
 
 Expected:
@@ -1008,12 +1008,12 @@ Expected:
 - [ ] **Step 6: Commit**
 
 ```bash
-git add Reactor-agent-app/src/main/resources/db/schema.sql \
-        Reactor-agent-app/src/test/java/org/wwz/ai/test/domain/FeaturedConversationRepositoryTest.java \
-        Reactor-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/po/FeaturedConversationPO.java \
-        Reactor-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor/IFeaturedConversationDao.java \
-        Reactor-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/adapter/repository/FeaturedConversationRepository.java \
-        Reactor-agent-app/src/main/resources/mybatis/mapper/featured_conversation_mapper.xml
+git add Cute-agent-app/src/main/resources/db/schema.sql \
+        Cute-agent-app/src/test/java/org/wwz/ai/test/domain/FeaturedConversationRepositoryTest.java \
+        Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/po/FeaturedConversationPO.java \
+        Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor/IFeaturedConversationDao.java \
+        Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/adapter/repository/FeaturedConversationRepository.java \
+        Cute-agent-app/src/main/resources/mybatis/mapper/featured_conversation_mapper.xml
 git commit -m "feat: persist featured conversation metadata"
 ```
 
@@ -1628,7 +1628,7 @@ Expected:
 Run:
 
 ```bash
-mvn -pl Reactor-agent-app test -Dtest=FeaturedConversationPublicControllerTest,FeaturedConversationAdminControllerTest -DskipTests=false
+mvn -pl Cute-agent-app test -Dtest=FeaturedConversationPublicControllerTest,FeaturedConversationAdminControllerTest -DskipTests=false
 cd ui && pnpm test -- src/services/featuredConversation.test.ts src/pages/Home/WelcomeView.test.tsx src/pages/Home/ConversationSidebar.test.tsx src/pages/FeaturedConversations/view.test.tsx src/pages/FeaturedConversationDetail/view.test.tsx
 cd ui && pnpm build
 ```

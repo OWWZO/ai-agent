@@ -234,7 +234,7 @@ async function requestWrappedData<T>(
   path: string,
   body: Record<string, unknown>
 ): Promise<T> {
-  // reactor-tool 的管理接口统一返回 { code, data }，但错误响应可能是 JSON 或纯文本；
+  // cute-tool 的管理接口统一返回 { code, data }，但错误响应可能是 JSON 或纯文本；
   // 这里集中解析并转换异常，页面层只处理 MRagWorkspaceRequestError。
   const response = await fetch(`${normalizeToolBaseUrl(toolBaseUrl)}${path}`, {
     method: "POST",

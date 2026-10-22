@@ -498,7 +498,7 @@ describe("Stage 5 · 卡内展开区", () => {
   });
 });
 
-describe("Reactor-agent 真实工具名（workspace_* 前缀）", () => {
+describe("Cute-agent 真实工具名（workspace_* 前缀）", () => {
   it("workspace_read / workspace_write / workspace_edit 各自命中专用渲染器", () => {
     expect(resolveToolRendererKind(taskOf("workspace_read", { path: "src/a.ts" }))).toBe("read");
     expect(resolveToolRendererKind(taskOf("workspace_write", { path: "src/a.ts" }))).toBe("edit");

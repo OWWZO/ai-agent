@@ -1,0 +1,570 @@
+# -*- coding: utf-8 -*-
+# =====================
+#
+# Author: liumin.423
+# Date:   2025/7/7
+# =====================
+"""代码解释器入口：组装权限策略、下载输入文件、驱动 CIAgent 流式执行。
+
+对外由 api/tool.py 的 /code_interpreter 调用 code_interpreter_agent。
+"""
+
+import asyncio
+import importlib
+import json
+import os
+import shutil
+import tempfile
+from pathlib import Path
+from typing import Any, List, Optional
+
+import pandas as pd
+import yaml
+from jinja2 import Template
+from loguru import logger
+from smolagents import (
+    ChatMessage,
+    LiteLLMModel,
+    OpenAIServerModel,
+    FinalAnswerStep,
+    PythonInterpreterTool,
+    ChatMessageStreamDelta,
+)
+
+from cute_tool.tool.ci_agent import CIAgent
+from cute_tool.tool.code_interpreter_policy import (
+    CodeExecutionPermissionError,
+    CodeInterpreterPermissionPolicy,
+    build_permission_policy,
+    validate_code_against_policy,
+)
+from cute_tool.util.file_name import normalize_report_file_name
+from cute_tool.util.file_util import (
+    download_all_files_in_path,
+    upload_file,
+    upload_file_by_path,
+)
+from cute_tool.util.log_util import timer
+from cute_tool.util.llm_util import ask_llm_sync_iter
+from cute_tool.util.prompt_util import get_prompt
+from cute_tool.model.code import ActionOutput, CodeOuput
+
+
+def _normalize_openai_compat_api_base(api_base: str) -> str:
+    """去掉 chat/completions 等后缀，规范为 OpenAI 兼容 base（通常以 /v1 结尾）。"""
+    if not api_base:
+        return api_base
+    normalized = api_base.strip().rstrip("/")
+    suffixes = (
+        "/v1/chat/completions",
+        "/chat/completions",
+        "/v1/completions",
+        "/completions",
+        "/v1/responses",
+        "/responses",
+    )
+    lower = normalized.lower()
+    changed = True
+    while changed:
+        changed = False
+        for suffix in suffixes:
+            if lower.endswith(suffix):
+                normalized = normalized[: -len(suffix)].rstrip("/")
+                lower = normalized.lower()
+                changed = True
+                break
+    if "bigmodel.cn" not in lower and not lower.endswith("/v1"):
+        normalized = normalized + "/v1"
+    return normalized
+
+
+def _build_chat_completions_url(api_base: str) -> str:
+    base = (api_base or "").rstrip("/")
+    if base.endswith("/chat/completions"):
+        return base
+    return f"{base}/chat/completions"
+
+
+def _normalize_message_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _normalize_message_value(val)
+            for key, val in value.items()
+            if val is not None
+        }
+    if isinstance(value, list):
+        return [_normalize_message_value(item) for item in value]
+    if hasattr(value, "value") and not isinstance(
+        value, (str, bytes, int, float, bool)
+    ):
+        return _normalize_message_value(value.value)
+    return value
+
+
+def _chat_message_to_dict(message: Any) -> dict:
+    if isinstance(message, dict):
+        data = dict(message)
+    elif hasattr(message, "model_dump"):
+        data = message.model_dump(exclude_none=True)
+    elif hasattr(message, "dict"):
+        data = message.dict(exclude_none=True)
+    else:
+        data = {}
+        for key in ("role", "content", "tool_calls", "name", "tool_call_id"):
+            if hasattr(message, key):
+                data[key] = getattr(message, key)
+    return _normalize_message_value(data)
+
+
+class RawOpenAICompatHTTPModel(OpenAIServerModel):
+    """直连 OpenAI 兼容 HTTP 的 smolagents 模型适配（绕过 litellm 部分限制）。"""
+
+    """
+    复用 llm_util 中统一的大模型请求逻辑，保持和其他工具一致。
+    """
+
+    def _prepare_llm_kwargs(
+        self,
+        messages: list[ChatMessage],
+        stop_sequences: list[str] | None = None,
+        response_format: dict[str, str] | None = None,
+        tools_to_call_from=None,
+        **kwargs,
+    ) -> tuple[list[dict], str, Optional[dict], dict]:
+        completion_kwargs = self._prepare_completion_kwargs(
+            messages=messages,
+            stop_sequences=stop_sequences,
+            response_format=response_format,
+            tools_to_call_from=tools_to_call_from,
+            model=self.model_id,
+            custom_role_conversions=self.custom_role_conversions,
+            convert_images_to_image_urls=True,
+            **kwargs,
+        )
+
+        prepared_messages = completion_kwargs.pop("messages", None) or messages
+        extra_headers = completion_kwargs.pop("extra_headers", None)
+        model_id = completion_kwargs.pop("model", self.model_id)
+        completion_kwargs.pop("stream", None)
+
+        if self.client_kwargs.get("base_url"):
+            completion_kwargs["api_base"] = self.client_kwargs.get("base_url")
+        if self.client_kwargs.get("api_key"):
+            completion_kwargs["api_key"] = self.client_kwargs.get("api_key")
+        if self.kwargs.get("timeout") is not None:
+            completion_kwargs["timeout"] = self.kwargs.get("timeout")
+
+        message_payload = [
+            _chat_message_to_dict(message) for message in prepared_messages
+        ]
+        return message_payload, model_id, extra_headers, completion_kwargs
+
+    def generate_stream(
+        self,
+        messages: list[ChatMessage],
+        stop_sequences: list[str] | None = None,
+        response_format: dict[str, str] | None = None,
+        tools_to_call_from=None,
+        **kwargs,
+    ):
+        message_payload, model_id, extra_headers, completion_kwargs = (
+            self._prepare_llm_kwargs(
+                messages=messages,
+                stop_sequences=stop_sequences,
+                response_format=response_format,
+                tools_to_call_from=tools_to_call_from,
+                **kwargs,
+            )
+        )
+        logger.info(f"[code_interpreter] llm_util stream request: model={model_id}")
+
+        for chunk in ask_llm_sync_iter(
+            messages=message_payload,
+            model=model_id,
+            stream=True,
+            only_content=True,
+            extra_headers=extra_headers,
+            **completion_kwargs,
+        ):
+            if isinstance(chunk, str) and chunk:
+                yield ChatMessageStreamDelta(content=chunk)
+
+    def generate(
+        self,
+        messages: list[ChatMessage],
+        stop_sequences: list[str] | None = None,
+        response_format: dict[str, str] | None = None,
+        tools_to_call_from=None,
+        **kwargs,
+    ) -> ChatMessage:
+        message_payload, model_id, extra_headers, completion_kwargs = (
+            self._prepare_llm_kwargs(
+                messages=messages,
+                stop_sequences=stop_sequences,
+                response_format=response_format,
+                tools_to_call_from=tools_to_call_from,
+                **kwargs,
+            )
+        )
+        content_parts: list[str] = []
+        logger.info(f"[code_interpreter] llm_util aggregate request: model={model_id}")
+
+        for chunk in ask_llm_sync_iter(
+            messages=message_payload,
+            model=model_id,
+            stream=False,
+            only_content=True,
+            extra_headers=extra_headers,
+            **completion_kwargs,
+        ):
+            if isinstance(chunk, str) and chunk:
+                content_parts.append(chunk)
+
+        return ChatMessage.from_dict(
+            {"role": "assistant", "content": "".join(content_parts)},
+            raw={},
+        )
+
+
+@timer()
+async def code_interpreter_agent(
+    task: str,
+    file_names: Optional[List[str]] = None,
+    max_file_abstract_size: int = 2000,
+    max_tokens: int = 32000,
+    request_id: str = "",
+    stream: bool = True,
+    permission_profile: str = "analysis",
+    report_file_name: Optional[str] = None,
+):
+    """代码解释器主入口：建工作区 → 下载输入 → 权限策略 → 驱动 CIAgent 流式产出。"""
+    work_dir = ""
+    try:
+        # 每次调用使用独立临时目录；input 与 output 分开，权限策略才能把输入只读边界和产物写入边界分开表达。
+        # 临时工作区：输入文件 + output/ 产物目录
+        work_dir = tempfile.mkdtemp()
+        workspace_root = str(Path(work_dir).resolve())
+        output_dir = str(Path(workspace_root).joinpath("output").resolve())
+        os.makedirs(output_dir, exist_ok=True)
+        import_files = await download_all_files_in_path(
+            file_names=file_names,
+            work_dir=work_dir,
+            workspace_root=workspace_root,
+        )
+        permission_policy = build_permission_policy(
+            profile=permission_profile,
+            workspace_root=workspace_root,
+            output_dir=output_dir,
+            input_files=[
+                {
+                    "name": item.get("file_name"),
+                    "path": item.get("file_path"),
+                }
+                for item in (import_files or [])
+            ],
+        )
+
+        # 先生成轻量文件摘要放进 prompt，真正的文件路径仍由权限策略和沙箱控制，不把大文件正文直接塞入上下文。
+        # 1. 文件处理
+        files = []
+        if import_files:
+            for import_file in import_files:
+                file_name = import_file["file_name"]
+
+                file_path = import_file["file_path"]
+                if not file_name or not file_path:
+                    continue
+
+                # 表格文件
+                if file_name.split(".")[-1] in ["xlsx", "xls", "csv"]:
+                    pd.set_option("display.max_columns", None)
+                    df = (
+                        pd.read_csv(file_path)
+                        if file_name.endswith(".csv")
+                        else pd.read_excel(file_path)
+                    )
+                    files.append({"path": file_path, "abstract": f"{df.head(10)}"})
+                # 文本文件
+                elif file_name.split(".")[-1] in ["txt", "md", "html"]:
+                    try:
+                        with open(file_path, "r", encoding="utf-8") as rf:
+                            files.append(
+                                {
+                                    "path": file_path,
+                                    "abstract": "".join(rf.readlines())[
+                                        :max_file_abstract_size
+                                    ],
+                                }
+                            )
+                    except UnicodeDecodeError:
+                        # UTF-8失败时尝试GBK
+                        with open(file_path, "r", encoding="gbk") as rf:
+                            files.append(
+                                {
+                                    "path": file_path,
+                                    "abstract": "".join(rf.readlines())[
+                                        :max_file_abstract_size
+                                    ],
+                                }
+                            )
+
+        # 2. 构建 Prompt
+        ci_prompt_template = get_prompt("code_interpreter")
+
+        # 3. CodeAgent
+        # Agent 只接收已经固定权限边界的 executor，避免 prompt 中的路径说明成为唯一安全措施。
+        agent = create_ci_agent(
+            prompt_templates=ci_prompt_template,
+            max_tokens=max_tokens,
+            return_full_result=True,
+            output_dir=output_dir,
+            permission_policy=permission_policy,
+        )
+
+        template_task = Template(ci_prompt_template["task_template"]).render(
+            files=files,
+            task=task,
+            output_dir=output_dir,
+            permission_profile=permission_policy.profile,
+            available_helpers=permission_policy.to_prompt_context()[
+                "available_helpers"
+            ],
+            input_file_names=permission_policy.to_prompt_context()["input_file_names"],
+        )
+
+        if stream:
+            # 与 auto_analysis 对齐：任务区 / 过程区 / 步骤思考 / 代码 / 执行输出 / 结论
+            yield f"# 代码任务  \n{task}  \n"
+            if files:
+                file_lines = "\n".join(
+                    f"- `{item.get('path')}`" for item in files if item.get("path")
+                )
+                yield f"\n## 输入文件  \n{file_lines}\n"
+                abstracts = []
+                for item in files:
+                    abstract = str(item.get("abstract") or "").strip()
+                    if not abstract:
+                        continue
+                    preview = (
+                        abstract if len(abstract) <= 800 else abstract[:800] + "\n..."
+                    )
+                    abstracts.append(
+                        f"### 预览 `{item.get('path')}`\n\n```\n{preview}\n```"
+                    )
+                if abstracts:
+                    yield "\n## 数据预览  \n\n" + "\n\n".join(abstracts) + "\n"
+            yield "\n# 执行过程  \n"
+            step_no = 0
+            for step in agent.run(task=str(template_task), stream=True, max_steps=10):
+                if isinstance(step, CodeOuput):
+                    # 中间步骤同时返回代码、思考、执行日志和代码文件引用，前端可逐步展示而不必等待最终答案。
+                    step_no += 1
+                    step.step = step_no
+                    yield f"\n## 执行步骤 {step_no}  \n"
+                    if step.thought:
+                        yield f"\n{step.thought}\n"
+                    code_text = str(step.code or "").strip()
+                    if code_text:
+                        yield f"\n```python\n{code_text}\n```\n"
+                    logs = str(step.execution_logs or "").strip()
+                    if logs:
+                        preview = logs if len(logs) <= 2000 else logs[:2000] + "\n..."
+                        yield f"\n### 执行输出\n```\n{preview}\n```\n"
+                    file_info = await upload_file(
+                        content=step.code,
+                        file_name=step.file_name,
+                        file_type="py",
+                        request_id=request_id,
+                    )
+                    step.file_list = [file_info]
+                    yield step
+
+                elif isinstance(step, FinalAnswerStep):
+                    # 最终步骤统一上传沙箱产物和 Markdown 结论，再通过 ActionOutput 交给 Java/SSE 协议层。
+                    file_list = []
+                    for produced_file in agent.get_produced_files():
+                        file_path = produced_file.get("file_path")
+                        if not file_path:
+                            continue
+                        try:
+                            file_info = await upload_file_by_path(
+                                file_path=file_path, request_id=request_id
+                            )
+                            if file_info:
+                                file_list.append(file_info)
+                        except Exception:
+                            logger.exception(
+                                "[code_interpreter] produced file upload failed: {}",
+                                file_path,
+                            )
+                    code_name = normalize_report_file_name(
+                        report_file_name or f"{str(task or '')[:20]}_代码输出.md",
+                        "代码解释器输出.md",
+                    )
+                    try:
+                        report_info = await upload_file(
+                            content=step.output,
+                            file_name=code_name,
+                            file_type="md",
+                            request_id=request_id,
+                        )
+                        if report_info:
+                            file_list.append(report_info)
+                    except Exception:
+                        # 报告上传是交付增强项，不能覆盖已经完成的代码执行结论。
+                        logger.exception(
+                            "[code_interpreter] final report upload failed, file_name={}",
+                            code_name,
+                        )
+                    yield "\n# 执行结论  \n"
+                    output = ActionOutput(content=step.output, file_list=file_list)
+                    yield output
+                elif isinstance(step, ChatMessageStreamDelta):
+                    # token 级流式不推送，避免刷屏；完整思考在 CodeOuput.thought 中给出
+                    pass
+                await asyncio.sleep(0)
+
+        else:
+            output = agent.run(task=str(template_task))
+            yield output
+    except CodeExecutionPermissionError as e:
+        raise e
+    except Exception as e:
+        raise e
+
+    finally:
+        # 无论成功、权限拒绝还是执行异常，都要关闭 runner 并删除临时工作区，避免进程与敏感输入泄漏。
+        if "agent" in locals():
+            agent.close_sandbox()
+        if work_dir:
+            shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def _ci_model_id_and_litellm_kwargs():
+    """
+    获取 code_interpreter 使用的 model_id，并根据模型前缀补全对应的
+    api_base / api_key / custom_llm_provider，避免 litellm 报错
+    `LLM Provider NOT provided`。
+
+    支持：
+    - qwen* / dashscope/*  → 走阿里 DashScope 兼容接口
+    - glm-* / zhipuai/glm-* → 走智谱 OpenAI 兼容接口
+    """
+    model_id = (
+        os.getenv("CODE_INTEPRETER_MODEL") or os.getenv("DEFAULT_MODEL") or "gpt-4.1"
+    ).strip()
+
+    # 1) Qwen / DashScope
+    if model_id.startswith("qwen") or model_id.startswith("dashscope/"):
+        api_base = (
+            os.getenv("DASHSCOPE_API_BASE")
+            or os.getenv("OPENAI_BASE_URL")
+            or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        )
+        api_base = api_base.rstrip("/")
+        if not api_base.endswith("/v1"):
+            api_base = api_base + "/v1"
+        api_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY")
+        final_model = (
+            model_id.split("/", 1)[1] if model_id.startswith("dashscope/") else model_id
+        )
+        return final_model, {
+            "api_base": api_base,
+            "api_key": api_key,
+            "custom_llm_provider": "openai",
+        }
+
+    # 2) Zhipu GLM（与 deepsearch 保持一致）
+    if model_id.startswith("zhipuai/") or model_id.startswith("glm-"):
+        # 标准化模型名：zhipuai/glm-4-flash -> glm-4-flash
+        final_model = model_id.split("/", 1)[1] if "/" in model_id else model_id
+
+        api_base_raw = os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE")
+        if not api_base_raw:
+            api_base_raw = "https://open.bigmodel.cn/api/paas/v4"
+        api_base_raw = api_base_raw.rstrip("/")
+        if api_base_raw.endswith("/chat/completions"):
+            api_base_raw = api_base_raw[: -len("/chat/completions")]
+        api_base = api_base_raw
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        return final_model, {
+            "api_base": api_base,
+            "api_key": api_key,
+            "custom_llm_provider": "openai",
+        }
+
+    # 3) Generic OpenAI-compatible gateways: HTTP-first
+    openai_base = os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE")
+    if openai_base:
+        openai_base = _normalize_openai_compat_api_base(openai_base)
+        return model_id, {
+            "api_base": openai_base,
+            "api_key": os.getenv("OPENAI_API_KEY"),
+            "custom_llm_provider": "openai",
+        }
+
+    # 4) Others: fallback to LiteLLM
+    return model_id, {}
+
+
+def create_ci_agent(
+    prompt_templates=None,
+    max_tokens: int = 16000,
+    return_full_result: bool = True,
+    output_dir: str = "",
+    permission_policy: CodeInterpreterPermissionPolicy | None = None,
+) -> CIAgent:
+    """组装 CIAgent：优先 RawOpenAICompatHTTPModel，否则 LiteLLM。"""
+    model_id, litellm_extra = _ci_model_id_and_litellm_kwargs()
+    api_base = litellm_extra.get("api_base")
+    api_key = litellm_extra.get("api_key")
+    if api_base and api_key:
+        # HTTP-first for OpenAI-compatible providers.
+        model = RawOpenAICompatHTTPModel(
+            max_tokens=max_tokens,
+            model_id=model_id,
+            api_base=api_base,
+            api_key=api_key,
+        )
+    else:
+        model = LiteLLMModel(
+            max_tokens=max_tokens,
+            model_id=model_id,
+            api_base=api_base,
+            api_key=api_key,
+            **{
+                k: v
+                for k, v in litellm_extra.items()
+                if k not in ("api_base", "api_key")
+            },
+        )
+
+    if permission_policy is None:
+        workspace_root = str(Path(output_dir or tempfile.mkdtemp()).resolve())
+        final_output_dir = str(
+            Path(output_dir or Path(workspace_root).joinpath("output")).resolve()
+        )
+        permission_policy = build_permission_policy(
+            profile="analysis",
+            workspace_root=workspace_root,
+            output_dir=final_output_dir,
+            input_files=[],
+        )
+
+    return CIAgent(
+        model=model,
+        prompt_templates=prompt_templates,
+        tools=[PythonInterpreterTool()],
+        return_full_result=return_full_result,
+        additional_authorized_imports=list(permission_policy.authorized_imports),
+        output_dir=output_dir,
+        before_execute=lambda code_action: validate_code_against_policy(
+            code_action, permission_policy
+        ),
+        runtime_permission_policy=permission_policy,
+    )
+
+
+if __name__ == "__main__":
+    pass

@@ -5,12 +5,12 @@
 #
 # Usage: ./run-junit.sh <module> <TestClassFqn> [moreFqns...]
 #
-# ⚠️ Tests living in Reactor-agent-app (e.g. org.wwz.ai.test.domain.BrowserRelayBoundaryTest)
+# ⚠️ Tests living in Cute-agent-app (e.g. org.wwz.ai.test.domain.BrowserRelayBoundaryTest)
 # need the app's own test classpath plus every module's target/classes. Easiest:
 #   export CLASSPATH="C:\Users\WWZ\.m2\repository\junit\junit\4.13.2\junit-4.13.2.jar;\
 # C:\Users\WWZ\.m2\repository\org\hamcrest\hamcrest\2.2\hamcrest-2.2.jar;\
-# Reactor-agent-{app,trigger,domain,case,infrastructure,api,types}/target/classes;\
-# Reactor-agent-app/target/test-classes;$(cat Reactor-agent-app/target/cp.txt)"
+# Cute-agent-{app,trigger,domain,case,infrastructure,api,types}/target/classes;\
+# Cute-agent-app/target/test-classes;$(cat Cute-agent-app/target/cp.txt)"
 #   java org.junit.runner.JUnitCore <fqns...>
 # (Argfile `@file` fails on mixed path separators; direct -cp hits "Argument list too long".)
 set -uo pipefail

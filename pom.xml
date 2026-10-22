@@ -3,18 +3,18 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>cn.bugstack.ai</groupId>
-    <artifactId>Reactor-agent</artifactId>
+    <artifactId>Cute-agent</artifactId>
     <version>1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <modules>
-        <module>Reactor-agent-api</module>
-        <module>Reactor-agent-app</module>
-        <module>Reactor-agent-case</module>
-        <module>Reactor-agent-domain</module>
-        <module>Reactor-agent-trigger</module>
-        <module>Reactor-agent-infrastructure</module>
-        <module>Reactor-agent-types</module>
+        <module>Cute-agent-api</module>
+        <module>Cute-agent-app</module>
+        <module>Cute-agent-case</module>
+        <module>Cute-agent-domain</module>
+        <module>Cute-agent-trigger</module>
+        <module>Cute-agent-infrastructure</module>
+        <module>Cute-agent-types</module>
     </modules>
 
     <repositories>
@@ -192,32 +192,32 @@
             <!-- 工程模块 -->
             <dependency>
                 <groupId>cn.bugstack.ai</groupId>
-                <artifactId>Reactor-agent-api</artifactId>
+                <artifactId>Cute-agent-api</artifactId>
                 <version>1.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>cn.bugstack.ai</groupId>
-                <artifactId>Reactor-agent-domain</artifactId>
+                <artifactId>Cute-agent-domain</artifactId>
                 <version>1.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>cn.bugstack.ai</groupId>
-                <artifactId>Reactor-agent-case</artifactId>
+                <artifactId>Cute-agent-case</artifactId>
                 <version>1.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>cn.bugstack.ai</groupId>
-                <artifactId>Reactor-agent-infrastructure</artifactId>
+                <artifactId>Cute-agent-infrastructure</artifactId>
                 <version>1.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>cn.bugstack.ai</groupId>
-                <artifactId>Reactor-agent-types</artifactId>
+                <artifactId>Cute-agent-types</artifactId>
                 <version>1.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>cn.bugstack.ai</groupId>
-                <artifactId>Reactor-agent-trigger</artifactId>
+                <artifactId>Cute-agent-trigger</artifactId>
                 <version>1.0-SNAPSHOT</version>
             </dependency>
             <!-- GraalJS：polyglot 聚合 POM（编译期 API）+ js-community 聚合 POM（运行期语言实现）。
@@ -290,21 +290,21 @@
                 <activeByDefault>true</activeByDefault>
             </activation>
             <properties>
-                <java_jvm>-Xms1G -Xmx1G -server -Xss256K -Dspring.profiles.active=test -XX:+DisableExplicitGC -XX:+UseG1GC -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/export/Logs/Reactor-agent-boot -Xlog:gc*:file=/export/Logs/Reactor-agent-boot/gc-Reactor-agent-boot.log:time,uptime,level,tags</java_jvm>
+                <java_jvm>-Xms1G -Xmx1G -server -Xss256K -Dspring.profiles.active=test -XX:+DisableExplicitGC -XX:+UseG1GC -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/export/Logs/Cute-agent-boot -Xlog:gc*:file=/export/Logs/Cute-agent-boot/gc-Cute-agent-boot.log:time,uptime,level,tags</java_jvm>
                 <profileActive>dev</profileActive>
             </properties>
         </profile>
         <profile>
             <id>test</id>
             <properties>
-                <java_jvm>-Xms1G -Xmx1G -server -Xss256K -Dspring.profiles.active=test -XX:+DisableExplicitGC -XX:+UseG1GC -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/export/Logs/Reactor-agent-boot -Xlog:gc*:file=/export/Logs/Reactor-agent-boot/gc-Reactor-agent-boot.log:time,uptime,level,tags</java_jvm>
+                <java_jvm>-Xms1G -Xmx1G -server -Xss256K -Dspring.profiles.active=test -XX:+DisableExplicitGC -XX:+UseG1GC -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/export/Logs/Cute-agent-boot -Xlog:gc*:file=/export/Logs/Cute-agent-boot/gc-Cute-agent-boot.log:time,uptime,level,tags</java_jvm>
                 <profileActive>test</profileActive>
             </properties>
         </profile>
         <profile>
             <id>prod</id>
             <properties>
-                <java_jvm>-Xms6G -Xmx6G -server -Xss256K -Dspring.profiles.active=release -XX:+DisableExplicitGC -XX:+UseG1GC -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/export/Logs/fq-mall-activity-app -Xlog:gc*:file=/export/Logs/Reactor-agent-boot/gc-Reactor-agent-boot.log:time,uptime,level,tags</java_jvm>
+                <java_jvm>-Xms6G -Xmx6G -server -Xss256K -Dspring.profiles.active=release -XX:+DisableExplicitGC -XX:+UseG1GC -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/export/Logs/fq-mall-activity-app -Xlog:gc*:file=/export/Logs/Cute-agent-boot/gc-Cute-agent-boot.log:time,uptime,level,tags</java_jvm>
                 <profileActive>prod</profileActive>
             </properties>
         </profile>

@@ -10,7 +10,7 @@ const NAME_ALIASES: Record<string, string> = {
   execute: "bash",
   execute_command: "bash",
   code_interpreter: "bash",
-  // Reactor-agent 的代码执行工具注册名是 code_execution（Python 解释器），
+  // Cute-agent 的代码执行工具注册名是 code_execution（Python 解释器），
   // 与 code_interpreter 同义，一并按 execute 卡渲染。
   code_execution: "bash",
   ripgrep: "grep",
@@ -40,7 +40,7 @@ const NAME_ALIASES: Record<string, string> = {
   edit_file: "edit",
   file_edit: "edit",
   /**
-   * Reactor-agent 后端（`runtime/tool/workspace/Workspace*Tool.java`）注册的是
+   * Cute-agent 后端（`runtime/tool/workspace/Workspace*Tool.java`）注册的是
    * `workspace_*` 前缀名，不是 Claude 风格的裸名。缺了这几条别名，
    * `workspace_read` / `workspace_write` / `workspace_edit` 会一路落到 generic，
    * 表现为「工具卡没有文件名 chip、点了不开右侧」。
@@ -199,7 +199,7 @@ export function extractExecuteCommand(arg: string): string {
 
   const d = parseArg(raw);
   if (d) {
-    // source 是 Reactor-agent `code_execution` 的代码字段名。
+    // source 是 Cute-agent `code_execution` 的代码字段名。
     const cmd =
       str(d.command) ??
       str(d.cmd) ??
@@ -230,7 +230,7 @@ export function toolSummary(name: string, arg: string, full = false): string {
         if (!path) return fallback();
         const start =
           num(d.offset) ?? num(d.line_start) ?? num(d.start_line);
-        // line_count 是 Reactor-agent `workspace_read` 的读行数字段名。
+        // line_count 是 Cute-agent `workspace_read` 的读行数字段名。
         const len = num(d.limit) ?? num(d.length) ?? num(d.line_count);
         const end =
           num(d.line_end) ??
@@ -259,7 +259,7 @@ export function toolSummary(name: string, arg: string, full = false): string {
         return path ? c(path) : fallback();
       }
       case "bash": {
-        // source 是 Reactor-agent `code_execution`（Python 解释器）的代码字段名。
+        // source 是 Cute-agent `code_execution`（Python 解释器）的代码字段名。
         const cmd =
           str(d.command) ??
           str(d.cmd) ??

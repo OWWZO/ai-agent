@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>cn.bugstack.ai</groupId>
+        <artifactId>Cute-agent</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>Cute-agent-domain</artifactId>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-tx</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.annotation</groupId>
+            <artifactId>jakarta.annotation-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>javax.annotation</groupId>
+            <artifactId>javax.annotation-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>fastjson</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-collections4</artifactId>
+            <version>4.4</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.calcite</groupId>
+            <artifactId>calcite-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.clickhouse</groupId>
+            <artifactId>clickhouse-data</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+        </dependency>
+
+        <!--
+          logback 必须声明在 xfg-wrench 之前，不要调整顺序、不要删除。
+
+          cn.bugstack.wrench:xfg-wrench-starter-design-framework:3.0.0 是 fat jar，内部打包了
+          578 个 ch.qos.logback.** 类和 44 个 org.slf4j.** 类（1.2.x / 1.7.x 时代的版本）。
+          若它排在 logback-classic 之前进入 classpath，JVM 会优先加载它内嵌的
+          ch.qos.logback.classic.spi.Configurator（旧签名 abstract void configure(LoggerContext)），
+          而 spring-boot 3.4.3 的 RootLogLevelConfigurator 是按新签名
+          （ExecutionStatus configure(LoggerContext)）编译的，两者对不上，首次初始化日志即抛：
+
+            AbstractMethodError: Receiver class org.springframework.boot.logging.logback.RootLogLevelConfigurator
+            does not define or inherit an implementation of the resolved method
+            'abstract void configure(ch.qos.logback.classic.LoggerContext)' of interface
+            ch.qos.logback.classic.spi.Configurator
+
+          本模块原先只有 Cute-agent-types（声明在最后）传递引入 logback-classic，
+          导致 xfg-wrench 排在前面。显式前置声明后，真正的 logback
+          （版本由 spring-boot-starter-parent 3.4.3 管理，当前 1.5.16）稳定压过 fat jar。
+          详见 docs/plans/skill-loader-frontmatter-upgrade-plan.md 12.11。
+        -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-core</artifactId>
+        </dependency>
+
+        <!-- 扳手工程，通用设计模式框架（fat jar，内含旧版 logback，见上方说明） -->
+        <dependency>
+            <groupId>cn.bugstack.wrench</groupId>
+            <artifactId>xfg-wrench-starter-design-framework</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.librepdf</groupId>
+            <artifactId>openpdf</artifactId>
+            <version>1.3.39</version>
+        </dependency>
+
+        <!-- 系统模块 -->
+        <dependency>
+            <groupId>cn.bugstack.ai</groupId>
+            <artifactId>Cute-agent-types</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>Cute-agent-domain</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <release>${maven.compiler.release}</release>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <skipTests>false</skipTests>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

@@ -36,7 +36,7 @@ function parseToolBaseUrl(rawBaseUrl?: string): { target: string; basePath: stri
 }
 
 /**
- * 本地开发统一通过 `/tool/*` 访问 reactor-tool，避免前端把预览链接当成站内路由。
+ * 本地开发统一通过 `/tool/*` 访问 cute-tool，避免前端把预览链接当成站内路由。
  */
 export function createToolProxyConfig(rawBaseUrl?: string): ToolProxyConfig {
   const { target, basePath } = parseToolBaseUrl(rawBaseUrl);

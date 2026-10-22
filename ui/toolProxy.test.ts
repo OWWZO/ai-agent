@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createToolProxyConfig } from "./toolProxy";
 
 describe("createToolProxyConfig", () => {
-  it("should proxy local tool requests to the default reactor-tool server", () => {
+  it("should proxy local tool requests to the default cute-tool server", () => {
     const proxy = createToolProxyConfig();
 
     expect(proxy.target).toBe("http://127.0.0.1:1601");

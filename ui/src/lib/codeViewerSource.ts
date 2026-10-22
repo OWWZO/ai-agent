@@ -1,7 +1,7 @@
 /**
  * 右侧预览区「展示什么」的统一契约（对齐 ZCode `lib/codeViewer.ts` 的裁剪版）。
  *
- * 只保留 Reactor-agent 当前需要的 4 种形态：
+ * 只保留 Cute-agent 当前需要的 4 种形态：
  * - `patch` 编辑补丁（edit / multi_edit 的 old_string→new_string）
  * - `file`  真实文件（read 工具打开磁盘文件、聊天产物文件）
  * - `text`  纯文本（无落盘路径的内联内容）

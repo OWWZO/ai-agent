@@ -1,0 +1,114 @@
+package org.wwz.ai.test.domain;
+
+import org.junit.Assert;
+import org.junit.Test;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspacePaths;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceRuntimeOptions;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+public class WorkspacePathsTest {
+
+    @Test
+    public void shouldResolveRepoRootContainingCuteTool() {
+        Path root = WorkspacePaths.resolveRepoRoot();
+        Assert.assertTrue(Files.isDirectory(root.resolve("cute-tool")));
+    }
+
+    @Test
+    public void shouldExpandWorkspaceTemplateUnderRepoCuteTool() {
+        WorkspaceService service = new WorkspaceService(
+                WorkspaceRuntimeOptions.builder()
+                        .enabled(true)
+                        .rootTemplate("${user.dir}/cute-tool/skilloutput/{sessionId}")
+                        .build(),
+                null,
+                null,
+                null
+        );
+        Path resolved = service.resolveRoot("session-align-001");
+        Path expected = WorkspacePaths.resolveRepoRoot()
+                .resolve("cute-tool")
+                .resolve("skilloutput")
+                .resolve("session-align-001")
+                .normalize();
+        Assert.assertEquals(expected, resolved.normalize());
+        Assert.assertTrue(Files.isDirectory(WorkspacePaths.resolveRepoRoot().resolve("Cute-agent-app")));
+        Assert.assertTrue(resolved.endsWith(Path.of("cute-tool", "skilloutput", "session-align-001")));
+    }
+
+    @Test
+    public void shouldKeepExplicitSharedVolumeWorkspaceRoot() {
+        Path sharedRoot = Path.of("/data/skilloutput").toAbsolutePath().normalize();
+        WorkspaceService service = new WorkspaceService(
+                WorkspaceRuntimeOptions.builder()
+                        .enabled(true)
+                        .rootTemplate(sharedRoot + "/{sessionId}")
+                        .build(),
+                null,
+                null,
+                null
+        );
+
+        Assert.assertEquals(
+                sharedRoot.resolve("session-shared-volume").normalize(),
+                service.resolveRoot("session-shared-volume").normalize()
+        );
+    }
+
+    @Test
+    public void shouldPreferMonorepoWhenParentAlsoHasCuteTool() {
+        String previous = System.getProperty("user.dir");
+        try {
+            Path monorepo = WorkspacePaths.resolveRepoRoot();
+            Path parent = monorepo.getParent();
+            Assert.assertNotNull(parent);
+            System.setProperty("user.dir", parent.toString());
+            Path resolved = WorkspacePaths.resolveRepoRoot();
+            Assert.assertEquals(monorepo.normalize(), resolved.normalize());
+        } finally {
+            if (previous == null) {
+                System.clearProperty("user.dir");
+            } else {
+                System.setProperty("user.dir", previous);
+            }
+        }
+    }
+
+    @Test
+    public void shouldIgnoreSpringPreExpandedWrongUserDirSkilloutput() {
+        Path monorepo = WorkspacePaths.resolveRepoRoot();
+        Path parent = monorepo.getParent();
+        Assert.assertNotNull(parent);
+        // 模拟 Spring 已把 ${user.dir} 展开成 monorepo 上级目录
+        String springExpanded = parent + "/cute-tool/skilloutput/{sessionId}";
+        WorkspaceService service = new WorkspaceService(
+                WorkspaceRuntimeOptions.builder()
+                        .enabled(true)
+                        .rootTemplate(springExpanded)
+                        .build(),
+                null,
+                null,
+                null
+        );
+        Path resolved = service.resolveRoot("session-spring-preexpand");
+        Path expected = monorepo.resolve("cute-tool").resolve("skilloutput")
+                .resolve("session-spring-preexpand").normalize();
+        Assert.assertEquals(expected, resolved.normalize());
+    }
+
+    @Test
+    public void shouldPreferConfiguredSandboxRootOverSkillOutputDefault() {
+        Path configured = Path.of(System.getProperty("java.io.tmpdir"), "reactor-ws-align", "session-x")
+                .toAbsolutePath()
+                .normalize();
+        Assert.assertEquals(
+                configured,
+                WorkspacePaths.resolveSandboxRoot(configured.toString(), "other-session"));
+        Assert.assertEquals(
+                WorkspacePaths.skillOutputSessionRoot("s1"),
+                WorkspacePaths.resolveSandboxRoot("  ", "s1"));
+    }
+}
