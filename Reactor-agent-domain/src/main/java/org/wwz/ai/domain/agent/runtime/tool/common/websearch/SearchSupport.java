@@ -1,5 +1,7 @@
 package org.wwz.ai.domain.agent.runtime.tool.common.websearch;
 
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpRequest;
@@ -126,5 +128,47 @@ public final class SearchSupport {
             throw new IllegalStateException(providerName + " 缺少 RemoteHttpPort");
         }
         return port;
+    }
+
+    /**
+     * 从 OpenAI chat completion 响应里取 assistant 正文。
+     * <p>
+     * content 有四种形状：字符串、parts 数组（字符串或 {"text":...} 混合）、
+     * 缺 message 时回退 choice.text、其它类型走 message 原值。任一环节缺失都返回空串，
+     * 由调用方决定是否改用 citations。
+     */
+    public static String extractAssistantContent(JSONObject root) {
+        JSONArray choices = root.getJSONArray("choices");
+        if (choices == null || choices.isEmpty()) {
+            return "";
+        }
+        JSONObject first = choices.getJSONObject(0);
+        if (first == null) {
+            return "";
+        }
+        JSONObject message = first.getJSONObject("message");
+        if (message == null) {
+            return first.getString("text");
+        }
+        Object content = message.get("content");
+        if (content instanceof String text) {
+            return text;
+        }
+        if (content instanceof JSONArray parts) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < parts.size(); i++) {
+                Object part = parts.get(i);
+                if (part instanceof String s) {
+                    sb.append(s);
+                } else if (part instanceof JSONObject obj) {
+                    String t = obj.getString("text");
+                    if (StringUtils.isNotBlank(t)) {
+                        sb.append(t);
+                    }
+                }
+            }
+            return sb.toString();
+        }
+        return message.getString("content");
     }
 }

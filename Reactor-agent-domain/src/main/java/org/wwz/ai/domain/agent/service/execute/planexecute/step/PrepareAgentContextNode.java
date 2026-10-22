@@ -3,71 +3,37 @@ package org.wwz.ai.domain.agent.service.execute.planexecute.step;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
-import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
-import org.wwz.ai.domain.agent.runtime.dto.File;
-import org.wwz.ai.domain.agent.runtime.printer.Printer;
-import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
-import org.wwz.ai.domain.agent.runtime.tool.factory.AgentToolCollectionFactory;
-import org.wwz.ai.domain.agent.runtime.planmode.PlanArtifactStore;
-import org.wwz.ai.domain.agent.runtime.planmode.PlanModeState;
-import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
-import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceSessionFileMaterializer;
-import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadStateStore;
-import org.wwz.ai.domain.agent.runtime.util.DateUtil;
-import org.wwz.ai.domain.agent.runtime.command.AgentExecutionFile;
 import org.wwz.ai.domain.agent.ledger.IExecutionLedgerReadRepository;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
-import org.wwz.ai.domain.agent.ledger.AgentExecutionRecorder;
-import org.wwz.ai.domain.agent.memory.ltm.LtmRuntimeBootstrap;
-import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.planmode.PlanArtifactStore;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanModeEntryPolicy;
+import org.wwz.ai.domain.agent.runtime.planmode.PlanModeState;
 import org.wwz.ai.domain.agent.service.execute.planexecute.step.factory.DefaultPlanSolveAgentExecuteStrategyFactory;
+import org.wwz.ai.domain.agent.service.execute.support.PrepareAgentContextAssembly;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 /**
- * PlanSolve 逻辑树 - Prepare：SOP 召回 + 准备 AgentContext / 工具 / Plan Mode
+ * PlanSolve 逻辑树 - Prepare：SOP 召回 + 准备 AgentContext / 工具 / Plan Mode。
+ * <p>
+ * 装配细节与 React 共用 {@link PrepareAgentContextAssembly}；本节点额外负责
+ * PlanSolve 特有的首轮 plan mode 自动进入。
  */
 @Slf4j
 @Service("planSolvePrepareAgentContextNode")
 public class PrepareAgentContextNode extends AbstractExecuteSupport {
 
     @Resource
-    private AgentToolCollectionFactory agentToolCollectionFactory;
-
-    @Resource
-    private WorkspaceService workspaceService;
-
-    @Resource
-    private WorkspaceSessionFileMaterializer workspaceSessionFileMaterializer;
-
-    @Resource
-    private WorkspaceReadStateStore workspaceReadStateStore;
-
-    @Resource
-    private org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry activeAgentRunRegistry;
+    private PrepareAgentContextAssembly prepareAgentContextAssembly;
 
     @Resource
     private RunReactLoopNode runReactLoopNode;
 
     @Resource
-    private AgentExecutionRecorder agentExecutionRecorder;
-
-    @Resource
-    private ReactorRuntimeDependencies reactorRuntimeDependencies;
-
-    @Resource
     private PlanArtifactStore planArtifactStore;
-
-    @Resource
-    private org.wwz.ai.domain.agent.runtime.capability.SessionCapabilityService sessionCapabilityService;
 
     @Resource
     private IExecutionLedgerReadRepository executionLedgerReadRepository;
@@ -76,55 +42,17 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
     protected String doApply(AgentExecutionCommand request, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("PlanSolve Prepare: SOP recall and context for requestId: {}", request.getRequestId());
 
-        // 先构造上下文，再执行 SOP 召回和 plan mode 初始化，后续主代理只依赖 AgentContext。
-        Printer printer = dynamicContext.getPrinter();
-        var disabled = sessionCapabilityService.loadDisabled(request.getSessionId());
-        AgentContext agentContext = AgentContext.builder()
-                .requestId(request.getRequestId())
-                .sessionId(request.getSessionId())
-                .userId(request.getUserId())
-                .printer(printer)
-                .query(request.getQuery())
-                .task("")
-                .model(request.getModel())
-                .thinking(request.getThinking())
-                .thinkingEffort(request.getThinkingEffort())
-                .disabledSkillNames(disabled.skills())
-                .disabledMcpIds(disabled.mcps())
-                .dateInfo(DateUtil.CurrentDateInfo())
-                .productFiles(new ArrayList<>(convertFiles(request.getSessionFiles())))
-                .workspaceRoot(resolveWorkspaceRoot(request.getSessionId()))
-                .sopPrompt(request.getSopPrompt())
-                .basePrompt(request.getBasePrompt())
-                .workingMemoryMessages(request.getWorkingMemoryMessages())
-                .agentType(request.getAgentType())
-                .isStream(Objects.nonNull(request.getIsStream()) ? request.getIsStream() : false)
-                .templateType("dataAgent".equals(request.getOutputStyle()) ? "table" : "empty")
-                .executionRecorder(agentExecutionRecorder)
-                .runtimeDependencies(reactorRuntimeDependencies)
-                .build();
-
-        materializeSessionFiles(agentContext, request.getSessionFiles());
-        hydrateWorkspaceReadState(agentContext);
-        boolean resumedApprovedPlan = restoreResumePlanMode(agentContext, request);
-        LtmRuntimeBootstrap.bootstrap(agentContext, request);
+        // 先构造上下文，再执行 plan mode 初始化，后续主代理只依赖 AgentContext。
+        PrepareAgentContextAssembly.Assembled assembled = prepareAgentContextAssembly.assemble(
+                request,
+                dynamicContext.getPrinter(),
+                ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE,
+                PrepareAgentContextAssembly.ToolScope.PLAN_SOLVE_MAIN_AND_SUB
+        );
+        org.wwz.ai.domain.agent.runtime.agent.AgentContext agentContext = assembled.context();
 
         boolean hasPriorPlanSolve = hasPriorPlanSolveUserTurn(request);
-        // Execution Ledger 保存本轮事实；SOP、工作区读取状态和工作记忆分别服务当前执行或下一轮上下文。
-        // 先初始化 run，再装配工具，保证后续工具调用从一开始就能关联到同一个 ledger run。
-        ExecutionLedgerRunSupport.initializeRun(
-                agentExecutionRecorder,
-                agentContext,
-                request,
-                ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE
-        );
-        ToolCollection fullToolCollection = buildToolCollection(agentContext, request);
-        agentContext.setSubAgentToolCollection(fullToolCollection);
-        agentContext.setToolCollection(agentToolCollectionFactory.filterForPlanSolveMain(fullToolCollection));
-        if (activeAgentRunRegistry != null) {
-            activeAgentRunRegistry.bindContext(agentContext.getRequestId(), agentContext);
-        }
-        if (PlanModeEntryPolicy.shouldAutoEnter(request, resumedApprovedPlan, hasPriorPlanSolve)) {
+        if (PlanModeEntryPolicy.shouldAutoEnter(request, assembled.resumedApprovedPlan(), hasPriorPlanSolve)) {
             enterPlanModeForPlanSolve(agentContext, Boolean.TRUE.equals(request.getForcePlanMode()));
         }
 
@@ -135,7 +63,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
     /**
      * 进入 plan 后才有硬只读。仅首轮 PlanSolve 或本轮 forcePlanMode 自动进入。
      */
-    private void enterPlanModeForPlanSolve(AgentContext agentContext, boolean forced) {
+    private void enterPlanModeForPlanSolve(org.wwz.ai.domain.agent.runtime.agent.AgentContext agentContext, boolean forced) {
         if (agentContext == null) {
             return;
         }
@@ -171,7 +99,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
 
     private boolean hasPriorPlanSolveUserTurn(AgentExecutionCommand request) {
         if (executionLedgerReadRepository == null || request == null
-                || StringUtils.isBlank(request.getSessionId())) {
+                || org.apache.commons.lang3.StringUtils.isBlank(request.getSessionId())) {
             return false;
         }
         try {
@@ -192,116 +120,6 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
             log.warn("query prior plan_solve runs failed, sessionId={}", request.getSessionId(), e);
             return false;
         }
-    }
-
-
-
-
-    @jakarta.annotation.Resource
-    private org.wwz.ai.domain.agent.runtime.planmode.IPlanApprovalRepository planApprovalRepository;
-
-    private boolean restoreResumePlanMode(AgentContext agentContext, AgentExecutionCommand request) {
-        if (agentContext == null || request == null || StringUtils.isBlank(request.getResumeContextJson())) {
-            return false;
-        }
-        org.wwz.ai.domain.agent.runtime.askuser.UserQuestionResumeContext
-                .fromJson(request.getResumeContextJson())
-                .applyPlanModeTo(agentContext);
-        return applyPlanApprovalDecision(agentContext, request);
-    }
-
-    private boolean applyPlanApprovalDecision(AgentContext agentContext, AgentExecutionCommand request) {
-        if (agentContext == null || request == null
-                || StringUtils.isBlank(request.getResumeApprovalId())
-                || planApprovalRepository == null) {
-            return false;
-        }
-        var record = planApprovalRepository.findByApprovalId(request.getResumeApprovalId()).orElse(null);
-        if (record == null || record.getDecision() == null) {
-            return false;
-        }
-        var state = agentContext.requirePlanModeState();
-        var decision = record.getDecision();
-        if (decision.isApproved()) {
-            String finalPlan = StringUtils.isNotBlank(decision.getEditedPlanContent())
-                    ? decision.getEditedPlanContent()
-                    : record.getPlanContent();
-            String planFilePath = record.getPlanFilePath();
-            if (planArtifactStore != null && StringUtils.isNotBlank(finalPlan)) {
-                planFilePath = planArtifactStore.writePlan(agentContext.getSessionId(), finalPlan)
-                        .orElse(planFilePath);
-            }
-            state.setPlan(finalPlan, planFilePath);
-            state.exitPlanMode();
-            return true;
-        } else {
-            state.clearPendingApproval();
-            return false;
-        }
-    }
-
-    private void hydrateWorkspaceReadState(AgentContext agentContext) {
-        if (workspaceReadStateStore == null || agentContext == null) {
-            return;
-        }
-        try {
-            // 读取状态用于跨节点/跨轮的重复读取判断，失败时不影响 workspace 本身的读写能力。
-            workspaceReadStateStore.hydrate(agentContext);
-        } catch (Exception e) {
-            log.warn("hydrate workspace read-state failed, requestId={}", agentContext.getRequestId(), e);
-        }
-    }
-
-    private void materializeSessionFiles(AgentContext agentContext, java.util.List<AgentExecutionFile> sessionFiles) {
-        if (workspaceSessionFileMaterializer == null) {
-            return;
-        }
-        try {
-            // 会话附件物化只负责把稳定文件引用准备到 workspace；它失败时保留引用，让后续
-            // 工具按自身能力返回可解释的文件错误，而不是在上下文准备阶段吞掉整个请求。
-            workspaceSessionFileMaterializer.materialize(agentContext, sessionFiles);
-        } catch (Exception e) {
-            log.warn("materialize session files failed, requestId={}", agentContext == null ? null : agentContext.getRequestId(), e);
-        }
-    }
-
-    private String resolveWorkspaceRoot(String sessionId) {
-        if (workspaceService == null || !workspaceService.isEnabled()) {
-            return null;
-        }
-        try {
-            // 根目录由 workspace 服务统一解析并创建，节点不自行拼接路径，避免不同 Agent
-            // 对 session 隔离规则产生分歧。
-            return workspaceService.resolveAndEnsureRoot(sessionId).toString();
-        } catch (Exception e) {
-            log.warn("resolve workspace root failed, sessionId={}", sessionId, e);
-            return null;
-        }
-    }
-
-    private ToolCollection buildToolCollection(AgentContext agentContext, AgentExecutionCommand request) {
-        return agentToolCollectionFactory.buildForPlanSolve(agentContext, request);
-    }
-
-    private List<File> convertFiles(List<AgentExecutionFile> sessionFiles) {
-        if (sessionFiles == null || sessionFiles.isEmpty()) {
-            return List.of();
-        }
-        List<File> files = new ArrayList<>(sessionFiles.size());
-        for (AgentExecutionFile sessionFile : sessionFiles) {
-            files.add(File.builder()
-                    .fileName(sessionFile.getFileName())
-                    .description(sessionFile.getFileDesc())
-                    .ossUrl(sessionFile.getOssUrl())
-                    .domainUrl(sessionFile.getDomainUrl())
-                    .fileSize(sessionFile.getFileSize())
-                    .originFileName(sessionFile.getOriginFileName())
-                    .originOssUrl(sessionFile.getOriginOssUrl())
-                    .originDomainUrl(sessionFile.getOriginDomainUrl())
-                    .isInternalFile(Boolean.FALSE)
-                    .build());
-        }
-        return files;
     }
 
     @Override

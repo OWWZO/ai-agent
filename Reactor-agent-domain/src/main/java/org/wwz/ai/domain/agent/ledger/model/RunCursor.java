@@ -5,14 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.util.Base64;
 
 /**
  * Session run keyset cursor.
@@ -27,6 +20,7 @@ import java.util.Base64;
 public class RunCursor {
 
     private static final int VERSION = 1;
+    private static final String INVALID_MESSAGE = "非法 cursor";
 
     private String sessionId;
 
@@ -50,47 +44,19 @@ public class RunCursor {
 
     public String encode() {
         RunCursor cursor = validated(sessionId, createTime, id);
-        try {
-            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-            try (DataOutputStream output = new DataOutputStream(bytes)) {
-                output.writeInt(VERSION);
-                output.writeUTF(cursor.sessionId);
-                output.writeUTF(cursor.createTime.toString());
-                output.writeLong(cursor.id);
-            }
-            return Base64.getUrlEncoder()
-                    .withoutPadding()
-                    .encodeToString(bytes.toByteArray());
-        } catch (IOException exception) {
-            throw new IllegalStateException("failed to encode run cursor", exception);
-        }
+        return KeysetCursorCodec.encode(VERSION, output -> {
+            output.writeUTF(cursor.sessionId);
+            output.writeUTF(cursor.createTime.toString());
+            output.writeLong(cursor.id);
+        });
     }
 
     public static RunCursor decode(String encoded) {
-        if (encoded == null || encoded.isBlank()
-                || !encoded.matches("[A-Za-z0-9_-]+")) {
-            throw invalidCursor();
-        }
-        try {
-            byte[] bytes = Base64.getUrlDecoder().decode(encoded.getBytes(StandardCharsets.US_ASCII));
-            try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytes))) {
-                if (input.readInt() != VERSION) {
-                    throw invalidCursor();
-                }
-                String sessionId = input.readUTF();
-                LocalDateTime createTime = LocalDateTime.parse(input.readUTF());
-                long id = input.readLong();
-                if (input.available() != 0) {
-                    throw invalidCursor();
-                }
-                return validated(sessionId, createTime, id);
-            }
-        } catch (IOException | RuntimeException exception) {
-            throw invalidCursor();
-        }
-    }
-
-    private static IllegalArgumentException invalidCursor() {
-        return new IllegalArgumentException("非法 cursor");
+        return KeysetCursorCodec.decode(encoded, VERSION, INVALID_MESSAGE, input -> {
+            String sessionId = input.readUTF();
+            LocalDateTime createTime = LocalDateTime.parse(input.readUTF());
+            long id = input.readLong();
+            return validated(sessionId, createTime, id);
+        });
     }
 }

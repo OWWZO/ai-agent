@@ -29,25 +29,42 @@ public interface Printer {
               String digitalEmployee,
               Boolean isFinal);
 
-    void send(String messageType, Object message);
+    /**
+     * 以下便捷重载只是核心方法的参数转发，接口统一提供 default 实现。
+     * <p>
+     * 所有实现此前都逐字重复这 5 段转发，且没有任何实现改写过语义——
+     * 收在接口里后，新增实现只需覆盖两个核心方法。
+     */
 
-    void send(String messageType, Object message, String digitalEmployee);
+    default void send(String messageType, Object message) {
+        send(null, messageType, message, null, true);
+    }
 
-    void send(String messageId, String messageType, Object message, Boolean isFinal);
+    default void send(String messageType, Object message, String digitalEmployee) {
+        send(null, messageType, message, digitalEmployee, true);
+    }
+
+    default void send(String messageId, String messageType, Object message, Boolean isFinal) {
+        send(messageId, messageType, message, (String) null, isFinal);
+    }
 
     /**
      * 发送带扩展结果字段的简化消息。
      */
-    void sendWithResultMap(String messageId,
-                           String messageType,
-                           Object message,
-                           Map<String, Object> extraResultMap,
-                           Boolean isFinal);
+    default void sendWithResultMap(String messageId,
+                                   String messageType,
+                                   Object message,
+                                   Map<String, Object> extraResultMap,
+                                   Boolean isFinal) {
+        send(messageId, messageType, message, extraResultMap, null, isFinal);
+    }
 
     /**
      * 发送带扩展结果字段的最终消息。
      */
-    void sendWithResultMap(String messageType, Object message, Map<String, Object> extraResultMap);
+    default void sendWithResultMap(String messageType, Object message, Map<String, Object> extraResultMap) {
+        send(null, messageType, message, extraResultMap, null, true);
+    }
 
     void close();
 

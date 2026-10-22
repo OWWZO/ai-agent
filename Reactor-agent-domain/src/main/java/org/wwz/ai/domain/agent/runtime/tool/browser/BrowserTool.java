@@ -1,7 +1,6 @@
 package org.wwz.ai.domain.agent.runtime.tool.browser;
 
 import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
 import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort;
@@ -17,25 +16,22 @@ import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactCaptureCoordinator;
 import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactCaptureLease;
 import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactCapturePlan;
-import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactFailure;
 import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactMaterialization;
-import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactMaterializeCommand;
 import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactMaterializer;
 import org.wwz.ai.domain.agent.runtime.tool.cli.OpenCliArgv;
 import org.wwz.ai.types.agent.config.OpenCliProperties;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 @Setter
 public class BrowserTool implements BaseTool {
 
     public static final String TOOL_NAME = "browser";
+    private static final String BROWSER_TIMEOUT_TEXT = "浏览器操作超时";
 
     /** opencli 命令面的参数说明（改造前原样保留）。 */
     private static final String OPENCLI_ARGS_DESCRIPTION =
@@ -77,21 +73,8 @@ public class BrowserTool implements BaseTool {
 
     @Override
     public Map<String, Object> toParams() {
-        Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("args", Map.of(
-                "type", "array",
-                "items", Map.of("type", "string"),
-                "description", isBskSurface() ? BSK_ARGS_DESCRIPTION : OPENCLI_ARGS_DESCRIPTION
-        ));
-        properties.put("timeout_ms", Map.of(
-                "type", "integer",
-                "description", "超时毫秒，默认 180000"
-        ));
-        return Map.of(
-                "type", "object",
-                "properties", properties,
-                "required", List.of("args")
-        );
+        return BrowserCliSupport.toParams(
+                isBskSurface() ? BSK_ARGS_DESCRIPTION : OPENCLI_ARGS_DESCRIPTION);
     }
 
     @Override
@@ -100,7 +83,7 @@ public class BrowserTool implements BaseTool {
         Map<String, Object> params = input instanceof Map<?, ?> map
                 ? new LinkedHashMap<>((Map<String, Object>) map)
                 : new LinkedHashMap<>();
-        List<String> args = stringList(params.get("args"));
+        List<String> args = BrowserCliSupport.stringList(params.get("args"));
         if (args.isEmpty()) {
             return ToolResultPayload.failure("args 不能为空", "args 不能为空", null, "missing args");
         }
@@ -117,7 +100,7 @@ public class BrowserTool implements BaseTool {
         if (cli == null || properties == null || !properties.isEnabled()) {
             return ToolResultPayload.failure("opencli 未配置", "opencli 未配置", null, "opencli_unavailable");
         }
-        long budgetMs = resolveTimeout(params.get("timeout_ms"), properties);
+        long budgetMs = BrowserCliSupport.resolveTimeout(params.get("timeout_ms"), properties);
         long started = System.nanoTime();
         Execution execution = executeCli(deps, args, userId, cli, properties, budgetMs, started);
         if (execution.failure != null) {
@@ -125,9 +108,9 @@ public class BrowserTool implements BaseTool {
         }
         CliResult result = execution.result;
         List<String> rewritten = execution.rewritten;
-        Map<String, Object> fields = toFields(result);
-        appendArtifacts(fields, execution.materialization);
-        publishViewport(result.getStdout(), fields);
+        Map<String, Object> fields = BrowserCliSupport.toFields(result, null);
+        BrowserCliSupport.appendArtifacts(fields, execution.materialization);
+        BrowserCliSupport.publishViewport(agentContext, result.getStdout(), fields);
         boolean sensitive = OpenCliArgv.isSensitive(rewritten);
         if (sensitive) {
             Map<String, Object> redacted = new LinkedHashMap<>();
@@ -172,9 +155,9 @@ public class BrowserTool implements BaseTool {
                                        OpenCliProperties properties,
                                        long budgetMs,
                                        long started) {
-        long remaining = remainingMillis(budgetMs, started);
+        long remaining = BrowserCliSupport.remainingMillis(budgetMs, started);
         if (remaining <= 0) {
-            return Execution.failed(browserTimeout());
+            return Execution.failed(BrowserCliSupport.browserTimeout(BROWSER_TIMEOUT_TEXT));
         }
         BrowserRelayPort relay = deps.getOptionalBrowserRelayPort();
         // 021：backend=bsk 时扩展连的是 bsk WS 网关而非老 Reactor relay，
@@ -243,7 +226,7 @@ public class BrowserTool implements BaseTool {
                 source == null ? null : source.getToolCallId(),
                 agentContext.getRequestId());
         if (!capturePlan.isValid()) {
-            return Execution.failed(captureFailure(capturePlan), rewritten, CliArtifactMaterialization.empty());
+            return Execution.failed(BrowserCliSupport.captureFailure(capturePlan), rewritten, CliArtifactMaterialization.empty());
         }
         Map<String, String> env = new LinkedHashMap<>();
         // 021 双后端开关：backend=bsk 时整条解析执行链路由 CLI 内部切换到
@@ -272,7 +255,7 @@ public class BrowserTool implements BaseTool {
         if (StringUtils.isNotBlank(secret)) {
             env.put("OPENCLI_RELAY_SECRET", secret);
         }
-        env.put("OPENCLI_CACHE_DIR", resolveCacheDir(properties, userId));
+        env.put("OPENCLI_CACHE_DIR", BrowserCliSupport.resolveCacheDir(properties, userId));
         try (CliArtifactCaptureLease lease = CliArtifactCaptureCoordinator.acquire(capturePlan)) {
             Set<String> baseline = capturePlan.requiresCaptureLease()
                     ? CliArtifactMaterializer.snapshotWorkspace(lease.getCaptureRootAbsolute())
@@ -289,30 +272,23 @@ public class BrowserTool implements BaseTool {
                         .maxOutputChars(properties.getMaxOutputChars())
                         .build());
             } catch (RuntimeException e) {
-                CliArtifactMaterialization materialization = materialize(capturePlan, baseline, List.of());
-                return Execution.failed(cliFailure(materialization), rewritten, materialization);
+                CliArtifactMaterialization materialization = BrowserCliSupport.materialize(
+                    agentContext, capturePlan, baseline, List.of(), "browser 执行产物");
+                return Execution.failed(BrowserCliSupport.cliFailure(materialization), rewritten, materialization);
             }
             if (result == null) {
-                CliArtifactMaterialization materialization = materialize(capturePlan, baseline, List.of());
-                return Execution.failed(cliFailure(materialization), rewritten, materialization);
+                CliArtifactMaterialization materialization = BrowserCliSupport.materialize(
+                    agentContext, capturePlan, baseline, List.of(), "browser 执行产物");
+                return Execution.failed(BrowserCliSupport.cliFailure(materialization), rewritten, materialization);
             }
-            CliArtifactMaterialization materialization = materialize(
-                    capturePlan, baseline, result.getArtifacts());
+            CliArtifactMaterialization materialization = BrowserCliSupport.materialize(
+                    agentContext, capturePlan, baseline, result.getArtifacts(), "browser 执行产物");
             return Execution.completed(result, rewritten, materialization);
         } catch (CliArtifactCaptureCoordinator.CliArtifactCaptureException e) {
             return Execution.failed(ToolResultPayload.failure(
                     "artifact capture 失败", "artifact capture 失败", null, e.getCode()),
                     rewritten, CliArtifactMaterialization.empty());
         }
-    }
-
-    private static ToolResultPayload browserTimeout() {
-        return ToolResultPayload.failure("浏览器操作超时", "浏览器操作超时", null, "browser_timeout");
-    }
-
-    private static long remainingMillis(long budgetMs, long startedNanos) {
-        long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos);
-        return budgetMs - Math.max(0L, elapsed);
     }
 
     private static final class Execution {
@@ -348,158 +324,6 @@ public class BrowserTool implements BaseTool {
         }
     }
 
-    private void publishViewport(String stdout, Map<String, Object> fields) {
-        Map<String, Object> payload = extractViewport(stdout);
-        if (payload.isEmpty()) {
-            return;
-        }
-        if (payload.get("tree") != null || payload.get("url") != null) {
-            BrowserViewportPublisher.emitTree(agentContext, payload);
-            if (payload.get("tree") != null) {
-                fields.put("tree", payload.get("tree"));
-            }
-        }
-        Object image = payload.get("imageBase64");
-        if (image != null) {
-            String artifactRef = BrowserViewportPublisher.uploadPng(agentContext, String.valueOf(image));
-            if (artifactRef != null) {
-                fields.put("artifactRef", artifactRef);
-            }
-            fields.remove("imageBase64");
-            fields.put("message", "Viewport attached as image media; inspect the screenshot, do not fetch artifactRef.");
-        }
-    }
-
-    private static void appendArtifacts(Map<String, Object> fields, CliArtifactMaterialization materialization) {
-        if (materialization == null) {
-            return;
-        }
-        if (!materialization.getArtifacts().isEmpty()) {
-            fields.put("artifacts", materialization.artifactMaps());
-        }
-        if (!materialization.getFailures().isEmpty()) {
-            fields.put("artifact_failures", materialization.failureMaps());
-        }
-    }
-
-    private CliArtifactMaterialization materialize(CliArtifactCapturePlan plan,
-                                                   Set<String> baseline,
-                                                   List<org.wwz.ai.domain.agent.adapter.port.cli.CliArtifact> reported) {
-        try {
-            return CliArtifactMaterializer.materialize(CliArtifactMaterializeCommand.builder()
-                    .agentContext(agentContext)
-                    .workspaceRoot(agentContext.getWorkspaceRoot())
-                    .reportedArtifacts(reported)
-                    .commandLabel("browser 执行产物")
-                    .baselineFiles(baseline)
-                    .outputRoot(plan.getCaptureRoot())
-                    .captureRoot(plan.getCaptureRoot())
-                    .captureRootAbsolute(plan.getCaptureRootAbsolute())
-                    .build());
-        } catch (RuntimeException e) {
-            return CliArtifactMaterialization.builder()
-                    .artifacts(List.of())
-                    .failures(List.of(CliArtifactFailure.builder()
-                            .reason(CliArtifactFailure.CAPTURE_SCAN_FAILED)
-                            .message("capture root 扫描失败")
-                            .build()))
-                    .build();
-        }
-    }
-
-    private static ToolResultPayload captureFailure(CliArtifactCapturePlan plan) {
-        CliArtifactCaptureCoordinator.ToolCaptureFailure failure =
-                CliArtifactCaptureCoordinator.failure(plan);
-        return ToolResultPayload.failureFrom(failure.code(), Map.of("message", failure.message()));
-    }
-
-    private static ToolResultPayload cliFailure(CliArtifactMaterialization materialization) {
-        Map<String, Object> detail = new LinkedHashMap<>();
-        detail.put("error", "opencli 执行失败");
-        if (materialization != null && !materialization.getArtifacts().isEmpty()) {
-            detail.put("artifacts", materialization.artifactMaps());
-        }
-        if (materialization != null && !materialization.getFailures().isEmpty()) {
-            detail.put("artifact_failures", materialization.failureMaps());
-        }
-        return ToolResultPayload.builder()
-                .toolResult("opencli 执行失败")
-                .llmObservation(JSON.toJSONString(detail))
-                .llmData(detail)
-                .failed(Boolean.TRUE)
-                .errorMsg("opencli_execution_failed")
-                .build();
-    }
-
-    private static Map<String, Object> extractViewport(String stdout) {
-        if (StringUtils.isBlank(stdout)) {
-            return Map.of();
-        }
-        String trimmed = stdout.trim();
-        int start = trimmed.indexOf('{');
-        int end = trimmed.lastIndexOf('}');
-        if (start < 0 || end <= start) {
-            return Map.of();
-        }
-        try {
-            JSONObject json = JSON.parseObject(trimmed.substring(start, end + 1));
-            if (json == null) {
-                return Map.of();
-            }
-            Map<String, Object> fields = new LinkedHashMap<>(json);
-            if (json.get("data") instanceof Map<?, ?> nested) {
-                for (Map.Entry<?, ?> entry : nested.entrySet()) {
-                    if (entry.getKey() != null && !fields.containsKey(String.valueOf(entry.getKey()))) {
-                        fields.put(String.valueOf(entry.getKey()), entry.getValue());
-                    }
-                }
-            }
-            return fields;
-        } catch (RuntimeException ignore) {
-            return Map.of();
-        }
-    }
-
-    private static Map<String, Object> toFields(CliResult result) {
-        Map<String, Object> fields = new LinkedHashMap<>();
-        fields.put("ok", result.isOk());
-        fields.put("tool", result.getTool());
-        fields.put("exit_code", result.getExitCode());
-        fields.put("stdout", result.getStdout());
-        fields.put("stderr", result.getStderr());
-        fields.put("duration_ms", result.getDurationMs());
-        fields.put("timed_out", result.isTimedOut());
-        fields.put("truncated", result.isTruncated());
-        // bsk CLI 失败时在 stderr 追加 `Hint:` / `Retry:` 两行。提升成结构化字段，
-        // agent 不必再从自由文本里解析「这次失败能不能重试」。
-        if (!result.isOk()) {
-            String stderr = result.getStderr();
-            String hint = stderrLine(stderr, "Hint: ");
-            if (hint != null) {
-                fields.put("error_hint", hint);
-            }
-            String retry = stderrLine(stderr, "Retry: ");
-            if (retry != null) {
-                fields.put("retry", retry);
-            }
-        }
-        return fields;
-    }
-
-    /** 取 stderr 中以 {@code prefix} 开头的那一行（去掉前缀），没有则返回 null。 */
-    private static String stderrLine(String stderr, String prefix) {
-        if (stderr == null || stderr.isEmpty()) {
-            return null;
-        }
-        for (String line : stderr.split("\\R")) {
-            if (line.startsWith(prefix)) {
-                String value = line.substring(prefix.length()).trim();
-                return value.isEmpty() ? null : value;
-            }
-        }
-        return null;
-    }
-
     /**
      * 失败时给 agent 的错误码：优先取 bsk CLI 首行 {@code Error: <code>: <message>}
      * 里的 code，取不到则退回原有的固定值。
@@ -507,7 +331,7 @@ public class BrowserTool implements BaseTool {
     private static String executionErrorCode(Map<String, Object> fields) {
         Object stderr = fields.get("stderr");
         if (stderr != null) {
-            String first = stderrLine(String.valueOf(stderr), "Error: ");
+            String first = BrowserCliSupport.stderrLine(String.valueOf(stderr), "Error: ");
             if (first != null) {
                 int colon = first.indexOf(':');
                 if (colon > 0) {
@@ -519,24 +343,6 @@ public class BrowserTool implements BaseTool {
             }
         }
         return "opencli_execution_failed";
-    }
-
-    private static long resolveTimeout(Object raw, OpenCliProperties properties) {
-        long fallback = properties.getDefaultTimeoutMs() <= 0 ? 60_000L : properties.getDefaultTimeoutMs();
-        long max = properties.getMaxTimeoutMs() <= 0 ? 180_000L : properties.getMaxTimeoutMs();
-        if (raw instanceof Number number) {
-            long value = number.longValue();
-            if (value > 0) {
-                return Math.min(value, max);
-            }
-        }
-        if (raw instanceof String text && StringUtils.isNumeric(text.trim())) {
-            long value = Long.parseLong(text.trim());
-            if (value > 0) {
-                return Math.min(value, max);
-            }
-        }
-        return Math.min(fallback, max);
     }
 
     private static String resolveRelayUrl(OpenCliProperties properties, ReactorRuntimeDependencies deps) {
@@ -598,26 +404,4 @@ public class BrowserTool implements BaseTool {
         return properties.getCommand();
     }
 
-    private static String resolveCacheDir(OpenCliProperties properties, String userId) {
-        String root = StringUtils.trimToNull(properties.getCacheDir());
-        if (root == null) {
-            root = Path.of(System.getProperty("java.io.tmpdir"), "reactor-opencli").toString();
-        }
-        return Path.of(root, userId).toString();
-    }
-
-    @SuppressWarnings("unchecked")
-    private static List<String> stringList(Object raw) {
-        if (!(raw instanceof List<?> list) || list.isEmpty()) {
-            return List.of();
-        }
-        List<String> values = new ArrayList<>(list.size());
-        for (Object item : list) {
-            if (!(item instanceof String text) || text == null) {
-                return List.of();
-            }
-            values.add(text);
-        }
-        return values;
-    }
 }

@@ -281,35 +281,6 @@ public class AgentSessionPrinter implements Printer {
     }
 
     @Override
-    public void send(String messageType, Object message, String digitalEmployee) {
-        send(null, messageType, message, digitalEmployee, true);
-    }
-
-    @Override
-    public void send(String messageType, Object message) {
-        send(null, messageType, message, null, true);
-    }
-
-    @Override
-    public void send(String messageId, String messageType, Object message, Boolean isFinal) {
-        send(messageId, messageType, message, (String) null, isFinal);
-    }
-
-    @Override
-    public void sendWithResultMap(String messageId,
-                                  String messageType,
-                                  Object message,
-                                  Map<String, Object> extraResultMap,
-                                  Boolean isFinal) {
-        send(messageId, messageType, message, extraResultMap, null, isFinal);
-    }
-
-    @Override
-    public void sendWithResultMap(String messageType, Object message, Map<String, Object> extraResultMap) {
-        send(null, messageType, message, extraResultMap, null, true);
-    }
-
-    @Override
     public void close() {
         stream.complete();
     }

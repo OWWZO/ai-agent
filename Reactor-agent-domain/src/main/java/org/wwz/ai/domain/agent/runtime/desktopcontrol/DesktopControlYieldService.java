@@ -5,17 +5,17 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord;
 import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwnerResolver;
+import org.wwz.ai.domain.agent.runtime.yield.PendingYieldToolCalls;
 import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReActAgent;
+import org.wwz.ai.domain.agent.runtime.yieldcard.AfterCommitCardSender;
 import org.wwz.ai.domain.agent.runtime.askuser.UserQuestionResumeContext;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.RequestDesktopControlTool;
 
@@ -29,6 +29,7 @@ public class DesktopControlYieldService {
 
     private final IDesktopControlRepository desktopControlRepository;
     private final SessionWorkingMemoryService sessionWorkingMemoryService;
+    private final org.wwz.ai.domain.agent.runtime.yieldcard.AfterCommitCardSender afterCommitCardSender;
 
     @Transactional(rollbackFor = Exception.class)
     public DesktopControlRecord yieldAndNotify(AgentContext agentContext,
@@ -44,15 +45,11 @@ public class DesktopControlYieldService {
         String toolCallId = DesktopControlObservationSupport.resolveDesktopToolCallId(
                 executor == null || executor.getMemory() == null ? null : executor.getMemory().getMessages(),
                 signal.getToolCallId());
-        if (StringUtils.isNotBlank(toolCallId)
-                && executor != null
-                && executor.getMemory() != null
-                && !DesktopControlObservationSupport.hasToolResult(executor.getMemory().getMessages(), toolCallId)) {
-            executor.getMemory().addMessage(org.wwz.ai.domain.agent.runtime.dto.Message.toolMessage(
-                    DesktopControlObservationSupport.buildWaitingObservation(signal.getReason(), controlId),
-                    toolCallId,
-                    null));
-        }
+        // yield 时 memory 只有 assistant.tool_calls、尚无 tool result；先补 waiting 占位，避免网关 400。
+        PendingYieldToolCalls.appendWaitingToolResult(
+                executor == null || executor.getMemory() == null ? null : executor.getMemory().getMessages(),
+                toolCallId,
+                DesktopControlObservationSupport.buildWaitingObservation(signal.getReason(), controlId));
         Long toolInvocationId = null;
         if (agentContext.getAgentRunState() != null && StringUtils.isNotBlank(toolCallId)) {
             toolInvocationId = agentContext.getAgentRunState().resolveToolInvocationId(toolCallId);
@@ -111,34 +108,10 @@ public class DesktopControlYieldService {
                 "WAITING_USER_INPUT",
                 "等待用户完成桌面操作"
         );
-
-        scheduleCardAfterCommit(agentContext, record);
+        afterCommitCardSender.send(agentContext, record.getControlId(), "desktop_control", () -> DesktopControlObservationSupport.toClientPayload(record));
         log.info("{} yielded RequestDesktopControl controlId={} toolCallId={}",
                 agentContext.getRequestId(), controlId, toolCallId);
         return record;
     }
 
-    private void scheduleCardAfterCommit(AgentContext agentContext, DesktopControlRecord record) {
-        Runnable send = () -> {
-            if (agentContext.getPrinter() == null) {
-                return;
-            }
-            agentContext.getPrinter().send(
-                    record.getControlId(),
-                    "desktop_control",
-                    DesktopControlObservationSupport.toClientPayload(record),
-                    false
-            );
-        };
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    send.run();
-                }
-            });
-            return;
-        }
-        send.run();
-    }
 }

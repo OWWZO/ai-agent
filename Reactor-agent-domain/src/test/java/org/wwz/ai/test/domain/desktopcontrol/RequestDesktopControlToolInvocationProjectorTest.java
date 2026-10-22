@@ -111,6 +111,79 @@ public class RequestDesktopControlToolInvocationProjectorTest {
         Assert.assertFalse(payload.containsKey("streamUrl"));
     }
 
+    @Test
+    public void replaySurvivesWhenYieldStateLookupThrows() {
+        // 历史回放不能因附属状态读失败而中断：读不到就按 observation 里的痕迹投影
+        ToolInvocationView invocation = ToolInvocationView.builder()
+                .id(9L)
+                .sessionId("s-boom")
+                .toolCallId("tool-call-desk-009")
+                .toolName("RequestDesktopControl")
+                .inputJson("{\"reason\":\"请登录\"}")
+                .llmObservation("{\"controlId\":\"dc_9\",\"reason\":\"请登录\",\"status\":\"waiting_user_input\"}")
+                .build();
+        IDesktopControlRepository repository = new IDesktopControlRepository() {
+            @Override
+            public void insert(DesktopControlRecord record) {
+            }
+
+            @Override
+            public Optional<DesktopControlRecord> findByControlId(String controlId) {
+                throw new IllegalStateException("ledger read failed");
+            }
+
+            @Override
+            public Optional<DesktopControlRecord> findByResumeRequestId(String resumeRequestId) {
+                return Optional.empty();
+            }
+
+            @Override
+            public List<DesktopControlRecord> listOpenBySessionId(String sessionId) {
+                throw new IllegalStateException("ledger read failed");
+            }
+
+            @Override
+            public boolean hasOpenBySessionId(String sessionId) {
+                return false;
+            }
+
+            @Override
+            public boolean casCompletePending(String controlId, String userId, String resumeRequestId) {
+                return false;
+            }
+
+            @Override
+            public boolean casClaimResume(String resumeRequestId, String userId) {
+                return false;
+            }
+
+            @Override
+            public boolean markCompleted(String controlId) {
+                return false;
+            }
+
+            @Override
+            public boolean markStatus(String controlId, String status) {
+                return false;
+            }
+
+            @Override
+            public boolean casCancel(String controlId, String userId) {
+                return false;
+            }
+        };
+
+        List<ProjectedReplayEvent> events = new RequestDesktopControlToolInvocationProjector(repository)
+                .project(invocation, List.of(), new AgentStreamAccumulator());
+
+        Assert.assertEquals(1, events.size());
+        Map<String, Object> payload = castMap(castMap(events.get(0).getResultMap()).get("resultMap"));
+        Assert.assertEquals("desktop_control", payload.get("messageType"));
+        Assert.assertEquals("pending", payload.get("status"));
+        Assert.assertEquals("dc_9", payload.get("controlId"));
+        Assert.assertFalse(payload.containsKey("persistenceStatus"));
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Object> castMap(Object value) {
         return (Map<String, Object>) value;

@@ -4,6 +4,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.ledger.model.ArtifactView;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 import org.wwz.ai.domain.agent.ledger.model.replay.ProjectedReplayEvent;
+import org.wwz.ai.domain.agent.ledger.replay.projector.support.PersistedYieldLookup;
 import org.wwz.ai.domain.agent.runtime.stream.AgentStreamAccumulator;
 import org.wwz.ai.domain.agent.runtime.desktopcontrol.DesktopControlObservationSupport;
 import org.wwz.ai.domain.agent.runtime.desktopcontrol.DesktopControlRecord;
@@ -84,34 +85,15 @@ public class RequestDesktopControlToolInvocationProjector extends AbstractToolIn
         if (desktopControlRepository == null) {
             return null;
         }
-        try {
-            if (StringUtils.isNotBlank(controlId)) {
-                DesktopControlRecord byId = desktopControlRepository.findByControlId(controlId).orElse(null);
-                if (byId != null) {
-                    return byId;
-                }
-            }
-            if (invocation == null || StringUtils.isBlank(invocation.getSessionId())) {
-                return null;
-            }
-            for (DesktopControlRecord record : desktopControlRepository.listOpenBySessionId(invocation.getSessionId())) {
-                if (record == null) {
-                    continue;
-                }
-                if (invocation.getId() != null && invocation.getId().equals(record.getToolInvocationId())) {
-                    return record;
-                }
-                if (StringUtils.isNotBlank(invocation.getToolCallId())
-                        && invocation.getToolCallId().equals(record.getToolCallId())) {
-                    return record;
-                }
-            }
-            return null;
-        } catch (RuntimeException ignored) {
-            return null;
-        }
+        return PersistedYieldLookup.find(
+                controlId,
+                invocation,
+                id -> desktopControlRepository.findByControlId(id).orElse(null),
+                desktopControlRepository::listOpenBySessionId,
+                DesktopControlRecord::getToolInvocationId,
+                DesktopControlRecord::getToolCallId
+        );
     }
-
     private String stringValue(Object value) {
         return value == null ? null : String.valueOf(value);
     }

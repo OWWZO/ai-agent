@@ -922,6 +922,90 @@ public class AgentToolCollectionFactoryTest {
         }
     }
 
+    /**
+     * 配置白名单装配契约：锁定 build() 里 9 个 if 块的语义。
+     * <p>
+     * 这些块是「白名单名命中 → new → addTool」的平铺，重构时最容易改错的是
+     * 「组内任一别名命中即整组装配」这条规则——组名与工具别名是或关系，不是与关系。
+     */
+    @Test
+    public void whitelistGroupIsAssembledWhenAnyAliasMatches() {
+        ReactorConfig reactorConfig = buildReactorConfig();
+        // docread 组的别名之一；组名本身不出现，验证别名也能触发整组装配
+        reactorConfig.setMultiAgentToolList("{\"default\":\"pdf_reader\"}");
+
+        ToolCollection toolCollection = buildForReactWith(reactorConfig);
+
+        // 别名命中整组：组内其它工具一并装配，而不是只装 pdf_reader
+        Assert.assertTrue("docread 组应按别名整组装配",
+                toolCollection.getToolMap().containsKey("pdf_reader"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("excel_reader"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("word_reader"));
+        // 未命中的组不装配
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("data_aggregate"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("document_generate"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("deep_search"));
+    }
+
+    @Test
+    public void emptyWhitelistAssemblesNoConfiguredGroupTools() {
+        ReactorConfig reactorConfig = buildReactorConfig();
+        reactorConfig.setMultiAgentToolList("{\"default\":\"\"}");
+
+        ToolCollection toolCollection = buildForReactWith(reactorConfig);
+
+        // 白名单为空时，所有「按组装配」的工具都不应出现
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("deep_search"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("WebFetch"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("WebSearch"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("document_generate"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("pdf_reader"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("data_aggregate"));
+        // 但常驻能力仍在：MCP 元工具与子 Agent 派发不受白名单控制
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("Agent"));
+    }
+
+    @Test
+    public void dataAgentStyleExposesOnlyDataAnalysisEntry() {
+        ReactorConfig reactorConfig = buildReactorConfig();
+        reactorConfig.setMultiAgentToolList("{\"default\":\"search,docread,dataprep,docgen\"}");
+
+        AgentToolCollectionFactory factory = newFactory(
+                reactorConfig,
+                Mockito.mock(McpToolExecutor.class),
+                Mockito.mock(DefaultSkillRegistry.class),
+                SkillRuntimeOptions.builder().enabled(false).build(),
+                disabledWorkspaceService(),
+                disabledWorkspaceOptions());
+        AgentExecutionCommand request = AgentExecutionCommand.builder()
+                .requestId("req-style")
+                .sessionId("session-style")
+                .query("问数场景")
+                .outputStyle("dataAgent")
+                .build();
+
+        ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), request);
+
+        // dataAgent 下白名单完全不生效，只挂 data_analysis
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("data_analysis"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("deep_search"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("pdf_reader"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("document_generate"));
+        // dataAgent 不挂子 Agent 派发与 Plan Mode 工具
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("Agent"));
+    }
+
+    private ToolCollection buildForReactWith(ReactorConfig reactorConfig) {
+        AgentToolCollectionFactory factory = newFactory(
+                reactorConfig,
+                Mockito.mock(McpToolExecutor.class),
+                Mockito.mock(DefaultSkillRegistry.class),
+                SkillRuntimeOptions.builder().enabled(false).build(),
+                disabledWorkspaceService(),
+                disabledWorkspaceOptions());
+        return factory.buildForReact(buildAgentContext(), buildAgentExecutionCommand("html"));
+    }
+
     private AgentToolCollectionFactory newFactory(ReactorConfig reactorConfig,
                                                   McpToolExecutor mcpToolExecutor,
                                                   org.wwz.ai.domain.agent.runtime.tool.skill.SkillRegistry skillRegistry,

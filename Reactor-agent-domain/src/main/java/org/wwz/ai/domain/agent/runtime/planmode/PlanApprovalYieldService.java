@@ -5,15 +5,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord;
 import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
+import org.wwz.ai.domain.agent.runtime.yield.PendingYieldToolCalls;
 import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReActAgent;
+import org.wwz.ai.domain.agent.runtime.yieldcard.AfterCommitCardSender;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskToolNames;
 
 import java.time.LocalDateTime;
@@ -31,6 +31,7 @@ public class PlanApprovalYieldService {
 
     private final IPlanApprovalRepository planApprovalRepository;
     private final SessionWorkingMemoryService sessionWorkingMemoryService;
+    private final org.wwz.ai.domain.agent.runtime.yieldcard.AfterCommitCardSender afterCommitCardSender;
 
     @Transactional(rollbackFor = Exception.class)
     public PlanApprovalRecord yieldAndNotify(AgentContext agentContext,
@@ -48,15 +49,11 @@ public class PlanApprovalYieldService {
         String toolCallId = PlanApprovalObservationSupport.resolveExitPlanToolCallId(
                 executor == null || executor.getMemory() == null ? null : executor.getMemory().getMessages(),
                 signal.getToolCallId());
-        if (StringUtils.isNotBlank(toolCallId)
-                && executor != null
-                && executor.getMemory() != null
-                && !PlanApprovalObservationSupport.hasToolResult(executor.getMemory().getMessages(), toolCallId)) {
-            executor.getMemory().addMessage(org.wwz.ai.domain.agent.runtime.dto.Message.toolMessage(
-                    waitingObservation,
-                    toolCallId,
-                    null));
-        }
+        // yield 时 memory 只有 assistant.tool_calls、尚无 tool result；先补 waiting 占位，避免网关 400。
+        PendingYieldToolCalls.appendWaitingToolResult(
+                executor == null || executor.getMemory() == null ? null : executor.getMemory().getMessages(),
+                toolCallId,
+                waitingObservation);
         Long toolInvocationId = null;
         if (agentContext.getAgentRunState() != null && StringUtils.isNotBlank(toolCallId)) {
             toolInvocationId = agentContext.getAgentRunState().resolveToolInvocationId(toolCallId);
@@ -109,34 +106,10 @@ public class PlanApprovalYieldService {
                 "WAITING_PLAN_APPROVAL",
                 "等待用户批准 ExitPlanMode 计划"
         );
-
-        scheduleCardAfterCommit(agentContext, record);
+        afterCommitCardSender.send(agentContext, record.getApprovalId(), "plan_approval", () -> PlanApprovalObservationSupport.toClientPayload(record));
         log.info("{} yielded PlanApproval approvalId={} toolCallId={}",
                 agentContext.getRequestId(), approvalId, toolCallId);
         return record;
     }
 
-    private void scheduleCardAfterCommit(AgentContext agentContext, PlanApprovalRecord record) {
-        Runnable send = () -> {
-            if (agentContext.getPrinter() == null) {
-                return;
-            }
-            agentContext.getPrinter().send(
-                    record.getApprovalId(),
-                    "plan_approval",
-                    PlanApprovalObservationSupport.toClientPayload(record),
-                    false
-            );
-        };
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    send.run();
-                }
-            });
-            return;
-        }
-        send.run();
-    }
 }

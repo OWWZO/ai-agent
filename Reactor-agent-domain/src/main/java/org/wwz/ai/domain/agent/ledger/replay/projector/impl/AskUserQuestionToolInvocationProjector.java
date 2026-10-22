@@ -4,6 +4,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.ledger.model.ArtifactView;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 import org.wwz.ai.domain.agent.ledger.model.replay.ProjectedReplayEvent;
+import org.wwz.ai.domain.agent.ledger.replay.projector.support.PersistedYieldLookup;
 import org.wwz.ai.domain.agent.runtime.stream.AgentStreamAccumulator;
 import org.wwz.ai.domain.agent.runtime.askuser.AskUserQuestionObservationSupport;
 import org.wwz.ai.domain.agent.runtime.askuser.IUserQuestionRepository;
@@ -94,35 +95,15 @@ public class AskUserQuestionToolInvocationProjector extends AbstractToolInvocati
         if (userQuestionRepository == null) {
             return null;
         }
-        try {
-            if (StringUtils.isNotBlank(questionId)) {
-                UserQuestionRecord byQuestionId = userQuestionRepository.findByQuestionId(questionId).orElse(null);
-                if (byQuestionId != null) {
-                    return byQuestionId;
-                }
-            }
-            if (invocation == null || StringUtils.isBlank(invocation.getSessionId())) {
-                return null;
-            }
-            for (UserQuestionRecord record : userQuestionRepository.listOpenBySessionId(invocation.getSessionId())) {
-                if (record == null) {
-                    continue;
-                }
-                if (invocation.getId() != null && invocation.getId().equals(record.getToolInvocationId())) {
-                    return record;
-                }
-                if (StringUtils.isNotBlank(invocation.getToolCallId())
-                        && invocation.getToolCallId().equals(record.getToolCallId())) {
-                    return record;
-                }
-            }
-            return null;
-        } catch (RuntimeException ignored) {
-            // 历史回放不能因问询附属状态读取失败而中断。
-            return null;
-        }
+        return PersistedYieldLookup.find(
+                questionId,
+                invocation,
+                id -> userQuestionRepository.findByQuestionId(id).orElse(null),
+                userQuestionRepository::listOpenBySessionId,
+                UserQuestionRecord::getToolInvocationId,
+                UserQuestionRecord::getToolCallId
+        );
     }
-
     private String stringValue(Object value) {
         return value == null ? null : String.valueOf(value);
     }

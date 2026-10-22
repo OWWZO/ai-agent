@@ -122,7 +122,7 @@ public final class GrokSearchProvider implements SearchProvider {
         }
 
         // 先取模型摘要，再从多种 citation/annotation 形态提取来源；没有摘要但有来源时仍可返回可用结果。
-        String content = extractAssistantContent(root);
+        String content = SearchSupport.extractAssistantContent(root);
         List<SearchHit> hits = extractHits(root, content);
         if (StringUtils.isBlank(content) && hits.isEmpty()) {
             throw new IllegalStateException("no content/citations from grok (" + mode + ")");
@@ -131,41 +131,6 @@ public final class GrokSearchProvider implements SearchProvider {
                 ? content.trim()
                 : "Grok search completed for: " + originalQuery;
         return new SearchBundle(hits, summary);
-    }
-
-    private String extractAssistantContent(JSONObject root) {
-        JSONArray choices = root.getJSONArray("choices");
-        if (choices == null || choices.isEmpty()) {
-            return "";
-        }
-        JSONObject first = choices.getJSONObject(0);
-        if (first == null) {
-            return "";
-        }
-        JSONObject message = first.getJSONObject("message");
-        if (message == null) {
-            return first.getString("text");
-        }
-        Object content = message.get("content");
-        if (content instanceof String text) {
-            return text;
-        }
-        if (content instanceof JSONArray parts) {
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < parts.size(); i++) {
-                Object part = parts.get(i);
-                if (part instanceof String s) {
-                    sb.append(s);
-                } else if (part instanceof JSONObject obj) {
-                    String t = obj.getString("text");
-                    if (StringUtils.isNotBlank(t)) {
-                        sb.append(t);
-                    }
-                }
-            }
-            return sb.toString();
-        }
-        return message.getString("content");
     }
 
     private List<SearchHit> extractHits(JSONObject root, String content) {
