@@ -4,7 +4,7 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
@@ -112,7 +112,7 @@ public class WebSearchTool implements BaseTool {
                 return failure("WebSearch 失败：不能同时指定 allowed_domains 与 blocked_domains");
             }
 
-            List<ProviderPlan> plans = resolveProviderPlans(requireReactorConfig());
+            List<ProviderPlan> plans = resolveProviderPlans(requireCuteConfig());
             if (plans.isEmpty()) {
                 return failure("WebSearch 未配置。请配置 GPT/OpenAI（web_search.gpt_*）、Grok/xAI 或 exa/tavily/brave API key。");
             }
@@ -189,7 +189,7 @@ public class WebSearchTool implements BaseTool {
      * auto: grok → gpt → exa → tavily → brave
      * gpt / grok / exa / tavily / brave / disabled 为强制模式
      */
-    private List<ProviderPlan> resolveProviderPlans(ReactorConfig config) {
+    private List<ProviderPlan> resolveProviderPlans(CuteConfig config) {
         String mode = StringUtils.defaultIfBlank(config.getWebSearchMode(), "auto").trim().toLowerCase(Locale.ROOT);
         List<ProviderPlan> plans = new ArrayList<>();
         if ("disabled".equals(mode)) {
@@ -233,7 +233,7 @@ public class WebSearchTool implements BaseTool {
         }
     }
 
-    private ProviderPlan resolveGptPlan(ReactorConfig config) {
+    private ProviderPlan resolveGptPlan(CuteConfig config) {
         String apiKey = StringUtils.trimToNull(config.getWebSearchGptApiKey());
         if (apiKey == null) {
             return null;
@@ -246,7 +246,7 @@ public class WebSearchTool implements BaseTool {
         return new ProviderPlan("gpt", new ProviderConfig(apiKey, baseUrl, interfaceUrl, model));
     }
 
-    private ProviderPlan resolveExaPlan(ReactorConfig config) {
+    private ProviderPlan resolveExaPlan(CuteConfig config) {
         String apiKey = StringUtils.trimToNull(config.getWebSearchExaApiKey());
         if (apiKey == null) {
             return null;
@@ -256,7 +256,7 @@ public class WebSearchTool implements BaseTool {
         return new ProviderPlan("exa", new ProviderConfig(apiKey, searchUrl, null, null));
     }
 
-    private ProviderPlan resolveGrokPlan(ReactorConfig config) {
+    private ProviderPlan resolveGrokPlan(CuteConfig config) {
         String apiKey = StringUtils.trimToNull(config.getWebSearchGrokApiKey());
         String baseUrl = StringUtils.trimToNull(config.getWebSearchGrokBaseUrl());
         String model = StringUtils.trimToNull(config.getWebSearchGrokModel());
@@ -302,8 +302,8 @@ public class WebSearchTool implements BaseTool {
         }
         try {
             String modelName = null;
-            if (agentContext.getRuntimeDependencies().getReactorConfig() != null) {
-                modelName = agentContext.getRuntimeDependencies().getReactorConfig().getReactModelName();
+            if (agentContext.getRuntimeDependencies().getCuteConfig() != null) {
+                modelName = agentContext.getRuntimeDependencies().getCuteConfig().getReactModelName();
             }
             return agentContext.getRuntimeDependencies().resolveLlmSettings(modelName);
         } catch (Exception e) {
@@ -353,11 +353,11 @@ public class WebSearchTool implements BaseTool {
         return agentContext == null ? "unknown" : StringUtils.defaultString(agentContext.getRequestId(), "unknown");
     }
 
-    private ReactorConfig requireReactorConfig() {
+    private CuteConfig requireCuteConfig() {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("WebSearchTool 缺少 ReactorRuntimeDependencies");
+            throw new IllegalStateException("WebSearchTool 缺少 CuteRuntimeDependencies");
         }
-        return agentContext.getRuntimeDependencies().requireReactorConfig();
+        return agentContext.getRuntimeDependencies().requireCuteConfig();
     }
 
     /** 惰性取 HTTP 端口；缺失时返回 null，由 provider 在使用处报错。 */
@@ -372,7 +372,7 @@ public class WebSearchTool implements BaseTool {
     /** 依赖缺失时立即抛错，不让每个 provider 都以自己的名义失败一遍。 */
     private RemoteHttpPort requireHttpPort() {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("WebSearchTool 缺少 ReactorRuntimeDependencies");
+            throw new IllegalStateException("WebSearchTool 缺少 CuteRuntimeDependencies");
         }
         return agentContext.getRuntimeDependencies().requireRemoteHttpPort();
     }

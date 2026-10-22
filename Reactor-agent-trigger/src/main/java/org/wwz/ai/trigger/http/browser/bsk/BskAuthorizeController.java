@@ -32,11 +32,11 @@ import java.util.Map;
  * 这里把 expires_at/renew_after 映射为极长有效期（token 生命周期由配对表
  * 的既有语义管理，而非这两个字段），device_id 生成一次后由扩展自行保存。</p>
  *
- * <p>路径挂在 {@code reactor.browser-bsk.path}（默认 {@code /api/agent/browser/bsk-relay}）
+ * <p>路径挂在 {@code cute.browser-bsk.path}（默认 {@code /api/agent/browser/bsk-relay}）
  * 之下，与 WS 网关同一前缀——扩展是从 WS URL 推导出 HTTP authorize URL 的。</p>
  */
 @RestController
-@ConditionalOnProperty(prefix = "reactor.browser-bsk", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "cute.browser-bsk", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class BskAuthorizeController {
 
     /** 设备授权的字段级有效期上限：扩展按 ISO 时间戳解析，这里给 10 年。 */
@@ -48,7 +48,7 @@ public class BskAuthorizeController {
         this.browserRelayApplicationService = browserRelayApplicationService;
     }
 
-    @PostMapping("${reactor.browser-bsk.path:/api/agent/browser/bsk-relay}/authorize")
+    @PostMapping("${cute.browser-bsk.path:/api/agent/browser/bsk-relay}/authorize")
     public ResponseEntity<Map<String, Object>> authorize(@RequestBody String raw,
                                                          jakarta.servlet.http.HttpServletRequest request) {
         String bearer = bearerToken(request);

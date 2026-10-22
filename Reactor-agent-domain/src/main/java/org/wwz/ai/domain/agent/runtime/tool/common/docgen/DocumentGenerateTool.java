@@ -65,7 +65,7 @@ public class DocumentGenerateTool extends AbstractDocGenTool {
         properties.put("page", objectProp("Page setup: size (A4, LETTER, LEGAL, A3, A5), orientation, and point-based margins."));
         properties.put("encryption", objectProp("PDF password protection: user_password and optional owner_password."));
         properties.put("merge_sources", arrayProp("Existing PDF paths appended after the generated content (PDF only).", stringProp("PDF path.")));
-        properties.put("fileName", stringProp("Alias of output_path for Reactor file naming."));
+        properties.put("fileName", stringProp("Alias of output_path for Cute file naming."));
         return objectSchema(properties, List.of("output_path"));
     }
 }

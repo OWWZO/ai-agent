@@ -7,12 +7,12 @@ import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
 import org.wwz.ai.domain.agent.memory.ltm.LtmManager;
 import org.wwz.ai.domain.agent.memory.ltm.LtmServices;
 import org.wwz.ai.domain.agent.memory.ltm.MemoryFlushService;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
-import org.wwz.ai.infrastructure.dao.reactor.IWorkingMemoryCompactionDao;
-import org.wwz.ai.infrastructure.reactor.service.impl.SessionContextCompactionServiceImpl;
+import org.wwz.ai.infrastructure.dao.cute.IWorkingMemoryCompactionDao;
+import org.wwz.ai.infrastructure.cute.service.impl.SessionContextCompactionServiceImpl;
 
 import java.util.List;
 
@@ -27,10 +27,10 @@ public class SubAgentLtmIsolationTest {
     public void subAgentCompactionSkipsLongTermMemoryHooks() {
         MemoryFlushService flushService = mock(MemoryFlushService.class);
         LtmManager ltmManager = mock(LtmManager.class);
-        ReactorRuntimeDependencies dependencies = mock(ReactorRuntimeDependencies.class);
-        ObjectProvider<ReactorRuntimeDependencies> dependenciesProvider = mock(ObjectProvider.class);
+        CuteRuntimeDependencies dependencies = mock(CuteRuntimeDependencies.class);
+        ObjectProvider<CuteRuntimeDependencies> dependenciesProvider = mock(ObjectProvider.class);
         when(dependenciesProvider.getObject()).thenReturn(dependencies);
-        when(dependencies.requireReactorConfig()).thenReturn(mock(ReactorConfig.class));
+        when(dependencies.requireCuteConfig()).thenReturn(mock(CuteConfig.class));
         when(dependencies.resolveLlmSettings(anyString())).thenReturn(
                 LLMSettings.builder().maxInputTokens(20).maxTokens(1).build());
         when(dependencies.getOptionalMemoryFlushService()).thenReturn(flushService);

@@ -7,7 +7,7 @@ import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpRequest;
 import org.wwz.ai.domain.agent.runtime.dto.FileRequest;
 import org.wwz.ai.domain.agent.runtime.dto.FileResponse;
-import org.wwz.ai.infrastructure.adapter.port.ReactorToolFileArtifactAdapter;
+import org.wwz.ai.infrastructure.adapter.port.CuteToolFileArtifactAdapter;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -26,7 +26,7 @@ public class FileArtifactMaterializeModeTest {
         Mockito.when(remoteHttpPort.execute(Mockito.any(RemoteHttpRequest.class)))
                 .thenReturn("{\"ossUrl\":\"http://fs/download/a.png\","
                         + "\"domainUrl\":\"http://fs/preview/a.png\",\"fileSize\":12}");
-        ReactorToolFileArtifactAdapter adapter = new ReactorToolFileArtifactAdapter(remoteHttpPort);
+        CuteToolFileArtifactAdapter adapter = new CuteToolFileArtifactAdapter(remoteHttpPort);
         adapter.setLocalFileMode("register");
 
         FileResponse response = adapter.materializeLocalFile("http://127.0.0.1:1601",
@@ -43,7 +43,7 @@ public class FileArtifactMaterializeModeTest {
 
     @Test
     public void shouldFailFastWhenUploadModeCannotFindLocalFile() throws Exception {
-        ReactorToolFileArtifactAdapter adapter = new ReactorToolFileArtifactAdapter(
+        CuteToolFileArtifactAdapter adapter = new CuteToolFileArtifactAdapter(
                 Mockito.mock(RemoteHttpPort.class));
         adapter.setLocalFileMode("upload");
         Path missing = Files.createTempDirectory("upload-mode").resolve("missing.png");
@@ -61,7 +61,7 @@ public class FileArtifactMaterializeModeTest {
 
     @Test
     public void shouldRejectLocalFileLargerThanUploadLimit() throws Exception {
-        ReactorToolFileArtifactAdapter adapter = new ReactorToolFileArtifactAdapter(
+        CuteToolFileArtifactAdapter adapter = new CuteToolFileArtifactAdapter(
                 Mockito.mock(RemoteHttpPort.class));
         adapter.setLocalFileMode("upload");
         Path oversized = Files.createTempFile("upload-mode-big", ".bin");
@@ -90,7 +90,7 @@ public class FileArtifactMaterializeModeTest {
         RemoteHttpPort remoteHttpPort = Mockito.mock(RemoteHttpPort.class);
         Mockito.when(remoteHttpPort.execute(Mockito.any(RemoteHttpRequest.class)))
                 .thenReturn("{\"downloadUrl\":\"http://fs/download/b.png\",\"domainUrl\":\"http://fs/preview/b.png\"}");
-        ReactorToolFileArtifactAdapter adapter = new ReactorToolFileArtifactAdapter(remoteHttpPort);
+        CuteToolFileArtifactAdapter adapter = new CuteToolFileArtifactAdapter(remoteHttpPort);
         adapter.setLocalFileMode("unexpected-value");
 
         FileResponse response = adapter.materializeLocalFile("http://127.0.0.1:1601", FileRequest.builder()

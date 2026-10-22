@@ -7,7 +7,7 @@ import org.wwz.ai.application.agent.stream.AgentStreamProjection;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
 import org.wwz.ai.application.agent.stream.AgentSessionStreamFrame;
 import org.wwz.ai.application.agent.query.mapper.AgentExecutionCommandMapper;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.runtime.command.AgentExecutionFile;
 import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.application.agent.query.GptQueryCommand;
@@ -332,17 +332,17 @@ public class MultiAgentServiceImplTest {
         Assert.assertTrue(projecting.replayAfter(1).isEmpty());
     }
 
-    private ReactorConfig buildReactorConfig() {
-        ReactorConfig reactorConfig = new ReactorConfig();
-        ReflectionTestUtils.setField(reactorConfig, "reactorBasePrompt", "react-base-prompt");
-        ReflectionTestUtils.setField(reactorConfig, "sseClientReadTimeout", 300);
-        ReflectionTestUtils.setField(reactorConfig, "sseClientConnectTimeout", 60);
-        return reactorConfig;
+    private CuteConfig buildCuteConfig() {
+        CuteConfig cuteConfig = new CuteConfig();
+        ReflectionTestUtils.setField(cuteConfig, "cuteBasePrompt", "react-base-prompt");
+        ReflectionTestUtils.setField(cuteConfig, "sseClientReadTimeout", 300);
+        ReflectionTestUtils.setField(cuteConfig, "sseClientConnectTimeout", 60);
+        return cuteConfig;
     }
 
     private AgentExecutionCommandMapper mapper() {
         AgentExecutionCommandMapper mapper = new AgentExecutionCommandMapper();
-        ReflectionTestUtils.setField(mapper, "reactorConfig", buildReactorConfig());
+        ReflectionTestUtils.setField(mapper, "cuteConfig", buildCuteConfig());
         return mapper;
     }
 

@@ -7,7 +7,7 @@ import java.util.Map;
 /**
  * checklist_generate 工具契约。
  *
- * 当前类只负责声明 Reactor 到 reactor-tool 的 endpoint 和参数 schema，清单解析、
+ * 当前类只负责声明 Cute 到 cute-tool 的 endpoint 和参数 schema，清单解析、
  * 状态跟踪以及 Markdown/PDF/DOCX 导出由共享的文档生成适配层执行。
  */
 public class ChecklistGenerateTool extends AbstractDocGenTool {

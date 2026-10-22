@@ -5,19 +5,19 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * bsk 中继网关配置。
  *
- * <p>放在 trigger 的 bsk 包而不是 {@code Reactor-agent-types}：types 是共享模块，
+ * <p>放在 trigger 的 bsk 包而不是 {@code Cute-agent-types}：types 是共享模块，
  * bsk 网关是 trigger 独有的协议适配，配置类跟随唯一的消费者走，
  * 避免污染共享契约面。启用方式与 {@code BrowserRelayPropertiesConfig} 一致，
  * 由 bsk 包内的 {@link BskRelayWebSocketConfig} 用
  * {@code @EnableConfigurationProperties} 装配，无需再动 app 模块。</p>
  */
-@ConfigurationProperties(prefix = "reactor.browser-bsk")
+@ConfigurationProperties(prefix = "cute.browser-bsk")
 public class BskProperties {
 
     /** 总开关；false 时不注册 WS 端点。 */
     private boolean enabled = true;
 
-    /** WS 端点路径；与现有 Reactor relay 端点分离。 */
+    /** WS 端点路径；与现有 Cute relay 端点分离。 */
     private String path = "/api/agent/browser/bsk-relay";
 
     /** 本端协议版本（握手响应里的 protocol_version）。 */

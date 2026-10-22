@@ -20,7 +20,7 @@ import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ContextIsolatableTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchToolOutput;
 
 import java.util.HashMap;
@@ -114,11 +114,11 @@ public class DeepSearchTool implements ContextIsolatableTool {
                     : String.valueOf(params.get("reportFileName"));
             // Schema 用于约束模型；入口仍做最终归一化，避免模型偶尔漏传或生成过长名称导致整次搜索失败。
             String reportFileName = DeepSearchFileNamePolicy.resolveReportFileName(requestedReportFileName);
-            ReactorConfig reactorConfig = requireReactorConfig(ctx);
+            CuteConfig cuteConfig = requireCuteConfig(ctx);
             Map<String, Object> srcConfig = new HashMap<>();
 
             Map<String, Object> bingConfig = new HashMap<>();
-            bingConfig.put("count", Integer.parseInt(reactorConfig.getDeepSearchPageCount()));
+            bingConfig.put("count", Integer.parseInt(cuteConfig.getDeepSearchPageCount()));
             srcConfig.put("bing", bingConfig);
             DeepSearchRequest request = DeepSearchRequest.builder()
                     .request_id(ctx.getRequestId() + ":" + StringUtil.generateRandomString(5))
@@ -167,14 +167,14 @@ public class DeepSearchTool implements ContextIsolatableTool {
         searchRequest.setReport_file_name(
                 DeepSearchFileNamePolicy.resolveReportFileName(searchRequest.getReport_file_name()));
         try {
-            ReactorConfig reactorConfig = requireReactorConfig(ctx);
-            String url = reactorConfig.getDeepSearchUrl() + "/v1/tool/deepsearch";
+            CuteConfig cuteConfig = requireCuteConfig(ctx);
+            String url = cuteConfig.getDeepSearchUrl() + "/v1/tool/deepsearch";
             log.info("{} deep_search request queryLength={} reportFileName={}",
                     ctx.getRequestId(),
                     StringUtils.length(searchRequest.getQuery()),
                     searchRequest.getReport_file_name());
 
-            String[] interval = reactorConfig.getMessageInterval().getOrDefault("search", "5,20").split(",");
+            String[] interval = cuteConfig.getMessageInterval().getOrDefault("search", "5,20").split(",");
             int firstInterval = Integer.parseInt(interval[0]);
             int sendInterval = Integer.parseInt(interval[1]);
             AtomicInteger eventIndex = new AtomicInteger(0);
@@ -244,7 +244,7 @@ public class DeepSearchTool implements ContextIsolatableTool {
                             }
                             resultBuilder.recordFinalAnswer(searchResponse.getQuery(), searchResponse.getAnswer());
                              uploadFinalAnswerWithRetry(ctx, artifactSource, finalReportFileName,
-                                     searchResponse.getAnswer(), reactorConfig, fileArtifactUploader, finalAnswerUploaded);
+                                     searchResponse.getAnswer(), cuteConfig, fileArtifactUploader, finalAnswerUploaded);
                             // 总结文章全量回传，供 observation / fallback 使用，不再截断
                             resultRef.set(searchResponse.getAnswer());
 
@@ -321,7 +321,7 @@ public class DeepSearchTool implements ContextIsolatableTool {
                         resultRef.set(stringBuilderAll.toString());
                     }
                     uploadFinalAnswerWithRetry(ctx, artifactSource, finalReportFileName,
-                            stringBuilderAll.toString(), reactorConfig, fileArtifactUploader, finalAnswerUploaded);
+                            stringBuilderAll.toString(), cuteConfig, fileArtifactUploader, finalAnswerUploaded);
                     if (!future.isDone()) {
                         future.complete(resultBuilder.buildPayload(resultRef.get()));
                     }
@@ -331,7 +331,7 @@ public class DeepSearchTool implements ContextIsolatableTool {
                 public void onFailure(Throwable throwable, Integer statusCode, String responseBody) {
                     streamSession.set(null);
                     uploadFinalAnswerWithRetry(ctx, artifactSource, finalReportFileName,
-                            stringBuilderAll.toString(), reactorConfig, fileArtifactUploader, finalAnswerUploaded);
+                            stringBuilderAll.toString(), cuteConfig, fileArtifactUploader, finalAnswerUploaded);
                     if (throwable == null && statusCode == null) {
                         if (!future.isDone()) {
                             future.complete(resultBuilder.buildPayload(resultRef.get()));
@@ -360,13 +360,13 @@ public class DeepSearchTool implements ContextIsolatableTool {
                                             ToolArtifactSource artifactSource,
                                             String fileName,
                                             String answer,
-                                            ReactorConfig reactorConfig,
+                                            CuteConfig cuteConfig,
                                              FileArtifactUploader fileArtifactUploader,
                                             AtomicBoolean uploaded) {
         if (uploaded.get() || StringUtils.isBlank(answer)) {
             return;
         }
-        String fileDesc = answer.substring(0, Math.min(answer.length(), reactorConfig.getDeepSearchToolFileDescTruncateLen())) + "...";
+        String fileDesc = answer.substring(0, Math.min(answer.length(), cuteConfig.getDeepSearchToolFileDescTruncateLen())) + "...";
         FileRequest fileRequest = FileRequest.builder()
                 .requestId(ctx.getRequestId())
                 .fileName(fileName)
@@ -408,20 +408,20 @@ public class DeepSearchTool implements ContextIsolatableTool {
         return agentContext;
     }
 
-    private ReactorConfig requireReactorConfig() {
-        return requireReactorConfig(requireAgentContext());
+    private CuteConfig requireCuteConfig() {
+        return requireCuteConfig(requireAgentContext());
     }
 
-    private ReactorConfig requireReactorConfig(AgentContext ctx) {
+    private CuteConfig requireCuteConfig(AgentContext ctx) {
         if (ctx == null || ctx.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("DeepSearchTool 缺少 ReactorRuntimeDependencies");
+            throw new IllegalStateException("DeepSearchTool 缺少 CuteRuntimeDependencies");
         }
-        return ctx.getRuntimeDependencies().requireReactorConfig();
+        return ctx.getRuntimeDependencies().requireCuteConfig();
     }
 
     private RemoteStreamPort requireRemoteStreamPort(AgentContext ctx) {
         if (ctx == null || ctx.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("DeepSearchTool 缺少 ReactorRuntimeDependencies");
+            throw new IllegalStateException("DeepSearchTool 缺少 CuteRuntimeDependencies");
         }
         return ctx.getRuntimeDependencies().requireRemoteStreamPort();
     }

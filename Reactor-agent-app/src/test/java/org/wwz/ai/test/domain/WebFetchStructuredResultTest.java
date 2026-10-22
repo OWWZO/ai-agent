@@ -11,8 +11,8 @@ import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.common.WebFetchTool;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
+import org.wwz.ai.test.domain.support.CuteRuntimeTestSupport;
 
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.Map;
@@ -59,13 +59,13 @@ public class WebFetchStructuredResultTest {
             }
         };
 
-        ReactorConfig config = new ReactorConfig();
+        CuteConfig config = new CuteConfig();
         ReflectionTestUtils.setField(config, "webFetchUrl", "http://reactor-tool:1601");
         WebFetchTool tool = new WebFetchTool();
         tool.setAgentContext(AgentContext.builder()
                 .requestId("req-web-fetch-proxy")
                 .sessionId("session-web-fetch-proxy")
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(config, httpPort))
                 .build());
 
         ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of(
@@ -103,13 +103,13 @@ public class WebFetchStructuredResultTest {
             }
         };
 
-        ReactorConfig config = new ReactorConfig();
+        CuteConfig config = new CuteConfig();
         ReflectionTestUtils.setField(config, "webFetchUrl", "http://reactor-tool:1601");
         WebFetchTool tool = new WebFetchTool();
         tool.setAgentContext(AgentContext.builder()
                 .requestId("req-web-fetch-404")
                 .sessionId("session-web-fetch-404")
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(config, httpPort))
                 .build());
 
         ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of(

@@ -112,7 +112,7 @@ public final class LtmPromptGuidance {
     public static final String REVIEW_SKILL_GUIDANCE =
             "Also update the skill library when warranted. Be ACTIVE — reusable workflows belong in "
                     + "skills, not memory.\n"
-                    + "How (Reactor):\n"
+                    + "How (Cute):\n"
                     + "  • Inspect with skill_view / skills_search / workspace_list|glob|grep|read under skills/\n"
                     + "  • Create or patch via workspace_write|edit on skills/<name>/SKILL.md "
                     + "(and scripts/, references/, templates/ as needed)\n"

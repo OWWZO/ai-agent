@@ -4,7 +4,7 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.wwz.ai.domain.agent.adapter.port.SubAgentSessionPort;
 import org.wwz.ai.domain.agent.adapter.port.SubAgentSessionStreamPort;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
@@ -63,7 +63,7 @@ public class SubAgentSessionStreamIsolationTest {
         RecordingPrinter parentPrinter = new RecordingPrinter();
         SubAgentRunner runner = new SubAgentRunner(new SubAgentRegistry());
 
-        // 开关缺省（reactorConfig 为 null）→ 不隔离，子流端口一次都不该被调用
+        // 开关缺省（cuteConfig 为 null）→ 不隔离，子流端口一次都不该被调用
         runner.run(newParentContext(new NoopSessionPort(), streamPort, null, parentPrinter),
                 "探索前端", "任务 prompt",
                 SubAgentRegistry.TYPE_GENERAL_PURPOSE, null, null, "agent-fixed");
@@ -98,11 +98,11 @@ public class SubAgentSessionStreamIsolationTest {
                                                  SubAgentSessionStreamPort streamPort,
                                                  Boolean isolatedFlag,
                                                  Printer printer) {
-        org.wwz.ai.domain.agent.reactor.config.ReactorConfig config = null;
+        org.wwz.ai.domain.agent.cute.config.CuteConfig config = null;
         if (isolatedFlag != null) {
-            config = new org.wwz.ai.domain.agent.reactor.config.ReactorConfig();
+            config = new org.wwz.ai.domain.agent.cute.config.CuteConfig();
             try {
-                java.lang.reflect.Field field = org.wwz.ai.domain.agent.reactor.config.ReactorConfig.class
+                java.lang.reflect.Field field = org.wwz.ai.domain.agent.cute.config.CuteConfig.class
                         .getDeclaredField("subagentIsolatedSession");
                 field.setAccessible(true);
                 field.set(config, isolatedFlag);
@@ -111,8 +111,8 @@ public class SubAgentSessionStreamIsolationTest {
             }
         }
 
-        ReactorRuntimeDependencies dependencies = ReactorRuntimeDependencies.builder()
-                .reactorConfig(config)
+        CuteRuntimeDependencies dependencies = CuteRuntimeDependencies.builder()
+                .cuteConfig(config)
                 .subAgentSessionPort(sessionPort)
                 .subAgentSessionStreamPort(streamPort)
                 .build();

@@ -34,7 +34,7 @@ import java.util.concurrent.TimeoutException;
  */
 @Slf4j
 @Component
-@ConditionalOnProperty(prefix = "reactor.browser-relay", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "cute.browser-relay", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class BrowserRelaySocketAdapter implements BrowserRelaySocketPort {
 
     private static final long LATE_RESULT_GRACE_SECONDS = 30;

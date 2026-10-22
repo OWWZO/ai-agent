@@ -15,10 +15,10 @@ import java.util.stream.Stream;
 public class DataQueryLegacyBoundaryTest {
 
     private static final List<String> FORBIDDEN_IMPORTS = List.of(
-            "org.wwz.ai.domain.agent.reactor.data",
-            "org.wwz.ai.domain.agent.reactor.config.data",
-            "org.wwz.ai.domain.agent.reactor.model.req.DataAgentChatReq",
-            "org.wwz.ai.domain.agent.reactor.model.response.ChatDataMessage");
+            "org.wwz.ai.domain.agent.cute.data",
+            "org.wwz.ai.domain.agent.cute.config.data",
+            "org.wwz.ai.domain.agent.cute.model.req.DataAgentChatReq",
+            "org.wwz.ai.domain.agent.cute.model.response.ChatDataMessage");
 
     @Test
     public void caseTriggerAndInfrastructureDoNotImportDataQueryLegacyPackages() throws IOException {

@@ -8,7 +8,7 @@ import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliInvocation;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliResult;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.FileRequest;
@@ -16,7 +16,7 @@ import org.wwz.ai.domain.agent.runtime.dto.FileResponse;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.cli.HostCliTool;
-import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
+import org.wwz.ai.test.domain.support.CuteRuntimeTestSupport;
 import org.wwz.ai.types.agent.config.HostCliProperties;
 
 import java.io.IOException;
@@ -230,14 +230,14 @@ public class HostCliToolTest {
         HostCliProperties properties = new HostCliProperties();
         properties.setEnabled(true);
         properties.setAllow(List.of("git"));
-        ReactorConfig reactorConfig = ReactorRuntimeTestSupport.reactorConfigWithFileService("http://127.0.0.1:1601");
-        reactorConfig.setWebFetchProxy("http://proxy.test:8080");
+        CuteConfig cuteConfig = CuteRuntimeTestSupport.cuteConfigWithFileService("http://127.0.0.1:1601");
+        cuteConfig.setWebFetchProxy("http://proxy.test:8080");
         AgentContext context = AgentContext.builder()
                 .requestId("req-1")
                 .sessionId("session-1")
                 .workspaceRoot(workspace.toString())
                 .printer(printer)
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig)
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(cuteConfig)
                         .toBuilder()
                         .cliExecutionPort(cli)
                         .hostCliProperties(properties)
@@ -265,13 +265,13 @@ public class HostCliToolTest {
         HostCliProperties properties = new HostCliProperties();
         properties.setEnabled(true);
         properties.setAllow(List.of("git"));
-        ReactorConfig reactorConfig = new ReactorConfig();
-        reactorConfig.setWebFetchProxy(webFetchProxy);
+        CuteConfig cuteConfig = new CuteConfig();
+        cuteConfig.setWebFetchProxy(webFetchProxy);
         return AgentContext.builder()
                 .requestId("req-1")
                 .sessionId("session-1")
                 .workspaceRoot(tempWorkspace())
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig)
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(cuteConfig)
                         .toBuilder()
                         .cliExecutionPort(cli)
                         .hostCliProperties(properties)

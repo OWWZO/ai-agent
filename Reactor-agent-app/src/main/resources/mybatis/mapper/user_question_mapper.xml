@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="org.wwz.ai.infrastructure.dao.reactor.IUserQuestionDao">
+<mapper namespace="org.wwz.ai.infrastructure.dao.cute.IUserQuestionDao">
 
-    <resultMap id="UserQuestionMap" type="org.wwz.ai.infrastructure.dao.reactor.po.UserQuestionPO">
+    <resultMap id="UserQuestionMap" type="org.wwz.ai.infrastructure.dao.cute.po.UserQuestionPO">
         <id column="id" property="id"/>
         <result column="question_id" property="questionId"/>
         <result column="user_id" property="userId"/>
@@ -22,7 +22,7 @@
         <result column="deleted" property="deleted"/>
     </resultMap>
 
-    <insert id="insert" parameterType="org.wwz.ai.infrastructure.dao.reactor.po.UserQuestionPO" useGeneratedKeys="true" keyProperty="id">
+    <insert id="insert" parameterType="org.wwz.ai.infrastructure.dao.cute.po.UserQuestionPO" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_agent_user_question (
             question_id, user_id, session_id, source_run_id, source_request_id,
             tool_invocation_id, tool_call_id, questions_json, answers_json, status,

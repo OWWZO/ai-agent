@@ -3,7 +3,7 @@ package org.wwz.ai.test.domain.subagent;
 import org.junit.Assert;
 import org.junit.Test;
 import org.wwz.ai.domain.agent.adapter.port.SubAgentSessionPort;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
@@ -88,7 +88,7 @@ public class SubAgentChildSessionPersistenceTest {
                 .query("q")
                 .printer(new NoopPrinter())
                 .toolCollection(new ToolCollection())
-                .runtimeDependencies(ReactorRuntimeDependencies.builder()
+                .runtimeDependencies(CuteRuntimeDependencies.builder()
                         .subAgentSessionPort(port)
                         .build())
                 .build();

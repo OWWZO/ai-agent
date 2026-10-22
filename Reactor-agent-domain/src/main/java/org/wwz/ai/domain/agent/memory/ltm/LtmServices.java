@@ -1,7 +1,7 @@
 package org.wwz.ai.domain.agent.memory.ltm;
 
 /**
- * 运行时 LTM 服务定位（避免 ReactorRuntimeDependencies 构建时 ObjectProvider 快照为 null）。
+ * 运行时 LTM 服务定位（避免 CuteRuntimeDependencies 构建时 ObjectProvider 快照为 null）。
  */
 public final class LtmServices {
 

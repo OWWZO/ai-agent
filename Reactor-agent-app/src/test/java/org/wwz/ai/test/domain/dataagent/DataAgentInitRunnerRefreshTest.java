@@ -5,8 +5,8 @@ import org.junit.Test;
 import org.mockito.InOrder;
 import org.mockito.Mockito;
 import org.wwz.ai.application.agent.dataquery.initialization.DataAgentInitializationApplicationService;
-import org.wwz.ai.config.reactor.DataAgentInitRunner;
-import org.wwz.ai.config.reactor.startup.H2SchemaBootstrap;
+import org.wwz.ai.config.cute.DataAgentInitRunner;
+import org.wwz.ai.config.cute.startup.H2SchemaBootstrap;
 
 /**
  * DataAgent startup ordering adapter tests.

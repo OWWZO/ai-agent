@@ -37,10 +37,10 @@ import org.wwz.ai.domain.agent.runtime.tool.codemode.CodeModeExecutorPort;
 import org.wwz.ai.types.agent.config.CodeModeProperties;
 import org.wwz.ai.types.agent.config.HostCliProperties;
 import org.wwz.ai.types.agent.config.OpenCliProperties;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
-import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
+import org.wwz.ai.test.domain.support.CuteRuntimeTestSupport;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -68,7 +68,7 @@ public class AgentToolCollectionFactoryTest {
         ));
 
         AgentToolCollectionFactory factory = newFactory(
-                buildReactorConfig(),
+                buildCuteConfig(),
                 mcpToolExecutor,
                 skillRegistry,
                 SkillRuntimeOptions.builder()
@@ -135,10 +135,10 @@ public class AgentToolCollectionFactoryTest {
         ));
         Mockito.when(mcpToolExecutor.hasAnyResources()).thenReturn(false);
 
-        ReactorConfig reactorConfig = buildReactorConfig();
-        reactorConfig.setMcpToolSearchMode("always");
+        CuteConfig cuteConfig = buildCuteConfig();
+        cuteConfig.setMcpToolSearchMode("always");
         AgentToolCollectionFactory factory = newFactory(
-                reactorConfig,
+                cuteConfig,
                 mcpToolExecutor,
                 Mockito.mock(DefaultSkillRegistry.class),
                 SkillRuntimeOptions.builder().enabled(false).build(),
@@ -165,10 +165,10 @@ public class AgentToolCollectionFactoryTest {
         McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
         Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
         Mockito.when(mcpToolExecutor.hasAnyResources()).thenReturn(false);
-        ReactorConfig reactorConfig = buildReactorConfig();
-        reactorConfig.setMcpToolSearchMode("always");
+        CuteConfig cuteConfig = buildCuteConfig();
+        cuteConfig.setMcpToolSearchMode("always");
         AgentToolCollectionFactory factory = newFactory(
-                reactorConfig,
+                cuteConfig,
                 mcpToolExecutor,
                 Mockito.mock(DefaultSkillRegistry.class),
                 SkillRuntimeOptions.builder().enabled(false).build(),
@@ -186,10 +186,10 @@ public class AgentToolCollectionFactoryTest {
     public void standardModeKeepsLocalCandidateEager() {
         McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
         Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
-        ReactorConfig reactorConfig = buildReactorConfig();
-        reactorConfig.setMcpToolSearchMode("standard");
+        CuteConfig cuteConfig = buildCuteConfig();
+        cuteConfig.setMcpToolSearchMode("standard");
         AgentToolCollectionFactory factory = newFactory(
-                reactorConfig,
+                cuteConfig,
                 mcpToolExecutor,
                 Mockito.mock(DefaultSkillRegistry.class),
                 SkillRuntimeOptions.builder().enabled(false).build(),
@@ -208,10 +208,10 @@ public class AgentToolCollectionFactoryTest {
     public void dataAgentCanExposeDeferredDataAnalysisThroughTheSameBridge() {
         McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
         Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
-        ReactorConfig reactorConfig = buildReactorConfig();
-        reactorConfig.setMcpToolSearchMode("always");
+        CuteConfig cuteConfig = buildCuteConfig();
+        cuteConfig.setMcpToolSearchMode("always");
         AgentToolCollectionFactory factory = newFactory(
-                reactorConfig,
+                cuteConfig,
                 mcpToolExecutor,
                 Mockito.mock(DefaultSkillRegistry.class),
                 SkillRuntimeOptions.builder().enabled(false).build(),
@@ -257,10 +257,10 @@ public class AgentToolCollectionFactoryTest {
                         .build()
         ));
         Mockito.when(mcpToolExecutor.hasAnyResources()).thenReturn(false);
-        ReactorConfig reactorConfig = buildReactorConfig();
-        reactorConfig.setMcpToolSearchMode("always");
+        CuteConfig cuteConfig = buildCuteConfig();
+        cuteConfig.setMcpToolSearchMode("always");
         AgentToolCollectionFactory factory = newFactory(
-                reactorConfig,
+                cuteConfig,
                 mcpToolExecutor,
                 Mockito.mock(DefaultSkillRegistry.class),
                 SkillRuntimeOptions.builder().enabled(false).build(),
@@ -287,7 +287,7 @@ public class AgentToolCollectionFactoryTest {
         Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
 
         AgentToolCollectionFactory factory = newFactory(
-                buildReactorConfig(),
+                buildCuteConfig(),
                 mcpToolExecutor,
                 skillRegistry,
                 SkillRuntimeOptions.builder()
@@ -318,7 +318,7 @@ public class AgentToolCollectionFactoryTest {
         Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
 
         AgentToolCollectionFactory factory = newFactory(
-                buildReactorConfig(),
+                buildCuteConfig(),
                 mcpToolExecutor,
                 skillRegistry,
                 SkillRuntimeOptions.builder()
@@ -345,11 +345,11 @@ public class AgentToolCollectionFactoryTest {
         McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
         Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
 
-        ReactorConfig reactorConfig = buildReactorConfig();
-        reactorConfig.setMultiAgentToolList("{\"default\":\"search,code,code_execution,multimodalagent,report\"}");
+        CuteConfig cuteConfig = buildCuteConfig();
+        cuteConfig.setMultiAgentToolList("{\"default\":\"search,code,code_execution,multimodalagent,report\"}");
 
         AgentToolCollectionFactory factory = newFactory(
-                reactorConfig,
+                cuteConfig,
                 mcpToolExecutor,
                 Mockito.mock(DefaultSkillRegistry.class),
                 SkillRuntimeOptions.builder()
@@ -375,10 +375,10 @@ public class AgentToolCollectionFactoryTest {
         McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
         Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
 
-        ReactorConfig reactorConfig = buildReactorConfig();
-        reactorConfig.setMultiAgentToolList("{\"default\":\"twitter,reddit,xueqiu\"}");
+        CuteConfig cuteConfig = buildCuteConfig();
+        cuteConfig.setMultiAgentToolList("{\"default\":\"twitter,reddit,xueqiu\"}");
         AgentToolCollectionFactory factory = newFactory(
-                reactorConfig,
+                cuteConfig,
                 mcpToolExecutor,
                 Mockito.mock(DefaultSkillRegistry.class),
                 SkillRuntimeOptions.builder().enabled(false).build(),
@@ -398,10 +398,10 @@ public class AgentToolCollectionFactoryTest {
         McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
         Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
 
-        ReactorConfig reactorConfig = buildReactorConfig();
-        reactorConfig.setMultiAgentToolList("{\"default\":\"docgen\"}");
+        CuteConfig cuteConfig = buildCuteConfig();
+        cuteConfig.setMultiAgentToolList("{\"default\":\"docgen\"}");
         AgentToolCollectionFactory factory = newFactory(
-                reactorConfig,
+                cuteConfig,
                 mcpToolExecutor,
                 Mockito.mock(DefaultSkillRegistry.class),
                 SkillRuntimeOptions.builder().enabled(false).build(),
@@ -418,10 +418,10 @@ public class AgentToolCollectionFactoryTest {
         McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
         Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
 
-        ReactorConfig reactorConfig = buildReactorConfig();
-        reactorConfig.setPlanSolveMainToolList("Agent,TaskCreate");
+        CuteConfig cuteConfig = buildCuteConfig();
+        cuteConfig.setPlanSolveMainToolList("Agent,TaskCreate");
         AgentToolCollectionFactory factory = newFactory(
-                reactorConfig,
+                cuteConfig,
                 mcpToolExecutor,
                 Mockito.mock(DefaultSkillRegistry.class),
                 SkillRuntimeOptions.builder().enabled(false).build(),
@@ -469,11 +469,11 @@ public class AgentToolCollectionFactoryTest {
         McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
         Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
 
-        ReactorConfig reactorConfig = buildReactorConfig();
-        reactorConfig.setPlanSolveMainToolList("Agent,workspace_read,code_mode");
+        CuteConfig cuteConfig = buildCuteConfig();
+        cuteConfig.setPlanSolveMainToolList("Agent,workspace_read,code_mode");
 
         AgentToolCollectionFactory factory = newFactory(
-                reactorConfig,
+                cuteConfig,
                 mcpToolExecutor,
                 Mockito.mock(DefaultSkillRegistry.class),
                 SkillRuntimeOptions.builder().enabled(false).build(),
@@ -506,7 +506,7 @@ public class AgentToolCollectionFactoryTest {
      */
     @Test
     public void valueFallbackPlanSolveMainToolListIncludesCodeMode() throws Exception {
-        java.lang.reflect.Field field = ReactorConfig.class.getDeclaredField("planSolveMainToolList");
+        java.lang.reflect.Field field = CuteConfig.class.getDeclaredField("planSolveMainToolList");
         org.springframework.beans.factory.annotation.Value annotation =
                 field.getAnnotation(org.springframework.beans.factory.annotation.Value.class);
         Assert.assertNotNull("@Value 注解缺失", annotation);
@@ -521,7 +521,7 @@ public class AgentToolCollectionFactoryTest {
         AgentContext base = buildAgentContext();
         CodeModeProperties codeModeProperties = new CodeModeProperties();
         codeModeProperties.setEnabled(enabled);
-        ReactorRuntimeDependencies dependencies = base.getRuntimeDependencies().toBuilder()
+        CuteRuntimeDependencies dependencies = base.getRuntimeDependencies().toBuilder()
                 .codeModeProperties(codeModeProperties)
                 .codeModeExecutorPort(executorPort)
                 .build();
@@ -536,7 +536,7 @@ public class AgentToolCollectionFactoryTest {
         Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
 
         AgentToolCollectionFactory factory = newFactory(
-                buildReactorConfig(),
+                buildCuteConfig(),
                 mcpToolExecutor,
                 Mockito.mock(DefaultSkillRegistry.class),
                 SkillRuntimeOptions.builder()
@@ -628,7 +628,7 @@ public class AgentToolCollectionFactoryTest {
         Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
 
         AgentToolCollectionFactory factory = newFactory(
-                buildReactorConfig(),
+                buildCuteConfig(),
                 mcpToolExecutor,
                 skillRegistry,
                 SkillRuntimeOptions.builder()
@@ -660,7 +660,7 @@ public class AgentToolCollectionFactoryTest {
     @Test
     public void shouldRegisterBrowserToolWhenRelayOnline() {
         AgentToolCollectionFactory factory = newFactory(
-                buildReactorConfig(),
+                buildCuteConfig(),
                 Mockito.mock(McpToolExecutor.class),
                 Mockito.mock(DefaultSkillRegistry.class),
                 SkillRuntimeOptions.builder().enabled(false).build(),
@@ -695,7 +695,7 @@ public class AgentToolCollectionFactoryTest {
     @Test
     public void shouldRegisterBrowserToolEvenWhenRelayOffline() {
         AgentToolCollectionFactory factory = newFactory(
-                buildReactorConfig(),
+                buildCuteConfig(),
                 Mockito.mock(McpToolExecutor.class),
                 Mockito.mock(DefaultSkillRegistry.class),
                 SkillRuntimeOptions.builder().enabled(false).build(),
@@ -729,7 +729,7 @@ public class AgentToolCollectionFactoryTest {
     @Test
     public void shouldNotRegisterBrowserToolsForDataAgentEvenWhenOnline() {
         AgentToolCollectionFactory factory = newFactory(
-                buildReactorConfig(),
+                buildCuteConfig(),
                 Mockito.mock(McpToolExecutor.class),
                 Mockito.mock(DefaultSkillRegistry.class),
                 SkillRuntimeOptions.builder().enabled(false).build(),
@@ -762,7 +762,7 @@ public class AgentToolCollectionFactoryTest {
     @Test
     public void shouldRegisterAgentBrowserWhenConfiguredEvenIfRelayOffline() {
         AgentToolCollectionFactory factory = newFactory(
-                buildReactorConfig(),
+                buildCuteConfig(),
                 Mockito.mock(McpToolExecutor.class),
                 Mockito.mock(DefaultSkillRegistry.class),
                 SkillRuntimeOptions.builder().enabled(false).build(),
@@ -795,7 +795,7 @@ public class AgentToolCollectionFactoryTest {
     @Test
     public void shouldNotRegisterAgentBrowserForDataAgent() {
         AgentToolCollectionFactory factory = newFactory(
-                buildReactorConfig(),
+                buildCuteConfig(),
                 Mockito.mock(McpToolExecutor.class),
                 Mockito.mock(DefaultSkillRegistry.class),
                 SkillRuntimeOptions.builder().enabled(false).build(),
@@ -828,7 +828,7 @@ public class AgentToolCollectionFactoryTest {
     @Test
     public void shouldRegisterHostCliWhenAllowlistResolves() {
         AgentToolCollectionFactory factory = newFactory(
-                buildReactorConfig(),
+                buildCuteConfig(),
                 Mockito.mock(McpToolExecutor.class),
                 Mockito.mock(DefaultSkillRegistry.class),
                 SkillRuntimeOptions.builder().enabled(false).build(),
@@ -884,7 +884,7 @@ public class AgentToolCollectionFactoryTest {
         ));
 
         AgentToolCollectionFactory factory = newFactory(
-                buildReactorConfig(),
+                buildCuteConfig(),
                 mcpToolExecutor,
                 skillRegistry,
                 SkillRuntimeOptions.builder()
@@ -930,11 +930,11 @@ public class AgentToolCollectionFactoryTest {
      */
     @Test
     public void whitelistGroupIsAssembledWhenAnyAliasMatches() {
-        ReactorConfig reactorConfig = buildReactorConfig();
+        CuteConfig cuteConfig = buildCuteConfig();
         // docread 组的别名之一；组名本身不出现，验证别名也能触发整组装配
-        reactorConfig.setMultiAgentToolList("{\"default\":\"pdf_reader\"}");
+        cuteConfig.setMultiAgentToolList("{\"default\":\"pdf_reader\"}");
 
-        ToolCollection toolCollection = buildForReactWith(reactorConfig);
+        ToolCollection toolCollection = buildForReactWith(cuteConfig);
 
         // 别名命中整组：组内其它工具一并装配，而不是只装 pdf_reader
         Assert.assertTrue("docread 组应按别名整组装配",
@@ -949,10 +949,10 @@ public class AgentToolCollectionFactoryTest {
 
     @Test
     public void emptyWhitelistAssemblesNoConfiguredGroupTools() {
-        ReactorConfig reactorConfig = buildReactorConfig();
-        reactorConfig.setMultiAgentToolList("{\"default\":\"\"}");
+        CuteConfig cuteConfig = buildCuteConfig();
+        cuteConfig.setMultiAgentToolList("{\"default\":\"\"}");
 
-        ToolCollection toolCollection = buildForReactWith(reactorConfig);
+        ToolCollection toolCollection = buildForReactWith(cuteConfig);
 
         // 白名单为空时，所有「按组装配」的工具都不应出现
         Assert.assertFalse(toolCollection.getToolMap().containsKey("deep_search"));
@@ -967,11 +967,11 @@ public class AgentToolCollectionFactoryTest {
 
     @Test
     public void dataAgentStyleExposesOnlyDataAnalysisEntry() {
-        ReactorConfig reactorConfig = buildReactorConfig();
-        reactorConfig.setMultiAgentToolList("{\"default\":\"search,docread,dataprep,docgen\"}");
+        CuteConfig cuteConfig = buildCuteConfig();
+        cuteConfig.setMultiAgentToolList("{\"default\":\"search,docread,dataprep,docgen\"}");
 
         AgentToolCollectionFactory factory = newFactory(
-                reactorConfig,
+                cuteConfig,
                 Mockito.mock(McpToolExecutor.class),
                 Mockito.mock(DefaultSkillRegistry.class),
                 SkillRuntimeOptions.builder().enabled(false).build(),
@@ -995,9 +995,9 @@ public class AgentToolCollectionFactoryTest {
         Assert.assertFalse(toolCollection.getToolMap().containsKey("Agent"));
     }
 
-    private ToolCollection buildForReactWith(ReactorConfig reactorConfig) {
+    private ToolCollection buildForReactWith(CuteConfig cuteConfig) {
         AgentToolCollectionFactory factory = newFactory(
-                reactorConfig,
+                cuteConfig,
                 Mockito.mock(McpToolExecutor.class),
                 Mockito.mock(DefaultSkillRegistry.class),
                 SkillRuntimeOptions.builder().enabled(false).build(),
@@ -1006,7 +1006,7 @@ public class AgentToolCollectionFactoryTest {
         return factory.buildForReact(buildAgentContext(), buildAgentExecutionCommand("html"));
     }
 
-    private AgentToolCollectionFactory newFactory(ReactorConfig reactorConfig,
+    private AgentToolCollectionFactory newFactory(CuteConfig cuteConfig,
                                                   McpToolExecutor mcpToolExecutor,
                                                   org.wwz.ai.domain.agent.runtime.tool.skill.SkillRegistry skillRegistry,
                                                   SkillRuntimeOptions skillRuntimeOptions,
@@ -1028,7 +1028,7 @@ public class AgentToolCollectionFactoryTest {
                                  guard)
                          : Mockito.mock(org.wwz.ai.domain.agent.runtime.tool.skill.SkillLoader.class);
           return new AgentToolCollectionFactory(
-                 reactorConfig,
+                 cuteConfig,
                  mcpToolExecutor,
                  skillRegistry,
                  loader,
@@ -1096,12 +1096,12 @@ public class AgentToolCollectionFactoryTest {
         );
     }
 
-    private ReactorConfig buildReactorConfig() {
-        ReactorConfig reactorConfig = new ReactorConfig();
-        reactorConfig.setMultiAgentToolList("{\"default\":\"search,web_fetch,code,code_execution,multimodalagent\"}");
+    private CuteConfig buildCuteConfig() {
+        CuteConfig cuteConfig = new CuteConfig();
+        cuteConfig.setMultiAgentToolList("{\"default\":\"search,web_fetch,code,code_execution,multimodalagent\"}");
         // 既有用例默认 standard，避免 MCP deferred 改变 mcpToolMap 断言
-        reactorConfig.setMcpToolSearchMode("standard");
-        return reactorConfig;
+        cuteConfig.setMcpToolSearchMode("standard");
+        return cuteConfig;
     }
 
     private void assertDocumentGenerationTools(ToolCollection toolCollection) {
@@ -1123,7 +1123,7 @@ public class AgentToolCollectionFactoryTest {
     }
 
     private AgentContext buildAgentContext() {
-        ReactorRuntimeDependencies runtimeDependencies = ReactorRuntimeTestSupport.runtimeDependencies(buildReactorConfig());
+        CuteRuntimeDependencies runtimeDependencies = CuteRuntimeTestSupport.runtimeDependencies(buildCuteConfig());
         return AgentContext.builder()
                 .requestId("req-001")
                 .sessionId("session-001")

@@ -5,7 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.runtime.capability.SessionCapabilityService;
 import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
@@ -61,7 +61,7 @@ public class PrepareAgentContextAssembly {
     private WorkspaceReadStateStore workspaceReadStateStore;
 
     @Resource
-    private ReactorRuntimeDependencies reactorRuntimeDependencies;
+    private CuteRuntimeDependencies cuteRuntimeDependencies;
 
     @Resource
     private ActiveAgentRunRegistry activeAgentRunRegistry;
@@ -121,7 +121,7 @@ public class PrepareAgentContextAssembly {
                 .isStream(Objects.nonNull(request.getIsStream()) ? request.getIsStream() : false)
                 .templateType("dataAgent".equals(request.getOutputStyle()) ? "table" : "empty")
                 .executionRecorder(agentExecutionRecorder)
-                .runtimeDependencies(reactorRuntimeDependencies)
+                .runtimeDependencies(cuteRuntimeDependencies)
                 .build();
 
         materializeSessionFiles(agentContext, request.getSessionFiles());

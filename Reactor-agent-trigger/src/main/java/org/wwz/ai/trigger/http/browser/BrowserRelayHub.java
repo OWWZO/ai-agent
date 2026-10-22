@@ -25,7 +25,7 @@ import java.util.Map;
  * lifecycle port.</p>
  */
 @Component
-@ConditionalOnProperty(prefix = "reactor.browser-relay", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "cute.browser-relay", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class BrowserRelayHub {
 
     private final BrowserRelayApplicationService applicationService;

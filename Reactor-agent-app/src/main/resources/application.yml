@@ -91,9 +91,9 @@ autobots:
     web_fetch_url: "http://127.0.0.1:1601"
     workspace:
       enabled: true
-      # 会话 cwd：固定 monorepo 内 reactor-tool/skilloutput/{sessionId}
+      # 会话 cwd：固定 monorepo 内 cute-tool/skilloutput/{sessionId}
       # 勿写 ${user.dir}：Spring 会在加载时展开成错误的启动 cwd
-      root-template: "{repoRoot}/reactor-tool/skilloutput/{sessionId}"
+      root-template: "{repoRoot}/cute-tool/skilloutput/{sessionId}"
       # 整页 HTML/CSS/JS 常 >12k；截断会让模型误判文件损坏并重写
       max-read-chars: 96000
       max-list-entries: 200

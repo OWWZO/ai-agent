@@ -23,7 +23,7 @@ import java.util.Map;
  * <p>CLI 侧凭证（对齐老 relay 的 {@code POST /internal/browser/rpc}）：</p>
  * <ul>
  *   <li>请求头 {@code X-Adapter-Secret}：与
- *       {@code reactor.browser-relay.internal-rpc-secret} 一致。
+ *       {@code cute.browser-relay.internal-rpc-secret} 一致。
  *       配置了密钥就必须带上；没配置密钥则只允许回环地址（CLI 由 Java 本机拉起）。</li>
  *   <li>查询参数 {@code user_id}：归属用户 id，必填。</li>
  *   <li>查询参数 {@code browser_id}：目标浏览器实例 id，可空；给了就精确路由。</li>

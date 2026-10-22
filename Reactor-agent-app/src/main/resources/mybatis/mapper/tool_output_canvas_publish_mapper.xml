@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="org.wwz.ai.infrastructure.dao.reactor.IToolOutputCanvasPublishDao">
+<mapper namespace="org.wwz.ai.infrastructure.dao.cute.IToolOutputCanvasPublishDao">
 
     <resultMap id="ToolOutputCanvasPublishMap" type="org.wwz.ai.infrastructure.dao.po.ToolOutputCanvasPublishPO">
         <id column="id" property="id"/>

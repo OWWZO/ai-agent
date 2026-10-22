@@ -101,7 +101,7 @@ public final class GenUiGuidePayload {
                 "Flat 10+ peer nodes without a domain container such as Card."
         ));
         guide.put("subset_note",
-                "Reactor currently validates a high-frequency kind subset only. "
+                "Cute currently validates a high-frequency kind subset only. "
                         + "Call list_ui_components; unsupported kinds will fail validation.");
         return guide;
     }

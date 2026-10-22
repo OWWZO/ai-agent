@@ -7,7 +7,7 @@ import org.wwz.ai.domain.agent.ledger.model.FeaturedConversationQueryCondition;
 import org.wwz.ai.domain.agent.ledger.model.FeaturedConversationUpsertCommand;
 import org.wwz.ai.infrastructure.adapter.repository.FeaturedConversationRepository;
 import org.wwz.ai.infrastructure.dao.po.FeaturedConversationPO;
-import org.wwz.ai.infrastructure.dao.reactor.IFeaturedConversationDao;
+import org.wwz.ai.infrastructure.dao.cute.IFeaturedConversationDao;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;

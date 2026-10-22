@@ -15,7 +15,7 @@ import org.wwz.ai.types.agent.config.OpenCliProperties;
 
 /**
  * bsk 中继端点装配。与 {@code BrowserRelayWebSocketConfig} 完全分离：
- * 路径、拦截器、handler 都独立，现有 Reactor relay 一行不动。
+ * 路径、拦截器、handler 都独立，现有 Cute relay 一行不动。
  *
  * <p>注意：本类只做端点注册，<b>不</b>生产 {@code BskFrameRelay} 等依赖 bean——
  * 那些在 {@link BskRelayBeansConfig}。否则 Config 构造器注入 handler、
@@ -25,7 +25,7 @@ import org.wwz.ai.types.agent.config.OpenCliProperties;
 @Configuration
 @EnableWebSocket
 @EnableConfigurationProperties(BskProperties.class)
-@ConditionalOnProperty(prefix = "reactor.browser-bsk", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "cute.browser-bsk", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class BskRelayWebSocketConfig implements WebSocketConfigurer {
 
     private final BskRelayWebSocketHandler handler;
@@ -71,7 +71,7 @@ public class BskRelayWebSocketConfig implements WebSocketConfigurer {
     /**
      * CLI 侧端点路径。
      *
-     * <p>唯一事实来源是 {@code reactor.opencli.bsk-cli-path}
+     * <p>唯一事实来源是 {@code cute.opencli.bsk-cli-path}
      * （{@link OpenCliProperties#getBskCliPath()}）：Java 网关用它注册端点，
      * BrowserTool 用它拼出 CLI 该连的地址。两侧读同一个字段，路径不会漂。</p>
      */
@@ -94,7 +94,7 @@ public class BskRelayWebSocketConfig implements WebSocketConfigurer {
     /**
      * 认证拦截器：token 解析委托给现有配对表
      * （{@code BrowserRelayApplicationService.resolveUserId}），
-     * 与 Reactor relay 共用同一套配对凭证。
+     * 与 Cute relay 共用同一套配对凭证。
      */
     @Bean
     public BskAuthSubProtocolInterceptor bskAuthSubProtocolInterceptor() {

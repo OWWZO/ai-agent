@@ -18,7 +18,7 @@ import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ContextIsolatableTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DataAnalysisToolOutput;
 import org.wwz.ai.domain.agent.runtime.stream.ToolResultStreamPayload;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRefMapper;
@@ -130,7 +130,7 @@ public class DataAnalysisTool implements ContextIsolatableTool {
         CompletableFuture<ToolResultPayload> future = new CompletableFuture<>();
         try {
             // 返回 Future 让调用方可以把流式分析纳入统一工具超时和取消机制。
-            ReactorConfig duccConfig = requireReactorConfig();
+            CuteConfig duccConfig = requireCuteConfig();
             String url = duccConfig.getDataAnalysisUrl() + "/v1/tool/auto_analysis";
             log.info("{} auto_analysis request {}", agentContext.getRequestId(), JSONObject.toJSONString(analysisRequest));
             String digitalEmployee = agentContext.getToolCollection().getDigitalEmployee(getName());
@@ -295,16 +295,16 @@ public class DataAnalysisTool implements ContextIsolatableTool {
         return text.substring(0, maxLen) + "...";
     }
 
-    private ReactorConfig requireReactorConfig() {
+    private CuteConfig requireCuteConfig() {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("DataAnalysisTool 缺少 ReactorRuntimeDependencies");
+            throw new IllegalStateException("DataAnalysisTool 缺少 CuteRuntimeDependencies");
         }
-        return agentContext.getRuntimeDependencies().requireReactorConfig();
+        return agentContext.getRuntimeDependencies().requireCuteConfig();
     }
 
     private RemoteStreamPort requireRemoteStreamPort() {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("DataAnalysisTool 缺少 ReactorRuntimeDependencies");
+            throw new IllegalStateException("DataAnalysisTool 缺少 CuteRuntimeDependencies");
         }
         return agentContext.getRuntimeDependencies().requireRemoteStreamPort();
     }

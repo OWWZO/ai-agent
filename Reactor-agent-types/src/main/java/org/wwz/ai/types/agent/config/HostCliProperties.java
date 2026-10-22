@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Data
-@ConfigurationProperties(prefix = "reactor.host-cli")
+@ConfigurationProperties(prefix = "cute.host-cli")
 public class HostCliProperties {
 
     private boolean enabled = true;

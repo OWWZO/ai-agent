@@ -1,0 +1,369 @@
+package org.wwz.ai.domain.agent.runtime;
+
+import lombok.Builder;
+import lombok.Value;
+import org.springframework.core.env.Environment;
+import org.wwz.ai.domain.agent.adapter.port.BrowserRelayPort;
+import org.wwz.ai.domain.agent.adapter.port.BrowserBskConnectionPort;
+import org.wwz.ai.domain.agent.adapter.port.AgentBrowserSessionPort;
+import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
+import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
+import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
+import org.wwz.ai.domain.agent.adapter.port.RemoteStreamPort;
+import org.wwz.ai.domain.agent.adapter.port.SubAgentSessionPort;
+import org.wwz.ai.domain.agent.adapter.port.SubAgentSessionStreamPort;
+import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
+import org.wwz.ai.domain.agent.runtime.tool.codemode.CodeModeExecutorPort;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.port.McpToolExecutor;
+import org.wwz.ai.domain.agent.runtime.tasklist.TasklistPersistencePort;
+import org.wwz.ai.domain.agent.memory.SessionContextCompactionService;
+import org.wwz.ai.domain.agent.memory.ltm.BackgroundReviewService;
+import org.wwz.ai.domain.agent.memory.ltm.CuratedMemoryStore;
+import org.wwz.ai.domain.agent.memory.ltm.LtmManager;
+import org.wwz.ai.domain.agent.memory.ltm.MemoryFlushService;
+import org.wwz.ai.domain.agent.memory.ltm.SessionSearchService;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
+import org.wwz.ai.domain.agent.image.service.IImageGenerationExecutionKernel;
+import org.wwz.ai.types.agent.config.CodeModeProperties;
+import org.wwz.ai.types.agent.config.HostCliProperties;
+import org.wwz.ai.types.agent.config.OpenCliProperties;
+import org.springframework.scheduling.TaskScheduler;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.Executor;
+
+/**
+ * Cute 运行时依赖包。
+ * domain 侧只依赖这个 typed bundle，不再直接触碰 Spring 容器全局入口。
+ */
+@Value
+@Builder(toBuilder = true)
+public class CuteRuntimeDependencies {
+
+    CuteConfig cuteConfig;
+
+    Environment environment;
+
+    CuteLlmDependencies llmDependencies;
+
+    McpToolExecutor mcpToolExecutor;
+
+    IImageGenerationExecutionKernel imageGenerationExecutionKernel;
+
+    RemoteHttpPort remoteHttpPort;
+
+    RemoteStreamPort remoteStreamPort;
+
+    FileArtifactPort fileArtifactPort;
+
+    /** 可选：用户本机浏览器遥控 */
+    BrowserRelayPort browserRelayPort;
+
+    /** 可选：bsk 后端的浏览器在线状态（021） */
+    BrowserBskConnectionPort browserBskConnectionPort;
+
+    /** 可选：本机进程 CLI（opencli / host_cli） */
+    CliExecutionPort cliExecutionPort;
+
+    /** 可选：每用户 Agent 浏览器 session */
+    AgentBrowserSessionPort agentBrowserSessionPort;
+
+    OpenCliProperties openCliProperties;
+
+    HostCliProperties hostCliProperties;
+
+    CodeModeProperties codeModeProperties;
+
+    /** 可选：Code Mode（GraalJS 同 JVM JS 执行器，实现在 infrastructure） */
+    CodeModeExecutorPort codeModeExecutorPort;
+
+    //预留给之后并发调用llm
+    Executor llmExecutor;
+
+    Executor taskExecutor;
+
+    Executor toolExecutor;
+
+    TaskScheduler heartbeatScheduler;
+
+    /**
+     * 工具批 allOf 超时秒数；null 或 ≤0 表示不超时（仅测试夹具）。
+     */
+    Long toolBatchTimeoutSeconds;
+
+    /** 可选：跨轮/中途工作记忆压缩 */
+    SessionContextCompactionService sessionContextCompactionService;
+
+    /** 可选：长期记忆编排（策展 + 深度 Provider） */
+    LtmManager ltmManager;
+
+    /** 可选：用户级策展记忆存储 */
+    CuratedMemoryStore curatedMemoryStore;
+
+    /** 可选：情节按需检索（ledger） */
+    SessionSearchService sessionSearchService;
+
+    /** LTM flush-min-turns（0=关闭） */
+    Integer ltmFlushMinTurns;
+
+    MemoryFlushService memoryFlushService;
+
+    BackgroundReviewService backgroundReviewService;
+
+    /** 可选：会话 Todo / 后台任务持久化 */
+    TasklistPersistencePort tasklistPersistencePort;
+
+    /**
+     * 可选：子智能体隐藏会话身份落库端口。
+     * 缺失时子 Agent 退化为不落子会话（仅日志告警），不阻断运行。
+     */
+    SubAgentSessionPort subAgentSessionPort;
+
+    /**
+     * 可选：子会话独立流端口（Phase 3 SSE 隔离）。
+     * 仅在 {@code subagent-isolated-session} 开关为 true 时使用；缺失时回退透传父流。
+     */
+    SubAgentSessionStreamPort subAgentSessionStreamPort;
+
+    public CuteConfig requireCuteConfig() {
+        return Objects.requireNonNull(cuteConfig, "CuteConfig must not be null");
+    }
+
+    public Environment requireEnvironment() {
+        return Objects.requireNonNull(environment, "Environment must not be null");
+    }
+
+    public CuteLlmDependencies requireLlmDependencies() {
+        return Objects.requireNonNull(llmDependencies, "CuteLlmDependencies must not be null");
+    }
+
+    public McpToolExecutor getOptionalMcpToolExecutor() {
+        return mcpToolExecutor;
+    }
+
+    public IImageGenerationExecutionKernel requireImageGenerationExecutionKernel() {
+        return Objects.requireNonNull(imageGenerationExecutionKernel, "IImageGenerationExecutionKernel must not be null");
+    }
+
+    public RemoteHttpPort requireRemoteHttpPort() {
+        return Objects.requireNonNull(remoteHttpPort, "RemoteHttpPort must not be null");
+    }
+
+    public RemoteStreamPort requireRemoteStreamPort() {
+        return Objects.requireNonNull(remoteStreamPort, "RemoteStreamPort must not be null");
+    }
+
+    public FileArtifactPort requireFileArtifactPort() {
+        return Objects.requireNonNull(fileArtifactPort, "FileArtifactPort must not be null");
+    }
+
+    public BrowserRelayPort getOptionalBrowserRelayPort() {
+        return browserRelayPort;
+    }
+
+    public BrowserBskConnectionPort getOptionalBrowserBskConnectionPort() {
+        return browserBskConnectionPort;
+    }
+
+    public CliExecutionPort getOptionalCliExecutionPort() {
+        return cliExecutionPort;
+    }
+
+    public AgentBrowserSessionPort getOptionalAgentBrowserSessionPort() {
+        return agentBrowserSessionPort;
+    }
+
+    public CodeModeProperties getOptionalCodeModeProperties() {
+        return codeModeProperties;
+    }
+
+    public CodeModeExecutorPort getOptionalCodeModeExecutorPort() {
+        return codeModeExecutorPort;
+    }
+
+    public Executor requireLlmExecutor() {
+        return Objects.requireNonNull(llmExecutor, "llmExecutor must not be null");
+    }
+
+    public Executor requireToolExecutor() {
+        return Objects.requireNonNull(toolExecutor, "toolExecutor must not be null");
+    }
+
+    public Executor requireTaskExecutor() {
+        return Objects.requireNonNull(taskExecutor, "taskExecutor must not be null");
+    }
+
+    public TaskScheduler requireHeartbeatScheduler() {
+        return Objects.requireNonNull(heartbeatScheduler, "heartbeatScheduler must not be null");
+    }
+
+    /**
+     * @return 工具批超时秒数；未配置时默认 600。
+     */
+    public long resolveToolBatchTimeoutSeconds() {
+        if (toolBatchTimeoutSeconds == null) {
+            return 600L;
+        }
+        return toolBatchTimeoutSeconds;
+    }
+
+    public SessionContextCompactionService getOptionalSessionContextCompactionService() {
+        return sessionContextCompactionService;
+    }
+
+    public LtmManager getOptionalLtmManager() {
+        return ltmManager;
+    }
+
+    public CuratedMemoryStore getOptionalCuratedMemoryStore() {
+        return curatedMemoryStore;
+    }
+
+    public SessionSearchService getOptionalSessionSearchService() {
+        return sessionSearchService;
+    }
+
+    public int resolveLtmFlushMinTurns() {
+        return ltmFlushMinTurns == null ? 6 : ltmFlushMinTurns;
+    }
+
+    public MemoryFlushService getOptionalMemoryFlushService() {
+        return memoryFlushService;
+    }
+
+    public BackgroundReviewService getOptionalBackgroundReviewService() {
+        return backgroundReviewService;
+    }
+
+    public TasklistPersistencePort getOptionalTasklistPersistencePort() {
+        return tasklistPersistencePort;
+    }
+
+    public SubAgentSessionPort getOptionalSubAgentSessionPort() {
+        return subAgentSessionPort;
+    }
+
+    public SubAgentSessionStreamPort getOptionalSubAgentSessionStreamPort() {
+        return subAgentSessionStreamPort;
+    }
+
+    /**
+     * 子会话独立流是否开启（BREAKING，默认 false）。
+     */
+    public boolean isSubAgentIsolatedSessionEnabled() {
+        return cuteConfig != null && cuteConfig.isSubagentIsolatedSession();
+    }
+
+    /**
+     * 统一解析 LLM 配置。
+     * <ol>
+     *   <li>DB 管理台（{@link org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog}）— 热更新、免重启</li>
+     *   <li>CuteConfig.llmSettings（yml）</li>
+     *   <li>Environment llm.default.*</li>
+     * </ol>
+     */
+    public LLMSettings resolveLlmSettings(String modelName) {
+        String normalizedModelName = modelName == null ? "" : modelName.trim();
+
+        if (llmDependencies != null && llmDependencies.getModelCatalog() != null) {
+            var fromDb = llmDependencies.getModelCatalog().resolve(normalizedModelName);
+            if (fromDb.isPresent()) {
+                return enrichSamplingFromYml(fromDb.get(), normalizedModelName);
+            }
+        }
+
+        CuteConfig config = requireCuteConfig();
+        if (config.getLlmSettingsMap() != null && !normalizedModelName.isBlank()) {
+            LLMSettings settings = config.getLlmSettingsMap().get(normalizedModelName);
+            if (settings != null) {
+                return settings;
+            }
+        }
+
+        LLMSettings defaultConfig = buildDefaultLlmSettings();
+        if (!normalizedModelName.isBlank()) {
+            defaultConfig.setModel(normalizedModelName);
+        }
+        return defaultConfig;
+    }
+
+    /**
+     * DB 提供连接信息和模型上下文窗口；采样参数优先叠 yml 同名条目，否则用 llm.default。
+     */
+    private LLMSettings enrichSamplingFromYml(LLMSettings db, String modelRef) {
+        LLMSettings yml = null;
+        CuteConfig config = cuteConfig;
+        if (config != null && config.getLlmSettingsMap() != null) {
+            if (db.getModel() != null && !db.getModel().isBlank()) {
+                yml = config.getLlmSettingsMap().get(db.getModel());
+            }
+            if (yml == null && modelRef != null && !modelRef.isBlank()) {
+                yml = config.getLlmSettingsMap().get(modelRef);
+            }
+        }
+        LLMSettings defaults = buildDefaultLlmSettings();
+        LLMSettings sample = yml != null ? yml : defaults;
+        String functionCallType = sample.getFunctionCallType();
+        if (functionCallType == null || functionCallType.isBlank()) {
+            functionCallType = defaults.getFunctionCallType();
+        }
+        return LLMSettings.builder()
+                .model(db.getModel())
+                .baseUrl(db.getBaseUrl())
+                .apiKey(db.getApiKey())
+                .interfaceUrl(db.getInterfaceUrl())
+                .maxTokens(sample.getMaxTokens() > 0 ? sample.getMaxTokens() : defaults.getMaxTokens())
+                .temperature(sample.getTemperature())
+                // context_window 是模型管理台的运行时真相源，不能被 yml/default 覆盖。
+                .maxInputTokens(db.getMaxInputTokens() > 0
+                        ? db.getMaxInputTokens()
+                        : sample.getMaxInputTokens() > 0
+                        ? sample.getMaxInputTokens()
+                        : defaults.getMaxInputTokens())
+                .functionCallType(functionCallType)
+                .reasoningEffort(sample.getReasoningEffort())
+                .apiType(sample.getApiType())
+                .apiVersion(sample.getApiVersion())
+                .extParams(sample.getExtParams() != null ? sample.getExtParams() : new HashMap<>())
+                .build();
+    }
+
+    private LLMSettings buildDefaultLlmSettings() {
+        Environment env = requireEnvironment();
+        return LLMSettings.builder()
+                .model(env.getProperty("llm.default.model", "gpt-4o-0806"))
+                .maxTokens(parseInt(env.getProperty("llm.default.max_tokens"), 16384))
+                .temperature(parseDouble(env.getProperty("llm.default.temperature"), 0.0))
+                .baseUrl(env.getProperty("llm.default.base_url", ""))
+                .interfaceUrl(env.getProperty("llm.default.interface_url", "/v1/chat/completions"))
+                .functionCallType(env.getProperty("llm.default.function_call_type", "function_call"))
+                .apiKey(env.getProperty("llm.default.apikey", ""))
+                .maxInputTokens(parseInt(env.getProperty("llm.default.max_input_tokens"), 100000))
+                .extParams(new HashMap<>())
+                .build();
+    }
+
+    private int parseInt(String value, int defaultValue) {
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException ignore) {
+            return defaultValue;
+        }
+    }
+
+    private double parseDouble(String value, double defaultValue) {
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return Double.parseDouble(value.trim());
+        } catch (NumberFormatException ignore) {
+            return defaultValue;
+        }
+    }
+}

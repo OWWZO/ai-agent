@@ -1,7 +1,7 @@
 package org.wwz.ai.domain.agent.runtime.llm;
 
 import org.wwz.ai.domain.agent.ledger.model.AgentRunState;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 
 import java.util.Locale;
@@ -48,11 +48,11 @@ public final class LlmModelFallback {
     private LlmModelFallback() {
     }
 
-    public static String resolveFallbackModelName(ReactorRuntimeDependencies deps, String primaryModel) {
+    public static String resolveFallbackModelName(CuteRuntimeDependencies deps, String primaryModel) {
         return resolveFallbackModelNames(deps, primaryModel).stream().findFirst().orElse(null);
     }
 
-    public static List<String> resolveFallbackModelNames(ReactorRuntimeDependencies deps, String primaryModel) {
+    public static List<String> resolveFallbackModelNames(CuteRuntimeDependencies deps, String primaryModel) {
         if (deps == null) {
             return List.of();
         }

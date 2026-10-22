@@ -20,7 +20,7 @@ import org.wwz.ai.domain.agent.runtime.tasklist.TasklistPersistencePort;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.deferred.DeferredToolCatalog;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceFileReadState;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.llm.ContextTokenTracker;
 import org.wwz.ai.domain.agent.ledger.AgentExecutionRecorder;
 import org.wwz.ai.domain.agent.memory.WorkingMemoryScopes;
@@ -152,12 +152,12 @@ public class AgentContext {
     }
 
     /**
-     * Reactor 运行时依赖包。
+     * Cute 运行时依赖包。
      * 所有 Agent / Tool / LLM 必须通过这里读取运行时协作者，禁止自行回 Spring 容器查找。
      */
     @ToString.Exclude
     @JSONField(serialize = false)
-    ReactorRuntimeDependencies runtimeDependencies;
+    CuteRuntimeDependencies runtimeDependencies;
 
     /**
      * 日期时间信息（格式化字符串）

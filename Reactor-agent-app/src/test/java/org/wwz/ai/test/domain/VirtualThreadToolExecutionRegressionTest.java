@@ -5,7 +5,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import org.junit.Assert;
 import org.junit.Test;
 import org.wwz.ai.config.executor.BoundedVirtualThreadExecutor;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.BaseAgent;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
@@ -164,7 +164,7 @@ public class VirtualThreadToolExecutionRegressionTest {
                                             BoundedVirtualThreadExecutor taskExecutor,
                                             BoundedVirtualThreadExecutor toolExecutor,
                                             long timeoutSeconds) {
-        ReactorRuntimeDependencies dependencies = ReactorRuntimeDependencies.builder()
+        CuteRuntimeDependencies dependencies = CuteRuntimeDependencies.builder()
                 .taskExecutor(taskExecutor)
                 .toolExecutor(toolExecutor)
                 .toolBatchTimeoutSeconds(timeoutSeconds)

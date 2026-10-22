@@ -14,7 +14,7 @@ import org.wwz.ai.domain.agent.runtime.llm.LLM;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolArgs;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 
 import java.net.URI;
 import java.util.Collections;
@@ -143,7 +143,7 @@ public class WebFetchTool implements BaseTool {
     }
 
     private FetchedPage fetchFromPython(String url) throws Exception {
-        ReactorConfig config = requireReactorConfig();
+        CuteConfig config = requireCuteConfig();
         String endpoint = buildWebFetchEndpoint(config.getWebFetchUrl());
         Map<String, Object> requestBody = new LinkedHashMap<>();
         requestBody.put("requestId", StringUtils.defaultIfBlank(requestId(), "web-fetch"));
@@ -239,7 +239,7 @@ public class WebFetchTool implements BaseTool {
                 """.formatted(markdownContent, prompt);
 
         try {
-            ReactorConfig config = requireReactorConfig();
+            CuteConfig config = requireCuteConfig();
             String modelName = StringUtils.defaultIfBlank(config.getSummaryModelName(), config.getReactModelName());
             LLM llm = new LLM(modelName, "", agentContext.getRuntimeDependencies());
             // Prefer stream aggregation: some OpenAI-compatible gateways return empty/truncated
@@ -347,16 +347,16 @@ public class WebFetchTool implements BaseTool {
         return agentContext == null ? "unknown" : StringUtils.defaultString(agentContext.getRequestId(), "unknown");
     }
 
-    private ReactorConfig requireReactorConfig() {
+    private CuteConfig requireCuteConfig() {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("WebFetchTool 缺少 ReactorRuntimeDependencies");
+            throw new IllegalStateException("WebFetchTool 缺少 CuteRuntimeDependencies");
         }
-        return agentContext.getRuntimeDependencies().requireReactorConfig();
+        return agentContext.getRuntimeDependencies().requireCuteConfig();
     }
 
     private RemoteHttpPort requireRemoteHttpPort() {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("WebFetchTool 缺少 ReactorRuntimeDependencies");
+            throw new IllegalStateException("WebFetchTool 缺少 CuteRuntimeDependencies");
         }
         return agentContext.getRuntimeDependencies().requireRemoteHttpPort();
     }

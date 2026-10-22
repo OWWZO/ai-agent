@@ -9,7 +9,7 @@ import org.wwz.ai.domain.agent.adapter.port.BrowserBskConnectionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliInvocation;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliResult;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.types.agent.config.OpenCliProperties;
@@ -227,7 +227,7 @@ public class BrowserToolBskSurfaceTest {
                 .sessionId("session-1")
                 .userId("user-1")
                 .workspaceRoot(System.getProperty("java.io.tmpdir"))
-                .runtimeDependencies(ReactorRuntimeDependencies.builder()
+                .runtimeDependencies(CuteRuntimeDependencies.builder()
                         .environment(new StandardEnvironment())
                         .cliExecutionPort(cli)
                         .browserBskConnectionPort(onlineBskPort())

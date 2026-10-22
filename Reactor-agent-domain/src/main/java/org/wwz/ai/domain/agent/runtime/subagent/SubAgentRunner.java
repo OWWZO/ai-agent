@@ -10,7 +10,7 @@ import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
 import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
 import org.wwz.ai.domain.agent.memory.WorkingMemoryScopes;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReactImplAgent;
 import org.wwz.ai.domain.agent.runtime.artifact.TaskSummaryArtifactProtocol;
@@ -433,7 +433,7 @@ public class SubAgentRunner {
                                                    String childSessionId,
                                                    String childRequestId,
                                                    String prompt) {
-        ReactorRuntimeDependencies dependencies = parentContext == null
+        CuteRuntimeDependencies dependencies = parentContext == null
                 ? null
                 : parentContext.getRuntimeDependencies();
         if (dependencies == null || !dependencies.isSubAgentIsolatedSessionEnabled()) {
@@ -472,7 +472,7 @@ public class SubAgentRunner {
         if (isolatedChildPrinter == null) {
             return;
         }
-        ReactorRuntimeDependencies dependencies = parentContext == null
+        CuteRuntimeDependencies dependencies = parentContext == null
                 ? null
                 : parentContext.getRuntimeDependencies();
         SubAgentSessionStreamPort port = dependencies == null

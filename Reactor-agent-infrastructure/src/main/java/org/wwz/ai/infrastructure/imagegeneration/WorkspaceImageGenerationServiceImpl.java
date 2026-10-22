@@ -20,7 +20,7 @@ import org.wwz.ai.domain.agent.image.service.IWorkspaceImageGenerationService;
 import org.wwz.ai.domain.agent.image.service.IImageGenerationBatchPersistenceService;
 import org.wwz.ai.domain.agent.image.service.IImageGenerationExecutionKernel;
 import org.wwz.ai.domain.agent.ledger.tooloutput.ToolOutputReader;
-import org.wwz.ai.infrastructure.dao.reactor.IToolOutputImageGenerationDao;
+import org.wwz.ai.infrastructure.dao.cute.IToolOutputImageGenerationDao;
 
 import javax.annotation.Resource;
 import java.sql.Timestamp;

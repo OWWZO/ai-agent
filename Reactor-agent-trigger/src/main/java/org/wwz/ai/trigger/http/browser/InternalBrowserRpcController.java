@@ -14,7 +14,7 @@ import org.wwz.ai.types.agent.config.BrowserRelayProperties;
 import java.util.Map;
 
 @RestController
-@ConditionalOnProperty(prefix = "reactor.browser-relay", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "cute.browser-relay", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class InternalBrowserRpcController {
 
     private final BrowserRelayApplicationService applicationService;

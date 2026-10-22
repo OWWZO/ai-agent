@@ -3,7 +3,7 @@ package org.wwz.ai.test.domain;
 import org.junit.Assert;
 import org.junit.Test;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import org.wwz.ai.trigger.http.reactor.support.SseEmitterAgentSessionStream;
+import org.wwz.ai.trigger.http.cute.support.SseEmitterAgentSessionStream;
 import org.wwz.ai.application.agent.stream.AgentSessionStreamFrame;
 
 import java.io.IOException;

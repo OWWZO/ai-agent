@@ -13,13 +13,13 @@ import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.tool.common.ImageGenerationTool;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ImageGenerationToolOutput;
 import org.wwz.ai.domain.agent.image.model.ImageGenerationExecuteCommand;
 import org.wwz.ai.domain.agent.image.model.ImageGenerationExecutionResult;
 import org.wwz.ai.domain.agent.image.model.WorkspaceImageFile;
 import org.wwz.ai.domain.agent.image.service.IImageGenerationExecutionKernel;
-import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
+import org.wwz.ai.test.domain.support.CuteRuntimeTestSupport;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -56,7 +56,7 @@ public class ImageGenerationToolTest {
                         .build()))
                 .build());
 
-        ReactorConfig reactorConfig = buildConfig();
+        CuteConfig cuteConfig = buildConfig();
         RecordingPrinter printer = new RecordingPrinter();
         ToolCollection toolCollection = new ToolCollection();
         AgentContext context = AgentContext.builder()
@@ -67,7 +67,7 @@ public class ImageGenerationToolTest {
                 .printer(printer)
                 .toolCollection(toolCollection)
                 .productFiles(new ArrayList<>())
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig, kernel))
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(cuteConfig, kernel))
                 .build();
         toolCollection.setAgentContext(context);
 
@@ -139,7 +139,7 @@ public class ImageGenerationToolTest {
                         .build()))
                 .build());
 
-        ReactorConfig reactorConfig = buildConfig();
+        CuteConfig cuteConfig = buildConfig();
         RecordingPrinter printer = new RecordingPrinter();
         ToolCollection toolCollection = new ToolCollection();
         AgentContext context = AgentContext.builder()
@@ -161,7 +161,7 @@ public class ImageGenerationToolTest {
                                 .isInternalFile(Boolean.FALSE)
                                 .build()
                 )))
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig, kernel))
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(cuteConfig, kernel))
                 .build();
         toolCollection.setAgentContext(context);
 
@@ -213,7 +213,7 @@ public class ImageGenerationToolTest {
                         .build()))
                 .build());
 
-        ReactorConfig reactorConfig = buildConfig();
+        CuteConfig cuteConfig = buildConfig();
         RecordingPrinter printer = new RecordingPrinter();
         ToolCollection toolCollection = new ToolCollection();
         AgentContext context = AgentContext.builder()
@@ -229,7 +229,7 @@ public class ImageGenerationToolTest {
                                 .isInternalFile(Boolean.FALSE)
                                 .build()
                 )))
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig, kernel))
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(cuteConfig, kernel))
                 .build();
         toolCollection.setAgentContext(context);
 
@@ -255,12 +255,12 @@ public class ImageGenerationToolTest {
         Assert.assertEquals(List.of("source-image.png"), commandCaptor.getValue().getFileNames());
     }
 
-    private ReactorConfig buildConfig() {
-        ReactorConfig reactorConfig = new ReactorConfig();
-        ReflectionTestUtils.setField(reactorConfig, "imageGenerationBaseUrl", "https://image-provider.example");
-        ReflectionTestUtils.setField(reactorConfig, "imageGenerationApiKey", "test-key");
-        ReflectionTestUtils.setField(reactorConfig, "imageGenerationModel", "gpt-image-2.5-flare");
-        return reactorConfig;
+    private CuteConfig buildConfig() {
+        CuteConfig cuteConfig = new CuteConfig();
+        ReflectionTestUtils.setField(cuteConfig, "imageGenerationBaseUrl", "https://image-provider.example");
+        ReflectionTestUtils.setField(cuteConfig, "imageGenerationApiKey", "test-key");
+        ReflectionTestUtils.setField(cuteConfig, "imageGenerationModel", "gpt-image-2.5-flare");
+        return cuteConfig;
     }
 
     private static class RecordingPrinter implements Printer {

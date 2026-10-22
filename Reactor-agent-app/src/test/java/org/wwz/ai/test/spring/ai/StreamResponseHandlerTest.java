@@ -20,7 +20,7 @@ import org.wwz.ai.infrastructure.llm.springai.SpringAiResponseMapper;
 import org.wwz.ai.domain.agent.runtime.llm.StreamResponseHandler;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.FluxSink;
@@ -45,9 +45,9 @@ public class StreamResponseHandlerTest {
     @Test
     public void test_handleStringStreamStopsForwardingAfterStructParseMarker() throws Exception {
         StreamResponseHandler handler = new StreamResponseHandler();
-        ReactorConfig reactorConfig = new ReactorConfig();
-        reactorConfig.setMessageInterval("{\"llm\":\"1,2\"}");
-        ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
+        CuteConfig cuteConfig = new CuteConfig();
+        cuteConfig.setMessageInterval("{\"llm\":\"1,2\"}");
+        ReflectionTestUtils.setField(handler, "cuteConfig", cuteConfig);
 
         RecordingPrinter printer = new RecordingPrinter();
         AgentContext context = AgentContext.builder()
@@ -76,9 +76,9 @@ public class StreamResponseHandlerTest {
     @Test
     public void test_handleToolCallStreamPushesReasoningEvenWithToolCalls() throws Exception {
         StreamResponseHandler handler = new StreamResponseHandler();
-        ReactorConfig reactorConfig = new ReactorConfig();
-        reactorConfig.setMessageInterval("{\"llm\":\"1,1\"}");
-        ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
+        CuteConfig cuteConfig = new CuteConfig();
+        cuteConfig.setMessageInterval("{\"llm\":\"1,1\"}");
+        ReflectionTestUtils.setField(handler, "cuteConfig", cuteConfig);
 
         RecordingPrinter printer = new RecordingPrinter();
         AgentContext context = AgentContext.builder()
@@ -111,9 +111,9 @@ public class StreamResponseHandlerTest {
     @Test
     public void test_handleToolCallStreamCompletesRuntimeTimingAtInvocationBoundary() throws Exception {
         StreamResponseHandler handler = new StreamResponseHandler();
-        ReactorConfig reactorConfig = new ReactorConfig();
-        reactorConfig.setMessageInterval("{\"llm\":\"1,1\"}");
-        ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
+        CuteConfig cuteConfig = new CuteConfig();
+        cuteConfig.setMessageInterval("{\"llm\":\"1,1\"}");
+        ReflectionTestUtils.setField(handler, "cuteConfig", cuteConfig);
 
         RecordingPrinter printer = new RecordingPrinter();
         AgentContext context = AgentContext.builder()
@@ -146,9 +146,9 @@ public class StreamResponseHandlerTest {
     @Test
     public void test_handleToolCallStreamPushesContentBeforeToolCallsArrive() throws Exception {
         StreamResponseHandler handler = new StreamResponseHandler();
-        ReactorConfig reactorConfig = new ReactorConfig();
-        reactorConfig.setMessageInterval("{\"llm\":\"1,1\"}");
-        ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
+        CuteConfig cuteConfig = new CuteConfig();
+        cuteConfig.setMessageInterval("{\"llm\":\"1,1\"}");
+        ReflectionTestUtils.setField(handler, "cuteConfig", cuteConfig);
 
         RecordingPrinter printer = new RecordingPrinter();
         AgentContext context = AgentContext.builder()
@@ -181,9 +181,9 @@ public class StreamResponseHandlerTest {
     @Test
     public void test_handleToolCallStreamAggregatesArgumentsAndFinalContent() throws Exception {
         StreamResponseHandler handler = new StreamResponseHandler();
-        ReactorConfig reactorConfig = new ReactorConfig();
-        reactorConfig.setMessageInterval("{\"llm\":\"1,2\"}");
-        ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
+        CuteConfig cuteConfig = new CuteConfig();
+        cuteConfig.setMessageInterval("{\"llm\":\"1,2\"}");
+        ReflectionTestUtils.setField(handler, "cuteConfig", cuteConfig);
 
         RecordingPrinter printer = new RecordingPrinter();
         AgentContext context = AgentContext.builder()
@@ -213,9 +213,9 @@ public class StreamResponseHandlerTest {
     @Test
     public void test_handleToolCallStreamKeepsMessageIdWhenForwardingIsDisabled() throws Exception {
         StreamResponseHandler handler = new StreamResponseHandler();
-        ReactorConfig reactorConfig = new ReactorConfig();
-        reactorConfig.setMessageInterval("{\"llm\":\"1,2\"}");
-        ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
+        CuteConfig cuteConfig = new CuteConfig();
+        cuteConfig.setMessageInterval("{\"llm\":\"1,2\"}");
+        ReflectionTestUtils.setField(handler, "cuteConfig", cuteConfig);
 
         RecordingPrinter printer = new RecordingPrinter();
         AgentContext context = AgentContext.builder()
@@ -239,9 +239,9 @@ public class StreamResponseHandlerTest {
     @Test
     public void test_handleToolCallStreamTimeoutDisposesAndIgnoresLateChunks() throws Exception {
         StreamResponseHandler handler = new StreamResponseHandler();
-        ReactorConfig reactorConfig = new ReactorConfig();
-        reactorConfig.setMessageInterval("{\"llm\":\"1,1\"}");
-        ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
+        CuteConfig cuteConfig = new CuteConfig();
+        cuteConfig.setMessageInterval("{\"llm\":\"1,1\"}");
+        ReflectionTestUtils.setField(handler, "cuteConfig", cuteConfig);
 
         RecordingPrinter printer = new RecordingPrinter();
         AgentContext context = AgentContext.builder()
@@ -291,9 +291,9 @@ public class StreamResponseHandlerTest {
     @Test
     public void test_handleStringStreamTimeoutDisposesAndIgnoresLateChunks() throws Exception {
         StreamResponseHandler handler = new StreamResponseHandler();
-        ReactorConfig reactorConfig = new ReactorConfig();
-        reactorConfig.setMessageInterval("{\"llm\":\"1,1\"}");
-        ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
+        CuteConfig cuteConfig = new CuteConfig();
+        cuteConfig.setMessageInterval("{\"llm\":\"1,1\"}");
+        ReflectionTestUtils.setField(handler, "cuteConfig", cuteConfig);
 
         RecordingPrinter printer = new RecordingPrinter();
         AgentContext context = AgentContext.builder()
@@ -403,9 +403,9 @@ public class StreamResponseHandlerTest {
 
     private StreamResponseHandler handler() {
         StreamResponseHandler handler = new StreamResponseHandler();
-        ReactorConfig reactorConfig = new ReactorConfig();
-        reactorConfig.setMessageInterval("{\"llm\":\"1,1\"}");
-        ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
+        CuteConfig cuteConfig = new CuteConfig();
+        cuteConfig.setMessageInterval("{\"llm\":\"1,1\"}");
+        ReflectionTestUtils.setField(handler, "cuteConfig", cuteConfig);
         return handler;
     }
 

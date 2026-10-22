@@ -8,7 +8,7 @@ import org.wwz.ai.domain.agent.adapter.port.BrowserBskConnectionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliInvocation;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliResult;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
@@ -90,7 +90,7 @@ public class BrowserTool implements BaseTool {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
             return ToolResultPayload.failure("运行时未装配", "运行时未装配", null, "runtime_unavailable");
         }
-        ReactorRuntimeDependencies deps = agentContext.getRuntimeDependencies();
+        CuteRuntimeDependencies deps = agentContext.getRuntimeDependencies();
         String userId = StringUtils.trimToNull(agentContext.getUserId());
         if (userId == null) {
             return ToolResultPayload.failure("缺少用户身份", "缺少用户身份", null, "missing userId");
@@ -148,7 +148,7 @@ public class BrowserTool implements BaseTool {
         return ToolResultPayload.okData(TOOL_NAME, fields);
     }
 
-    private Execution executeCli(ReactorRuntimeDependencies deps,
+    private Execution executeCli(CuteRuntimeDependencies deps,
                                        List<String> args,
                                        String userId,
                                        CliExecutionPort cli,
@@ -160,7 +160,7 @@ public class BrowserTool implements BaseTool {
             return Execution.failed(BrowserCliSupport.browserTimeout(BROWSER_TIMEOUT_TEXT));
         }
         BrowserRelayPort relay = deps.getOptionalBrowserRelayPort();
-        // 021：backend=bsk 时扩展连的是 bsk WS 网关而非老 Reactor relay，
+        // 021：backend=bsk 时扩展连的是 bsk WS 网关而非老 Cute relay，
         // relay.isOnline(userId) 必然为 false——不能用老守卫拦截 bsk 调用。
         // bsk 链路有自己的在线状态端口（BrowserBskConnectionPort）。
         //
@@ -230,7 +230,7 @@ public class BrowserTool implements BaseTool {
         }
         Map<String, String> env = new LinkedHashMap<>();
         // 021 双后端开关：backend=bsk 时整条解析执行链路由 CLI 内部切换到
-        // ReactorPage（bsk 后端）。
+        // CutePage（bsk 后端）。
         //
         // 注意 bsk 模式**不注入** OPENCLI_RELAY_URL：那个变量在 opencli 侧是
         // relay 的 HTTP 语义（POST /internal/browser/rpc），在 bsk 侧却是
@@ -244,7 +244,7 @@ public class BrowserTool implements BaseTool {
                 // 对齐 OpenCLI 的交互模型（名字即身份，不存在就自动建）。Java 不替 agent
                 // 决定用哪个会话，否则 agent 永远只能挤在注入的那一个里。
             } else {
-                // opencli 命令面 + bsk 后端：解析执行链路由 CLI 内部切到 ReactorPage。
+                // opencli 命令面 + bsk 后端：解析执行链路由 CLI 内部切到 CutePage。
                 env.put("BROWSER_BACKEND", "bsk");
             }
         } else {
@@ -345,7 +345,7 @@ public class BrowserTool implements BaseTool {
         return "opencli_execution_failed";
     }
 
-    private static String resolveRelayUrl(OpenCliProperties properties, ReactorRuntimeDependencies deps) {
+    private static String resolveRelayUrl(OpenCliProperties properties, CuteRuntimeDependencies deps) {
         if (StringUtils.isNotBlank(properties.getRelayUrl())) {
             return properties.getRelayUrl().trim();
         }
@@ -358,7 +358,7 @@ public class BrowserTool implements BaseTool {
      * <p>没显式配置时按本机端口 + CLI 侧端点路径拼出来：本机部署（CLI 由
      * Java 拉起、扩展在同一台机器）零配置即可跑通。</p>
      */
-    private static String resolveBskRelayUrl(OpenCliProperties properties, ReactorRuntimeDependencies deps) {
+    private static String resolveBskRelayUrl(OpenCliProperties properties, CuteRuntimeDependencies deps) {
         String configured = StringUtils.trimToNull(properties.getBskRelayUrl());
         if (configured != null) {
             return configured;
@@ -366,7 +366,7 @@ public class BrowserTool implements BaseTool {
         return "ws://127.0.0.1:" + resolvePort(deps) + properties.getBskCliPath();
     }
 
-    private static String resolvePort(ReactorRuntimeDependencies deps) {
+    private static String resolvePort(CuteRuntimeDependencies deps) {
         if (deps.getEnvironment() != null) {
             return deps.getEnvironment().getProperty("local.server.port",
                     deps.getEnvironment().getProperty("server.port", "8100"));
@@ -374,9 +374,9 @@ public class BrowserTool implements BaseTool {
         return "8100";
     }
 
-    private static String resolveSecret(ReactorRuntimeDependencies deps) {
+    private static String resolveSecret(CuteRuntimeDependencies deps) {
         if (deps.getEnvironment() != null) {
-            return StringUtils.defaultString(deps.getEnvironment().getProperty("reactor.browser-relay.internal-rpc-secret"));
+            return StringUtils.defaultString(deps.getEnvironment().getProperty("cute.browser-relay.internal-rpc-secret"));
         }
         return "";
     }

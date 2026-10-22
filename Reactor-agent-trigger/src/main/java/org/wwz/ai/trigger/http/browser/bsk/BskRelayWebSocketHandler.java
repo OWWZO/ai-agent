@@ -24,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <ul>
  *   <li>bsk 帧（请求 / 响应 / 事件）在本类内闭环处理，
  *       绝不进入 {@code BrowserRelayFrameMapper}——那个 mapper 会把
- *       bsk 的扁平 {@code {id, result}} 帧误读成 Reactor 命令结果。</li>
+ *       bsk 的扁平 {@code {id, result}} 帧误读成 Cute 命令结果。</li>
  *   <li>仅当帧被分类为 {@link BskFrameKind#REACTOR_LEGACY} 时才委托给
  *       {@code BrowserRelayHub}。bsk 专用端点下这条路径正常不会命中，
  *       但保留它可以让旧扩展误连本端点时的行为与旧端点一致。</li>
@@ -36,7 +36,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Slf4j
 @Component
-@ConditionalOnProperty(prefix = "reactor.browser-bsk", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "cute.browser-bsk", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class BskRelayWebSocketHandler extends TextWebSocketHandler implements SubProtocolCapable {
 
     private final BskFrameRelay relay;
@@ -45,7 +45,7 @@ public class BskRelayWebSocketHandler extends TextWebSocketHandler implements Su
     /** 每条连接的握手前状态缓存：sessionId → attributes 快照（供 SubProtocolCapable）。 */
     private final Map<String, Map<String, Object>> sessionAttributes = new ConcurrentHashMap<>();
 
-    /** Reactor 旧帧的委托 seam；默认走 {@code BrowserRelayHub}。 */
+    /** Cute 旧帧的委托 seam；默认走 {@code BrowserRelayHub}。 */
     public interface LegacyDelegate {
         void onText(WebSocketSession session, String payload);
     }
@@ -56,7 +56,7 @@ public class BskRelayWebSocketHandler extends TextWebSocketHandler implements Su
      * （与 {@code BrowserRelayHub} 的同款坑一致）。
      *
      * <p>{@code LegacyDelegate} 只在测试里注入
-     * （生产没有 Reactor 旧帧会连到 bsk 专用端点的场景），不注册为 bean。
+     * （生产没有 Cute 旧帧会连到 bsk 专用端点的场景），不注册为 bean。
      * 生产走 {@code legacyDelegate == null} 的分支，旧帧仅记录 debug 日志。</p>
      */
     @Autowired

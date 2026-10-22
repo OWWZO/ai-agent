@@ -1,8 +1,8 @@
 package org.wwz.ai.domain.agent.runtime.agent;
 
 import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
 
 import java.util.Map;
@@ -20,18 +20,18 @@ public final class AgentBootstrap {
     public record Profile(
             String name,
             String description,
-            Function<ReactorConfig, Map<String, String>> systemPromptMap,
+            Function<CuteConfig, Map<String, String>> systemPromptMap,
             String defaultSystemPrompt,
-            Function<ReactorConfig, String> modelName,
-            ToIntFunction<ReactorConfig> maxSteps,
+            Function<CuteConfig, String> modelName,
+            ToIntFunction<CuteConfig> maxSteps,
             boolean wireDigitalEmployeePrompt,
             boolean bindContextTools
     ) {
     }
 
-    public static ReactorConfig configure(BaseAgent agent, AgentContext context, Profile profile) {
-        ReactorRuntimeDependencies deps = agent.requireRuntimeDependencies(context);
-        ReactorConfig config = deps.requireReactorConfig();
+    public static CuteConfig configure(BaseAgent agent, AgentContext context, Profile profile) {
+        CuteRuntimeDependencies deps = agent.requireRuntimeDependencies(context);
+        CuteConfig config = deps.requireCuteConfig();
         agent.setName(profile.name());
         agent.setDescription(profile.description());
         agent.setContext(context);

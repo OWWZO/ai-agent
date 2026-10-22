@@ -6,8 +6,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpRequest;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.File;
@@ -151,7 +151,7 @@ public class DocToolRemoteProtocolTest {
 
     @Test
     public void bothFailWhenCodeInterpreterUrlMissing() {
-        ReactorConfig config = new ReactorConfig();
+        CuteConfig config = new CuteConfig();
         AgentContext noUrl = newContext(http, printer, config, "");
         noUrl.bindCurrentToolArtifactSource(
                 ToolArtifactSource.builder().toolCallId("c").toolName("t").build());
@@ -333,7 +333,7 @@ public class DocToolRemoteProtocolTest {
         return newContext(port, p, configWithUrl(), "/workspace/session-1");
     }
 
-    private AgentContext newContext(RemoteHttpPort port, Printer p, ReactorConfig config, String workspaceRoot) {
+    private AgentContext newContext(RemoteHttpPort port, Printer p, CuteConfig config, String workspaceRoot) {
         return AgentContext.builder()
                 .requestId("req-1")
                 .sessionId("session-1")
@@ -341,15 +341,15 @@ public class DocToolRemoteProtocolTest {
                 .query("q")
                 .printer(p)
                 .workspaceRoot(workspaceRoot)
-                .runtimeDependencies(ReactorRuntimeDependencies.builder()
-                        .reactorConfig(config)
+                .runtimeDependencies(CuteRuntimeDependencies.builder()
+                        .cuteConfig(config)
                         .remoteHttpPort(port)
                         .build())
                 .build();
     }
 
-    private ReactorConfig configWithUrl() {
-        ReactorConfig config = new ReactorConfig();
+    private CuteConfig configWithUrl() {
+        CuteConfig config = new CuteConfig();
         org.springframework.test.util.ReflectionTestUtils.setField(
                 config, "codeInterpreterUrl", "https://autobots.example.com");
         return config;

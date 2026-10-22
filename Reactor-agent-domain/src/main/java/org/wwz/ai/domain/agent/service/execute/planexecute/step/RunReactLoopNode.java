@@ -6,7 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReactFinalAnswerResolver;
@@ -30,7 +30,7 @@ import org.wwz.ai.domain.agent.service.execute.planexecute.step.factory.DefaultP
 public class RunReactLoopNode extends AbstractExecuteSupport {
 
     @Resource
-    private ReactorConfig reactorConfig;
+    private CuteConfig cuteConfig;
 
     @Resource
     private CloseTurnNode closeTurnNode;
@@ -108,12 +108,12 @@ public class RunReactLoopNode extends AbstractExecuteSupport {
             planner.setSystemPrompt(PlanSolvePrompt.ensureApprovedExecution(planner.getSystemPrompt()));
         }
 
-        if (reactorConfig != null) {
-            Integer maxSteps = reactorConfig.getPlannerMaxSteps();
+        if (cuteConfig != null) {
+            Integer maxSteps = cuteConfig.getPlannerMaxSteps();
             if (maxSteps != null && maxSteps > 0) {
                 planner.setMaxSteps(maxSteps);
             }
-            String plannerModel = reactorConfig.getPlannerModelName();
+            String plannerModel = cuteConfig.getPlannerModelName();
             if (StringUtils.isNotBlank(plannerModel) && agentContext.getRuntimeDependencies() != null) {
                 planner.setLlm(new LLM(plannerModel, "", agentContext.getRuntimeDependencies()));
             }

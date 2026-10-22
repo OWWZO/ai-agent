@@ -396,7 +396,7 @@ public class McpRegistry implements McpToolExecutor {
     }
 
     /**
-     * 基于已初始化客户端发现工具，并缓存为 Reactor 可直接消费的 McpToolInfo。
+     * 基于已初始化客户端发现工具，并缓存为 Cute 可直接消费的 McpToolInfo。
      */
     private List<McpToolInfo> discoverTools(McpClientRuntime runtime) {
         List<McpToolInfo> toolInfos = new ArrayList<>();

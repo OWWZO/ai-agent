@@ -36,8 +36,8 @@ public final class BskFrameRouter {
      * 分类一条入站文本帧。
      *
      * <p>返回 {@link BskFrameKind#REACTOR_LEGACY} 表示这条帧不是 bsk 帧，
-     * 调用方应把它交给现有 Reactor 中继（{@code BrowserRelayHub}）。
-     * 这样两种协议在同一条连接上互不干扰，而不需要 Java 认识 Reactor 帧格式。</p>
+     * 调用方应把它交给现有 Cute 中继（{@code BrowserRelayHub}）。
+     * 这样两种协议在同一条连接上互不干扰，而不需要 Java 认识 Cute 帧格式。</p>
      *
      * @param payload 原始文本，允许为 null / 空白 / 非法 JSON
      * @return 分类结果，永不为 null
@@ -81,19 +81,19 @@ public final class BskFrameRouter {
         boolean hasResult = frame.containsKey("result");
         boolean hasError = frame.containsKey("error");
         if (hasResult || hasError) {
-            // 响应帧必须带字符串 id；缺 id 是畸形 bsk，不是 Reactor 帧。
+            // 响应帧必须带字符串 id；缺 id 是畸形 bsk，不是 Cute 帧。
             if (!(frame.get("id") instanceof String id) || StringUtils.isBlank(id)) {
                 return BskFrameKind.UNKNOWN;
             }
             // Rust: (Some,Some) → AmbiguousResponse。
             return hasResult == hasError ? BskFrameKind.UNKNOWN : BskFrameKind.BSK_RESPONSE;
         }
-        // 没有任何 bsk 协议键。Reactor 旧帧的判别键是 `type`（hello / ping /
+        // 没有任何 bsk 协议键。Cute 旧帧的判别键是 `type`（hello / ping /
         // tab.changed）与 `ok`（命令结果 {id, ok, data}）。
         if (frame.containsKey("type") || frame.containsKey("ok")) {
             return BskFrameKind.REACTOR_LEGACY;
         }
-        // 只剩 id、既无 result/error 也无 Reactor 判别键：
+        // 只剩 id、既无 result/error 也无 Cute 判别键：
         // Rust 侧是 InvalidFrame("expected result or error")，按畸形 bsk 处理。
         return BskFrameKind.UNKNOWN;
     }

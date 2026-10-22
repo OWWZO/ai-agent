@@ -20,8 +20,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-import static org.wwz.ai.domain.agent.reactor.model.constant.Constants.RUNNING;
-import static org.wwz.ai.domain.agent.reactor.model.constant.Constants.SUCCESS;
+import static org.wwz.ai.domain.agent.cute.model.constant.Constants.RUNNING;
+import static org.wwz.ai.domain.agent.cute.model.constant.Constants.SUCCESS;
 
 /**
  * Agent 增量响应兼容处理器。

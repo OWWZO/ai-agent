@@ -28,7 +28,7 @@ import java.util.Set;
  *     <li>{@code relativePath} 相对 CLI 的 cwd（即 Agent workspace），也可写作 {@code path}；</li>
  *     <li>不允许绝对路径，不允许 {@code ..}；</li>
  *     <li>这里只做协议解析，是否落在 workspace 内由 domain 的物化模块校验；</li>
- *     <li>下载 URL 不由 opencli 生成，仍由 Reactor 文件服务登记后返回。</li>
+ *     <li>下载 URL 不由 opencli 生成，仍由 Cute 文件服务登记后返回。</li>
  * </ul>
  * 解析失败或字段缺失时返回空列表，绝不影响 CLI 主结果。
  */

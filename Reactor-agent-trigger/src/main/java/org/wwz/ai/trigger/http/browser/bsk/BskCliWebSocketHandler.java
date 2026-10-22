@@ -29,7 +29,7 @@ import java.util.concurrent.RejectedExecutionException;
  */
 @Slf4j
 @Component
-@ConditionalOnProperty(prefix = "reactor.browser-bsk", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "cute.browser-bsk", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class BskCliWebSocketHandler extends TextWebSocketHandler {
 
     private final BskCliRelay cliRelay;

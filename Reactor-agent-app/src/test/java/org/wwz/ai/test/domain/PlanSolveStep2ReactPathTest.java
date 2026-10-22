@@ -3,7 +3,7 @@ package org.wwz.ai.test.domain;
 import org.junit.Assert;
 import org.junit.Test;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReactImplAgent;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
@@ -15,7 +15,7 @@ import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.prompt.PlanSolvePrompt;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.agent.ReactFinalAnswerResolver;
-import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
+import org.wwz.ai.test.domain.support.CuteRuntimeTestSupport;
 
 import java.util.List;
 import java.util.Map;
@@ -78,7 +78,7 @@ public class PlanSolveStep2ReactPathTest {
     }
 
     private ReactImplAgent newReactAgent(String sopPrompt, String sessionId) {
-        ReactorConfig config = new ReactorConfig();
+        CuteConfig config = new CuteConfig();
         ReflectionTestUtils.setField(config, "reactMaxSteps", 5);
         ReflectionTestUtils.setField(config, "reactModelName", "mock-model");
         ReflectionTestUtils.setField(config, "llmSettingsMap", Map.of(
@@ -101,7 +101,7 @@ public class PlanSolveStep2ReactPathTest {
                 .query("q")
                 .sopPrompt(sopPrompt)
                 .toolCollection(new ToolCollection())
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config))
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(config))
                 .printer(new NoopPrinter())
                 .build();
         return new ReactImplAgent(context);

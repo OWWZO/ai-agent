@@ -6,12 +6,12 @@ import org.mockito.Mockito;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.wwz.ai.config.reactor.ReplayProjectorAutoConfiguration;
-import org.wwz.ai.config.reactor.DataAgentInitRunner;
-import org.wwz.ai.config.reactor.startup.H2SchemaBootstrap;
-import org.wwz.ai.config.reactor.data.Es7HighLevelClientConfig;
+import org.wwz.ai.config.cute.ReplayProjectorAutoConfiguration;
+import org.wwz.ai.config.cute.DataAgentInitRunner;
+import org.wwz.ai.config.cute.startup.H2SchemaBootstrap;
+import org.wwz.ai.config.cute.data.Es7HighLevelClientConfig;
 import org.wwz.ai.domain.agent.ledger.IExecutionLedgerReadRepository;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerQueryService;
 import org.wwz.ai.domain.agent.ledger.impl.ExecutionLedgerQueryServiceImpl;
 import org.wwz.ai.domain.agent.ledger.replay.ConversationHistoryReplayService;
@@ -20,11 +20,11 @@ import org.wwz.ai.domain.agent.runtime.askuser.IUserQuestionRepository;
 import org.wwz.ai.domain.agent.runtime.desktopcontrol.IDesktopControlRepository;
 import org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog;
 import org.wwz.ai.infrastructure.adapter.repository.ExecutionLedgerReadRepository;
-import org.wwz.ai.infrastructure.dao.reactor.IArtifactLedgerDao;
-import org.wwz.ai.infrastructure.dao.reactor.IDialogueRunLedgerDao;
-import org.wwz.ai.infrastructure.dao.reactor.IDialogueSessionLedgerDao;
-import org.wwz.ai.infrastructure.dao.reactor.ILlmInvocationLedgerDao;
-import org.wwz.ai.infrastructure.dao.reactor.IToolInvocationLedgerDao;
+import org.wwz.ai.infrastructure.dao.cute.IArtifactLedgerDao;
+import org.wwz.ai.infrastructure.dao.cute.IDialogueRunLedgerDao;
+import org.wwz.ai.infrastructure.dao.cute.IDialogueSessionLedgerDao;
+import org.wwz.ai.infrastructure.dao.cute.ILlmInvocationLedgerDao;
+import org.wwz.ai.infrastructure.dao.cute.IToolInvocationLedgerDao;
 import org.wwz.ai.application.agent.authorization.ConversationSessionAuthorizationService;
 import org.wwz.ai.application.agent.dataquery.initialization.DataAgentInitializationApplicationService;
 import org.wwz.ai.trigger.http.agent.AgentConversationHistoryController;
@@ -32,7 +32,7 @@ import org.wwz.ai.trigger.http.agent.AgentConversationHistoryController;
 import java.lang.reflect.Field;
 
 /**
- * 验证 Phase 1 迁出的 Reactor 装配仍能在 app 层稳定提供 Bean。
+ * 验证 Phase 1 迁出的 Cute 装配仍能在 app 层稳定提供 Bean。
  */
 public class ReplayProjectorBeanTopologyTest {
 
@@ -41,7 +41,7 @@ public class ReplayProjectorBeanTopologyTest {
         Assert.assertTrue(ReplayProjectorAutoConfiguration.class.getPackageName().startsWith("org.wwz.ai.config"));
         Assert.assertTrue(Es7HighLevelClientConfig.class.getPackageName().startsWith("org.wwz.ai.config"));
         Assert.assertTrue(DataAgentInitRunner.class.getPackageName().startsWith("org.wwz.ai.config"));
-        Assert.assertTrue(ReactorConfig.class.getPackageName().startsWith("org.wwz.ai.domain.agent.reactor.config"));
+        Assert.assertTrue(CuteConfig.class.getPackageName().startsWith("org.wwz.ai.domain.agent.cute.config"));
 
         AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
         context.register(ReplayProjectorAutoConfiguration.class);
@@ -70,7 +70,7 @@ public class ReplayProjectorBeanTopologyTest {
         for (Field field : DataAgentInitRunner.class.getDeclaredFields()) {
             String packageName = field.getType().getPackageName();
             Assert.assertFalse("Runner 不应注入 Domain 技术 facade: " + field.getType().getName(),
-                    packageName.equals("org.wwz.ai.domain.agent.reactor.service"));
+                    packageName.equals("org.wwz.ai.domain.agent.cute.service"));
             Assert.assertFalse("Runner 不应直接注入 Infrastructure: " + field.getType().getName(),
                     packageName.startsWith("org.wwz.ai.infrastructure"));
         }

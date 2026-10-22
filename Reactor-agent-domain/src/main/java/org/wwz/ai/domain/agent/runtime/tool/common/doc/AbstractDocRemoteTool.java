@@ -11,7 +11,7 @@ import org.wwz.ai.domain.agent.adapter.port.RemoteHttpRequest;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.File;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolArgs;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
@@ -97,7 +97,7 @@ public abstract class AbstractDocRemoteTool implements BaseTool {
         try {
             // 工具输入可能来自 JSON 字符串或结构化 Map，先统一成字符串键的参数表。
             Map<String, Object> params = ToolArgs.map(input);
-            ReactorConfig config = requireReactorConfig();
+            CuteConfig config = requireCuteConfig();
             String base = StringUtils.trimToEmpty(config.getCodeInterpreterUrl());
             if (StringUtils.isBlank(base)) {
                 return failure(getName() + " 执行失败：未配置 autobots.autoagent.code_interpreter_url");
@@ -244,16 +244,16 @@ public abstract class AbstractDocRemoteTool implements BaseTool {
         return ToolResultPayload.failureFrom(message, null);
     }
 
-    protected ReactorConfig requireReactorConfig() {
+    protected CuteConfig requireCuteConfig() {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException(getName() + " 缺少 ReactorRuntimeDependencies");
+            throw new IllegalStateException(getName() + " 缺少 CuteRuntimeDependencies");
         }
-        return agentContext.getRuntimeDependencies().requireReactorConfig();
+        return agentContext.getRuntimeDependencies().requireCuteConfig();
     }
 
     protected RemoteHttpPort requireRemoteHttpPort() {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException(getName() + " 缺少 ReactorRuntimeDependencies");
+            throw new IllegalStateException(getName() + " 缺少 CuteRuntimeDependencies");
         }
         return agentContext.getRuntimeDependencies().requireRemoteHttpPort();
     }

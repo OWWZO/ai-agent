@@ -7,7 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpRequest;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -27,7 +27,7 @@ public final class DesktopSessionRemote {
     }
 
     public static OpenResult open(RemoteHttpPort httpPort,
-                                  ReactorConfig config,
+                                  CuteConfig config,
                                   String requestId,
                                   String sessionId,
                                   String ownerKey,
@@ -66,7 +66,7 @@ public final class DesktopSessionRemote {
     }
 
     public static void closeQuietly(RemoteHttpPort httpPort,
-                                    ReactorConfig config,
+                                    CuteConfig config,
                                     String requestId,
                                     String sessionId,
                                     String ownerKey) {

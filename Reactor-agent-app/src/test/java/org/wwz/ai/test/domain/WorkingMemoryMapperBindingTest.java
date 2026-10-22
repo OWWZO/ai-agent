@@ -17,7 +17,7 @@ import java.util.Map;
  */
 public class WorkingMemoryMapperBindingTest {
 
-    private static final String NAMESPACE = "org.wwz.ai.infrastructure.dao.reactor.IWorkingMemoryMessageDao";
+    private static final String NAMESPACE = "org.wwz.ai.infrastructure.dao.cute.IWorkingMemoryMessageDao";
 
     @Test
     public void shouldParseWorkingMemoryMessageMapper() throws Exception {

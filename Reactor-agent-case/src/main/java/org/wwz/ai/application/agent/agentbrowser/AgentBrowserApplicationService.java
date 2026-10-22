@@ -45,7 +45,7 @@ public class AgentBrowserApplicationService {
             throw new IllegalArgumentException("userId 不能为空");
         }
         if (agentBrowserSessionPort == null || !agentBrowserSessionPort.isConfigured()) {
-            throw new IllegalStateException("Agent 浏览器未配置，请检查 reactor.agent-browser.enabled 和 KERNEL_API_KEY");
+            throw new IllegalStateException("Agent 浏览器未配置，请检查 cute.agent-browser.enabled 和 KERNEL_API_KEY");
         }
         return agentBrowserSessionPort;
     }

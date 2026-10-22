@@ -35,12 +35,12 @@ public class ImageGenerationMapperBindingTest {
                         configuration.getSqlFragments()).parse();
             }
 
-            String namespace = "org.wwz.ai.infrastructure.dao.reactor." + mapper.getValue();
+            String namespace = "org.wwz.ai.infrastructure.dao.cute." + mapper.getValue();
             Assert.assertTrue(configuration.hasStatement(namespace + ".insert"));
             Assert.assertTrue(configuration.hasStatement(namespace + ".queryByToolInvocationId"));
             Assert.assertTrue(configuration.hasStatement(namespace + ".queryByRequestToolCall"));
         }
-        String imageNamespace = "org.wwz.ai.infrastructure.dao.reactor.IToolOutputImageGenerationDao";
+        String imageNamespace = "org.wwz.ai.infrastructure.dao.cute.IToolOutputImageGenerationDao";
         Assert.assertTrue(configuration.hasStatement(imageNamespace + ".countByRequestSource"));
         Assert.assertTrue(configuration.hasStatement(imageNamespace + ".queryPageByRequestSource"));
     }

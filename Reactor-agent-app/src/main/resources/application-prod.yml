@@ -1,9 +1,9 @@
 server:
   port: 8100
 
-reactor:
+cute:
   # 本地文件产物物化模式：
-  #   register = 后端与文件服务共享 workspace 目录（docker-compose 的 reactor-data 卷），零拷贝登记；
+  #   register = 后端与文件服务共享 workspace 目录（docker-compose 的 cute-data 卷），零拷贝登记；
   #   upload   = 后端与文件服务不共享目录，改走 multipart 二进制上传。
   file-artifact:
     local-file-mode: ${REACTOR_FILE_ARTIFACT_LOCAL_FILE_MODE:register}
@@ -138,7 +138,7 @@ autobots.autoagent.web_search.gpt_base_url:
 autobots.autoagent.web_search.gpt_model: grok-4.5
 autobots.autoagent.web_search.gpt_interface_url: /chat/completions
 
-# Exa：与 reactor-tool EXA_* 对齐；mode=exa 或 auto 且配置了 key 时启用
+# Exa：与 cute-tool EXA_* 对齐；mode=exa 或 auto 且配置了 key 时启用
 autobots.autoagent.web_search.exa_api_key: ""
 autobots.autoagent.web_search.exa_search_url: https://api.exa.ai/search
 
@@ -184,7 +184,7 @@ autobots:
     # 单次 LLM 工具调用业务超时，单位秒；10 分钟响应建议至少配置为 1200
     llm-timeout-seconds: 1200
     workspace:
-      # Backend 与 reactor-tool 通过 Compose 共享同一份持久化工作区。
+      # Backend 与 cute-tool 通过 Compose 共享同一份持久化工作区。
       root-template: "${WORKSPACE_ROOT:/data/skilloutput}/{sessionId}"
     planner:
       max_steps: 150
@@ -203,7 +203,7 @@ autobots:
     plan-solve-main-tool-list: "Agent,TaskCreate,TaskGet,TaskUpdate,TaskList,TodoWrite,TaskStop,TaskOutput,SendMessage,EnterPlanMode,ExitPlanMode,AskUserQuestion,ToolSearch,ToolDescribe,ToolCall,workspace_read,workspace_list,workspace_glob,workspace_grep,workspace_write,workspace_edit,code_mode,skill_view,skills_search,memory,session_search,emit_ui_patch,emit_ui_tree,list_ui_components,get_genui_guide,image_ocr,canvas_publish,pdf_reader,pdf_structure,word_reader,text_processor,markdown_processor,html_processor,excel_reader,csv_processor"
     code_interpreter_url: "http://127.0.0.1:1601"
     deep_search_url: "http://127.0.0.1:1601"
-    web_fetch_url: "http://reactor-tool:1601"
+    web_fetch_url: "http://cute-tool:1601"
     multimodalagent_url: "http://127.0.0.1:1601"
     web_fetch_proxy: "${PROXY:http://127.0.0.1:7890}"
     llm_proxy: "${PROXY:http://127.0.0.1:7890}"
@@ -251,7 +251,7 @@ autobots:
       schema: ${spring.datasource.query.schema}
       username: ${spring.datasource.query.username}
       password: ${spring.datasource.query.password}
-      key: reactor-query-datasource
+      key: cute-query-datasource
     model-list:
       - name: 超市销售明细数据
         id: t_qtpbgamccmrctthlurauclckq

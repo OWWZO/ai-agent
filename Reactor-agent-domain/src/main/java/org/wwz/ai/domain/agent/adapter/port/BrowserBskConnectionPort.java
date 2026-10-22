@@ -4,7 +4,7 @@ package org.wwz.ai.domain.agent.adapter.port;
  * bsk 浏览器连接的在线状态端口（021）。
  *
  * <p>bsk 扩展连的是 <b>bsk 专用 WS 网关</b>（{@code /api/agent/browser/bsk-relay}），
- * 与 Reactor 老 relay 是两条互不相干的链路。老 relay 的连接表里没有 bsk 的连接，
+ * 与 Cute 老 relay 是两条互不相干的链路。老 relay 的连接表里没有 bsk 的连接，
  * 所以「浏览器是否已连接」不能只看老 relay——否则前端按钮在 bsk 扩展已连上的情况下
  * 仍然显示未连接。</p>
  *

@@ -7,10 +7,10 @@ import org.springframework.stereotype.Repository;
 import org.wwz.ai.domain.agent.rag.model.chatmodel.ChatModelInfo;
 import org.wwz.ai.domain.agent.rag.model.chatmodel.ChatModelSchema;
 import org.wwz.ai.domain.agent.rag.port.IChatModelMetadataRepository;
-import org.wwz.ai.infrastructure.dao.reactor.chatmodel.ChatModelInfoMapper;
-import org.wwz.ai.infrastructure.dao.reactor.chatmodel.ChatModelSchemaMapper;
-import org.wwz.ai.infrastructure.dao.po.reactor.chatmodel.ChatModelInfoPO;
-import org.wwz.ai.infrastructure.dao.po.reactor.chatmodel.ChatModelSchemaPO;
+import org.wwz.ai.infrastructure.dao.cute.chatmodel.ChatModelInfoMapper;
+import org.wwz.ai.infrastructure.dao.cute.chatmodel.ChatModelSchemaMapper;
+import org.wwz.ai.infrastructure.dao.po.cute.chatmodel.ChatModelInfoPO;
+import org.wwz.ai.infrastructure.dao.po.cute.chatmodel.ChatModelSchemaPO;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

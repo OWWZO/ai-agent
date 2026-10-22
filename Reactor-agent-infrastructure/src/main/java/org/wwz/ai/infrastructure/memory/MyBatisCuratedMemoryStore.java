@@ -6,7 +6,7 @@ import org.wwz.ai.domain.agent.memory.ltm.CuratedMemoryScope;
 import org.wwz.ai.domain.agent.memory.ltm.CuratedMemoryStore;
 import org.wwz.ai.domain.agent.memory.ltm.CuratedMemoryWriteResult;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
-import org.wwz.ai.infrastructure.dao.reactor.ILtmCuratedEntryDao;
+import org.wwz.ai.infrastructure.dao.cute.ILtmCuratedEntryDao;
 
 import java.util.ArrayList;
 import java.util.List;

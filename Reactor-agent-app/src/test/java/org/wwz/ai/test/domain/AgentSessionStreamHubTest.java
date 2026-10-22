@@ -10,8 +10,8 @@ import org.wwz.ai.application.agent.run.FollowAttachResult;
 import org.wwz.ai.application.agent.stream.AgentStreamProjection;
 import org.wwz.ai.application.agent.stream.SessionProjectionRegistry;
 import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
-import org.wwz.ai.trigger.http.reactor.support.AgentSessionStreamHub;
-import org.wwz.ai.trigger.http.reactor.support.SseEmitterAgentSessionStream;
+import org.wwz.ai.trigger.http.cute.support.AgentSessionStreamHub;
+import org.wwz.ai.trigger.http.cute.support.SseEmitterAgentSessionStream;
 import org.wwz.ai.types.agent.config.AgentExecutorProperties;
 
 import java.time.Duration;

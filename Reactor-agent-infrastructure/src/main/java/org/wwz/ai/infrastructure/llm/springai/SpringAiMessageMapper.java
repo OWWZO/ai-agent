@@ -12,7 +12,7 @@ import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.MimeType;
 import org.springframework.util.MimeTypeUtils;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.llm.LlmMessage;
 import org.wwz.ai.domain.agent.runtime.llm.LlmToolCall;
@@ -33,7 +33,7 @@ import java.util.Map;
 public class SpringAiMessageMapper {
 
     @Resource
-    private ReactorConfig reactorConfig;
+    private CuteConfig cuteConfig;
 
     public List<org.springframework.ai.chat.messages.Message> convert(List<LlmMessage> messages) {
         List<org.springframework.ai.chat.messages.Message> convertedMessages = new ArrayList<>();
@@ -118,7 +118,7 @@ public class SpringAiMessageMapper {
         String toolCallId = StringUtils.trimToEmpty(message.getToolCallId());
         String toolName = StringUtils.defaultIfBlank(toolCallNameIndex.get(toolCallId), "tool");
         String content = StringUtil.textDesensitization(
-                StringUtils.defaultString(message.getContent()), reactorConfig.getSensitivePatterns());
+                StringUtils.defaultString(message.getContent()), cuteConfig.getSensitivePatterns());
         ToolResponseMessage.ToolResponse response = new ToolResponseMessage.ToolResponse(toolCallId, toolName, content);
         return ToolResponseMessage.builder()
                 .responses(List.of(response))

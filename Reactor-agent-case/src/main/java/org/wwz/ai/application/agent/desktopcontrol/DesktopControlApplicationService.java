@@ -4,7 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.runtime.desktopcontrol.DesktopControlObservationSupport;
 import org.wwz.ai.domain.agent.runtime.desktopcontrol.DesktopControlRecord;
 import org.wwz.ai.domain.agent.runtime.desktopcontrol.DesktopControlStatuses;
@@ -24,7 +24,7 @@ public class DesktopControlApplicationService {
 
     private final IDesktopControlRepository desktopControlRepository;
     private final RemoteHttpPort remoteHttpPort;
-    private final ReactorConfig reactorConfig;
+    private final CuteConfig cuteConfig;
 
     public Map<String, Object> complete(String controlId) {
         if (StringUtils.isBlank(controlId)) {
@@ -117,7 +117,7 @@ public class DesktopControlApplicationService {
         }
         DesktopSessionRemote.closeQuietly(
                 remoteHttpPort,
-                reactorConfig,
+                cuteConfig,
                 record.getSourceRequestId(),
                 record.getSessionId(),
                 record.getOwnerKey());

@@ -8,15 +8,15 @@ import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.CanvasPublishToolOutput;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.CanvasPublishTool;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspacePaths;
-import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
+import org.wwz.ai.test.domain.support.CuteRuntimeTestSupport;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -116,10 +116,10 @@ public class CanvasPublishToolTest {
     }
 
     private AgentContext createAgentContext(FileArtifactPort fileArtifactPort, List<File> productFiles) {
-        ReactorConfig reactorConfig = new ReactorConfig();
-        ReflectionTestUtils.setField(reactorConfig, "codeInterpreterUrl", "http://127.0.0.1:1601");
-        ReactorRuntimeDependencies base = ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig);
-        ReactorRuntimeDependencies dependencies = base.toBuilder()
+        CuteConfig cuteConfig = new CuteConfig();
+        ReflectionTestUtils.setField(cuteConfig, "codeInterpreterUrl", "http://127.0.0.1:1601");
+        CuteRuntimeDependencies base = CuteRuntimeTestSupport.runtimeDependencies(cuteConfig);
+        CuteRuntimeDependencies dependencies = base.toBuilder()
                 .fileArtifactPort(fileArtifactPort)
                 .build();
         AgentContext context = AgentContext.builder()

@@ -18,8 +18,8 @@ import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
-import org.wwz.ai.domain.agent.runtime.ReactorLlmDependencies;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteLlmDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -73,25 +73,25 @@ public class LLM {
     private static final LlmRequestAssembler REQUEST_ASSEMBLER = new LlmRequestAssembler();
 
     /** 显式注入的运行时依赖。 */
-    private final transient ReactorRuntimeDependencies runtimeDependencies;
+    private final transient CuteRuntimeDependencies runtimeDependencies;
     private final transient LlmCompletionPort completionPort;
     private final transient StreamResponseHandler streamResponseHandler;
     /** false 表示本实例已是备援路径，禁止再嵌套 fallback。 */
     private final boolean allowModelFallback;
 
-    public LLM(String modelName, String llmErp, ReactorRuntimeDependencies runtimeDependencies) {
+    public LLM(String modelName, String llmErp, CuteRuntimeDependencies runtimeDependencies) {
         this(modelName, llmErp, runtimeDependencies, true);
     }
 
     private LLM(String modelName,
                 String llmErp,
-                ReactorRuntimeDependencies runtimeDependencies,
+                CuteRuntimeDependencies runtimeDependencies,
                 boolean allowModelFallback) {
         this.llmErp = llmErp;
         this.allowModelFallback = allowModelFallback;
         this.modelReference = modelName;
         this.runtimeDependencies = requireRuntimeDependencies(runtimeDependencies);
-        ReactorLlmDependencies llmDependencies = this.runtimeDependencies.requireLlmDependencies();
+        CuteLlmDependencies llmDependencies = this.runtimeDependencies.requireLlmDependencies();
         this.completionPort = llmDependencies.getCompletionPort();
         this.streamResponseHandler = llmDependencies.getStreamResponseHandler();
 
@@ -842,9 +842,9 @@ public class LLM {
         }
     }
 
-    private ReactorRuntimeDependencies requireRuntimeDependencies(ReactorRuntimeDependencies dependencies) {
+    private CuteRuntimeDependencies requireRuntimeDependencies(CuteRuntimeDependencies dependencies) {
         if (dependencies == null) {
-            throw new IllegalArgumentException("ReactorRuntimeDependencies must not be null");
+            throw new IllegalArgumentException("CuteRuntimeDependencies must not be null");
         }
         return dependencies;
     }

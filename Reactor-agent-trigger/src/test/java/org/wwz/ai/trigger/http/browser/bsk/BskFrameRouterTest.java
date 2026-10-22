@@ -105,30 +105,30 @@ public class BskFrameRouterTest {
                 "{\"event\":42}"));
     }
 
-    // ── Reactor 旧帧 ─────────────────────────────────────────
+    // ── Cute 旧帧 ─────────────────────────────────────────
 
     @Test
-    public void reactorHelloIsLegacy() {
+    public void cuteHelloIsLegacy() {
         Assert.assertEquals(BskFrameKind.REACTOR_LEGACY, BskFrameRouter.classify(
                 "{\"type\":\"hello\"}"));
     }
 
     @Test
-    public void reactorPingIsLegacy() {
+    public void cutePingIsLegacy() {
         Assert.assertEquals(BskFrameKind.REACTOR_LEGACY, BskFrameRouter.classify(
                 "{\"type\":\"ping\"}"));
     }
 
     @Test
-    public void reactorCommandResultIsLegacy() {
-        // Reactor 命令结果：{id, ok, data} —— 没有 result/error 键，落到旧协议。
+    public void cuteCommandResultIsLegacy() {
+        // Cute 命令结果：{id, ok, data} —— 没有 result/error 键，落到旧协议。
         Assert.assertEquals(BskFrameKind.REACTOR_LEGACY, BskFrameRouter.classify(
                 "{\"id\":\"rpc-1\",\"ok\":true,\"data\":\"x\"}"));
     }
 
     @Test
     public void bareIdFrameIsUnknown() {
-        // 只有 id、既无 result/error 也无 Reactor 判别键（type/ok）：
+        // 只有 id、既无 result/error 也无 Cute 判别键（type/ok）：
         // Rust 侧是 InvalidFrame("expected result or error")，按畸形 bsk 拒绝。
         Assert.assertEquals(BskFrameKind.UNKNOWN, BskFrameRouter.classify(
                 "{\"id\":\"rpc-1\"}"));

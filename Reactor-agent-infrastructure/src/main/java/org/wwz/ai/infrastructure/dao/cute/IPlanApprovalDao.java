@@ -1,0 +1,40 @@
+package org.wwz.ai.infrastructure.dao.cute;
+
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.wwz.ai.infrastructure.dao.cute.po.PlanApprovalPO;
+
+import java.util.List;
+
+@Mapper
+public interface IPlanApprovalDao {
+
+    int insert(PlanApprovalPO row);
+
+    PlanApprovalPO selectByApprovalId(@Param("approvalId") String approvalId);
+
+    PlanApprovalPO selectByResumeRequestId(@Param("resumeRequestId") String resumeRequestId);
+
+    List<PlanApprovalPO> selectOpenBySessionId(@Param("sessionId") String sessionId);
+
+    int countOpenBySessionId(@Param("sessionId") String sessionId);
+
+    int casDecidePending(@Param("approvalId") String approvalId,
+                         @Param("userId") String userId,
+                         @Param("decisionJson") String decisionJson,
+                         @Param("resumeRequestId") String resumeRequestId);
+
+    int casClaimResume(@Param("resumeRequestId") String resumeRequestId,
+                       @Param("userId") String userId);
+
+    int markAnswered(@Param("approvalId") String approvalId);
+
+    int markFailed(@Param("approvalId") String approvalId, @Param("status") String status);
+
+    int casCancel(@Param("approvalId") String approvalId,
+                  @Param("userId") String userId,
+                  @Param("fromStatuses") List<String> fromStatuses);
+
+    int cancelBySourceRequestId(@Param("sourceRequestId") String sourceRequestId,
+                                @Param("fromStatuses") List<String> fromStatuses);
+}

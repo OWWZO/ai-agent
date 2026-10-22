@@ -1,7 +1,7 @@
 package org.wwz.ai.domain.agent.memory.ltm;
 
 import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.BaseAgent;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
@@ -30,7 +30,7 @@ public final class LtmTurnSyncSupport {
                 || LtmMemoryGuard.isSideEffectsDisabled(agentContext)) {
             return;
         }
-        ReactorRuntimeDependencies deps = agentContext.getRuntimeDependencies();
+        CuteRuntimeDependencies deps = agentContext.getRuntimeDependencies();
         if (deps == null) {
             return;
         }

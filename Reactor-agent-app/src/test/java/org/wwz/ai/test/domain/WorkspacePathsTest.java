@@ -12,13 +12,13 @@ import java.nio.file.Path;
 public class WorkspacePathsTest {
 
     @Test
-    public void shouldResolveRepoRootContainingReactorTool() {
+    public void shouldResolveRepoRootContainingCuteTool() {
         Path root = WorkspacePaths.resolveRepoRoot();
         Assert.assertTrue(Files.isDirectory(root.resolve("reactor-tool")));
     }
 
     @Test
-    public void shouldExpandWorkspaceTemplateUnderRepoReactorTool() {
+    public void shouldExpandWorkspaceTemplateUnderRepoCuteTool() {
         WorkspaceService service = new WorkspaceService(
                 WorkspaceRuntimeOptions.builder()
                         .enabled(true)
@@ -59,7 +59,7 @@ public class WorkspacePathsTest {
     }
 
     @Test
-    public void shouldPreferMonorepoWhenParentAlsoHasReactorTool() {
+    public void shouldPreferMonorepoWhenParentAlsoHasCuteTool() {
         String previous = System.getProperty("user.dir");
         try {
             Path monorepo = WorkspacePaths.resolveRepoRoot();

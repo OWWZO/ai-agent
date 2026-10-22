@@ -8,7 +8,7 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 @Component
-@ConditionalOnProperty(prefix = "reactor.browser-relay", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "cute.browser-relay", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class BrowserRelayWebSocketHandler extends TextWebSocketHandler {
 
     private final BrowserRelayHub hub;

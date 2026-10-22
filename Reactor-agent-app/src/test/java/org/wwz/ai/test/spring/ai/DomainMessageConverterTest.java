@@ -10,7 +10,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.llm.LlmMessage;
 import org.wwz.ai.domain.agent.runtime.llm.LlmToolCall;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.infrastructure.llm.springai.SpringAiMessageMapper;
 
 import java.nio.charset.StandardCharsets;
@@ -110,9 +110,9 @@ public class DomainMessageConverterTest {
 
     private SpringAiMessageMapper newConverter() {
         SpringAiMessageMapper converter = new SpringAiMessageMapper();
-        ReactorConfig reactorConfig = new ReactorConfig();
-        reactorConfig.setSensitivePatterns("{}");
-        ReflectionTestUtils.setField(converter, "reactorConfig", reactorConfig);
+        CuteConfig cuteConfig = new CuteConfig();
+        cuteConfig.setSensitivePatterns("{}");
+        ReflectionTestUtils.setField(converter, "cuteConfig", cuteConfig);
         return converter;
     }
 }

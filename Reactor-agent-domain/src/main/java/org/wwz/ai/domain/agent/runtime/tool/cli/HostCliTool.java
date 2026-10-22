@@ -5,7 +5,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliInvocation;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliResult;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
@@ -88,7 +88,7 @@ public class HostCliTool implements BaseTool {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
             return ToolResultPayload.failure("运行时未装配", "运行时未装配", null, "runtime_unavailable");
         }
-        ReactorRuntimeDependencies deps = agentContext.getRuntimeDependencies();
+        CuteRuntimeDependencies deps = agentContext.getRuntimeDependencies();
         CliExecutionPort cli = deps.getOptionalCliExecutionPort();
         HostCliProperties properties = deps.getHostCliProperties();
         if (cli == null || properties == null || !properties.isEnabled() || !cli.isResolvable(tool)) {
@@ -97,7 +97,7 @@ public class HostCliTool implements BaseTool {
         String cwd = agentContext.getWorkspaceRoot();
         long timeoutMs = HostCliPolicy.resolveTimeout(
                 params.get("timeout_ms"), properties.getDefaultTimeoutMs(), properties.getMaxTimeoutMs());
-        String proxy = StringUtils.trimToNull(deps.requireReactorConfig().getWebFetchProxy());
+        String proxy = StringUtils.trimToNull(deps.requireCuteConfig().getWebFetchProxy());
         String captureId = StringUtils.defaultIfBlank(agentContext.getRequestId(), "host-cli");
         try (CliArtifactCaptureLease ignored =
                      CliArtifactCaptureCoordinator.acquireWorkspaceDiffLease(cwd, captureId)) {

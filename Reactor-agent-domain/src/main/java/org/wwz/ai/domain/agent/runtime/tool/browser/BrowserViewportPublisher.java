@@ -52,7 +52,7 @@ public final class BrowserViewportPublisher {
             tmp = Files.createTempFile("browser-viewport-", ".png");
             Files.write(tmp, bytes);
             FileArtifactPort fileArtifactPort = agentContext.getRuntimeDependencies().requireFileArtifactPort();
-            String serviceUrl = agentContext.getRuntimeDependencies().requireReactorConfig().getCodeInterpreterUrl();
+            String serviceUrl = agentContext.getRuntimeDependencies().requireCuteConfig().getCodeInterpreterUrl();
             FileRequest request = FileRequest.builder()
                     .requestId(StringUtils.defaultIfBlank(agentContext.getSessionId(), agentContext.getRequestId()))
                     .fileName("browser-viewport.png")

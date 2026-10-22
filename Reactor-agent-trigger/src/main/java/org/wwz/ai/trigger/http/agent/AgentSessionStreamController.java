@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import org.wwz.ai.trigger.http.reactor.support.AgentSessionStreamHub;
+import org.wwz.ai.trigger.http.cute.support.AgentSessionStreamHub;
 
 import javax.annotation.Resource;
 

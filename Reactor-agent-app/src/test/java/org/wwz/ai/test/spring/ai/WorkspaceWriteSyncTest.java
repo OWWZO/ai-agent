@@ -7,8 +7,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.CodeInterpreterResponse;
@@ -20,7 +20,7 @@ import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspacePathGuard;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceRuntimeOptions;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceWriteTool;
-import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
+import org.wwz.ai.test.domain.support.CuteRuntimeTestSupport;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -52,11 +52,11 @@ public class WorkspaceWriteSyncTest {
         fileArtifactPort = Mockito.mock(FileArtifactPort.class);
         printer = Mockito.mock(Printer.class);
 
-        ReactorConfig reactorConfig = new ReactorConfig();
-        ReflectionTestUtils.setField(reactorConfig, "codeInterpreterUrl", "http://127.0.0.1:1601");
+        CuteConfig cuteConfig = new CuteConfig();
+        ReflectionTestUtils.setField(cuteConfig, "codeInterpreterUrl", "http://127.0.0.1:1601");
 
-        ReactorRuntimeDependencies base = ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig);
-        ReactorRuntimeDependencies deps = base.toBuilder()
+        CuteRuntimeDependencies base = CuteRuntimeTestSupport.runtimeDependencies(cuteConfig);
+        CuteRuntimeDependencies deps = base.toBuilder()
                 .fileArtifactPort(fileArtifactPort)
                 .build();
 

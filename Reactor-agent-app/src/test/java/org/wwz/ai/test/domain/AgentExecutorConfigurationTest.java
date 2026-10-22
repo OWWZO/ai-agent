@@ -6,14 +6,14 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.config.AgentExecutorConfiguration;
 import org.wwz.ai.config.executor.BoundedVirtualThreadExecutor;
 import org.wwz.ai.config.executor.CountingRejectedExecutionHandler;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
 import org.wwz.ai.types.agent.config.AgentExecutorProperties;
-import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
+import org.wwz.ai.test.domain.support.CuteRuntimeTestSupport;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -133,10 +133,10 @@ public class AgentExecutorConfigurationTest {
         Assert.assertNotNull(properties.getTask());
         Assert.assertEquals("agent-task-", properties.getTask().getThreadNamePrefix());
 
-        ReactorConfig reactorConfig = new ReactorConfig();
-        ReactorRuntimeDependencies runtimeDependencies = ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig);
+        CuteConfig cuteConfig = new CuteConfig();
+        CuteRuntimeDependencies runtimeDependencies = CuteRuntimeTestSupport.runtimeDependencies(cuteConfig);
 
-        Assert.assertNotNull(runtimeDependencies.requireReactorConfig());
+        Assert.assertNotNull(runtimeDependencies.requireCuteConfig());
         Assert.assertNotNull(runtimeDependencies.requireTaskExecutor());
     }
 

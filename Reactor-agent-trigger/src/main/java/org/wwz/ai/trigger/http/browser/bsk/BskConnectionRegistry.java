@@ -24,7 +24,7 @@ import org.wwz.ai.domain.agent.adapter.port.BrowserBskConnectionPort;
  * （bsk 扩展不认 legacy 帧）。两条链路各自记账，只在「在线状态」这一层汇合。</p>
  */
 @Component
-@ConditionalOnProperty(prefix = "reactor.browser-bsk", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "cute.browser-bsk", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class BskConnectionRegistry implements BrowserBskConnectionPort {
 
     private final BskFrameRelay relay;

@@ -13,8 +13,8 @@ import org.wwz.ai.domain.agent.ledger.model.LlmInvocationFinishRecord;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationStartRecord;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationBatchStartRecord;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.runtime.capability.SessionCapabilityService;
 import org.wwz.ai.domain.agent.runtime.capability.SessionCapabilityService.DisabledSets;
@@ -292,7 +292,7 @@ public class PrepareAgentContextAssemblyTest {
         set(assembly, "agentExecutionRecorder", recorder);
         set(assembly, "sessionCapabilityService", stubCapability(disabled));
         set(assembly, "agentToolCollectionFactory", toolFactory());
-        set(assembly, "reactorRuntimeDependencies", runtimeDependencies());
+        set(assembly, "cuteRuntimeDependencies", runtimeDependencies());
         set(assembly, "activeAgentRunRegistry", registry != null ? registry : new RecordingActiveAgentRunRegistry());
         set(assembly, "planApprovalRepository", approvals);
         set(assembly, "workspaceService", disabledWorkspaceService());
@@ -315,8 +315,8 @@ public class PrepareAgentContextAssemblyTest {
         return service;
     }
 
-    private static ReactorRuntimeDependencies runtimeDependencies() {
-        return ReactorRuntimeDependencies.builder().build();
+    private static CuteRuntimeDependencies runtimeDependencies() {
+        return CuteRuntimeDependencies.builder().build();
     }
 
     private static WorkspaceService disabledWorkspaceService() {

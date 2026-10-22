@@ -11,7 +11,7 @@ import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliInvocation;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliResult;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.FileRequest;
@@ -19,8 +19,8 @@ import org.wwz.ai.domain.agent.runtime.dto.FileResponse;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
 import org.wwz.ai.domain.agent.runtime.tool.browser.AgentBrowserTool;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
+import org.wwz.ai.test.domain.support.CuteRuntimeTestSupport;
 import org.wwz.ai.types.agent.config.OpenCliProperties;
 
 import java.io.IOException;
@@ -348,8 +348,8 @@ public class AgentBrowserToolTest {
         properties.setCommand("node");
         properties.setPrefixArgs(List.of("main.js"));
         properties.setCacheDir("kernel_cache");
-        ReactorConfig reactorConfig = ReactorRuntimeTestSupport.reactorConfigWithFileService("http://127.0.0.1:1601");
-        ReactorRuntimeDependencies dependencies = ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig)
+        CuteConfig cuteConfig = CuteRuntimeTestSupport.cuteConfigWithFileService("http://127.0.0.1:1601");
+        CuteRuntimeDependencies dependencies = CuteRuntimeTestSupport.runtimeDependencies(cuteConfig)
                 .toBuilder()
                 .cliExecutionPort(cli)
                 .openCliProperties(properties)
@@ -412,7 +412,7 @@ public class AgentBrowserToolTest {
         properties.setCommand("node");
         properties.setPrefixArgs(List.of("main.js"));
         properties.setCacheDir("kernel_cache");
-        ReactorRuntimeDependencies dependencies = ReactorRuntimeTestSupport.runtimeDependencies(new ReactorConfig())
+        CuteRuntimeDependencies dependencies = CuteRuntimeTestSupport.runtimeDependencies(new CuteConfig())
                 .toBuilder()
                 .cliExecutionPort(cli)
                 .openCliProperties(properties)

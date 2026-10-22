@@ -2,7 +2,7 @@ package org.wwz.ai.domain.agent.memory.ltm;
 
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 
 import java.util.HashMap;
@@ -24,7 +24,7 @@ public final class LtmRuntimeBootstrap {
             agentContext.setLtmMemoryContext(null);
             return;
         }
-        ReactorRuntimeDependencies deps = agentContext.getRuntimeDependencies();
+        CuteRuntimeDependencies deps = agentContext.getRuntimeDependencies();
         if (deps == null) {
             return;
         }

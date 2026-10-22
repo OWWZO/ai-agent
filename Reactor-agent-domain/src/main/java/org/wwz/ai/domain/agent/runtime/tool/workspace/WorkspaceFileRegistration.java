@@ -6,7 +6,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.CodeInterpreterResponse;
@@ -77,9 +77,9 @@ public final class WorkspaceFileRegistration {
             return LocalFileRegistrationResult.failure(REASON_FILE_MISSING);
         }
         try {
-            ReactorConfig reactorConfig = agentContext.getRuntimeDependencies().requireReactorConfig();
+            CuteConfig cuteConfig = agentContext.getRuntimeDependencies().requireCuteConfig();
             FileArtifactPort fileArtifactPort = agentContext.getRuntimeDependencies().requireFileArtifactPort();
-            if (reactorConfig == null || StringUtils.isBlank(reactorConfig.getCodeInterpreterUrl())) {
+            if (cuteConfig == null || StringUtils.isBlank(cuteConfig.getCodeInterpreterUrl())) {
                 return LocalFileRegistrationResult.failure(REASON_UNAVAILABLE);
             }
 
@@ -102,7 +102,7 @@ public final class WorkspaceFileRegistration {
                     .localPath(absolutePath.toAbsolutePath().normalize().toString())
                     .build();
             FileResponse fileResponse = fileArtifactPort.materializeLocalFile(
-                    reactorConfig.getCodeInterpreterUrl(), fileRequest);
+                    cuteConfig.getCodeInterpreterUrl(), fileRequest);
             if (fileResponse == null) {
                 return LocalFileRegistrationResult.failure(REASON_EMPTY_RESPONSE);
             }

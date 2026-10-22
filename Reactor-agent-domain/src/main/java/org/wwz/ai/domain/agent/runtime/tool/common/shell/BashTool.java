@@ -8,7 +8,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpRequest;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwnerResolver;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.File;
@@ -99,7 +99,7 @@ public class BashTool implements BaseTool {
                 return ToolResultPayload.failureFrom("AgentContext 未就绪", null);
             }
 
-            ReactorConfig config = agentContext.getRuntimeDependencies().requireReactorConfig();
+            CuteConfig config = agentContext.getRuntimeDependencies().requireCuteConfig();
             if (StringUtils.isBlank(config.getCodeInterpreterUrl())) {
                 return ToolResultPayload.failureFrom("codeInterpreterUrl 未配置，无法调用沙箱 bash", null);
             }

@@ -3,7 +3,7 @@ package org.wwz.ai.test.domain;
 import org.junit.Assert;
 import org.junit.Test;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.common.MemoryTool;
@@ -31,7 +31,7 @@ public class MemoryToolTest {
                 .sessionId("s1")
                 .requestId("r1")
                 .ltmOwner(LtmOwner.user("u1"))
-                .runtimeDependencies(ReactorRuntimeDependencies.builder()
+                .runtimeDependencies(CuteRuntimeDependencies.builder()
                         .curatedMemoryStore(store)
                         .build())
                 .build();

@@ -11,10 +11,10 @@ import org.wwz.ai.trigger.config.BskPropertiesConfig;
 import java.util.Map;
 
 /**
- * 关掉 {@code reactor.browser-bsk.enabled} 时 {@code BskProperties} 必须仍然存在。
+ * 关掉 {@code cute.browser-bsk.enabled} 时 {@code BskProperties} 必须仍然存在。
  *
  * <p>bsk 包内的两个 {@code @Configuration} 都带
- * {@code @ConditionalOnProperty("reactor.browser-bsk.enabled")}，它们身上的
+ * {@code @ConditionalOnProperty("cute.browser-bsk.enabled")}，它们身上的
  * {@code @EnableConfigurationProperties(BskProperties.class)} 会一并失效；
  * 而 {@code BrowserPairingController} 是无条件注册的、构造器里又要这个 bean——
  * 一旦缺失，<b>关掉 bsk 反而让整个应用启动失败</b>。</p>
@@ -43,7 +43,7 @@ public class BskPropertiesAvailabilityTest {
     public void disabledFlagIsReadFromTheEnvironment() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
             context.getEnvironment().getPropertySources().addFirst(
-                    new MapPropertySource("test", Map.of("reactor.browser-bsk.enabled", "false")));
+                    new MapPropertySource("test", Map.of("cute.browser-bsk.enabled", "false")));
             context.register(BskPropertiesConfig.class, Host.class);
             context.refresh();
             Assert.assertFalse(context.getBean(BskProperties.class).isEnabled());

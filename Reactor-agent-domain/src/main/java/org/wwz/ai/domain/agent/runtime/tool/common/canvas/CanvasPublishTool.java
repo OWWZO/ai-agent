@@ -5,7 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.CanvasPublishToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRefMapper;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.CodeInterpreterResponse;
@@ -109,8 +109,8 @@ public class CanvasPublishTool implements BaseTool {
                 return failure(title, "html_path not found or outside the active workspace: " + htmlPath);
             }
 
-            ReactorConfig reactorConfig = agentContext.getRuntimeDependencies().requireReactorConfig();
-            if (reactorConfig == null || StringUtils.isBlank(reactorConfig.getCodeInterpreterUrl())) {
+            CuteConfig cuteConfig = agentContext.getRuntimeDependencies().requireCuteConfig();
+            if (cuteConfig == null || StringUtils.isBlank(cuteConfig.getCodeInterpreterUrl())) {
                 return failure(title, "canvas_publish file service URL is not configured");
             }
 
@@ -120,8 +120,8 @@ public class CanvasPublishTool implements BaseTool {
                     .normalize();
             int fileSize = (int) Math.min(Files.size(filePath), Integer.MAX_VALUE);
             String fileName = Path.of(relativePath).getFileName().toString();
-            String previewUrl = buildFileUrl(reactorConfig, "preview", relativePath);
-            String downloadUrl = buildFileUrl(reactorConfig, "download", relativePath);
+            String previewUrl = buildFileUrl(cuteConfig, "preview", relativePath);
+            String downloadUrl = buildFileUrl(cuteConfig, "download", relativePath);
 
             List<CodeInterpreterResponse.FileInfo> fileInfo = new ArrayList<>();
             fileInfo.add(CodeInterpreterResponse.FileInfo.builder()
@@ -206,8 +206,8 @@ public class CanvasPublishTool implements BaseTool {
         }
     }
 
-    private String buildFileUrl(ReactorConfig reactorConfig, String operation, String relativePath) {
-        String baseUrl = StringUtils.removeEnd(reactorConfig.getCodeInterpreterUrl(), "/");
+    private String buildFileUrl(CuteConfig cuteConfig, String operation, String relativePath) {
+        String baseUrl = StringUtils.removeEnd(cuteConfig.getCodeInterpreterUrl(), "/");
         return baseUrl
                 + "/v1/file_tool/"
                 + operation

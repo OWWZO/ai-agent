@@ -7,7 +7,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 
 /**
- * Reactor Agent Spring Boot 启动入口。
+ * Cute Agent Spring Boot 启动入口。
  *
  * <p>应用模块负责装配各层 Bean、开启事务并扫描 infrastructure DAO；业务规则仍由
  * domain/case 层承载，启动类本身不参与请求编排。</p>

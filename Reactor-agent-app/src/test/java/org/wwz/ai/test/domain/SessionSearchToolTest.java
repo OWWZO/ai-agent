@@ -4,7 +4,7 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
 import org.wwz.ai.domain.agent.memory.ltm.SessionSearchService;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.common.SessionSearchTool;
@@ -28,7 +28,7 @@ public class SessionSearchToolTest {
         AgentContext ctx = AgentContext.builder()
                 .sessionId("sess-1")
                 .ltmOwner(LtmOwner.user("user-abc"))
-                .runtimeDependencies(ReactorRuntimeDependencies.builder()
+                .runtimeDependencies(CuteRuntimeDependencies.builder()
                         .sessionSearchService(stub)
                         .build())
                 .build();
@@ -71,7 +71,7 @@ public class SessionSearchToolTest {
         AgentContext ctx = AgentContext.builder()
                 .sessionId("sess-1")
                 .ltmOwner(LtmOwner.user("v1"))
-                .runtimeDependencies(ReactorRuntimeDependencies.builder()
+                .runtimeDependencies(CuteRuntimeDependencies.builder()
                         .sessionSearchService(stub)
                         .build())
                 .build();
@@ -116,7 +116,7 @@ public class SessionSearchToolTest {
         AgentContext ctx = AgentContext.builder()
                 .sessionId("sess-1")
                 .ltmOwner(LtmOwner.user("v1"))
-                .runtimeDependencies(ReactorRuntimeDependencies.builder()
+                .runtimeDependencies(CuteRuntimeDependencies.builder()
                         .sessionSearchService(stub)
                         .build())
                 .build();
@@ -132,7 +132,7 @@ public class SessionSearchToolTest {
                 "{\"success\":true,\"mode\":\"browse\",\"results\":[],\"count\":0}";
         AgentContext ctx = AgentContext.builder()
                 .sessionId("sess-1")
-                .runtimeDependencies(ReactorRuntimeDependencies.builder()
+                .runtimeDependencies(CuteRuntimeDependencies.builder()
                         .sessionSearchService(stub)
                         .build())
                 .build();

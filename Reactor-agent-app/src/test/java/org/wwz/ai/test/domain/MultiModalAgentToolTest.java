@@ -13,9 +13,9 @@ import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.common.MultiModalAgent;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.MultimodalAgentToolOutput;
-import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
+import org.wwz.ai.test.domain.support.CuteRuntimeTestSupport;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -40,7 +40,7 @@ public class MultiModalAgentToolTest {
 
         try {
             String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
-            ReactorConfig reactorConfig = buildConfig(baseUrl);
+            CuteConfig cuteConfig = buildConfig(baseUrl);
 
             RecordingPrinter printer = new RecordingPrinter();
             ToolCollection toolCollection = new ToolCollection();
@@ -54,7 +54,7 @@ public class MultiModalAgentToolTest {
                     .printer(printer)
                     .toolCollection(toolCollection)
                     .productFiles(new ArrayList<>())
-                    .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig))
+                    .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(cuteConfig))
                     .build();
             toolCollection.setAgentContext(agentContext);
 
@@ -106,7 +106,7 @@ public class MultiModalAgentToolTest {
 
     @Test
     public void shouldReturnExplicitFailureWhenQuestionBlank() {
-        ReactorConfig reactorConfig = buildConfig("http://127.0.0.1:1601");
+        CuteConfig cuteConfig = buildConfig("http://127.0.0.1:1601");
 
         MultiModalAgent multiModalAgent = new MultiModalAgent();
         multiModalAgent.setAgentContext(AgentContext.builder()
@@ -117,7 +117,7 @@ public class MultiModalAgentToolTest {
                 .printer(new RecordingPrinter())
                 .toolCollection(new ToolCollection())
                 .productFiles(new ArrayList<>())
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig))
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(cuteConfig))
                 .build());
 
         ToolResultPayload payload = (ToolResultPayload) multiModalAgent.execute(JSONObject.parseObject("""
@@ -128,12 +128,12 @@ public class MultiModalAgentToolTest {
         Assert.assertTrue(payload.getFailed());
     }
 
-    private ReactorConfig buildConfig(String baseUrl) {
-        ReactorConfig reactorConfig = new ReactorConfig();
-        reactorConfig.setMessageInterval("{\"knowledge\":\"1,1\"}");
-        ReflectionTestUtils.setField(reactorConfig, "multiModalAgentUrl", baseUrl);
-        ReflectionTestUtils.setField(reactorConfig, "codeInterpreterUrl", baseUrl);
-        return reactorConfig;
+    private CuteConfig buildConfig(String baseUrl) {
+        CuteConfig cuteConfig = new CuteConfig();
+        cuteConfig.setMessageInterval("{\"knowledge\":\"1,1\"}");
+        ReflectionTestUtils.setField(cuteConfig, "multiModalAgentUrl", baseUrl);
+        ReflectionTestUtils.setField(cuteConfig, "codeInterpreterUrl", baseUrl);
+        return cuteConfig;
     }
 
     private static class MlagQueryHandler implements HttpHandler {

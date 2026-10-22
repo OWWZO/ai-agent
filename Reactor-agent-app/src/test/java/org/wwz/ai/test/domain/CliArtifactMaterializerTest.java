@@ -9,7 +9,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliArtifact;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.FileRequest;
@@ -19,7 +19,7 @@ import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactMaterialization;
 import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactMaterializeCommand;
 import org.wwz.ai.domain.agent.runtime.tool.cli.CliArtifactMaterializer;
 import org.wwz.ai.domain.agent.runtime.tool.cli.OpenCliArgv;
-import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
+import org.wwz.ai.test.domain.support.CuteRuntimeTestSupport;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -327,13 +327,13 @@ public class CliArtifactMaterializerTest {
     }
 
     private AgentContext context() {
-        ReactorConfig reactorConfig = ReactorRuntimeTestSupport.reactorConfigWithFileService("http://127.0.0.1:1601");
+        CuteConfig cuteConfig = CuteRuntimeTestSupport.cuteConfigWithFileService("http://127.0.0.1:1601");
         AgentContext context = AgentContext.builder()
                 .requestId("req-1")
                 .sessionId("session-1")
                 .workspaceRoot(workspace.toString())
                 .printer(printer)
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig)
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(cuteConfig)
                         .toBuilder()
                         .fileArtifactPort(fileArtifactPort)
                         .build())

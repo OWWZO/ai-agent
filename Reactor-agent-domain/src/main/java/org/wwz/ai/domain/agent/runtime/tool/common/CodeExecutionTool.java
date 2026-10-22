@@ -15,7 +15,7 @@ import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspacePaths;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -78,7 +78,7 @@ public class CodeExecutionTool implements BaseTool {
             String source = params.get("source") == null ? "" : StringUtils.trimToEmpty(String.valueOf(params.get("source")));
             if (source.isBlank()) return ToolResultPayload.failure("source 不能为空", "source 不能为空", null, "missing source");
             ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
-            ReactorConfig config = agentContext.getRuntimeDependencies().requireReactorConfig();
+            CuteConfig config = agentContext.getRuntimeDependencies().requireCuteConfig();
             Map<String, Object> request = new LinkedHashMap<>(params);
             request.put("requestId", agentContext.getSessionId());
             request.put("sessionId", agentContext.getSessionId());

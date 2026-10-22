@@ -16,7 +16,7 @@ package org.wwz.ai.domain.agent.runtime.tasklist;
  * 灰度期可一键切换；稳定后 flag=false 分支可删。
  * <p>
  * 配置项：{@code autobots.autoagent.stream.defer-background-settle}（默认 true），
- * 由 {@code ReactorConfig} 在启动时写入本持有者（消费方均为静态/普通类，无法注入 Bean）。
+ * 由 {@code CuteConfig} 在启动时写入本持有者（消费方均为静态/普通类，无法注入 Bean）。
  */
 public final class StreamSettlePolicy {
 

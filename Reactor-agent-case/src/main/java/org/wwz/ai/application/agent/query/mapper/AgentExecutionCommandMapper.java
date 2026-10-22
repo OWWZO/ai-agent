@@ -3,7 +3,7 @@ package org.wwz.ai.application.agent.query.mapper;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 import org.wwz.ai.application.agent.query.GptQueryCommand;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 
@@ -16,7 +16,7 @@ import javax.annotation.Resource;
 public class AgentExecutionCommandMapper {
 
     @Resource
-    private ReactorConfig reactorConfig;
+    private CuteConfig cuteConfig;
 
     public AgentExecutionCommand toExecutionCommand(GptQueryCommand command, String userId) {
         if (command == null) {
@@ -46,7 +46,7 @@ public class AgentExecutionCommandMapper {
                 .forcePlanMode(Boolean.TRUE.equals(command.getForcePlanMode()))
                 .erp(null)
                 .sopPrompt("")
-                .basePrompt(planSolve ? "" : reactorConfig.getReactorBasePrompt())
+                .basePrompt(planSolve ? "" : cuteConfig.getCuteBasePrompt())
                 .isStream(true)
                 .build();
     }

@@ -13,7 +13,7 @@ import org.wwz.ai.domain.agent.runtime.dto.CodeInterpreterResponse;
 import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
@@ -105,8 +105,8 @@ public class CodeInterpreterTool implements BaseTool {
                                                                     ToolArtifactSource artifactSource) {
         CompletableFuture<ToolResultPayload> future = new CompletableFuture<>();
         try {
-            ReactorConfig reactorConfig = requireReactorConfig();
-            String url = reactorConfig.getCodeInterpreterUrl() + "/v1/tool/code_interpreter";
+            CuteConfig cuteConfig = requireCuteConfig();
+            String url = cuteConfig.getCodeInterpreterUrl() + "/v1/tool/code_interpreter";
             log.info("{} code_interpreter request {}", agentContext.getRequestId(), JSONObject.toJSONString(codeRequest));
             String digitalEmployee = agentContext.getToolCollection().getDigitalEmployee(getName());
             String messageId = StringUtil.getUUID();
@@ -346,16 +346,16 @@ public class CodeInterpreterTool implements BaseTool {
         );
     }
 
-    private ReactorConfig requireReactorConfig() {
+    private CuteConfig requireCuteConfig() {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("CodeInterpreterTool 缺少 ReactorRuntimeDependencies");
+            throw new IllegalStateException("CodeInterpreterTool 缺少 CuteRuntimeDependencies");
         }
-        return agentContext.getRuntimeDependencies().requireReactorConfig();
+        return agentContext.getRuntimeDependencies().requireCuteConfig();
     }
 
     private RemoteStreamPort requireRemoteStreamPort() {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("CodeInterpreterTool 缺少 ReactorRuntimeDependencies");
+            throw new IllegalStateException("CodeInterpreterTool 缺少 CuteRuntimeDependencies");
         }
         return agentContext.getRuntimeDependencies().requireRemoteStreamPort();
     }

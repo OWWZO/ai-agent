@@ -11,10 +11,10 @@ import org.wwz.ai.domain.agent.memory.ltm.LtmForkExecutionEvent;
 import org.wwz.ai.domain.agent.memory.ltm.LtmForkParity;
 import org.wwz.ai.domain.agent.memory.ltm.LtmForkRunResult;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
-import org.wwz.ai.infrastructure.dao.reactor.ILtmForkExecutionDao;
+import org.wwz.ai.infrastructure.dao.cute.ILtmForkExecutionDao;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -45,7 +45,7 @@ public class BackgroundReviewServiceImpl implements BackgroundReviewService {
             new ReviewThreadFactory(),
             new ThreadPoolExecutor.AbortPolicy());
 
-    private final ObjectProvider<ReactorRuntimeDependencies> runtimeDependenciesProvider;
+    private final ObjectProvider<CuteRuntimeDependencies> runtimeDependenciesProvider;
     private final ObjectProvider<CuratedMemoryStore> curatedMemoryStoreProvider;
     private final ObjectProvider<ILtmForkExecutionDao> ltmForkExecutionDaoProvider;
 
@@ -57,7 +57,7 @@ public class BackgroundReviewServiceImpl implements BackgroundReviewService {
     private volatile int maxSteps = 6;
     private volatile long timeoutSeconds = 90L;
 
-    public BackgroundReviewServiceImpl(ObjectProvider<ReactorRuntimeDependencies> runtimeDependenciesProvider,
+    public BackgroundReviewServiceImpl(ObjectProvider<CuteRuntimeDependencies> runtimeDependenciesProvider,
                                        ObjectProvider<CuratedMemoryStore> curatedMemoryStoreProvider,
                                        ObjectProvider<ILtmForkExecutionDao> ltmForkExecutionDaoProvider) {
         this.runtimeDependenciesProvider = runtimeDependenciesProvider;
@@ -155,7 +155,7 @@ public class BackgroundReviewServiceImpl implements BackgroundReviewService {
                                String parentSystemPrompt,
                                ToolCollection parentTools) {
         CuratedMemoryStore store = curatedMemoryStoreProvider.getIfAvailable();
-        ReactorRuntimeDependencies deps = runtimeDependenciesProvider.getIfAvailable();
+        CuteRuntimeDependencies deps = runtimeDependenciesProvider.getIfAvailable();
         if (store == null || deps == null) {
             log.warn("background-review abort storeOrDepsNull sessionId={} store={} deps={}",
                     sessionId, store != null, deps != null);

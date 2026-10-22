@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Data
-@ConfigurationProperties(prefix = "reactor.opencli")
+@ConfigurationProperties(prefix = "cute.opencli")
 public class OpenCliProperties {
 
     private boolean enabled = true;

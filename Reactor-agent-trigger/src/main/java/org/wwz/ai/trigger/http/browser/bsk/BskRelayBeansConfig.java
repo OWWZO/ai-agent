@@ -19,7 +19,7 @@ import java.util.concurrent.Executors;
  */
 @Configuration
 @EnableConfigurationProperties(BskProperties.class)
-@ConditionalOnProperty(prefix = "reactor.browser-bsk", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "cute.browser-bsk", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class BskRelayBeansConfig {
 
     @Bean

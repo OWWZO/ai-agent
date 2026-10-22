@@ -9,7 +9,7 @@ import org.wwz.ai.trigger.http.browser.bsk.BskProperties;
  *
  * <p>bsk 包内的两个 {@code @Configuration}（{@code BskRelayWebSocketConfig} /
  * {@code BskRelayBeansConfig}）都带
- * {@code @ConditionalOnProperty("reactor.browser-bsk.enabled")}，而这两个类上的
+ * {@code @ConditionalOnProperty("cute.browser-bsk.enabled")}，而这两个类上的
  * {@code @EnableConfigurationProperties} 也随之失效——于是关掉开关后
  * {@code BskProperties} 这个 bean 根本不存在，而
  * {@code BrowserPairingController}（无条件注册）构造器里要它，

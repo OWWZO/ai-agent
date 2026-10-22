@@ -1,7 +1,7 @@
 package org.wwz.ai.domain.agent.runtime.agent;
 
 import lombok.extern.slf4j.Slf4j;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.runtime.tool.common.AgentDispatchTool;
@@ -36,9 +36,9 @@ final class ToolBatchRunner {
 
     Executor executorFor(ToolCall toolCall) {
         if (isAgentDispatchTool(toolCall)) {
-            return resolveExecutor(ReactorRuntimeDependencies::requireTaskExecutor);
+            return resolveExecutor(CuteRuntimeDependencies::requireTaskExecutor);
         }
-        return resolveExecutor(ReactorRuntimeDependencies::requireToolExecutor);
+        return resolveExecutor(CuteRuntimeDependencies::requireToolExecutor);
     }
 
     boolean isAgentDispatchTool(ToolCall toolCall) {
@@ -153,7 +153,7 @@ final class ToolBatchRunner {
         return context.getRuntimeDependencies().resolveToolBatchTimeoutSeconds();
     }
 
-    private Executor resolveExecutor(Function<ReactorRuntimeDependencies, Executor> picker) {
+    private Executor resolveExecutor(Function<CuteRuntimeDependencies, Executor> picker) {
         AgentContext context = agent.getContext();
         if (context == null || context.getRuntimeDependencies() == null) {
             return Runnable::run;

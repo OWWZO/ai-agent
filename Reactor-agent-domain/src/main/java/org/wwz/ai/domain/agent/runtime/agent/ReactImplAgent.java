@@ -12,7 +12,7 @@ import org.wwz.ai.domain.agent.runtime.llm.LLM;
 import org.wwz.ai.domain.agent.runtime.llm.LlmCancelledException;
 import org.wwz.ai.domain.agent.runtime.llm.LlmUserFacingError;
 import org.wwz.ai.domain.agent.runtime.prompt.AgentPrompt;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -53,8 +53,8 @@ public class ReactImplAgent extends ReActAgent {
                 "an agent that can execute tool calls.",
                 config -> Map.of(),
                 AgentPrompt.REACT_SYSTEM_PROMPT,
-                ReactorConfig::getReactModelName,
-                ReactorConfig::getReactMaxSteps,
+                CuteConfig::getReactModelName,
+                CuteConfig::getReactMaxSteps,
                 true,
                 true
         ));
@@ -84,7 +84,7 @@ public class ReactImplAgent extends ReActAgent {
             }
 
             Integer configuredTimeout = context.getRuntimeDependencies()
-                    .requireReactorConfig()
+                    .requireCuteConfig()
                     .getLlmTimeoutSeconds();
             int llmTimeoutSeconds = configuredTimeout == null || configuredTimeout <= 0
                     ? 1200

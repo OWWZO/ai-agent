@@ -87,7 +87,7 @@ Reactor Phase 1 之后，本模块不再承载 legacy HTTP controller，也不�
 - legacy `/1/**`、`/data/**` controller 已迁到 `ai-agent-station-study-trigger`
 - `ReplayProjectorAutoConfiguration`、`DataAgentInitRunner`、`Es7HighLevelClientConfig` 已迁到 `ai-agent-station-study-app`
 - execution ledger 只在本模块定义 `IExecutionLedgerReadRepository`、`IExecutionLedgerWriteRepository` 端口，由 `infrastructure` 提供生产实现
-- `ReactorConfig` 仍是过渡态共享配置契约，本期仅允许通过测试和文档锁边界，不做物理迁移
+- `CuteConfig` 仍是过渡态共享配置契约，本期仅允许通过测试和文档锁边界，不做物理迁移
 
 ### Reactor Phase 2A 边界
 - `domain` 不再承载 Reactor `@Mapper`、`BaseMapper` 或 `org.wwz.ai.domain.agent.reactor.mapper.*`

@@ -31,7 +31,7 @@ public class DeferredToolCatalogTest {
     }
 
     @Test
-    public void listingGroupsLocalReactorAndMcpServer() {
+    public void listingGroupsLocalCuteAndMcpServer() {
         DeferredToolCatalog catalog = new DeferredToolCatalog(List.of(
                 localEntry(),
                 DeferredToolEntry.mcp(McpToolInfo.builder()

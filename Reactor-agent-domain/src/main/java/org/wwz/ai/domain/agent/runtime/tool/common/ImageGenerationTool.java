@@ -103,7 +103,7 @@ public class ImageGenerationTool implements BaseTool {
 
     private IImageGenerationExecutionKernel requireKernel() {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("ImageGenerationTool 缺少 ReactorRuntimeDependencies");
+            throw new IllegalStateException("ImageGenerationTool 缺少 CuteRuntimeDependencies");
         }
         return agentContext.getRuntimeDependencies().requireImageGenerationExecutionKernel();
     }

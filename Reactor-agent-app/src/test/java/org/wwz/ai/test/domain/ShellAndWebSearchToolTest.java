@@ -14,8 +14,8 @@ import org.wwz.ai.domain.agent.runtime.tool.common.shell.BashTool;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeOptions;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillVirtualPaths;
 import org.wwz.ai.domain.agent.runtime.tool.common.WebSearchTool;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
+import org.wwz.ai.test.domain.support.CuteRuntimeTestSupport;
 
 import com.alibaba.fastjson.JSON;
 
@@ -52,7 +52,7 @@ public class ShellAndWebSearchToolTest {
                   ]
                 }
                 """;
-        ReactorConfig config = new ReactorConfig();
+        CuteConfig config = new CuteConfig();
         ReflectionTestUtils.setField(config, "codeInterpreterUrl", "http://reactor-tool");
         Printer printer = org.mockito.Mockito.mock(Printer.class);
         AgentContext context = AgentContext.builder()
@@ -60,7 +60,7 @@ public class ShellAndWebSearchToolTest {
                 .sessionId("session-bash-output")
                 .productFiles(new ArrayList<>())
                 .printer(printer)
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(config, httpPort))
                 .build();
 
         SkillRuntimeOptions skillOptions = SkillRuntimeOptions.builder().enabled(false).build();
@@ -112,12 +112,12 @@ public class ShellAndWebSearchToolTest {
                 "truncated", false,
                 "timedOut", false,
                 "durationMs", 1));
-        ReactorConfig config = new ReactorConfig();
+        CuteConfig config = new CuteConfig();
         ReflectionTestUtils.setField(config, "codeInterpreterUrl", "http://reactor-tool");
         AgentContext context = AgentContext.builder()
                 .requestId("req-bash-paths")
                 .sessionId("session-bash-paths")
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(config, httpPort))
                 .build();
         SkillRuntimeOptions skillOptions = SkillRuntimeOptions.builder().enabled(false).build();
         BashTool tool = new BashTool(skillOptions, new SkillVirtualPaths(skillOptions));
@@ -139,7 +139,7 @@ public class ShellAndWebSearchToolTest {
                     {"exitCode":0,"stdout":"ok","stderr":"","truncated":false,"timedOut":false,"durationMs":1}
                     """;
         };
-        ReactorConfig config = new ReactorConfig();
+        CuteConfig config = new CuteConfig();
         ReflectionTestUtils.setField(config, "codeInterpreterUrl", "http://reactor-tool");
         String workspaceRoot = java.nio.file.Path.of(
                         System.getProperty("java.io.tmpdir"), "reactor-ws-align", "session-bash-align")
@@ -151,7 +151,7 @@ public class ShellAndWebSearchToolTest {
                 .sessionId("session-bash-align")
                 .workspaceRoot(workspaceRoot)
                 .productFiles(new ArrayList<>())
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(config, httpPort))
                 .build();
         SkillRuntimeOptions skillOptions = SkillRuntimeOptions.builder().enabled(false).build();
         BashTool tool = new BashTool(skillOptions, new SkillVirtualPaths(skillOptions));
@@ -174,14 +174,14 @@ public class ShellAndWebSearchToolTest {
                     {"exitCode":0,"stdout":"ok","stderr":"","truncated":false,"timedOut":false,"durationMs":1}
                     """;
         };
-        ReactorConfig config = new ReactorConfig();
+        CuteConfig config = new CuteConfig();
         ReflectionTestUtils.setField(config, "codeInterpreterUrl", "http://reactor-tool");
         AgentContext context = AgentContext.builder()
                 .requestId("req-bash-owner")
                 .sessionId("session-bash-owner")
                 .userId("v1")
                 .productFiles(new ArrayList<>())
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(config, httpPort))
                 .build();
         SkillRuntimeOptions skillOptions = SkillRuntimeOptions.builder().enabled(false).build();
         BashTool tool = new BashTool(skillOptions, new SkillVirtualPaths(skillOptions));
@@ -199,7 +199,7 @@ public class ShellAndWebSearchToolTest {
             capturedBody.set(request.getBody());
             return "{\"exitCode\":0,\"stdout\":\"ok\",\"stderr\":\"\",\"truncated\":false,\"timedOut\":false,\"durationMs\":1}";
         };
-        ReactorConfig config = new ReactorConfig();
+        CuteConfig config = new CuteConfig();
         ReflectionTestUtils.setField(config, "codeInterpreterUrl", "http://reactor-tool");
         SkillRuntimeOptions skillOptions = SkillRuntimeOptions.builder().enabled(false).build();
         BashTool tool = new BashTool(skillOptions, new SkillVirtualPaths(skillOptions));
@@ -208,7 +208,7 @@ public class ShellAndWebSearchToolTest {
                 .requestId("req-bash-user")
                 .sessionId("session-bash-user")
                 .userId("v1")
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(config, httpPort))
                 .build();
         tool.setAgentContext(userContext);
         tool.execute(Map.of("command", "echo ok"));
@@ -218,7 +218,7 @@ public class ShellAndWebSearchToolTest {
                 .requestId("req-bash-user")
                 .sessionId("session-bash-user")
                 .ltmOwner(LtmOwner.user("erp-1"))
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(config, httpPort))
                 .build();
         tool.setAgentContext(ltmOwnerContext);
         tool.execute(Map.of("command", "echo ok"));
@@ -227,7 +227,7 @@ public class ShellAndWebSearchToolTest {
 
     @Test
     public void webSearchShouldFailWhenNoApiKey() {
-        ReactorConfig config = new ReactorConfig();
+        CuteConfig config = new CuteConfig();
         ReflectionTestUtils.setField(config, "webSearchMode", "auto");
         ReflectionTestUtils.setField(config, "webSearchGrokApiKey", "");
         ReflectionTestUtils.setField(config, "webSearchGrokBaseUrl", "");
@@ -239,7 +239,7 @@ public class ShellAndWebSearchToolTest {
         AgentContext context = AgentContext.builder()
                 .requestId("req-ws-001")
                 .sessionId("session-ws-001")
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config))
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(config))
                 .build();
         WebSearchTool tool = new WebSearchTool();
         tool.setAgentContext(context);
@@ -252,7 +252,7 @@ public class ShellAndWebSearchToolTest {
 
     @Test
     public void webSearchShouldPreferGrokThenParseCitations() {
-        ReactorConfig config = new ReactorConfig();
+        CuteConfig config = new CuteConfig();
         ReflectionTestUtils.setField(config, "webSearchMode", "auto");
         ReflectionTestUtils.setField(config, "webSearchGrokApiKey", "grok-key");
         ReflectionTestUtils.setField(config, "webSearchGrokBaseUrl", "https://api.x.ai");
@@ -286,7 +286,7 @@ public class ShellAndWebSearchToolTest {
         AgentContext context = AgentContext.builder()
                 .requestId("req-ws-grok")
                 .sessionId("session-ws-grok")
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(config, httpPort))
                 .build();
         WebSearchTool tool = new WebSearchTool();
         tool.setAgentContext(context);
@@ -301,7 +301,7 @@ public class ShellAndWebSearchToolTest {
 
     @Test
     public void webSearchShouldFallbackToTavilyWhenGrokFails() {
-        ReactorConfig config = new ReactorConfig();
+        CuteConfig config = new CuteConfig();
         ReflectionTestUtils.setField(config, "webSearchMode", "auto");
         ReflectionTestUtils.setField(config, "webSearchGrokApiKey", "grok-key");
         ReflectionTestUtils.setField(config, "webSearchGrokBaseUrl", "https://api.x.ai");
@@ -328,7 +328,7 @@ public class ShellAndWebSearchToolTest {
         AgentContext context = AgentContext.builder()
                 .requestId("req-ws-fallback")
                 .sessionId("session-ws-fallback")
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(config, httpPort))
                 .build();
         WebSearchTool tool = new WebSearchTool();
         tool.setAgentContext(context);
@@ -343,7 +343,7 @@ public class ShellAndWebSearchToolTest {
 
     @Test
     public void webSearchShouldParseTavilyResponse() throws Exception {
-        ReactorConfig config = new ReactorConfig();
+        CuteConfig config = new CuteConfig();
         ReflectionTestUtils.setField(config, "webSearchMode", "tavily");
         ReflectionTestUtils.setField(config, "webSearchTavilyApiKey", "test-key");
         ReflectionTestUtils.setField(config, "webSearchBraveApiKey", "");
@@ -363,7 +363,7 @@ public class ShellAndWebSearchToolTest {
         AgentContext context = AgentContext.builder()
                 .requestId("req-ws-002")
                 .sessionId("session-ws-002")
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(config, httpPort))
                 .build();
         WebSearchTool tool = new WebSearchTool();
         tool.setAgentContext(context);
@@ -378,7 +378,7 @@ public class ShellAndWebSearchToolTest {
 
     @Test
     public void webSearchShouldUseGptResponsesApiAndParseCitations() {
-        ReactorConfig config = new ReactorConfig();
+        CuteConfig config = new CuteConfig();
         ReflectionTestUtils.setField(config, "webSearchMode", "gpt");
         ReflectionTestUtils.setField(config, "webSearchGptApiKey", "openai-test-key");
         ReflectionTestUtils.setField(config, "webSearchGptBaseUrl", "https://api.openai.com/v1");
@@ -415,7 +415,7 @@ public class ShellAndWebSearchToolTest {
         AgentContext context = AgentContext.builder()
                 .requestId("req-ws-gpt")
                 .sessionId("session-ws-gpt")
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(config, httpPort))
                 .build();
         WebSearchTool tool = new WebSearchTool();
         tool.setAgentContext(context);
@@ -433,7 +433,7 @@ public class ShellAndWebSearchToolTest {
 
     @Test
     public void webSearchShouldParseExaResponse() {
-        ReactorConfig config = new ReactorConfig();
+        CuteConfig config = new CuteConfig();
         ReflectionTestUtils.setField(config, "webSearchMode", "exa");
         ReflectionTestUtils.setField(config, "webSearchExaApiKey", "exa-test-key");
         ReflectionTestUtils.setField(config, "webSearchExaSearchUrl", "https://api.exa.ai/search");
@@ -459,7 +459,7 @@ public class ShellAndWebSearchToolTest {
         AgentContext context = AgentContext.builder()
                 .requestId("req-ws-exa")
                 .sessionId("session-ws-exa")
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(config, httpPort))
                 .build();
         WebSearchTool tool = new WebSearchTool();
         tool.setAgentContext(context);

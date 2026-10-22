@@ -3,7 +3,7 @@ package org.wwz.ai.test.domain;
 import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.Mockito;
-import org.wwz.ai.domain.agent.image.port.IReactorImageGenerationGateway;
+import org.wwz.ai.domain.agent.image.port.ICuteImageGenerationGateway;
 import org.wwz.ai.domain.agent.image.model.ImageGenerationExecuteCommand;
 import org.wwz.ai.domain.agent.image.model.ImageGenerationExecutionResult;
 import org.wwz.ai.domain.agent.image.model.ImageGenerationGatewayFile;
@@ -19,7 +19,7 @@ public class ImageGenerationExecutionKernelTest {
 
     @Test
     public void test_executeNormalizesGatewayRequestAndResponse() {
-        IReactorImageGenerationGateway gateway = Mockito.mock(IReactorImageGenerationGateway.class);
+        ICuteImageGenerationGateway gateway = Mockito.mock(ICuteImageGenerationGateway.class);
         AtomicReference<ImageGenerationGatewayRequest> captured = new AtomicReference<>();
         Mockito.when(gateway.generate(Mockito.any(ImageGenerationGatewayRequest.class)))
                 .thenAnswer(invocation -> {

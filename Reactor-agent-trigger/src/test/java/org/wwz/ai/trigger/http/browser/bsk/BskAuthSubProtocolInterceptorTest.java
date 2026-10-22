@@ -84,7 +84,7 @@ public class BskAuthSubProtocolInterceptorTest {
     }
 
     /**
-     * 021：token 走 URL 查询参数时也接受（与 Reactor 老扩展同一套鉴权方式）。
+     * 021：token 走 URL 查询参数时也接受（与 Cute 老扩展同一套鉴权方式）。
      */
     @Test
     public void queryParamTokenIsAccepted() {

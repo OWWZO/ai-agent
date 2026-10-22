@@ -14,7 +14,7 @@ import java.util.List;
  * </p>
  */
 @Data
-@ConfigurationProperties(prefix = "reactor.code-mode")
+@ConfigurationProperties(prefix = "cute.code-mode")
 public class CodeModeProperties {
 
     private boolean enabled = false;

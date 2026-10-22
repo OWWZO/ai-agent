@@ -11,7 +11,7 @@ import java.lang.reflect.Field;
 import java.util.Arrays;
 
 /**
- * 锁定 Phase 2A 之后的 Reactor 持久化边界。
+ * 锁定 Phase 2A 之后的 Cute 持久化边界。
  */
 public class ExecutionLedgerBoundaryTest {
 
@@ -36,7 +36,7 @@ public class ExecutionLedgerBoundaryTest {
             String packageName = field.getType().getPackageName();
             Assert.assertFalse(
                     type.getSimpleName() + " 不应继续直接持有 DAO 字段: " + field.getName(),
-                    packageName.contains(".domain.agent.reactor.mapper")
+                    packageName.contains(".domain.agent.cute.mapper")
                             || packageName.contains(".infrastructure.dao.reactor")
                             || field.getType().getSimpleName().endsWith("Dao")
             );

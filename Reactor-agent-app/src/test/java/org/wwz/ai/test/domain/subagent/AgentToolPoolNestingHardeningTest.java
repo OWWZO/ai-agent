@@ -2,7 +2,7 @@ package org.wwz.ai.test.domain.subagent;
 
 import org.junit.Assert;
 import org.junit.Test;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.BaseAgent;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
@@ -46,7 +46,7 @@ public class AgentToolPoolNestingHardeningTest {
             tools.addTool(new NestedWorkTool(nestedToolRuns, nestedStarted));
             tools.addTool(new FakeAgentTool(tools));
 
-            ReactorRuntimeDependencies deps = ReactorRuntimeDependencies.builder()
+            CuteRuntimeDependencies deps = CuteRuntimeDependencies.builder()
                     .taskExecutor(taskPool)
                     .toolExecutor(toolPool)
                     .toolBatchTimeoutSeconds(15L)
@@ -96,7 +96,7 @@ public class AgentToolPoolNestingHardeningTest {
             ToolCollection tools = new ToolCollection();
             tools.addTool(new HangTool(interrupted));
 
-            ReactorRuntimeDependencies deps = ReactorRuntimeDependencies.builder()
+            CuteRuntimeDependencies deps = CuteRuntimeDependencies.builder()
                     .taskExecutor(Runnable::run)
                     .toolExecutor(hangPool)
                     .toolBatchTimeoutSeconds(1L)

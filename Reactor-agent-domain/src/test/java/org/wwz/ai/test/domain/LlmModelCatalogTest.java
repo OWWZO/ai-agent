@@ -5,8 +5,8 @@ import org.junit.Test;
 import org.mockito.Mockito;
 import org.springframework.core.env.Environment;
 import org.wwz.ai.domain.agent.adapter.repository.ILlmModelConfigRepository;
-import org.wwz.ai.domain.agent.runtime.ReactorLlmDependencies;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteLlmDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.llm.LlmModelBinding;
 import org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog;
 import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
@@ -135,10 +135,10 @@ public class LlmModelCatalogTest {
                 LlmModelCatalog.toSettings(GROK)));
 
         Environment environment = Mockito.mock(Environment.class);
-        ReactorRuntimeDependencies dependencies = ReactorRuntimeDependencies.builder()
+        CuteRuntimeDependencies dependencies = CuteRuntimeDependencies.builder()
                 .environment(environment)
-                .reactorConfig(null)
-                .llmDependencies(ReactorLlmDependencies.builder()
+                .cuteConfig(null)
+                .llmDependencies(CuteLlmDependencies.builder()
                         .modelCatalog(catalog)
                         .build())
                 .build();

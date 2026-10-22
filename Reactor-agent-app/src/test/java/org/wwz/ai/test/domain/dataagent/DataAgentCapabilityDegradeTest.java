@@ -6,16 +6,16 @@ import org.mockito.Mockito;
 import org.wwz.ai.application.agent.dataquery.initialization.DataAgentInitializationApplicationService;
 import org.wwz.ai.application.agent.dataquery.DataAgentApplicationService;
 import org.wwz.ai.application.agent.dataquery.IDataAgentApplicationService;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.rag.port.DataAgentInitializerPort;
 import org.wwz.ai.domain.agent.rag.model.config.ColumnValueRecallSettings;
 import org.wwz.ai.domain.agent.rag.model.config.DataQuerySettings;
 import org.wwz.ai.domain.agent.rag.service.ChatModelInfoService;
 import org.wwz.ai.infrastructure.adapter.port.OkHttpRemoteHttpAdapter;
 import org.wwz.ai.infrastructure.adapter.port.OkHttpRemoteStreamAdapter;
-import org.wwz.ai.infrastructure.adapter.port.ReactorToolFileArtifactAdapter;
-import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
+import org.wwz.ai.infrastructure.adapter.port.CuteToolFileArtifactAdapter;
+import org.wwz.ai.test.domain.support.CuteRuntimeTestSupport;
 import org.wwz.ai.trigger.http.dataagent.DataAgentController;
 
 import java.util.Arrays;
@@ -35,7 +35,7 @@ public class DataAgentCapabilityDegradeTest {
                 .collect(Collectors.toList());
 
         Assert.assertTrue(fieldTypes.contains(IDataAgentApplicationService.class.getName()));
-        Assert.assertFalse(fieldTypes.contains("org.wwz.ai.domain.agent.reactor.service.DataAgentService"));
+        Assert.assertFalse(fieldTypes.contains("org.wwz.ai.domain.agent.cute.service.DataAgentService"));
     }
 
     @Test
@@ -45,19 +45,19 @@ public class DataAgentCapabilityDegradeTest {
                 .collect(Collectors.toList());
 
         Assert.assertTrue(fieldTypes.contains("org.wwz.ai.domain.agent.rag.DataAgentQueryService"));
-        Assert.assertFalse(fieldTypes.contains("org.wwz.ai.domain.agent.reactor.service.DataAgentService"));
-        Assert.assertFalse(fieldTypes.contains("org.wwz.ai.domain.agent.reactor.service.Nl2SqlService"));
+        Assert.assertFalse(fieldTypes.contains("org.wwz.ai.domain.agent.cute.service.DataAgentService"));
+        Assert.assertFalse(fieldTypes.contains("org.wwz.ai.domain.agent.cute.service.Nl2SqlService"));
         Assert.assertFalse(fieldTypes.contains("org.wwz.ai.domain.agent.rag.service.ChatModelInfoService"));
         Assert.assertFalse(fieldTypes.contains("org.wwz.ai.domain.agent.rag.service.SchemaRecallService"));
     }
 
     @Test
     public void shouldAssembleInfrastructureOwnedRuntimeAdapters() {
-        ReactorRuntimeDependencies dependencies = ReactorRuntimeTestSupport.runtimeDependencies(new ReactorConfig());
+        CuteRuntimeDependencies dependencies = CuteRuntimeTestSupport.runtimeDependencies(new CuteConfig());
 
         Assert.assertTrue(dependencies.requireRemoteHttpPort() instanceof OkHttpRemoteHttpAdapter);
         Assert.assertTrue(dependencies.requireRemoteStreamPort() instanceof OkHttpRemoteStreamAdapter);
-        Assert.assertTrue(dependencies.requireFileArtifactPort() instanceof ReactorToolFileArtifactAdapter);
+        Assert.assertTrue(dependencies.requireFileArtifactPort() instanceof CuteToolFileArtifactAdapter);
     }
 
     @Test

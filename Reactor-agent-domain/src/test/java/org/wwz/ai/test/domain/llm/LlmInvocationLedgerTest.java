@@ -9,9 +9,9 @@ import org.wwz.ai.domain.agent.ledger.model.AgentRunState;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationFinishRecord;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationStartRecord;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.runtime.ReactorLlmDependencies;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
+import org.wwz.ai.domain.agent.runtime.CuteLlmDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.cancel.RunCancellation;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
@@ -195,8 +195,8 @@ public class LlmInvocationLedgerTest {
             AgentRunState runState = AgentRunState.builder().runId(RUN_ID).build();
             runState.markExecutionPosition("react", 1);
 
-            ReactorConfig reactorConfig = new ReactorConfig();
-            reactorConfig.setLLMSettingsMap("""
+            CuteConfig cuteConfig = new CuteConfig();
+            cuteConfig.setLLMSettingsMap("""
                     {"%s":{"model":"%s","base_url":"https://llm.test","apikey":"test-key",
                     "max_tokens":1024,"temperature":0.0,"function_call_type":"function_call"}}
                     """.formatted(MODEL, MODEL));
@@ -207,7 +207,7 @@ public class LlmInvocationLedgerTest {
                     .executionRecorder(recorder)
                     .agentRunState(runState)
                     .runCancellation(new RunCancellation())
-                    .runtimeDependencies(runtimeDependencies(reactorConfig, this))
+                    .runtimeDependencies(runtimeDependencies(cuteConfig, this))
                     .build();
             llm = new LLM(MODEL, "erp", context.getRuntimeDependencies());
         }
@@ -230,10 +230,10 @@ public class LlmInvocationLedgerTest {
             return captor.getValue();
         }
 
-        private static ReactorRuntimeDependencies runtimeDependencies(ReactorConfig reactorConfig, Harness harness) {
-            return ReactorRuntimeDependencies.builder()
-                    .reactorConfig(reactorConfig)
-                    .llmDependencies(ReactorLlmDependencies.builder()
+        private static CuteRuntimeDependencies runtimeDependencies(CuteConfig cuteConfig, Harness harness) {
+            return CuteRuntimeDependencies.builder()
+                    .cuteConfig(cuteConfig)
+                    .llmDependencies(CuteLlmDependencies.builder()
                             .completionPort(new StubCompletionPort(harness))
                             .streamResponseHandler(new StreamResponseHandler())
                             .build())

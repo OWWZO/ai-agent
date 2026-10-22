@@ -16,8 +16,8 @@ import org.wwz.ai.domain.agent.runtime.dto.FileResponse;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.cli.OpenCliArgv;
 import org.wwz.ai.domain.agent.runtime.tool.browser.BrowserTool;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
+import org.wwz.ai.test.domain.support.CuteRuntimeTestSupport;
 import org.wwz.ai.types.agent.config.OpenCliProperties;
 
 import java.nio.charset.StandardCharsets;
@@ -290,13 +290,13 @@ public class BrowserToolTest {
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
-        ReactorConfig reactorConfig = ReactorRuntimeTestSupport.reactorConfigWithFileService("http://127.0.0.1:1601");
+        CuteConfig cuteConfig = CuteRuntimeTestSupport.cuteConfigWithFileService("http://127.0.0.1:1601");
         AgentContext context = AgentContext.builder()
                 .requestId("req-1")
                 .sessionId("session-1")
                 .userId("user-1")
                 .workspaceRoot(workspace.toString())
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig)
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(cuteConfig)
                         .toBuilder()
                         .browserRelayPort(relay)
                         .cliExecutionPort(cli)
@@ -326,7 +326,7 @@ public class BrowserToolTest {
                 .sessionId("session-1")
                 .userId("user-1")
                 .workspaceRoot(System.getProperty("java.io.tmpdir"))
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(new ReactorConfig())
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(new CuteConfig())
                         .toBuilder()
                         .browserRelayPort(relay)
                         .cliExecutionPort(cli)

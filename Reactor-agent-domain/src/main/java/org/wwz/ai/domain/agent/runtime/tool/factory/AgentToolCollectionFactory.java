@@ -98,10 +98,10 @@ import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceRuntimeOptions;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceEditTool;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceWriteTool;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.types.agent.config.CodeModeProperties;
 import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -119,7 +119,7 @@ import java.util.function.BiConsumer;
 @RequiredArgsConstructor
 public class AgentToolCollectionFactory {
 
-    private final ReactorConfig reactorConfig;
+    private final CuteConfig cuteConfig;
     private final McpToolExecutor mcpToolExecutor;
     private final SkillRegistry skillRegistry;
     private final SkillLoader skillLoader;
@@ -153,7 +153,7 @@ public class AgentToolCollectionFactory {
             return main;
         }
         main.setMcpToolExecutor(fullToolCollection.getMcpToolExecutor());
-        Set<String> allowed = new HashSet<>(parseToolNames(reactorConfig.getPlanSolveMainToolList()));
+        Set<String> allowed = new HashSet<>(parseToolNames(cuteConfig.getPlanSolveMainToolList()));
         if (allowed.contains(McpToolNames.TOOL_SEARCH)) {
             allowed.add(McpToolNames.TOOL_DESCRIBE);
             allowed.add(McpToolNames.TOOL_CALL);
@@ -193,7 +193,7 @@ public class AgentToolCollectionFactory {
         // 工具集合是一次请求的能力快照：先绑定上下文和工作区，再按 outputStyle、
         // 配置白名单及 attachScope 装配工具，最后补 MCP、子 Agent 和 Plan Mode 能力。
         // 所有工具复用同一 AgentContext，才能保持 artifact、取消和 ledger 关联。
-        ReactorRuntimeDependencies runtimeDependencies = requireRuntimeDependencies(agentContext);
+        CuteRuntimeDependencies runtimeDependencies = requireRuntimeDependencies(agentContext);
         ensureWorkspaceRoot(agentContext);
         ToolCollection toolCollection = new ToolCollection();
         toolCollection.setAgentContext(agentContext);
@@ -229,7 +229,7 @@ public class AgentToolCollectionFactory {
             // 注意：`autobots.autoagent.tool_list` 未配置时用这里的默认串。application-*.yml 里的
             // `task.tool_list` 层级与 @Value 不一致（历史上一直没生效），所以新增能力要同时改这里，
             // 只改 yml 是无效的。
-            List<String> agentToolList = parseToolNames(reactorConfig.getMultiAgentToolListMap()
+            List<String> agentToolList = parseToolNames(cuteConfig.getMultiAgentToolListMap()
                             .getOrDefault("default", "search,web_fetch,web_search,code_execution,docgen,docread,dataprep,canvas,image_generation,data_analysis,openui")
                     );
 
@@ -277,7 +277,7 @@ public class AgentToolCollectionFactory {
             // 旧 genui 树默认不装配（autobots.autoagent.genui.enabled=false）：
             // 界面通道已由 openui 承担，两套 DSL 同时在场会让模型在 emit_ui_tree 和 openui-lang 之间摇摆。
             // 工具代码保留，置 true 可回滚。
-            if (reactorConfig.isGenuiEnabled()
+            if (cuteConfig.isGenuiEnabled()
                     && matchesAny(agentToolList, "canvas", "genui")) {
                 GetGenuiGuideTool getGenuiGuideTool = new GetGenuiGuideTool();
                 addTool(toolCollection, getGenuiGuideTool, agentContext, GetGenuiGuideTool::setAgentContext);
@@ -439,7 +439,7 @@ public class AgentToolCollectionFactory {
      * always → 有 deferred 才延迟；standard/off → 全量；auto → deferred 数超过阈值才延迟。
      */
     private boolean shouldDeferTools(int deferredCount) {
-        String mode = reactorConfig.getMcpToolSearchMode();
+        String mode = cuteConfig.getMcpToolSearchMode();
         if (mode == null || mode.isBlank()) {
             mode = "always";
         }
@@ -451,9 +451,9 @@ public class AgentToolCollectionFactory {
             return false;
         }
         if ("auto".equals(mode)) {
-            int threshold = reactorConfig.getMcpToolSearchAutoThreshold() == null
+            int threshold = cuteConfig.getMcpToolSearchAutoThreshold() == null
                     ? 8
-                    : Math.max(1, reactorConfig.getMcpToolSearchAutoThreshold());
+                    : Math.max(1, cuteConfig.getMcpToolSearchAutoThreshold());
             return deferredCount >= threshold;
         }
         // always / true / 默认
@@ -643,7 +643,7 @@ public class AgentToolCollectionFactory {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
             return;
         }
-        ReactorRuntimeDependencies deps = agentContext.getRuntimeDependencies();
+        CuteRuntimeDependencies deps = agentContext.getRuntimeDependencies();
         var properties = deps.getOpenCliProperties();
         var cli = deps.getOptionalCliExecutionPort();
         if (properties == null || !properties.isEnabled() || cli == null || !cli.isResolvable(properties.getCommand())) {
@@ -659,7 +659,7 @@ public class AgentToolCollectionFactory {
                 || agentContext == null || agentContext.getRuntimeDependencies() == null) {
             return;
         }
-        ReactorRuntimeDependencies deps = agentContext.getRuntimeDependencies();
+        CuteRuntimeDependencies deps = agentContext.getRuntimeDependencies();
         var properties = deps.getOpenCliProperties();
         var cli = deps.getOptionalCliExecutionPort();
         var port = deps.getOptionalAgentBrowserSessionPort();
@@ -674,7 +674,7 @@ public class AgentToolCollectionFactory {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
             return;
         }
-        ReactorRuntimeDependencies deps = agentContext.getRuntimeDependencies();
+        CuteRuntimeDependencies deps = agentContext.getRuntimeDependencies();
         var properties = deps.getHostCliProperties();
         var cli = deps.getOptionalCliExecutionPort();
         if (properties == null || !properties.isEnabled() || cli == null
@@ -704,7 +704,7 @@ public class AgentToolCollectionFactory {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
             return;
         }
-        ReactorRuntimeDependencies deps = agentContext.getRuntimeDependencies();
+        CuteRuntimeDependencies deps = agentContext.getRuntimeDependencies();
         CodeModeProperties properties = deps.getOptionalCodeModeProperties();
         if (properties == null || !properties.isEnabled()) {
             return;
@@ -745,9 +745,9 @@ public class AgentToolCollectionFactory {
         return false;
     }
 
-    private ReactorRuntimeDependencies requireRuntimeDependencies(AgentContext agentContext) {
+    private CuteRuntimeDependencies requireRuntimeDependencies(AgentContext agentContext) {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("AgentToolCollectionFactory 缺少 ReactorRuntimeDependencies");
+            throw new IllegalStateException("AgentToolCollectionFactory 缺少 CuteRuntimeDependencies");
         }
         return agentContext.getRuntimeDependencies();
     }

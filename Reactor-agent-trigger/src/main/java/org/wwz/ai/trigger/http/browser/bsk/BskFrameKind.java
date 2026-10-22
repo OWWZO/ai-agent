@@ -8,7 +8,7 @@ package org.wwz.ai.trigger.http.browser.bsk;
  *
  * <p>判定顺序对齐 {@code BrowserSkill/crates/bsk-protocol/src/frame.rs}
  * 的 {@code FrameVisitor::visit_map}：{@code event} → {@code method} →
- * {@code result}/{@code error}，最后落到 Reactor 旧帧。</p>
+ * {@code result}/{@code error}，最后落到 Cute 旧帧。</p>
  */
 public enum BskFrameKind {
 
@@ -21,7 +21,7 @@ public enum BskFrameKind {
     /** 扩展主动推送的事件帧。 */
     BSK_EVENT,
 
-    /** 不是 bsk 帧，交给现有 Reactor 中继处理。 */
+    /** 不是 bsk 帧，交给现有 Cute 中继处理。 */
     REACTOR_LEGACY,
 
     /** 无法归类（非法 JSON / 非对象 / 响应帧 result 与 error 同现或缺席）。 */

@@ -4,7 +4,7 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @Data
-@ConfigurationProperties(prefix = "reactor.browser-relay")
+@ConfigurationProperties(prefix = "cute.browser-relay")
 public class BrowserRelayProperties {
 
     private boolean enabled = true;

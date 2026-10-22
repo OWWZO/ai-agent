@@ -18,7 +18,7 @@ public class WebSearchToolQueryValidationTest {
 
     @Test
     public void shouldRejectMissingQueryInsteadOfSearchingForLiteralNull() {
-        // 未注入 AgentContext：校验通过后会因缺少 ReactorConfig 而抛错，
+        // 未注入 AgentContext：校验通过后会因缺少 CuteConfig 而抛错，
         // 因此只要拿到"query 至少 2 个字符"就证明校验拦住了。
         WebSearchTool tool = new WebSearchTool();
 

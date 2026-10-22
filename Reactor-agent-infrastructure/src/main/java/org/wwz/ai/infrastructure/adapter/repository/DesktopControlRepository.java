@@ -6,8 +6,8 @@ import org.springframework.stereotype.Repository;
 import org.wwz.ai.domain.agent.runtime.desktopcontrol.DesktopControlRecord;
 import org.wwz.ai.domain.agent.runtime.desktopcontrol.DesktopControlStatuses;
 import org.wwz.ai.domain.agent.runtime.desktopcontrol.IDesktopControlRepository;
-import org.wwz.ai.infrastructure.dao.reactor.IDesktopControlDao;
-import org.wwz.ai.infrastructure.dao.reactor.po.DesktopControlPO;
+import org.wwz.ai.infrastructure.dao.cute.IDesktopControlDao;
+import org.wwz.ai.infrastructure.dao.cute.po.DesktopControlPO;
 
 import java.util.List;
 import java.util.Optional;

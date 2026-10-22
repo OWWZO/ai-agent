@@ -8,13 +8,13 @@ import org.wwz.ai.domain.agent.memory.CompactionPrompt;
 import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
 import org.wwz.ai.domain.agent.memory.WorkingMemoryCompactionEvent;
 import org.wwz.ai.domain.agent.memory.WorkingMemoryCompactor;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.llm.ContextTokenTracker;
 import org.wwz.ai.domain.agent.runtime.llm.PromptShape;
 import org.wwz.ai.domain.agent.runtime.llm.TokenCounter;
-import org.wwz.ai.infrastructure.dao.reactor.IWorkingMemoryCompactionDao;
-import org.wwz.ai.infrastructure.reactor.service.impl.SessionContextCompactionServiceImpl;
+import org.wwz.ai.infrastructure.dao.cute.IWorkingMemoryCompactionDao;
+import org.wwz.ai.infrastructure.cute.service.impl.SessionContextCompactionServiceImpl;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -371,25 +371,25 @@ public class SessionContextCompactionOutcomeTest {
             return compactResult;
         }
 
-        static ObjectProvider<ReactorRuntimeDependencies> nullProvider() {
+        static ObjectProvider<CuteRuntimeDependencies> nullProvider() {
             return new ObjectProvider<>() {
                 @Override
-                public ReactorRuntimeDependencies getObject() {
+                public CuteRuntimeDependencies getObject() {
                     throw new IllegalStateException("runtime deps unavailable in unit test");
                 }
 
                 @Override
-                public ReactorRuntimeDependencies getObject(Object... args) {
+                public CuteRuntimeDependencies getObject(Object... args) {
                     return getObject();
                 }
 
                 @Override
-                public ReactorRuntimeDependencies getIfAvailable() {
+                public CuteRuntimeDependencies getIfAvailable() {
                     return null;
                 }
 
                 @Override
-                public ReactorRuntimeDependencies getIfUnique() {
+                public CuteRuntimeDependencies getIfUnique() {
                     return null;
                 }
             };

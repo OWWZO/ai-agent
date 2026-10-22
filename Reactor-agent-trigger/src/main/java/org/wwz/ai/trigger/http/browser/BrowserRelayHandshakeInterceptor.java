@@ -16,7 +16,7 @@ import java.util.Map;
 
 @Slf4j
 @Component
-@ConditionalOnProperty(prefix = "reactor.browser-relay", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "cute.browser-relay", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class BrowserRelayHandshakeInterceptor implements HandshakeInterceptor {
 
     private final BrowserRelayApplicationService browserRelayApplicationService;

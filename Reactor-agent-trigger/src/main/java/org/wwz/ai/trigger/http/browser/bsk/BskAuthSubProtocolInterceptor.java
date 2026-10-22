@@ -47,7 +47,7 @@ public class BskAuthSubProtocolInterceptor implements HandshakeInterceptor {
     /** base64url 变体前缀。 */
     public static final String AUTH_PROTOCOL_BASE64_PREFIX = "bsk-auth64.";
 
-    /** attributes 里放 userId 的键，与 Reactor relay 保持一致。 */
+    /** attributes 里放 userId 的键，与 Cute relay 保持一致。 */
     public static final String ATTR_USER_ID = "userId";
 
     /** attributes 里放原始 token 的键。 */
@@ -69,7 +69,7 @@ public class BskAuthSubProtocolInterceptor implements HandshakeInterceptor {
                                    Map<String, Object> attributes) {
         String header = request.getHeaders().getFirst("Sec-WebSocket-Protocol");
         if (StringUtils.isBlank(header)) {
-            // 复用 Reactor 老扩展的鉴权方式：token 走 URL 查询参数。
+            // 复用 Cute 老扩展的鉴权方式：token 走 URL 查询参数。
             // 这条路径不涉及子协议协商，握手不会被「服务端未回显子协议」判失败。
             String queryToken = queryParam(request.getURI(), "token");
             String userId = StringUtils.isBlank(queryToken)

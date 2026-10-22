@@ -14,7 +14,7 @@ import java.util.Map;
 /**
  * 锁定 {@link BskRelayWebSocketHandler} 的帧路由：bsk 帧闭环，
  * 绝不进入 {@code BrowserRelayFrameMapper}（会把 bsk 扁平响应帧误读成
- * Reactor 命令结果）。旧帧委托给 legacy delegate。
+ * Cute 命令结果）。旧帧委托给 legacy delegate。
  */
 public class BskRelayWebSocketHandlerTest {
 
@@ -49,7 +49,7 @@ public class BskRelayWebSocketHandlerTest {
     }
 
     @Test
-    public void bskResponseIsRoutedNotMappedAsReactorResult() {
+    public void bskResponseIsRoutedNotMappedAsCuteResult() {
         handler.afterConnectionEstablished(session);
         handler.handleTextMessage(session, new TextMessage(handshakeJson("hs-1")));
         relay.dispatch("sess-1", "rpc-1", request("rpc-1"));
@@ -57,12 +57,12 @@ public class BskRelayWebSocketHandlerTest {
         handler.handleTextMessage(session, new TextMessage("{\"id\":\"rpc-1\",\"result\":{\"ok\":true}}"));
 
         Assert.assertFalse(relay.isPending("rpc-1"));
-        Assert.assertTrue("bsk 响应绝不能落到 Reactor 旧路径", legacyFrames.isEmpty());
+        Assert.assertTrue("bsk 响应绝不能落到 Cute 旧路径", legacyFrames.isEmpty());
         Assert.assertFalse(session.closed);
     }
 
     @Test
-    public void reactorLegacyFrameIsDelegated() {
+    public void cuteLegacyFrameIsDelegated() {
         handler.afterConnectionEstablished(session);
         handler.handleTextMessage(session, new TextMessage("{\"type\":\"hello\"}"));
         Assert.assertEquals(List.of("{\"type\":\"hello\"}"), legacyFrames);

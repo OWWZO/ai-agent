@@ -32,7 +32,7 @@ import org.wwz.ai.domain.agent.rag.model.sql.SqlModel;
 import org.wwz.ai.domain.agent.rag.model.sql.WhereCondition;
 import org.wwz.ai.domain.agent.rag.port.DataQueryExecutionPort;
 import org.wwz.ai.domain.agent.rag.sql.SqlParserUtils;
-import org.wwz.ai.domain.agent.reactor.model.enums.EventTypeEnum;
+import org.wwz.ai.domain.agent.cute.model.enums.EventTypeEnum;
 
 import java.util.ArrayList;
 import java.util.HashMap;

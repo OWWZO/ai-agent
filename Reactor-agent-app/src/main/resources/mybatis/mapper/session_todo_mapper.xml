@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="org.wwz.ai.infrastructure.dao.reactor.ISessionTodoDao">
+<mapper namespace="org.wwz.ai.infrastructure.dao.cute.ISessionTodoDao">
 
-    <resultMap id="SessionTodoMap" type="org.wwz.ai.infrastructure.dao.reactor.po.SessionTodoPO">
+    <resultMap id="SessionTodoMap" type="org.wwz.ai.infrastructure.dao.cute.po.SessionTodoPO">
         <id column="id" property="id"/>
         <result column="session_id" property="sessionId"/>
         <result column="task_id" property="taskId"/>
@@ -35,7 +35,7 @@
           AND deleted = 0
     </select>
 
-    <insert id="upsert" parameterType="org.wwz.ai.infrastructure.dao.reactor.po.SessionTodoPO">
+    <insert id="upsert" parameterType="org.wwz.ai.infrastructure.dao.cute.po.SessionTodoPO">
         INSERT INTO ai_agent_session_todo (
             session_id, task_id, subject, description, active_form, owner, status,
             blocks_json, blocked_by_json, metadata_json, seq_no, create_time, update_time, deleted

@@ -10,7 +10,7 @@ import org.wwz.ai.domain.agent.memory.WorkingMemorySearchMessage;
 import org.wwz.ai.domain.agent.memory.WorkingMemoryCompactor;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.memory.ltm.SessionSearchRequest;
-import org.wwz.ai.infrastructure.dao.reactor.IWorkingMemoryMessageDao;
+import org.wwz.ai.infrastructure.dao.cute.IWorkingMemoryMessageDao;
 import org.wwz.ai.infrastructure.memory.WorkingMemorySessionSearchService;
 
 import java.util.List;

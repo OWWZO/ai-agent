@@ -7,7 +7,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.memory.ltm.LtmMemoryGuard;
 import org.wwz.ai.domain.agent.memory.ltm.LtmPromptGuidance;
 import org.wwz.ai.domain.agent.runtime.stream.ToolResultStreamPayload;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactFormatter;
 import org.wwz.ai.domain.agent.runtime.cancel.PendingInjectMessage;
 import org.wwz.ai.domain.agent.runtime.dto.Memory;
@@ -116,9 +116,9 @@ public abstract class BaseAgent {
      */
     public abstract String step();
 
-    protected ReactorRuntimeDependencies requireRuntimeDependencies(AgentContext agentContext) {
+    protected CuteRuntimeDependencies requireRuntimeDependencies(AgentContext agentContext) {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException(getClass().getSimpleName() + " 缺少 ReactorRuntimeDependencies");
+            throw new IllegalStateException(getClass().getSimpleName() + " 缺少 CuteRuntimeDependencies");
         }
         return agentContext.getRuntimeDependencies();
     }

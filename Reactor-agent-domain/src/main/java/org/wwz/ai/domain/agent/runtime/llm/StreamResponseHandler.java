@@ -7,7 +7,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.ledger.model.replay.ReplayTiming;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 
 import javax.annotation.Resource;
@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class StreamResponseHandler {
 
     @Resource
-    private ReactorConfig reactorConfig;
+    private CuteConfig cuteConfig;
 
     public CompletableFuture<String> handleStringStream(AgentContext context,
                                                          LlmCompletionPort.StreamCall streamCall) {
@@ -497,9 +497,9 @@ public class StreamResponseHandler {
         int firstInterval = 1;
         int sendInterval = 3;
         try {
-            String rawConfig = reactorConfig == null || reactorConfig.getMessageInterval() == null
+            String rawConfig = cuteConfig == null || cuteConfig.getMessageInterval() == null
                     ? "1,3"
-                    : reactorConfig.getMessageInterval().getOrDefault("llm", "1,3");
+                    : cuteConfig.getMessageInterval().getOrDefault("llm", "1,3");
             String[] intervalConfig = rawConfig.split(",");
             firstInterval = Math.max(1, Integer.parseInt(intervalConfig[0]));
             sendInterval = Math.max(1, Integer.parseInt(intervalConfig[1]));

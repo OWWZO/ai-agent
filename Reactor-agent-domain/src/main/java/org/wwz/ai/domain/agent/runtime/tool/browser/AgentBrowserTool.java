@@ -8,7 +8,7 @@ import org.wwz.ai.domain.agent.adapter.port.AgentBrowserSessionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliInvocation;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliResult;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
@@ -70,7 +70,7 @@ public class AgentBrowserTool implements BaseTool {
             return ToolResultPayload.failure("缺少用户身份", "缺少用户身份", null, "missing userId");
         }
 
-        ReactorRuntimeDependencies deps = agentContext.getRuntimeDependencies();
+        CuteRuntimeDependencies deps = agentContext.getRuntimeDependencies();
         AgentBrowserSessionPort sessionPort = deps.getOptionalAgentBrowserSessionPort();
         if (sessionPort == null || !sessionPort.isConfigured()) {
             return ToolResultPayload.failure("Agent 浏览器未配置", "Agent 浏览器未配置", null,

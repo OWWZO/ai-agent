@@ -11,7 +11,7 @@ import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
 import org.wwz.ai.domain.agent.runtime.llm.LlmChatModelResolver;
 import org.wwz.ai.domain.agent.runtime.llm.LlmCompletionPort;
@@ -39,17 +39,17 @@ public class SpringAiLlmCompletionAdapter implements LlmCompletionPort, LlmChatM
     private final SpringAiMessageMapper messageMapper;
     private final SpringAiOptionsMapper optionsMapper;
     private final SpringAiResponseMapper responseMapper;
-    private final ReactorConfig reactorConfig;
+    private final CuteConfig cuteConfig;
     private final Map<String, OpenAiChatModel> modelCache = new ConcurrentHashMap<>();
 
     public SpringAiLlmCompletionAdapter(SpringAiMessageMapper messageMapper,
                                         SpringAiOptionsMapper optionsMapper,
                                         SpringAiResponseMapper responseMapper,
-                                        ReactorConfig reactorConfig) {
+                                        CuteConfig cuteConfig) {
         this.messageMapper = messageMapper;
         this.optionsMapper = optionsMapper;
         this.responseMapper = responseMapper;
-        this.reactorConfig = reactorConfig;
+        this.cuteConfig = cuteConfig;
     }
 
     @Override
@@ -87,7 +87,7 @@ public class SpringAiLlmCompletionAdapter implements LlmCompletionPort, LlmChatM
                 StringUtils.defaultString(settings.getInterfaceUrl()),
                 StringUtils.defaultString(settings.getApiKey()),
                 JSON.toJSONString(settings.getExtParams()),
-                StringUtils.defaultString(reactorConfig.getLlmProxy()));
+                StringUtils.defaultString(cuteConfig.getLlmProxy()));
     }
 
     private OpenAiChatModel createModel(LLMSettings settings) {
@@ -98,7 +98,7 @@ public class SpringAiLlmCompletionAdapter implements LlmCompletionPort, LlmChatM
         String completionsPath = StringUtils.isNotBlank(settings.getInterfaceUrl())
                 ? settings.getInterfaceUrl().trim()
                 : "/v1/chat/completions";
-        String proxy = StringUtils.trimToNull(reactorConfig.getLlmProxy());
+        String proxy = StringUtils.trimToNull(cuteConfig.getLlmProxy());
         OpenAiApi.Builder apiBuilder = OpenAiApi.builder()
                 .baseUrl(baseUrl)
                 .apiKey(StringUtils.defaultString(settings.getApiKey()))

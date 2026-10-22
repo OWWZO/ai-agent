@@ -8,8 +8,8 @@ import org.springframework.stereotype.Repository;
 import org.wwz.ai.domain.agent.runtime.askuser.IUserQuestionRepository;
 import org.wwz.ai.domain.agent.runtime.askuser.UserQuestionRecord;
 import org.wwz.ai.domain.agent.runtime.askuser.UserQuestionStatuses;
-import org.wwz.ai.infrastructure.dao.reactor.IUserQuestionDao;
-import org.wwz.ai.infrastructure.dao.reactor.po.UserQuestionPO;
+import org.wwz.ai.infrastructure.dao.cute.IUserQuestionDao;
+import org.wwz.ai.infrastructure.dao.cute.po.UserQuestionPO;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;

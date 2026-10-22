@@ -24,7 +24,7 @@ import org.wwz.ai.domain.agent.rag.service.ChatModelInfoService;
 import org.wwz.ai.domain.agent.rag.service.ChatModelSchemaService;
 import org.wwz.ai.domain.agent.rag.service.SchemaRecallService;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
-import org.wwz.ai.domain.agent.reactor.model.enums.EventTypeEnum;
+import org.wwz.ai.domain.agent.cute.model.enums.EventTypeEnum;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
 
 import jakarta.annotation.Resource;

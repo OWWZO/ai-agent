@@ -4,7 +4,7 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReactImplAgent;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
@@ -67,7 +67,7 @@ public final class LtmAgentForkSupport {
      * @deprecated 使用 {@link #runParityFork}；保留签名以免外部编译断裂。
      */
     @Deprecated
-    public static LtmForkRunResult runMemoryOnlyFork(ReactorRuntimeDependencies deps,
+    public static LtmForkRunResult runMemoryOnlyFork(CuteRuntimeDependencies deps,
                                                     CuratedMemoryStore store,
                                                     LtmOwner owner,
                                                     String sessionId,
@@ -91,7 +91,7 @@ public final class LtmAgentForkSupport {
                 forkLabel);
     }
 
-    public static LtmForkRunResult runParityFork(ReactorRuntimeDependencies deps,
+    public static LtmForkRunResult runParityFork(CuteRuntimeDependencies deps,
                                                 CuratedMemoryStore store,
                                                 LtmOwner owner,
                                                 String sessionId,
@@ -118,7 +118,7 @@ public final class LtmAgentForkSupport {
         final String reqId = parentRequestId;
         final LtmOwner forkOwner = owner;
         final CuratedMemoryStore forkStore = store;
-        final ReactorRuntimeDependencies forkDeps = deps;
+        final CuteRuntimeDependencies forkDeps = deps;
         final LtmForkParity forkParity = parity;
         final String forkRequestId = StringUtils.defaultIfBlank(reqId, "ltm") + "-" + label;
 

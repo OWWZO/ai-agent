@@ -3,7 +3,7 @@ package org.wwz.ai.domain.agent.runtime.artifact;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.dto.FileRequest;
@@ -36,7 +36,7 @@ public final class FileArtifactUploader {
             if (request == null) {
                 return ToolResultPayload.failureFrom("文件上传请求为空", null);
             }
-            ReactorConfig config = requireReactorConfig();
+            CuteConfig config = requireCuteConfig();
             FileArtifactPort fileArtifactPort = requireFileArtifactPort();
 
             request.setRequestId(StringUtils.defaultIfBlank(
@@ -81,16 +81,16 @@ public final class FileArtifactUploader {
         }
     }
 
-    private ReactorConfig requireReactorConfig() {
+    private CuteConfig requireCuteConfig() {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("FileArtifactUploader 缺少 ReactorRuntimeDependencies");
+            throw new IllegalStateException("FileArtifactUploader 缺少 CuteRuntimeDependencies");
         }
-        return agentContext.getRuntimeDependencies().requireReactorConfig();
+        return agentContext.getRuntimeDependencies().requireCuteConfig();
     }
 
     private FileArtifactPort requireFileArtifactPort() {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("FileArtifactUploader 缺少 ReactorRuntimeDependencies");
+            throw new IllegalStateException("FileArtifactUploader 缺少 CuteRuntimeDependencies");
         }
         return agentContext.getRuntimeDependencies().requireFileArtifactPort();
     }

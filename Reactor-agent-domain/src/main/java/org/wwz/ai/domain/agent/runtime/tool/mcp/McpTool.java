@@ -10,7 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpRequest;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 
 import java.util.Map;
 
@@ -68,10 +68,10 @@ public class McpTool implements BaseTool {
         try {
 
             //获取reactor配置
-            ReactorConfig reactorConfig = requireReactorConfig();
+            CuteConfig cuteConfig = requireCuteConfig();
 
             //构建通用mcp客户端请求路径
-            String mcpClientUrl = reactorConfig.getMcpClientUrl() + "/v1/tool/list";
+            String mcpClientUrl = cuteConfig.getMcpClientUrl() + "/v1/tool/list";
 
             //构建请求参数
             McpToolRequest mcpToolRequest = McpToolRequest.builder()
@@ -101,8 +101,8 @@ public class McpTool implements BaseTool {
 
     public String callTool(String mcpServerUrl, String toolName, Object input) {
         try {
-            ReactorConfig reactorConfig = requireReactorConfig();
-            String mcpClientUrl = reactorConfig.getMcpClientUrl() + "/v1/tool/call";
+            CuteConfig cuteConfig = requireCuteConfig();
+            String mcpClientUrl = cuteConfig.getMcpClientUrl() + "/v1/tool/call";
             Map<String, Object> params = (Map<String, Object>) input;
             McpToolRequest mcpToolRequest = McpToolRequest.builder()
                     .name(toolName)
@@ -127,10 +127,10 @@ public class McpTool implements BaseTool {
         return "";
     }
 
-    private ReactorConfig requireReactorConfig() {
+    private CuteConfig requireCuteConfig() {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("McpTool 缺少 ReactorRuntimeDependencies");
+            throw new IllegalStateException("McpTool 缺少 CuteRuntimeDependencies");
         }
-        return agentContext.getRuntimeDependencies().requireReactorConfig();
+        return agentContext.getRuntimeDependencies().requireCuteConfig();
     }
 }

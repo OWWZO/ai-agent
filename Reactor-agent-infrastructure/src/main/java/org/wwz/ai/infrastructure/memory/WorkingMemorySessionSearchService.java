@@ -9,7 +9,7 @@ import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.memory.WorkingMemorySearchMessage;
 import org.wwz.ai.domain.agent.memory.ltm.SessionSearchRequest;
 import org.wwz.ai.domain.agent.memory.ltm.SessionSearchService;
-import org.wwz.ai.infrastructure.dao.reactor.IWorkingMemoryMessageDao;
+import org.wwz.ai.infrastructure.dao.cute.IWorkingMemoryMessageDao;
 
 import java.util.ArrayList;
 import java.util.Comparator;

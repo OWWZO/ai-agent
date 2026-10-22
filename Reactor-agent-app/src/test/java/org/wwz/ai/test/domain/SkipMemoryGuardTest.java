@@ -9,7 +9,7 @@ import org.wwz.ai.domain.agent.memory.ltm.LtmMemoryGuard;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
 import org.wwz.ai.domain.agent.memory.ltm.LtmServices;
 import org.wwz.ai.domain.agent.memory.ltm.LtmTurnSyncSupport;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentContextFactory;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentDefinition;
@@ -35,7 +35,7 @@ public class SkipMemoryGuardTest {
                 .requestId("r1")
                 .skipMemory(true)
                 .ltmOwner(LtmOwner.user("u1"))
-                .runtimeDependencies(ReactorRuntimeDependencies.builder()
+                .runtimeDependencies(CuteRuntimeDependencies.builder()
                         .curatedMemoryStore(store)
                         .build())
                 .build();
@@ -106,7 +106,7 @@ public class SkipMemoryGuardTest {
                 .skipMemory(true)
                 .query("durable project convention")
                 .sessionId("s")
-                .runtimeDependencies(ReactorRuntimeDependencies.builder()
+                .runtimeDependencies(CuteRuntimeDependencies.builder()
                         .ltmManager(manager)
                         .build())
                 .build();

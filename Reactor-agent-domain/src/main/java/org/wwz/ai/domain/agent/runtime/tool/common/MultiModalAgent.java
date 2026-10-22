@@ -21,7 +21,7 @@ import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ContextIsolatableTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.MultimodalAgentToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRefMapper;
 
@@ -109,8 +109,8 @@ public class MultiModalAgent implements ContextIsolatableTool {
                 return buildFailurePayload("multimodalagent_tool 执行失败：question 不能为空。");
             }
 
-            ReactorConfig reactorConfig = requireReactorConfig();
-            if (!StringUtils.hasText(reactorConfig.getMultiModalAgentUrl())) {
+            CuteConfig cuteConfig = requireCuteConfig();
+            if (!StringUtils.hasText(cuteConfig.getMultiModalAgentUrl())) {
                 return buildFailurePayload("multimodalagent_tool 执行失败：未配置 multimodalagent_url。");
             }
 
@@ -158,12 +158,12 @@ public class MultiModalAgent implements ContextIsolatableTool {
         // listener 只转发事件给局部 StreamState，避免并发调用共享缓冲区。
         CompletableFuture<ToolResultPayload> future = new CompletableFuture<>();
         try {
-            ReactorConfig reactorConfig = requireReactorConfig();
-            String url = reactorConfig.getMultiModalAgentUrl() + "/v1/tool/mragQuery";
+            CuteConfig cuteConfig = requireCuteConfig();
+            String url = cuteConfig.getMultiModalAgentUrl() + "/v1/tool/mragQuery";
             log.info("{} multimodalagent_tool request {}", agentContext.getRequestId(),
                     JSONObject.toJSONString(multiModalAgentRequest));
 
-            String[] interval = reactorConfig.getMessageInterval().getOrDefault("knowledge", "1,4").split(",");
+            String[] interval = cuteConfig.getMessageInterval().getOrDefault("knowledge", "1,4").split(",");
             int firstInterval = Integer.parseInt(interval[0]);
             int sendInterval = Integer.parseInt(interval[1]);
             // 单次调用局部 StreamState，避免并行 execute 抢写实例字段
@@ -573,16 +573,16 @@ public class MultiModalAgent implements ContextIsolatableTool {
         return result;
     }
 
-    private ReactorConfig requireReactorConfig() {
+    private CuteConfig requireCuteConfig() {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("MultiModalAgent 缺少 ReactorRuntimeDependencies");
+            throw new IllegalStateException("MultiModalAgent 缺少 CuteRuntimeDependencies");
         }
-        return agentContext.getRuntimeDependencies().requireReactorConfig();
+        return agentContext.getRuntimeDependencies().requireCuteConfig();
     }
 
     private RemoteStreamPort requireRemoteStreamPort() {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("MultiModalAgent 缺少 ReactorRuntimeDependencies");
+            throw new IllegalStateException("MultiModalAgent 缺少 CuteRuntimeDependencies");
         }
         return agentContext.getRuntimeDependencies().requireRemoteStreamPort();
     }

@@ -17,7 +17,7 @@ import java.util.stream.Stream;
  * 锁定当前已成立的边界规则，防止后续批次回流。已明确登记为延期的规则不在此断言：
  * <ul>
  *     <li>Ledger DAO 仍直接返回 domain ledger entity（PO 分离未完成，R7 延期项）；</li>
- *     <li>Case 仍引用 {@code domain.agent.reactor.config.ReactorConfig}（过渡态共享配置，R3 延期项）。</li>
+ *     <li>Case 仍引用 {@code domain.agent.cute.config.CuteConfig}（过渡态共享配置，R3 延期项）。</li>
  * </ul>
  */
 public class DddArchitectureGuardTest {

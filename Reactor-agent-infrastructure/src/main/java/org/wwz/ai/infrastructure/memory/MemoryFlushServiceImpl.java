@@ -16,10 +16,10 @@ import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwnerResolver;
 import org.wwz.ai.domain.agent.memory.ltm.MemoryFlushPolicy;
 import org.wwz.ai.domain.agent.memory.ltm.MemoryFlushService;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
-import org.wwz.ai.infrastructure.dao.reactor.ILtmForkExecutionDao;
+import org.wwz.ai.infrastructure.dao.cute.ILtmForkExecutionDao;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,7 +34,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class MemoryFlushServiceImpl implements MemoryFlushService {
 
-    private final ObjectProvider<ReactorRuntimeDependencies> runtimeDependenciesProvider;
+    private final ObjectProvider<CuteRuntimeDependencies> runtimeDependenciesProvider;
     private final ObjectProvider<CuratedMemoryStore> curatedMemoryStoreProvider;
     private final ObjectProvider<IExecutionLedgerReadRepository> ledgerReadRepositoryProvider;
     private final ObjectProvider<ILtmForkExecutionDao> ltmForkExecutionDaoProvider;
@@ -98,7 +98,7 @@ public class MemoryFlushServiceImpl implements MemoryFlushService {
                 return 0;
             }
             CuratedMemoryStore store = curatedMemoryStoreProvider.getIfAvailable();
-            ReactorRuntimeDependencies deps = runtimeDependenciesProvider.getIfAvailable();
+            CuteRuntimeDependencies deps = runtimeDependenciesProvider.getIfAvailable();
             if (store == null || deps == null) {
                 recordSkip(sessionId, requestId, resolvedOwner, messagesAboutToCompact,
                         store == null ? "store-null" : "deps-null", userTurns);

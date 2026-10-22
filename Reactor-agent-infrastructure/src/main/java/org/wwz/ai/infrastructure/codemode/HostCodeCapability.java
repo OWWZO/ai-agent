@@ -3,7 +3,7 @@ package org.wwz.ai.infrastructure.codemode;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.adapter.port.cli.CliExecutionPort;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.CuteRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
@@ -48,7 +48,7 @@ public final class HostCodeCapability {
     }
 
     /** 按当前装配解析可用 CLI 名单。 */
-    public static List<String> resolveAvailableTools(ReactorRuntimeDependencies deps) {
+    public static List<String> resolveAvailableTools(CuteRuntimeDependencies deps) {
         if (deps == null) {
             return List.of();
         }

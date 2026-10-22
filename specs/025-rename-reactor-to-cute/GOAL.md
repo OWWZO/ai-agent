@@ -30,7 +30,7 @@
 | L0 目录 | `reactor-tool/reactor_tool/` | `cute-tool/cute_tool/` |
 | L0 前端 | `"name": "reactor-ui"` | `"name": "cute-ui"` |
 | L1 Java 包 | `org.wwz.ai.*.reactor.*` | `org.wwz.ai.*.cute.*` |
-| L1 类名 | `ReactorConfig` | `CuteConfig` |
+| L1 类名 | `CuteConfig` | `CuteConfig` |
 | L1 配置前缀 | `reactor:` / `${reactor.*}` | `cute:` / `${cute.*}` |
 | L1 mapper namespace | `org.wwz.ai.infrastructure.dao.reactor.*` | `org.wwz.ai.infrastructure.dao.cute.*` |
 | L2 环境变量 | `REACTOR_*`（31 个，见 §6） | `CUTE_*` |
@@ -92,7 +92,7 @@ grep -rnE '\bCute\b|cute[-_.]|\bCUTE_' <path>
 - [ ] `org.wwz.ai.*.reactor.*` 包目录改名（4 处：`domain.agent.reactor`、`infrastructure.dao.reactor`、`trigger.http.reactor`、`config.reactor`）
 - [ ] 同步所有 `package` / `import` 语句
 - [ ] 同步 mapper XML 的 `namespace`（34 个 xml 文件）
-- [ ] `ReactorConfig` → `CuteConfig`，同步所有引用与 `@Value("${reactor.*}")`
+- [ ] `CuteConfig` → `CuteConfig`，同步所有引用与 `@Value("${reactor.*}")`
 - [ ] yml 中 `reactor:` 前缀 → `cute:`（`application.yml`、`application-prod.yml`）
 - [ ] **排除** `import reactor.` 行
 
