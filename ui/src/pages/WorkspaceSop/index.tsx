@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
   ClipboardList,
@@ -10,7 +10,14 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import { Modal, Select } from "antd";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { confirm } from "@/components/ui/confirm-dialog";
 
 import WorkspaceToolSwitcher from "@/components/WorkspaceToolSwitcher";
 import { ROUTES } from "@/router/routes";
@@ -21,7 +28,7 @@ import {
   setSopStatus,
   upsertSop,
 } from "@/services/sopWorkspace";
-import { showMessage } from "@/utils";
+import { toast } from "sonner";
 
 import type { SopEditorDraft, SopItem, SopRecallTestResult, SopStatus } from "./types";
 import {
@@ -42,6 +49,8 @@ const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
   const [keyword, setKeyword] = useState("");
   const [appliedKeyword, setAppliedKeyword] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
+  // 「全部状态」在 Select 里需要一个非空 value；空字符串表示未筛选。
+  const ALL_STATUS = "__all__";
   const [loadingList, setLoadingList] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -69,7 +78,7 @@ const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
             : previous
         );
       } catch (error) {
-        showMessage()?.error(
+        toast.error(
           error instanceof Error ? error.message : "加载 SOP 列表失败"
         );
       } finally {
@@ -155,7 +164,7 @@ const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
 
   const handleSave = async () => {
     if (!draft.sopName.trim()) {
-      showMessage()?.warning("请填写 SOP 名称");
+      toast.warning("请填写 SOP 名称");
       return;
     }
     setSaving(true);
@@ -175,12 +184,12 @@ const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
           .filter((step) => step.title || step.steps.length > 0),
         status: draft.status,
       });
-      showMessage()?.success("保存成功");
+      toast.success("保存成功");
       setSelectedId(saved.sopId);
       setDraft(sopItemToDraft(saved));
       await refreshList();
     } catch (error) {
-      showMessage()?.error(error instanceof Error ? error.message : "保存失败");
+      toast.error(error instanceof Error ? error.message : "保存失败");
     } finally {
       setSaving(false);
     }
@@ -191,21 +200,21 @@ const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
       setDraft(createEmptyDraft());
       return;
     }
-    Modal.confirm({
+    confirm({
       title: "删除 SOP",
       content: `确认删除「${draft.sopName || draft.sopId}」？删除后不可恢复。`,
       okText: "删除",
-      okButtonProps: { danger: true },
+      danger: true,
       cancelText: "取消",
       onOk: async () => {
         try {
           await deleteSop(toolBaseUrl, draft.sopId!);
-          showMessage()?.success("已删除");
+          toast.success("已删除");
           setSelectedId(null);
           setDraft(createEmptyDraft());
           await refreshList();
         } catch (error) {
-          showMessage()?.error(error instanceof Error ? error.message : "删除失败");
+          toast.error(error instanceof Error ? error.message : "删除失败");
           throw error;
         }
       },
@@ -222,10 +231,10 @@ const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
       // 已持久化 SOP 的状态切换直接调用后端；新建草稿只修改本地状态，等保存时一并提交。
       const next = await setSopStatus(toolBaseUrl, draft.sopId, status);
       setDraft(sopItemToDraft(next));
-      showMessage()?.success(status === "online" ? "已上线" : "已更新状态");
+      toast.success(status === "online" ? "已上线" : "已更新状态");
       await refreshList();
     } catch (error) {
-      showMessage()?.error(error instanceof Error ? error.message : "状态更新失败");
+      toast.error(error instanceof Error ? error.message : "状态更新失败");
     } finally {
       setSaving(false);
     }
@@ -233,7 +242,7 @@ const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
 
   const handleRecallTest = async () => {
     if (!recallQuery.trim()) {
-      showMessage()?.warning("请输入测试 query");
+      toast.warning("请输入测试 query");
       return;
     }
     setRecallLoading(true);
@@ -243,7 +252,7 @@ const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
       const result = await recallTestSop(toolBaseUrl, recallQuery.trim());
       setRecallResult(result);
     } catch (error) {
-      showMessage()?.error(error instanceof Error ? error.message : "试召回失败");
+      toast.error(error instanceof Error ? error.message : "试召回失败");
     } finally {
       setRecallLoading(false);
     }
@@ -251,7 +260,7 @@ const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
 
   return (
     <div
-      className={classNames(
+      className={cn(
         "flex h-full min-h-0 flex-col bg-[var(--chat-bg)]",
         embedded ? "" : "px-4 py-4 sm:px-6"
       )}
@@ -311,7 +320,7 @@ const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
               className="inline-flex h-9 w-9 items-center justify-center rounded-2xl border border-slate-200 text-slate-500 hover:bg-slate-50"
               title="刷新"
             >
-              <RefreshCcw className={classNames("h-3.5 w-3.5", loadingList && "animate-spin")} />
+              <RefreshCcw className={cn("h-3.5 w-3.5", loadingList && "animate-spin")} />
             </button>
             <button
               type="button"
@@ -322,18 +331,17 @@ const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
               <Plus className="h-4 w-4" />
             </button>
           </div>
-          <Select
-            allowClear
-            placeholder="全部状态"
-            className="mb-3 w-full"
-            value={statusFilter || undefined}
-            onChange={(value) => setStatusFilter(value || "")}
-            options={[
-              { value: "online", label: "已上线" },
-              { value: "offline", label: "已下线" },
-              { value: "draft", label: "草稿" },
-            ]}
-          />
+          <Select value={statusFilter || ALL_STATUS} onValueChange={(value) => setStatusFilter(value === ALL_STATUS ? "" : value)}>
+            <SelectTrigger className="mb-3 w-full">
+              <SelectValue placeholder="全部状态" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_STATUS}>全部状态</SelectItem>
+              <SelectItem value="online">已上线</SelectItem>
+              <SelectItem value="offline">已下线</SelectItem>
+              <SelectItem value="draft">草稿</SelectItem>
+            </SelectContent>
+          </Select>
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
             {loadingList && items.length === 0 ? (
               <div className="flex items-center justify-center py-10 text-sm text-slate-400">
@@ -353,7 +361,7 @@ const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
                   key={item.sopId}
                   type="button"
                   onClick={() => handleSelect(item)}
-                  className={classNames(
+                  className={cn(
                     "w-full rounded-2xl border px-3 py-2.5 text-left transition",
                     active
                       ? "border-sky-200 bg-sky-50 shadow-sm"
@@ -368,7 +376,7 @@ const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
                       {item.sopDesc || item.sopId}
                     </span>
                     <span
-                      className={classNames(
+                      className={cn(
                         "shrink-0 rounded-full px-2 py-0.5 text-[11px]",
                         item.status === "online"
                           ? "bg-emerald-50 text-emerald-600"
@@ -398,16 +406,16 @@ const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
               ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Select
-                value={draft.status}
-                className="w-[120px]"
-                onChange={(value) => void handleToggleStatus(value as SopStatus)}
-                options={[
-                  { value: "online", label: "上线" },
-                  { value: "offline", label: "下线" },
-                  { value: "draft", label: "草稿" },
-                ]}
-              />
+              <Select value={draft.status} onValueChange={(value) => void handleToggleStatus(value as SopStatus)}>
+                <SelectTrigger className="w-[120px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="online">上线</SelectItem>
+                  <SelectItem value="offline">下线</SelectItem>
+                  <SelectItem value="draft">草稿</SelectItem>
+                </SelectContent>
+              </Select>
               {draft.sopId ? (
                 <button
                   type="button"

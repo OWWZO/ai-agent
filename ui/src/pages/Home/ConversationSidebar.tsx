@@ -1,6 +1,6 @@
 import { memo, useState, useCallback, useRef } from "react";
 import { motion } from "motion/react";
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 import { EASE_OUT, useMotionConfig } from "@/lib/motion";
 import {
   Blocks,
@@ -333,7 +333,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
           </button>
 
           <div
-            className={classNames(
+            className={cn(
               "grid",
               reduce
                 ? searchOpen
@@ -347,7 +347,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
             )}
           >
             <div
-              className={classNames(
+              className={cn(
                 "min-h-0 overflow-hidden",
                 !searchOpen && "pointer-events-none"
               )}
@@ -403,7 +403,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
                   key={item.key}
                   type="button"
                   onClick={() => onChangeView(item.key)}
-                  className={classNames(
+                  className={cn(
                     "flex h-9 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-[14px] font-medium transition-colors",
                     isActive
                       ? "bg-black/[0.08] text-[var(--chat-text)]"
@@ -467,7 +467,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
                         <button
                           type="button"
                           onClick={() => onSelectSession(session)}
-                          className={classNames(
+                          className={cn(
                             "group relative z-[1] flex h-9 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-left transition-colors",
                             isActive
                               ? "text-[var(--chat-text)]"
@@ -475,7 +475,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
                           )}
                         >
                           <span
-                            className={classNames(
+                            className={cn(
                               "size-3.5 shrink-0 rounded-full border-[1.5px]",
                               isActive
                                 ? "border-[var(--chat-accent)] shadow-[inset_0_0_0_3px_var(--chat-accent)]"
@@ -487,7 +487,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
                             {session.title || "未命名会话"}
                           </span>
                           <span
-                            className={classNames(
+                            className={cn(
                               "shrink-0 transition-opacity",
                               isHovered || isExpanded
                                 ? "opacity-100"
@@ -542,7 +542,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
               type="button"
               onClick={() => onOpenTaskFiles?.()}
               disabled={activeView !== "chat"}
-              className={classNames(
+              className={cn(
                 "flex h-9 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-[14px] font-medium transition-colors",
                 activeView === "chat"
                   ? "text-[var(--chat-text)] hover:bg-black/[0.04]"

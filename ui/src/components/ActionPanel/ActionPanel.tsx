@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useMemo, useRef } from "react";
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 import { motion } from "motion/react";
 import { EASE_OUT } from "@/lib/motion";
 import { useMsgTypes } from "./useMsgTypes";
@@ -145,7 +145,7 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
       case "ask_user_question":
         return (
           <ContentWrapper key="ask_user_question">
-            <div className={classNames("h-full overflow-auto", !noPadding && "px-1 py-1")}>
+            <div className={cn("h-full overflow-auto", !noPadding && "px-1 py-1")}>
               <div className="kimi-ui-card kimi-qcard">
                 <div className="kimi-ui-card__head">
                   <span className="kimi-qcard-ic">?</span>
@@ -163,7 +163,7 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
         const status = String(nested.status || resultMap.status || "pending");
         return (
           <ContentWrapper key="desktop_control">
-            <div className={classNames("flex h-full flex-col", !noPadding && "px-1 py-1")}>
+            <div className={cn("flex h-full flex-col", !noPadding && "px-1 py-1")}>
               {streamUrl && status === "pending" ? (
                 <iframe
                   title="用户桌面"
@@ -496,7 +496,7 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
       scrollToBottom,
     }}>
       <div
-        className={classNames(
+        className={cn(
           "w-full",
           isImmersivePreview ? "overflow-hidden px-1 sm:px-2" : "overflow-auto px-16",
           noPadding && "px-0",

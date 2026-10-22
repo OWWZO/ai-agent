@@ -1,9 +1,9 @@
 import { memo, useEffect } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { ConfigProvider, message } from "antd";
 import { ConstantProvider } from "@/hooks";
 import * as constants from "@/utils/constants";
-import { setMessage } from "@/utils";
+import { Toaster } from "@/components/ui/sonner";
+import { ConfirmDialogHost } from "@/components/ui/confirm-dialog";
 import {
   AUTH_SESSION_EXPIRED_EVENT,
   type AuthSessionExpiredDetail,
@@ -12,14 +12,8 @@ import { buildLoginPath, ROUTES } from "@/router/routes";
 
 // Layout 组件：应用的主要布局结构
 const Layout: ReactorType.FC = memo(() => {
-  const [messageApi, messageContent] = message.useMessage();
   const location = useLocation();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    // 初始化全局 message
-    setMessage(messageApi);
-  }, [messageApi]);
 
   useEffect(() => {
     const onAuthSessionExpired = (event: Event) => {
@@ -48,21 +42,15 @@ const Layout: ReactorType.FC = memo(() => {
   }, [location, navigate]);
 
   return (
-    <ConfigProvider
-      theme={{
-        token: {
-          colorPrimary: "#1783ff",
-          borderRadius: 8,
-          controlHeight: 36,
-        },
-      }}
-    >
-      {messageContent}
+    <>
+      {/* antd message 自带 success 绿 / error 红；richColors 保住同等的信息辨识度 */}
+      <Toaster position="top-center" richColors />
+      <ConfirmDialogHost />
       {/* 暂时只有静态的 */}
       <ConstantProvider value={constants}>
         <Outlet />
       </ConstantProvider>
-    </ConfigProvider>
+    </>
   );
 });
 

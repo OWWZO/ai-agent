@@ -4,7 +4,7 @@ import {
   LoaderCircleIcon,
   MinusIcon,
 } from "lucide-react";
-import { message } from "antd";
+import { toast } from "sonner";
 import {
   dispatchPlanApprovalResume,
   planApprovalApi,
@@ -104,7 +104,7 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
       | undefined
   ) => {
     if (res && res.accepted === false) {
-      message.warning(String(res.message || "操作失败，请求可能已结束"));
+      toast.warning(String(res.message || "操作失败，请求可能已结束"));
       return;
     }
     setDecision(kind);
@@ -119,12 +119,12 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
         approvalId,
         approved: kind === "approved",
       });
-      message.success(
+      toast.success(
         kind === "approved" ? "计划已批准，正在继续执行" : "已拒绝，正在继续修订"
       );
       return;
     }
-    message.success(kind === "approved" ? "计划已批准" : "已拒绝");
+    toast.success(kind === "approved" ? "计划已批准" : "已拒绝");
   };
 
   const approve = async () => {
@@ -139,7 +139,7 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
       });
       afterDecide("approved", res);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "批准失败");
+      toast.error(error instanceof Error ? error.message : "批准失败");
     } finally {
       setSubmitting(false);
       setPendingAction(null);
@@ -158,7 +158,7 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
       afterDecide("rejected", res);
       setFeedbackOpen(false);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "拒绝失败");
+      toast.error(error instanceof Error ? error.message : "拒绝失败");
     } finally {
       setSubmitting(false);
       setPendingAction(null);

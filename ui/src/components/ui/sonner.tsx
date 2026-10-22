@@ -1,13 +1,19 @@
-import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
+import { useIsDarkTheme } from "@/hooks/useIsDarkTheme"
 
+/**
+ * 全局 toast 容器。
+ *
+ * 主题跟随本项目**纯 CSS** 的 `.dark` class（见 `useIsDarkTheme`），
+ * 不用 next-themes —— 仓库里没有 ThemeProvider，`useTheme()` 只会恒返回 undefined。
+ */
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme()
+  const isDark = useIsDarkTheme()
 
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      theme={isDark ? "dark" : "light"}
       className="toaster group"
       icons={{
         success: (

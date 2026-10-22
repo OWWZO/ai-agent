@@ -1,7 +1,6 @@
 import React, { useEffect, useLayoutEffect } from 'react';
-import { ConfigProvider, Spin } from 'antd';
 import { RouterProvider } from 'react-router-dom';
-import zhCN from 'antd/locale/zh_CN';
+import { Spinner } from '@/components/ui/spinner';
 import router from './router';
 // OpenUI 渲染器的样式。Tailwind v4 项目必须用 layered 入口（规则全包在 @layer openui 里），
 // 否则它会以未分层样式出现、盖掉 Tailwind utilities。变量前缀 --openui-* / --iui-*，与现有主题无冲突。
@@ -27,16 +26,12 @@ const App: ReactorType.FC = React.memo(() => {
     void restoreAuthSession();
   }, []);
 
-  return (
-    <ConfigProvider locale={zhCN}>
-      {auth.status === 'initializing' ? (
-        <div className="flex min-h-screen items-center justify-center">
-          <Spin size="large" aria-label="正在恢复登录状态" />
-        </div>
-      ) : (
-        <RouterProvider router={router} />
-      )}
-    </ConfigProvider>
+  return auth.status === 'initializing' ? (
+    <div className="flex min-h-screen items-center justify-center">
+      <Spinner className="size-8" aria-label="正在恢复登录状态" />
+    </div>
+  ) : (
+    <RouterProvider router={router} />
   );
 });
 

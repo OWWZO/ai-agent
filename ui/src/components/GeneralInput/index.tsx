@@ -31,7 +31,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { showMessage } from "@/utils";
+import { toast } from "sonner";
 import {
   resolveAdjacentPromptPlaceholder,
   type PromptSelectionRequest,
@@ -347,15 +347,15 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
 
   const handleAttachmentError = useCallback((error: PromptInputAttachmentError) => {
     if (error.code === "accept") {
-      showMessage()?.warning("不支持该文件类型");
+      toast.warning("不支持该文件类型");
       return;
     }
     if (error.code === "max_file_size") {
-      showMessage()?.warning("文件过大，请压缩后再试");
+      toast.warning("文件过大，请压缩后再试");
       return;
     }
     if (error.code === "max_files") {
-      showMessage()?.warning("一次添加的文件过多，部分未加入");
+      toast.warning("一次添加的文件过多，部分未加入");
     }
   }, []);
 

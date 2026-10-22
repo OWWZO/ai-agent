@@ -3135,10 +3135,6 @@ ol {
   transition: none !important;
 }
 
-/* 拖拽中分隔条的指示线点亮，已由 Tailwind 的
-   [[data-workspace-resizing=true]_&]:after:opacity-100 承担（对齐 ZCode），
-   这里不再叠品牌色，保持中性克制。 */
-
 /* Mobile chat adaptation: the workspace becomes a thumb-reachable bottom sheet. */
 .reactor-workspace-scrim {
   display: none;

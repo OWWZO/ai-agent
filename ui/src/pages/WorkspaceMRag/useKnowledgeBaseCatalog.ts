@@ -6,7 +6,7 @@ import {
   listKnowledgeBases,
   mapMragError,
 } from "@/services/mragWorkspace";
-import { showMessage } from "@/utils";
+import { toast } from "sonner";
 import type { KnowledgeBase } from "./types";
 
 type RefreshKnowledgeBaseOptions = {
@@ -49,7 +49,7 @@ export function useKnowledgeBaseCatalog(toolBaseUrl: string) {
     // 名称在请求前 trim，创建成功后清空草稿但把新对象交给页面决定是否选中。
     const kbName = createKnowledgeBaseName.trim();
     if (!kbName) {
-      showMessage()?.error("请输入知识库名称");
+      toast.error("请输入知识库名称");
       return null;
     }
 
@@ -61,10 +61,10 @@ export function useKnowledgeBaseCatalog(toolBaseUrl: string) {
       });
       setCreateKnowledgeBaseName("");
       setCreateKnowledgeBaseDesc("");
-      showMessage()?.success("知识库已创建");
+      toast.success("知识库已创建");
       return createdKnowledgeBase;
     } catch (error) {
-      showMessage()?.error(mapMragError(error));
+      toast.error(mapMragError(error));
       return null;
     } finally {
       setCreatingKnowledgeBase(false);
@@ -83,7 +83,7 @@ export function useKnowledgeBaseCatalog(toolBaseUrl: string) {
         const deletedResult = await deleteKnowledgeBase(toolBaseUrl, kbId);
         return deletedResult;
       } catch (error) {
-        showMessage()?.error(mapMragError(error));
+        toast.error(mapMragError(error));
         return null;
       } finally {
         setDeletingKnowledgeBaseId("");

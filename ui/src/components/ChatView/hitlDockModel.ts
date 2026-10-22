@@ -2,6 +2,7 @@
  * HITL Dock 槽位：pending Question / Approval 互斥替换 Composer（对齐 kimi ChatDock）。
  */
 
+import { findLastTask } from "@/utils/chat/toolCalls";
 import {
   findLatestPlanApproval,
   pickPlanApprovalFields,
@@ -134,14 +135,11 @@ export function findLatestPendingAskUser(
   taskList?: CHAT.Task[]
 ): CHAT.Task | undefined {
   const tasks = flattenCandidateTasks(chat, taskList);
-  for (let i = tasks.length - 1; i >= 0; i--) {
-    const task = tasks[i];
-    if (task?.messageType !== "ask_user_question") continue;
-    if (isEffectivelyPending(task)) {
-      return task;
-    }
-  }
-  return undefined;
+  return findLastTask(
+    tasks,
+    (task) =>
+      task?.messageType === "ask_user_question" && isEffectivelyPending(task)
+  );
 }
 
 export function findLatestPendingDesktopControl(
@@ -149,14 +147,11 @@ export function findLatestPendingDesktopControl(
   taskList?: CHAT.Task[]
 ): CHAT.Task | undefined {
   const tasks = flattenCandidateTasks(chat, taskList);
-  for (let i = tasks.length - 1; i >= 0; i--) {
-    const task = tasks[i];
-    if (task?.messageType !== "desktop_control") continue;
-    if (isEffectivelyPending(task)) {
-      return task;
-    }
-  }
-  return undefined;
+  return findLastTask(
+    tasks,
+    (task) =>
+      task?.messageType === "desktop_control" && isEffectivelyPending(task)
+  );
 }
 
 /** 最新未决 plan_approval（含正文优先，再回退任意 pending） */

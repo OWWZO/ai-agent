@@ -1,6 +1,6 @@
 import type { ChangeEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Modal } from "antd";
+import { confirm } from "@/components/ui/confirm-dialog";
 
 import {
   addWebUrlToKnowledgeBase,
@@ -10,7 +10,7 @@ import {
   listKnowledgeBaseFiles,
   mapMragError,
 } from "@/services/mragWorkspace";
-import { showMessage } from "@/utils";
+import { toast } from "sonner";
 import {
   MRAG_FILE_POLL_INTERVAL_MS,
   MRAG_FILE_REFRESH_DELAY_MS,
@@ -124,7 +124,7 @@ export function useKnowledgeBaseFiles(
       event.target.value = "";
 
       if (!selectedKnowledgeBaseId) {
-        showMessage()?.error("请先选择知识库");
+        toast.error("请先选择知识库");
         return;
       }
       if (!inputFiles.length) {
@@ -138,12 +138,12 @@ export function useKnowledgeBaseFiles(
           selectedKnowledgeBaseId,
           inputFiles
         );
-        showMessage()?.success(`已提交 ${inputFiles.length} 个文件的入库任务`);
+        toast.success(`已提交 ${inputFiles.length} 个文件的入库任务`);
         await refreshFiles(selectedKnowledgeBaseId, { silent: true });
         // 后端只在后台任务启动后才写入完整状态，因此首刷后再补一次延迟刷新。
         scheduleDelayedFileRefresh(selectedKnowledgeBaseId);
       } catch (error) {
-        showMessage()?.error(mapMragError(error));
+        toast.error(mapMragError(error));
       } finally {
         setUploadingFiles(false);
       }
@@ -153,7 +153,7 @@ export function useKnowledgeBaseFiles(
 
   const handleUploadFiles = useCallback(() => {
     if (!selectedKnowledgeBaseId) {
-      showMessage()?.error("请先选择知识库");
+      toast.error("请先选择知识库");
       return;
     }
     fileInputRef.current?.click();
@@ -164,11 +164,11 @@ export function useKnowledgeBaseFiles(
     // 延迟追踪，避免两个入口产生不同的列表一致性行为。
     const normalizedUrl = webUrl.trim();
     if (!selectedKnowledgeBaseId) {
-      showMessage()?.error("请先选择知识库");
+      toast.error("请先选择知识库");
       return;
     }
     if (!normalizedUrl) {
-      showMessage()?.error("请输入网页链接");
+      toast.error("请输入网页链接");
       return;
     }
 
@@ -179,11 +179,11 @@ export function useKnowledgeBaseFiles(
         url: normalizedUrl,
       });
       setWebUrl("");
-      showMessage()?.success("网页链接已提交入库");
+      toast.success("网页链接已提交入库");
       await refreshFiles(selectedKnowledgeBaseId, { silent: true });
       scheduleDelayedFileRefresh(selectedKnowledgeBaseId);
     } catch (error) {
-      showMessage()?.error(mapMragError(error));
+      toast.error(mapMragError(error));
     } finally {
       setAddingWebUrl(false);
     }
@@ -201,12 +201,12 @@ export function useKnowledgeBaseFiles(
         return;
       }
 
-      Modal.confirm({
+      confirm({
         title: "确认删除这条资料吗？",
         content: "删除后会移除对应的文件记录和已写入的向量数据。",
         okText: "确认删除",
         cancelText: "取消",
-        okButtonProps: { danger: true },
+        danger: true,
         async onOk() {
           // 删除成功后先关闭当前详情，再刷新列表；这样详情不会短暂显示已删除
           // 文件，刷新失败时也不会把旧抽屉误当作仍然有效。
@@ -214,7 +214,7 @@ export function useKnowledgeBaseFiles(
             kbId: selectedKnowledgeBaseId,
             fileIds: [fileId],
           });
-          showMessage()?.success("资料已删除");
+          toast.success("资料已删除");
           if (activeFullContentFileId === fileId) {
             resetFullContentState();
           }
@@ -234,7 +234,7 @@ export function useKnowledgeBaseFiles(
   const handleOpenFullContent = useCallback(
     async (fileId: string) => {
       if (!selectedKnowledgeBaseId) {
-        showMessage()?.error("请先选择知识库");
+        toast.error("请先选择知识库");
         return;
       }
 

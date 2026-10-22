@@ -1,4 +1,4 @@
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 import { Blocks, Bot, Cpu, DatabaseZap, WandSparkles } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
@@ -59,7 +59,7 @@ const WorkspaceToolSwitcher: ReactorType.FC = ({ className }) => {
 
   return (
     <div
-      className={classNames(
+      className={cn(
         "workspace-tool-switcher inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-1",
         className,
       )}
@@ -76,7 +76,7 @@ const WorkspaceToolSwitcher: ReactorType.FC = ({ className }) => {
             target="_blank"
             rel="noreferrer"
             aria-current={active ? "page" : undefined}
-            className={classNames(
+            className={cn(
               "group inline-flex min-h-[30px] shrink-0 items-center gap-1.5 rounded-md border border-transparent px-2.5 text-[13px] font-medium transition-[background-color,border-color,color] duration-[160ms] ease-[var(--ease-out)]",
               active
                 ? "border-[var(--color-accent-bd)] bg-[var(--color-accent-soft)] text-[var(--color-accent)]"

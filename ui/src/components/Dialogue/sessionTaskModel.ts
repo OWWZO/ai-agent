@@ -1,3 +1,5 @@
+import { findLastTask } from "@/utils/chat/toolCalls";
+
 export type SessionTask = {
   id: string;
   subject?: string;
@@ -93,12 +95,10 @@ export function findLatestSessionTasks(
   taskList?: CHAT.Task[]
 ): CHAT.Task | undefined {
   const tasks = flattenTasks(chat, taskList);
-  for (let i = tasks.length - 1; i >= 0; i -= 1) {
-    if (tasks[i]?.messageType === "session_tasks") {
-      return tasks[i];
-    }
-  }
-  return undefined;
+  return findLastTask(
+    tasks,
+    (task) => task?.messageType === "session_tasks"
+  );
 }
 
 export function findPreviousSessionTasks(

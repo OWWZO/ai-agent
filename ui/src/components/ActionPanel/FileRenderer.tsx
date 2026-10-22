@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { useRequest } from "ahooks";
-import { Alert } from "antd";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { CircleAlert } from "lucide-react";
 import MarkdownFileRenderer from "./MarkdownFileRenderer";
 import SvgFileRenderer from "./SvgFileRenderer";
 import MediaFileRenderer from "./MediaFileRenderer";
@@ -16,7 +17,7 @@ import { cn } from "@/lib/utils";
 
 const LOADING_CLASS = "mr-32";
 const ERROR_CLASS =
-  "m-12 md:m-24 min-w-[260px] max-w-[calc(100%-24px)] md:max-w-[calc(100%-48px)] [&_.ant-alert-description]:break-words [&_.ant-alert-description]:whitespace-normal";
+  "m-12 md:m-24 min-w-[260px] max-w-[calc(100%-24px)] md:max-w-[calc(100%-48px)] [&_[data-slot=alert-description]]:break-words [&_[data-slot=alert-description]]:whitespace-normal";
 
 interface FileRendererProps {
   fileUrl: string;
@@ -108,12 +109,13 @@ const FileRenderer: ReactorType.FC<FileRendererProps> = React.memo((props) => {
       return (
         <div className={cn("bg-white p-6", className)}>
           <Alert
-            type="error"
-            message="内容不可读取"
-            description={resolveUnavailableReason(error as Error)}
-            showIcon
+            variant="destructive"
             className={ERROR_CLASS}
-          />
+          >
+            <CircleAlert />
+            <AlertTitle>内容不可读取</AlertTitle>
+            <AlertDescription>{resolveUnavailableReason(error as Error)}</AlertDescription>
+          </Alert>
         </div>
       );
     }
@@ -235,12 +237,13 @@ const FileRenderer: ReactorType.FC<FileRendererProps> = React.memo((props) => {
     return (
       <div className={cn("bg-white p-6", className)}>
         <Alert
-          type="error"
-          message="内容不可读取"
-          description={resolveUnavailableReason(error as Error)}
-          showIcon
+          variant="destructive"
           className={ERROR_CLASS}
-        />
+        >
+          <CircleAlert />
+          <AlertTitle>内容不可读取</AlertTitle>
+          <AlertDescription>{resolveUnavailableReason(error as Error)}</AlertDescription>
+        </Alert>
       </div>
     );
   }

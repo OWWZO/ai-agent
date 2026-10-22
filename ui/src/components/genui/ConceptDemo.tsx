@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 import {
   Pause,
   Play,
@@ -288,7 +288,7 @@ const StackScene: FC<{ nodes: ConceptNode[]; highlight: string[] }> = ({
       return (
         <div
           key={n.id}
-          className={classNames(
+          className={cn(
             "rounded-lg border px-3 py-2.5 text-center text-[13px] font-medium transition-all duration-300",
             on
               ? "scale-[1.02] border-[var(--chat-accent)] bg-[var(--chat-accent-soft)] text-[var(--chat-accent)] shadow-sm"
@@ -426,7 +426,7 @@ const FormulaScene: FC<{
         return (
           <div
             key={id}
-            className={classNames(
+            className={cn(
               "rounded-xl border px-4 py-3 font-mono text-[18px] transition-all duration-300 sm:text-[22px]",
               on
                 ? "scale-105 border-[var(--chat-accent)] bg-[var(--chat-accent-soft)] text-[var(--chat-accent)] shadow-sm"
@@ -458,7 +458,7 @@ const CompareScene: FC<{
   return (
     <div className="grid h-full grid-cols-2 gap-3 p-3">
       <div
-        className={classNames(
+        className={cn(
           "rounded-xl border p-3 transition-all duration-300",
           leftOn
             ? "border-[var(--chat-accent)] bg-[var(--chat-accent-soft)]/40"
@@ -473,7 +473,7 @@ const CompareScene: FC<{
         </ul>
       </div>
       <div
-        className={classNames(
+        className={cn(
           "rounded-xl border p-3 transition-all duration-300",
           rightOn
             ? "border-[var(--chat-accent)] bg-[var(--chat-accent-soft)]/40"
@@ -675,7 +675,7 @@ const ConceptDemo: FC<ConceptDemoProps> = memo((props) => {
 
       <div>
         <div
-          className={classNames(
+          className={cn(
             "border-b border-[var(--chat-border)]/40",
             scene === "flow" || scene === "sequence" || scene === "tree"
               ? "w-full min-h-[200px] overflow-x-auto"
@@ -786,7 +786,7 @@ const ConceptDemo: FC<ConceptDemoProps> = memo((props) => {
                     setPlaying(false);
                     goTo(i);
                   }}
-                  className={classNames(
+                  className={cn(
                     "h-1.5 flex-1 min-w-[12px] rounded-full transition-colors",
                     i === index
                       ? "bg-[var(--chat-accent)]"

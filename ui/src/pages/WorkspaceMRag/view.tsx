@@ -1,4 +1,5 @@
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
+import { copyToClipboard } from "@/utils";
 import {
   BookOpenText,
   History,
@@ -124,7 +125,7 @@ function ActionButton(props: {
     variant = "secondary",
   } = props;
 
-  const className = classNames(
+  const className = cn(
     "inline-flex min-h-8 items-center gap-1.5 rounded-md border px-3 text-[13px] font-medium transition-[background-color,border-color,color,box-shadow,transform] duration-[160ms] ease-[var(--ease-out)] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[var(--color-accent-soft)] active:scale-[0.98]",
     variant === "primary" && "workspace-admin-primary disabled:opacity-40",
     variant === "secondary" && "workspace-admin-secondary disabled:opacity-40",
@@ -147,7 +148,7 @@ function ActionButton(props: {
         href={href}
         target="_blank"
         rel="noreferrer"
-        className={classNames(
+        className={cn(
           className,
           disabled && "pointer-events-none opacity-40",
         )}
@@ -185,7 +186,7 @@ function KnowledgeBaseItem(props: {
       type="button"
       onClick={onSelect}
       data-active={selected}
-      className={classNames(
+      className={cn(
         "workspace-admin-list-item group relative w-full px-3.5 py-3",
         selected
           ? "border-[var(--color-line)] bg-[var(--color-hover)]"
@@ -206,7 +207,7 @@ function KnowledgeBaseItem(props: {
             </div>
           </div>
           <span
-            className={classNames(
+            className={cn(
               "shrink-0 rounded px-2 py-0.5 text-[11px] font-medium",
               selected
                 ? "bg-[var(--color-accent-soft)] text-[var(--color-accent)]"
@@ -243,7 +244,7 @@ function FileRecordRow(props: {
     <div className="group border-b border-[var(--chat-border)] py-2.5 transition-colors hover:bg-[var(--chat-surface-soft)]/40 last:border-b-0">
       <div className="flex items-center gap-3">
         <div
-          className={classNames(
+          className={cn(
             "flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
             isWebSource
               ? "bg-[var(--status-info-bg)] text-[var(--status-info-text)]"
@@ -263,7 +264,7 @@ function FileRecordRow(props: {
               {file.title}
             </span>
             <span
-              className={classNames(
+              className={cn(
                 "shrink-0 rounded px-1 py-0 text-[10px] font-medium leading-4",
                 statusMeta.className,
               )}
@@ -515,7 +516,7 @@ function SideDrawer(props: {
       </AnimatePresence>
       <aside
         aria-hidden={!open}
-        className={classNames(
+        className={cn(
           "mrag-drawer fixed inset-y-0 z-50 flex w-full max-w-[360px] flex-col transition-transform duration-[260ms] ease-[var(--ease-out)]",
           side === "left" ? "left-0 border-r" : "right-0 border-l",
           open
@@ -633,13 +634,10 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
 
   const handleCopyAnswer = async () => {
     if (!queryAnswer) return;
-    try {
-      await navigator.clipboard.writeText(queryAnswer);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1600);
-    } catch {
-      // ignore clipboard failures
-    }
+    const ok = await copyToClipboard(queryAnswer);
+    if (!ok) return;
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
   };
 
   const handleSubmit = () => {
@@ -673,7 +671,7 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
               type="button"
               onClick={() => setIsHistoryOpen(true)}
               aria-pressed={isHistoryOpen}
-              className={classNames(
+              className={cn(
                 "mrag-header-control",
                 isHistoryOpen && "mrag-header-control-active",
               )}
@@ -686,7 +684,7 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
               type="button"
               onClick={() => setIsLibraryOpen(true)}
               aria-pressed={isLibraryOpen}
-              className={classNames(
+              className={cn(
                 "mrag-header-control",
                 isLibraryOpen && "mrag-header-control-active",
               )}
@@ -698,7 +696,7 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
               type="button"
               onClick={() => setIsEvidenceOpen(true)}
               aria-pressed={isEvidenceOpen}
-              className={classNames(
+              className={cn(
                 "mrag-header-control",
                 isEvidenceOpen && "mrag-header-control-active",
               )}
@@ -924,7 +922,7 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
                     <button
                       type="button"
                       onClick={() => setShowDebug((value) => !value)}
-                      className={classNames(
+                      className={cn(
                         "inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-[11px] font-medium transition",
                         showDebug
                           ? "bg-[var(--chat-accent-soft)] text-[var(--chat-accent)]"
@@ -1006,7 +1004,7 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
                 key={session.sessionId}
                 type="button"
                 onClick={() => onSelectSession(session.sessionId)}
-                className={classNames(
+                className={cn(
                   "mrag-session-item w-full px-3 py-3 text-left",
                   session.sessionId === activeSessionId ? "font-medium" : "",
                 )}
@@ -1099,6 +1097,8 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
           ) : null}
 
           {knowledgeBases.length ? (
+            // key 用列表长度而非固定值：知识库增删后重挂一次，让 stagger
+            // 入场动画重新播放。子项各自用 kb.id 做 key，不受此影响。
             <StaggerContainer
               key={`kbs-${knowledgeBases.length}`}
               staggerDelay={0.03}

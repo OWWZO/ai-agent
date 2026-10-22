@@ -7,15 +7,7 @@ const mocks = vi.hoisted(() => {
   return {
     render,
     createRoot,
-    patchState: {
-      imported: false,
-    },
   };
-});
-
-vi.mock('@ant-design/v5-patch-for-react-19', () => {
-  mocks.patchState.imported = true;
-  return {};
 });
 
 vi.mock('./App', () => ({
@@ -26,7 +18,6 @@ vi.mock('react-dom/client', () => ({ createRoot: mocks.createRoot }));
 
 describe('main entry', () => {
   beforeEach(() => {
-    mocks.patchState.imported = false;
     mocks.render.mockClear();
     mocks.createRoot.mockClear();
     const rootElement = { id: 'root' };
@@ -41,10 +32,9 @@ describe('main entry', () => {
     Reflect.deleteProperty(globalThis, 'document');
   });
 
-  it('在挂载应用前引入 Ant Design React 19 兼容补丁', async () => {
+  it('挂载应用到 #root', async () => {
     await import('./main');
 
-    expect(mocks.patchState.imported).toBe(true);
     expect(mocks.createRoot).toHaveBeenCalledWith(expect.objectContaining({ id: 'root' }));
     expect(mocks.render).toHaveBeenCalledTimes(1);
   });

@@ -1,11 +1,13 @@
 import React, { Suspense } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import Layout from '@/layout/index';
-// ⚠️ 必须直接 import，不要走 `@/components` barrel。
-// 该 barrel 会 `export * from './ActionPanel'`，而 ActionPanel/index.ts 静态 import 了
-// 全部预览渲染器（含 MarkdownRenderer → react-markdown + remark-gfm）。
+// ⚠️ 必须直接 import，不要经 barrel 中转。
+// 曾经的 `@/components` barrel 会 `export * from './ActionPanel'`，而 ActionPanel/index.ts
+// 静态 import 了全部预览渲染器（含 MarkdownRenderer → react-markdown + remark-gfm），
 // 仅为拿一个 Loading 就会把 markdown 解析器整条管线拖进首屏 chunk：
 // 实测静态可达模块 273 → 24（详见 .workbuddy-ai/memory 的白屏诊断）。
+// barrel 已删除，但这里的直接 import 习惯保留 —— 同样的坑会在任何新的
+// barrel / 深层 re-export 上重现。
 import Loading from '@/components/ActionPanel/Loading';
 import { ROUTES } from './routes';
 import RequireAuth from './RequireAuth';

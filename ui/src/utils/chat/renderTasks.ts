@@ -135,6 +135,25 @@ function getChaptersSignature(resultMap?: MESSAGE.ResultMap): string {
     .join(",");
 }
 
+/**
+ * 流式入参进签名用的摘要：长度 + 内容哈希。
+ *
+ * 只放长度会漏「同长度不同内容」的原地更新（'{"path":"a.ts"}' →
+ * '{"path":"b.ts"}'），WeakMap 返回旧结果、卡片显示过期入参。
+ * 但直接放全文也不行：这个签名每帧对每个 task 都要重算，一次几百 KB 的
+ * 工具入参会把字符串拼接和比较都放大到不可忽略的量级。
+ *
+ * 哈希是 O(n) 但只产出一个短串，拼接与比较都是常数级；比全文进签名省得多，
+ * 又比长度安全。（与 codeViewer 的 hashCodeViewerContent 同一思路。）
+ */
+function hashTextForSignature(text: string): string {
+  let hash = 5381;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 33) ^ text.charCodeAt(index);
+  }
+  return `${text.length}:${(hash >>> 0).toString(36)}`;
+}
+
 function getArtifactSignature(task: RenderableTask): string {
   const resultMap = task.resultMap || {};
   const files: unknown[] = [
@@ -164,7 +183,10 @@ function getArtifactSignature(task: RenderableTask): string {
     .join(",");
 }
 
-function getTaskRenderSignature(task: RenderableTask, baseId: string): string {
+export function getTaskRenderSignature(
+  task: RenderableTask,
+  baseId: string
+): string {
   const resultMap = task.resultMap || {};
   const searchResult = resultMap.searchResult;
   const plan = task.plan;
@@ -204,15 +226,18 @@ function getTaskRenderSignature(task: RenderableTask, baseId: string): string {
       : 0,
     String(resultMap.subAgentLiveText || ""),
     resultMap.subAgentElapsedMs ?? "",
-    // 流式入参增长必须使签名失效，否则 WeakMap 会卡住旧 argumentsText
+    // 流式入参必须能反映内容变化，但全文进签名会让每帧成本随 payload 增长。
+    // 用「长度 + 内容哈希」：见 hashTextForSignature 的说明。
     typeof resultMap.argumentsText === "string"
-      ? resultMap.argumentsText.length
-      : 0,
+      ? hashTextForSignature(resultMap.argumentsText)
+      : "",
     typeof (resultMap as { resultMap?: { argumentsText?: string } }).resultMap
       ?.argumentsText === "string"
-      ? (resultMap as { resultMap?: { argumentsText?: string } }).resultMap!
-        .argumentsText!.length
-      : 0,
+      ? hashTextForSignature(
+        (resultMap as { resultMap?: { argumentsText?: string } }).resultMap!
+          .argumentsText!
+      )
+      : "",
     toolCallTargetName,
     task.toolThought || "",
     resultMap.answer || "",

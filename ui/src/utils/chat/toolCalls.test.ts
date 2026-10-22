@@ -111,3 +111,62 @@ describe("mergeHtmlPreviewIntoToolCall", () => {
     );
   });
 });
+
+describe("resolveTaskResultMap 多层语义", () => {
+  it("内层字段覆盖外层，外层的独有字段保留", () => {
+    const task = {
+      messageType: "tool_result",
+      resultMap: {
+        messageType: "outer",
+        outerOnly: "keep",
+        shared: "outer",
+        resultMap: {
+          shared: "inner",
+          innerOnly: "inner-value",
+        },
+      },
+    } as unknown as CHAT.Task;
+
+    const merged = resolveTaskResultMap(task) as unknown as Record<string, unknown>;
+    expect(merged.shared).toBe("inner");
+    expect(merged.outerOnly).toBe("keep");
+    expect(merged.innerOnly).toBe("inner-value");
+  });
+
+  it("三层嵌套也逐层合并", () => {
+    const task = {
+      messageType: "tool_result",
+      resultMap: {
+        level: 1,
+        a: "a1",
+        resultMap: {
+          level: 2,
+          b: "b2",
+          resultMap: {
+            level: 3,
+            c: "c3",
+          },
+        },
+      },
+    } as unknown as CHAT.Task;
+
+    const merged = resolveTaskResultMap(task) as unknown as Record<string, unknown>;
+    expect(merged.level).toBe(3);
+    expect(merged.a).toBe("a1");
+    expect(merged.b).toBe("b2");
+    expect(merged.c).toBe("c3");
+  });
+
+  it("只读 task.resultMap 及其内层，task 自身的字段不在视图内", () => {
+    expect(resolveTaskResultMap(undefined)).toEqual({});
+    // messageType 挂在 task 上而非 resultMap 内，所以不进合并结果
+    expect(
+      resolveTaskResultMap({ messageType: "tool_result" } as unknown as CHAT.Task)
+    ).toEqual({});
+    expect(
+      resolveTaskResultMap({
+        resultMap: { messageType: "tool_result" },
+      } as unknown as CHAT.Task).messageType
+    ).toBe("tool_result");
+  });
+});

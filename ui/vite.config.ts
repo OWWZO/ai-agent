@@ -77,13 +77,25 @@ export default defineConfig(({ command, mode }) => {
       alias: {
         '@': path.resolve(__dirname, 'src'),
         crypto: 'crypto-browserify',
-        'use-sync-external-store/shim': path.resolve(
+        // `use-sync-external-store` 未安装，用本地 shim 顶上（zustand v4 依赖它）。
+        // 必须把带 `.js` 的写法也列出来：Vite 的字符串 alias 是前缀匹配，
+        // 只写无后缀那条时，`.../shim/with-selector.js` 会被 `.../shim` 吃掉前缀，
+        // 拼成 `shim.ts/with-selector.js` 这种不存在的路径。
+        'use-sync-external-store/shim/with-selector.js': path.resolve(
           __dirname,
-          'src/shims/use-sync-external-store/shim.ts'
+          'src/shims/use-sync-external-store/with-selector.ts'
         ),
         'use-sync-external-store/shim/with-selector': path.resolve(
           __dirname,
           'src/shims/use-sync-external-store/with-selector.ts'
+        ),
+        'use-sync-external-store/shim/index.js': path.resolve(
+          __dirname,
+          'src/shims/use-sync-external-store/shim.ts'
+        ),
+        'use-sync-external-store/shim': path.resolve(
+          __dirname,
+          'src/shims/use-sync-external-store/shim.ts'
         ),
       },
     },

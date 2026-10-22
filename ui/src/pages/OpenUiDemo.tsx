@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Switch, Tag } from 'antd';
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { Pause, Play, RotateCcw } from 'lucide-react';
 
 import MarkdownRenderer from '@/components/ActionPanel/MarkdownRenderer';
@@ -68,27 +70,30 @@ export default function OpenUiDemo() {
     <div className="flex h-screen w-full flex-col gap-3 bg-white p-4">
       <header className="flex flex-wrap items-center gap-3">
         <h1 className="text-base font-semibold text-neutral-900">OpenUI 混排渲染验证</h1>
-        <Tag color="blue">{segments.length} 段</Tag>
-        <Tag color="green">{segments.filter((s) => s.type === 'openui').length} 个程序块</Tag>
+        <Badge>{segments.length} 段</Badge>
+        <Badge variant="secondary">{segments.filter((s) => s.type === 'openui').length} 个程序块</Badge>
         <span className="ml-auto flex items-center gap-2 text-xs text-neutral-500">
           仅看 DSL
-          <Switch size="small" checked={dslOnly} onChange={setDslOnly} />
+          <Switch size="sm" checked={dslOnly} onCheckedChange={setDslOnly} />
         </span>
-        <Button size="small" icon={<Play size={14} />} onClick={startStreaming} disabled={streaming}>
+        <Button variant="outline" size="sm" onClick={startStreaming} disabled={streaming}>
+          <Play size={14} />
           模拟流式
         </Button>
-        <Button size="small" icon={<Pause size={14} />} onClick={stopStreaming} disabled={!streaming}>
+        <Button variant="outline" size="sm" onClick={stopStreaming} disabled={!streaming}>
+          <Pause size={14} />
           停止
         </Button>
         <Button
-          size="small"
-          icon={<RotateCcw size={14} />}
+          variant="outline"
+          size="sm"
           onClick={() => {
             stopStreaming();
             setRaw(SAMPLE);
             setShown(SAMPLE);
           }}
         >
+          <RotateCcw size={14} />
           复位
         </Button>
       </header>

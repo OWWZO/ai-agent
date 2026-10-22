@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { processTaskForRender } from "./renderTasks";
+import { getTaskRenderSignature, processTaskForRender } from "./renderTasks";
 
 describe("DeepSearch 展示任务拆分", () => {
   it("章节内有多个查询词时仍按章节生成展示卡", () => {
@@ -88,5 +88,98 @@ describe("DeepSearch 展示任务拆分", () => {
 
     expect(rendered).toHaveLength(2);
     expect(rendered.map((item) => item.resultMap?.chapterId)).toEqual(["C1", "C2"]);
+  });
+});
+
+describe("getTaskRenderSignature 缓存失效契约", () => {
+  const base = {
+    messageId: "m1",
+    messageType: "tool_call",
+    messageTime: "1714041600000",
+    resultMap: {
+      messageType: "tool_call",
+      toolName: "workspace_read",
+      toolCallId: "c1",
+      argumentsText: '{"path":"a.ts"}',
+    },
+  } as unknown as Parameters<typeof getTaskRenderSignature>[0];
+
+  const sig = (patch: Record<string, unknown>, baseId = "m1") =>
+    getTaskRenderSignature({ ...base, ...patch } as never, baseId);
+
+  it("同一任务两次求值稳定", () => {
+    expect(getTaskRenderSignature(base, "m1")).toBe(
+      getTaskRenderSignature(base, "m1")
+    );
+  });
+
+  it("baseId 变化即使任务相同也失效", () => {
+    expect(getTaskRenderSignature(base, "m1")).not.toBe(
+      getTaskRenderSignature(base, "m2")
+    );
+  });
+
+  it.each([
+    ["messageId", { messageId: "m2" }],
+    ["messageType", { messageType: "tool_result" }],
+    ["messageTime", { messageTime: "1714041600001" }],
+    ["resultMap.status", { resultMap: { ...base.resultMap, status: "running" } }],
+    ["resultMap.summary", { resultMap: { ...base.resultMap, summary: "s" } }],
+    ["resultMap.isFinal", { resultMap: { ...base.resultMap, isFinal: true } }],
+    [
+      "argumentsText 增长",
+      { resultMap: { ...base.resultMap, argumentsText: '{"path":"a.ts","x":1}' } },
+    ],
+    [
+      "argumentsText 相同长度但内容不同",
+      { resultMap: { ...base.resultMap, argumentsText: '{"path":"b.ts"}' } },
+    ],
+    ["toolThought", { toolThought: "想一下" }],
+    ["plan.stepStatus", { plan: { steps: [], stepStatus: ["completed"] } }],
+  ])("展示字段 %s 变化必须使签名失效", (_label, patch) => {
+    expect(sig(patch)).not.toBe(getTaskRenderSignature(base, "m1"));
+  });
+
+  it("artifactRefs 变化必须使签名失效", () => {
+    const withRefs = sig({
+      artifactRefs: [{ resourceKey: "k1", previewUrl: "u1" }],
+    });
+    expect(withRefs).not.toBe(getTaskRenderSignature(base, "m1"));
+    // 同一 key 的另一个 URL 也要失效
+    expect(
+      sig({ artifactRefs: [{ resourceKey: "k1", previewUrl: "u2" }] })
+    ).not.toBe(withRefs);
+  });
+});
+
+describe("签名对大 payload 的规模", () => {
+  const base = {
+    messageId: "m1",
+    messageType: "tool_call",
+    messageTime: "1714041600000",
+  } as unknown as Parameters<typeof getTaskRenderSignature>[0];
+
+  const sigWith = (argumentsText: string) =>
+    getTaskRenderSignature(
+      {
+        ...base,
+        resultMap: { messageType: "tool_call", argumentsText },
+      } as never,
+      "m1"
+    );
+
+  it("签名长度不随入参体积线性增长", () => {
+    const small = sigWith('{"a":1}');
+    const huge = sigWith(`{"a":"${"x".repeat(200_000)}"}`);
+    // 全文进签名时 huge 会比 small 长约 20 万字符；哈希方案下两者同量级
+    expect(huge.length).toBeLessThan(small.length + 200);
+  });
+
+  it("同长度不同内容仍能区分", () => {
+    expect(sigWith('{"path":"a.ts"}')).not.toBe(sigWith('{"path":"b.ts"}'));
+  });
+
+  it("内容相同则签名相同（缓存可命中）", () => {
+    expect(sigWith('{"a":1}')).toBe(sigWith('{"a":1}'));
   });
 });

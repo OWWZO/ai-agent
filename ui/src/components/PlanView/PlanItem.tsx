@@ -1,6 +1,6 @@
 import { formatSecondsToMinutes } from "@/utils";
 import { useMemoizedFn, useSafeState } from "ahooks";
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 import { useEffect, useRef } from "react";
 import { getStatusIcon } from "./config";
 
@@ -39,7 +39,7 @@ const PlanItem: ReactorType.FC<{
 
   return (
     <div
-      className={classNames(
+      className={cn(
         "mt-2 flex w-full items-center gap-3 rounded-xl bg-[var(--chat-surface-soft)]/80 px-3 py-2.5",
         className
       )}

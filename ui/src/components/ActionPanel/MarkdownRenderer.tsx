@@ -1,9 +1,16 @@
 import ReactMarkdown from 'react-markdown';
 import gfm from 'remark-gfm';
 import { memo, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
-import { Empty, Image, Modal } from 'antd';
-import classNames from 'classnames';
-import { Expand, X } from 'lucide-react';
+import { ZoomableImage } from "@/components/ui/zoomable-image";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Empty, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
+import { cn } from '@/lib/utils';
+import { Expand } from 'lucide-react';
 import { usePanelContext } from './PanelProvider';
 import MermaidBlock from './MermaidBlock';
 import { containsMath, loadMathPlugins, type MathPlugins } from '@/lib/lazy/math';
@@ -18,7 +25,7 @@ import {
 } from '@/utils/markdownArtifacts';
 import type { BundledLanguage } from 'shiki';
 
-/** 终答 Markdown 内嵌图：点击 antd Image 预览放大 */
+/** 终答 Markdown 内嵌图：点击放大预览 */
 const MarkdownImagePreview: ReactorType.FC<{
   src: string;
   alt?: string;
@@ -27,22 +34,22 @@ const MarkdownImagePreview: ReactorType.FC<{
     return null;
   }
   return (
-    <Image
-      src={src}
-      alt={alt || '图片'}
-      className="markdown-media-image"
-      rootClassName="markdown-media-image-root"
-      style={{
-        maxWidth: 'min(360px, 100%)',
-        maxHeight: 280,
-        width: 'auto',
-        height: 'auto',
-        objectFit: 'contain',
-        borderRadius: '0.65rem',
-        cursor: 'zoom-in'
-      }}
-      preview={{mask: '点击放大',}}
-    />
+    <span className="markdown-media-image-root">
+      <ZoomableImage
+        src={src}
+        alt={alt || '图片'}
+        className="markdown-media-image"
+        style={{
+          maxWidth: 'min(360px, 100%)',
+          maxHeight: 280,
+          width: 'auto',
+          height: 'auto',
+          objectFit: 'contain',
+          borderRadius: '0.65rem',
+          cursor: 'zoom-in'
+        }}
+      />
+    </span>
   );
 };
 
@@ -87,35 +94,41 @@ const MarkdownMediaPlayer: ReactorType.FC<{
           <Expand className="h-3.5 w-3.5" />
         </button>
       </div>
-      <Modal
-        open={open}
-        onCancel={() => setOpen(false)}
-        footer={null}
-        centered
-        width={kind === 'video' ? 'min(920px, 96vw)' : 'min(520px, 94vw)'}
-        destroyOnClose
-        className="markdown-media-preview-modal"
-        closeIcon={<X className="h-4 w-4" />}
-        title={title || (kind === 'video' ? '视频预览' : '音频预览')}
-      >
-        {kind === 'video' ? (
-          <video
-            className="markdown-media-video-preview"
-            src={src}
-            controls
-            autoPlay
-            preload="metadata"
-          />
-        ) : (
-          <audio
-            className="markdown-media-audio-preview"
-            src={src}
-            controls
-            autoPlay
-            preload="metadata"
-          />
-        )}
-      </Modal>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent
+          className={cn(
+            "markdown-media-preview-modal",
+            kind === "video"
+              ? "max-w-[min(920px,96vw)]"
+              : "max-w-[min(520px,94vw)]"
+          )}
+        >
+          <DialogHeader>
+            <DialogTitle>
+              {title || (kind === "video" ? "视频预览" : "音频预览")}
+            </DialogTitle>
+          </DialogHeader>
+          {open ? (
+            kind === "video" ? (
+              <video
+                className="markdown-media-video-preview"
+                src={src}
+                controls
+                autoPlay
+                preload="metadata"
+              />
+            ) : (
+              <audio
+                className="markdown-media-audio-preview"
+                src={src}
+                controls
+                autoPlay
+                preload="metadata"
+              />
+            )
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </>
   );
 };
@@ -177,7 +190,7 @@ const MarkdownPre: ReactorType.FC<{ children?: ReactNode }> = ({
 }) => <>{children}</>;
 
 function cnInlineCode(className?: string) {
-  return classNames('kimi-inline-code', className);
+  return cn('kimi-inline-code', className);
 }
 
 const MarkdownRenderer: ReactorType.FC<{
@@ -291,13 +304,21 @@ const MarkdownRenderer: ReactorType.FC<{
   }, [normalizedContent, scrollToBottom, isStreaming]);
 
   if (!normalizedContent) {
-    return <Empty description="暂无内容" className='mx-auto mt-32' />;
+    return (
+      <div className="mx-auto mt-32">
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>暂无内容</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
+      </div>
+    );
   }
 
   // 流式/落定统一走 ReactMarkdown + KimiCodeFence(tokens)。
   // 不再用 Streamdown 自带 Shiki：会与自定义 code 叠出「高亮 + HTML 源码」两段。
   return (
-    <div className={classNames('w-full markdown-body kimi-md', className)}>
+    <div className={cn('w-full markdown-body kimi-md', className)}>
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
         rehypePlugins={rehypePlugins}

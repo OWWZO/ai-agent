@@ -1,4 +1,4 @@
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 import { ActivityIcon, BotIcon, ListTree } from "lucide-react";
 import { FILE_KIND_TONE } from "@/utils/fileKind";
 import type { WorkspaceTabIconSpec } from "./workspaceTabDisplay";
@@ -28,13 +28,13 @@ export function WorkspaceTabIcon({
   if (spec.kind === "glyph") {
     const Icon = GLYPH_ICONS[spec.glyph] || BotIcon;
     return (
-      <Icon className={classNames(box, "shrink-0 text-foreground-subtle")} />
+      <Icon className={cn(box, "shrink-0 text-foreground-subtle")} />
     );
   }
 
   return (
     <span
-      className={classNames(
+      className={cn(
         "flex shrink-0 items-center justify-center rounded-sm font-bold leading-none",
         FILE_KIND_TONE,
         size === "md" ? "size-5 text-ui-sm" : "size-4 text-ui-xs"

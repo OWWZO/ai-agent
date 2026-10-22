@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 import { Check, Cpu, Info, Loader2, Plus, Trash2, Zap } from "lucide-react";
-import { Checkbox, Modal, Switch } from "antd";
+import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
+import { confirm } from "@/components/ui/confirm-dialog";
 
 import WorkspaceAdminHeader from "@/components/WorkspaceAdminHeader";
 import { Badge } from "@/components/ui/badge";
@@ -29,7 +31,7 @@ import {
   type LlmModelRecord,
   type LlmModelUpsertPayload,
 } from "@/services/llmModelAdmin";
-import { showMessage } from "@/utils";
+import { toast } from "sonner";
 
 import { matchProviderId, PROVIDER_PRESETS, type ProviderPreset } from "./meta";
 
@@ -119,7 +121,7 @@ function Field({
   required?: boolean;
 }) {
   return (
-    <label className={classNames("block", className)}>
+    <label className={cn("block", className)}>
       <span className="workspace-admin-field-label">
         {label}
         {required ? (
@@ -220,7 +222,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
         }
         setTestResult(null);
       } catch (error) {
-        showMessage()?.error(
+        toast.error(
           error instanceof Error ? error.message : "加载模型列表失败",
         );
       } finally {
@@ -295,11 +297,11 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
   const onSave = async () => {
     if (!editor || readOnly) return;
     if (!editor.modelId.trim() || !editor.modelName.trim()) {
-      showMessage()?.error("模型 ID 与上游模型名必填");
+      toast.error("模型 ID 与上游模型名必填");
       return;
     }
     if (!editor.baseUrl.trim()) {
-      showMessage()?.error("Base URL 必填");
+      toast.error("Base URL 必填");
       return;
     }
     setSaving(true);
@@ -308,10 +310,10 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
         isNew: false,
         existingApiKey: editor.existingApiKey,
       });
-      showMessage()?.success("模型已保存，下一轮对话生效");
+      toast.success("模型已保存，下一轮对话生效");
       await refresh(editor.id == null ? undefined : String(editor.id));
     } catch (error) {
-      showMessage()?.error(error instanceof Error ? error.message : "保存失败");
+      toast.error(error instanceof Error ? error.message : "保存失败");
     } finally {
       setSaving(false);
     }
@@ -319,11 +321,11 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
 
   const onAdd = async () => {
     if (!addForm.modelId.trim() || !addForm.modelName.trim()) {
-      showMessage()?.error("模型 ID 与上游模型名必填");
+      toast.error("模型 ID 与上游模型名必填");
       return;
     }
     if (!addForm.baseUrl.trim() || !addForm.apiKey.trim()) {
-      showMessage()?.error("Base URL 与 API Key 必填");
+      toast.error("Base URL 与 API Key 必填");
       return;
     }
     setSaving(true);
@@ -337,12 +339,12 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
       } else {
         await llmModelAdminApi.upsertBinding(payload, { isNew: true });
       }
-      showMessage()?.success("已新增模型，可直接在对话中选用");
+      toast.success("已新增模型，可直接在对话中选用");
       setAddOpen(false);
       setAddForm(EMPTY_EDITOR());
       await refresh(undefined, payload.modelId);
     } catch (error) {
-      showMessage()?.error(error instanceof Error ? error.message : "新增失败");
+      toast.error(error instanceof Error ? error.message : "新增失败");
     } finally {
       setSaving(false);
     }
@@ -353,11 +355,11 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
       return;
     }
     const modelId = model.id;
-    Modal.confirm({
+    confirm({
       title: "删除模型",
       content: `确认删除「${model.modelId}」配置 #${model.id}？若无其它模型共用其 API，将一并删除凭据配置。`,
       okText: "删除",
-      okButtonProps: { danger: true },
+      danger: true,
       onOk: async () => {
         try {
           const apiId = model.apiId;
@@ -370,10 +372,10 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
               await llmModelAdminApi.deleteApi(apiId).catch(() => undefined);
             }
           }
-          showMessage()?.success("已删除");
+          toast.success("已删除");
           await refresh();
         } catch (error) {
-          showMessage()?.error(
+          toast.error(
             error instanceof Error ? error.message : "删除失败",
           );
         }
@@ -389,7 +391,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
       const result = await llmModelAdminApi.testConnectionById(editor.id);
       setTestResult(result);
       if (!result.ok) {
-        showMessage()?.warning(result.message || "连接失败");
+        toast.warning(result.message || "连接失败");
       }
     } catch (error) {
       setTestResult({
@@ -463,7 +465,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                       <button
                         type="button"
                         data-active={active}
-                        className={classNames(
+                        className={cn(
                           "workspace-admin-list-item",
                           active && "font-medium",
                         )}
@@ -471,7 +473,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                       >
                         <div className="flex min-w-0 items-center gap-2">
                           <span
-                            className={classNames(
+                            className={cn(
                               "workspace-admin-status-dot",
                               enabled
                                 ? "bg-[var(--color-success)]"
@@ -596,7 +598,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                         <Input
                           value={editor.baseUrl}
                           readOnly={editorLocked || editor.providerId !== "custom"}
-                          className={classNames(
+                          className={cn(
                             "font-mono text-[12.5px]",
                             editor.providerId !== "custom" &&
                               "bg-[var(--color-surface-sunken)] text-[var(--color-text-muted)]",
@@ -686,8 +688,8 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                         <Checkbox
                           checked={editor.isFallback}
                           disabled={editorLocked}
-                          onChange={(event) =>
-                            patchEditor({ isFallback: event.target.checked })
+                          onCheckedChange={(checked) =>
+                            patchEditor({ isFallback: checked === true })
                           }
                         >
                           备用模型
@@ -782,7 +784,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
               <Input
                 value={addForm.baseUrl}
                 readOnly={addForm.providerId !== "custom"}
-                className={classNames(
+                className={cn(
                   "font-mono text-[12.5px]",
                   addForm.providerId !== "custom" &&
                     "bg-[var(--color-surface-sunken)]",
@@ -841,10 +843,10 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
               <Checkbox
                 checked={addForm.isFallback}
                 disabled={readOnly}
-                onChange={(event) =>
+                onCheckedChange={(checked) =>
                   setAddForm((f) => ({
                     ...f,
-                    isFallback: event.target.checked,
+                    isFallback: checked === true,
                   }))
                 }
               >

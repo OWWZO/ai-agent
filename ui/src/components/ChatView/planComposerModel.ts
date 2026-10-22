@@ -189,23 +189,21 @@ export function findLatestPlanApproval(
   taskList?: CHAT.Task[]
 ): CHAT.Task | undefined {
   const tasks = flattenTasks(chat, taskList);
-  for (let i = tasks.length - 1; i >= 0; i--) {
-    const task = tasks[i];
+  // 两件事分开算：先找「最后一个有正文的」，找不到再退回「任意最后一个」。
+  // 反向遍历里最先遇到的就是数组末尾那个，所以 fallback 只能在第一次命中时记，
+  // 之后不能再覆盖 —— 否则先遇到的空正文卡会被更早的元素顶掉。
+  let fallback: CHAT.Task | undefined;
+  for (let index = tasks.length - 1; index >= 0; index -= 1) {
+    const task = tasks[index];
     if (task?.messageType !== "plan_approval") {
       continue;
     }
-    const { planContent } = pickPlanApprovalFields(task);
-    if (planContent.trim()) {
+    if (pickPlanApprovalFields(task).planContent.trim()) {
       return task;
     }
+    fallback ??= task;
   }
-  // 无正文也返回最后一个 plan_approval（可能还在写）
-  for (let i = tasks.length - 1; i >= 0; i--) {
-    if (tasks[i]?.messageType === "plan_approval") {
-      return tasks[i];
-    }
-  }
-  return undefined;
+  return fallback;
 }
 
 export function buildComposerPlanModel(params: {

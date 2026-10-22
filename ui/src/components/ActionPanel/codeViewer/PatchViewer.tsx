@@ -4,7 +4,6 @@ import {
   memo,
   useMemo,
   type ComponentType,
-  type CSSProperties,
 } from "react";
 import type { FileDiffOptions, PatchDiffProps } from "@pierre/diffs/react";
 import { useIsDarkTheme } from "@/hooks/useIsDarkTheme";
@@ -18,6 +17,8 @@ import {
   getPlainTextPatchPreviewLines,
 } from "@/lib/patchPreview";
 import { cn } from "@/lib/utils";
+import { buildDiffViewerStyle } from "./utils";
+import type { CodeViewerStyle } from "./types";
 import Loading from "../Loading";
 
 /**
@@ -43,14 +44,6 @@ const MAX_PATCH_SAFE_LINE_COUNT = 1_200;
 const MAX_PATCH_SAFE_CHAR_COUNT = 180_000;
 
 const LOADING_CLASS = "mr-32";
-
-type PatchViewerStyle = CSSProperties & {
-  "--diffs-bg"?: string;
-  "--diffs-light-bg"?: string;
-  "--diffs-dark-bg"?: string;
-  "--diffs-font-family"?: string;
-  "--diffs-font-size"?: string;
-};
 
 type PatchViewerProps = {
   /** unified diff 文本（后端 `workspace_edit` 的 `diff` 字段） */
@@ -80,17 +73,13 @@ export const PatchViewer = memo(function PatchViewer({ patch, className }: Patch
     return lines > MAX_PATCH_SAFE_LINE_COUNT;
   }, [patch]);
 
-  const viewerStyle = useMemo<PatchViewerStyle>(
+  const viewerStyle = useMemo<CodeViewerStyle>(
     () => ({
-      // 应用暗色是 `.dark` class 驱动，而 @pierre/diffs 的 token 依赖 light-dark()。
-      // 必须显式指定 colorScheme，否则暗色下 diff 会渲染成浅色主题的深色文字。
-      colorScheme: isDark ? "dark" : "light",
-      "--diffs-bg": "var(--chat-surface)",
-      "--diffs-light-bg": "var(--chat-surface)",
-      "--diffs-dark-bg": "var(--chat-surface)",
-      // 库在 Shadow DOM 内用自己的等宽 fallback，Windows 中文会落到宋体。
-      "--diffs-font-family": "var(--font-mono)",
-      "--diffs-font-size": `${settings.fontSizePx}px`,
+      // 主题适配与 CodeViewer 共用，见 buildDiffViewerStyle 的说明
+      ...buildDiffViewerStyle({
+        isDark,
+        fontSizePx: settings.fontSizePx,
+      }),
     }),
     [isDark, settings.fontSizePx]
   );

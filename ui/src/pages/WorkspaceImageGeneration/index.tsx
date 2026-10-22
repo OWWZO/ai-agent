@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
   ArrowUp,
@@ -233,7 +233,7 @@ const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = 
         <button
           type="button"
           onClick={() => setShowSettings((v) => !v)}
-          className={classNames(
+          className={cn(
             "flex h-9 w-9 items-center justify-center rounded-full border bg-[var(--chat-surface)] shadow-[var(--shadow-xs)] transition",
             showSettings
               ? "border-[var(--chat-accent)]/30 text-[var(--chat-accent)]"
@@ -343,7 +343,7 @@ const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = 
 
             {statusText ? (
               <div
-                className={classNames(
+                className={cn(
                   "mt-3 rounded-2xl px-3.5 py-2.5 text-[12px] font-medium",
                   statusTone === "success" &&
                     "bg-[var(--status-success-bg)] text-[var(--status-success-text)]",
@@ -417,7 +417,7 @@ const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = 
                   className="inline-flex items-center gap-1.5 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-1.5 text-[12px] font-medium text-[var(--chat-text-muted)] transition hover:text-[var(--chat-text)]"
                 >
                   <RefreshCcw
-                    className={classNames("h-3.5 w-3.5", historyLoading && "animate-spin")}
+                    className={cn("h-3.5 w-3.5", historyLoading && "animate-spin")}
                   />
                   刷新
                 </button>
@@ -457,7 +457,7 @@ const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = 
                       className="mt-5 inline-flex w-full items-center justify-center gap-1.5 rounded-2xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2.5 text-[13px] font-medium text-[var(--chat-text-soft)] transition hover:text-[var(--chat-text)] disabled:opacity-60"
                     >
                       <RefreshCcw
-                        className={classNames(
+                        className={cn(
                           "h-3.5 w-3.5",
                           historyLoadingMore && "animate-spin"
                         )}
@@ -614,7 +614,7 @@ const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = 
               <button
                 type="button"
                 onClick={() => setToolMode("brush")}
-                className={classNames(
+                className={cn(
                   "inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-medium transition",
                   toolMode === "brush"
                     ? "bg-white/20 text-white shadow-sm"
@@ -627,7 +627,7 @@ const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = 
               <button
                 type="button"
                 onClick={() => setToolMode("eraser")}
-                className={classNames(
+                className={cn(
                   "inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-medium transition",
                   toolMode === "eraser"
                     ? "bg-white/20 text-white shadow-sm"

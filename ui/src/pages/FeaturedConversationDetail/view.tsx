@@ -1,4 +1,5 @@
-import { Empty, Spin } from "antd";
+import { Spinner } from "@/components/ui/spinner";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -41,7 +42,7 @@ export function FeaturedConversationDetailView(
   if (props.loading) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-[var(--chat-bg)] px-6">
-        <Spin size="large" />
+        <Spinner className="size-8" />
       </div>
     );
   }
@@ -49,7 +50,7 @@ export function FeaturedConversationDetailView(
   if (!props.detail) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-[var(--chat-bg)] px-6">
-        <Empty description="未找到对应的精品对话" />
+        <EmptyState title="未找到对应的精品对话" />
       </div>
     );
   }

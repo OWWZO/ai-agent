@@ -1,4 +1,5 @@
-import { copyText, downloadFile, showMessage } from "@/utils";
+import { copyText, downloadFile } from "@/utils";
+import { toast } from "sonner";
 import React, { memo, useMemo, useState } from "react";
 import ActionViewFrame from "./ActionViewFrame";
 import { FilePreviewSwitch, PanelItemType } from "../ActionPanel";
@@ -119,7 +120,7 @@ const FileList: React.FC<{
       if (!response.ok) throw new Error("Network response was not ok");
       const data = await response.text();
       copyText(data);
-      showMessage()?.success("复制成功");
+      toast.success("复制成功");
     } finally {
       stopCopying();
     }

@@ -23,6 +23,7 @@ export {
 } from "./planner";
 
 export {
+  findLastTask,
   findLastTaskIndex,
   findTaskIndexByToolCallId,
   findToolCallPlaceholderIndex,

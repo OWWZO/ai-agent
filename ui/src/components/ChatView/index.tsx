@@ -56,8 +56,14 @@ import {
 import { hasPendingAskUserQuestion, isParentLoopLive } from "./streamState";
 import { getProductByType } from "@/utils/constants";
 import { useMemoizedFn } from "ahooks";
-import classNames from "classnames";
-import { Modal } from "antd";
+import { cn } from "@/lib/utils";
+import { Group, Panel, Separator } from "react-resizable-panels";
+import { confirm } from "@/components/ui/confirm-dialog";
+import {
+  IMMERSIVE_LEFT_WIDTH,
+  MAX_LEFT_WIDTH,
+  MIN_LEFT_WIDTH,
+} from "./useWorkspacePanels";
 import {
   Conversation,
   ConversationContent,
@@ -364,16 +370,15 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     isLeftCollapsed,
     isRightCollapsed,
     isFocusMode,
-    containerRef,
-    leftPanelRef,
-    handleDragStart,
-    handleDragMove,
-    handleDragEnd,
     setIsRightCollapsed,
     toggleLeftPanel,
     toggleRightPanel: toggleWorkspaceRightPanel,
     toggleFocusMode,
     exitFocusMode,
+    handleLayoutChange,
+    workspaceRef,
+    groupRef,
+    notifyResizeEnd,
   } = useWorkspacePanels();
   // Streaming snapshots arrive more often than a user can read. Keep the live
   // header/workspace state responsive while allowing the transcript to render
@@ -428,7 +433,6 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     onFocusModeChange?.(isFocusMode);
   }, [isFocusMode, onFocusModeChange]);
   const actionViewRef = ActionView.useActionView();
-  const [modal, contextHolder] = Modal.useModal();
   const conversationRef = useRef(conversation);
   const lastAutoOpenedCanvasPreviewKeyRef = useRef("");
   const [dataLoading, setDataLoading] = useState(false);
@@ -470,9 +474,11 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       lastAutoOpenedCanvasPreviewKeyRef.current = "";
     },
     onTokenUseUp: () => {
-      modal.info({
+      confirm({
         title: "您的试用次数已用尽",
         content: "如需额外申请，请联系 liyang.1236@jd.com",
+        okText: "我知道了",
+        alertOnly: true,
       });
     },
     onTurnSettled: () => onRefreshSessionFiles?.(),
@@ -933,7 +939,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     if (loading) {
       return;
     }
-    modal.confirm({
+    confirm({
       title: "撤销上一轮对话？",
       content: "将删除最后一轮问答，并把你的问题填回输入框以便修改后重发。",
       okText: "撤销",
@@ -1525,7 +1531,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   const renderHeaderStatus = (opts?: { showDeepThink?: boolean; badge?: string }) => (
     <div className="flex min-w-0 items-center gap-2.5">
       <span
-        className={classNames(
+        className={cn(
           "reactor-status-dot shrink-0",
           headerStatus && "is-running"
         )}
@@ -1642,192 +1648,197 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     // 右侧关闭后回到居中单栏；仅展开时才占用双栏布局，避免留下窄条把主会话拉长。
     const hasWorkspaceLayout = hasWorkspaceContent && !isRightCollapsed;
 
-    return (
+    // 左栏内容。单栏 / 双栏共用，但外层容器不同：
+    // 双栏交给 `react-resizable-panels` 的 Panel，单栏必须用普通 div ——
+    // Panel 的外层会硬编码 `flexBasis: 0`、内层带 `maxWidth: 100%`，
+    // 单栏时会把 `mx-auto max-w-[980px]` 的居中布局压坏。
+    const chatColumn = (
       <div
-        ref={containerRef}
-        className={classNames(
+        className={
+          hasWorkspaceLayout
+            ? "flex h-full min-h-0 w-full flex-col overflow-hidden"
+            : "flex h-full min-h-0 w-full max-w-[980px] flex-col overflow-hidden"
+        }
+        id="chat-view"
+      >
+        {isLeftCollapsed && !isFocusMode ? (
+        // 折叠状态
+          <div className="flex h-full flex-col items-center py-4">
+            <button
+              onClick={toggleLeftPanel}
+              className="flex h-10 w-10 items-center justify-center rounded-full text-foreground-subtle transition-colors hover:bg-hover hover:text-foreground"
+              title="展开聊天区"
+            >
+              <PanelRightClose className="h-5 w-5" />
+            </button>
+          </div>
+        ) : (
+          <>
+            <div
+              className={cn(
+                "reactor-chat-header flex items-center justify-between",
+                // 头部不再画横线：面板本身已经是带框的卡片，内部再画一条会把
+                // 标题框成「卡里套卡」。层级交给间距表达。
+                hasWorkspaceLayout
+                  ? "py-3.5"
+                  : "mb-3 min-h-[36px]",
+                hasWorkspaceLayout
+                  ? isFocusMode
+                    ? "px-3"
+                    : "px-5"
+                  : "px-1"
+              )}
+            >
+              {renderHeaderStatus({showDeepThink: hasWorkspaceLayout ? !isFocusMode : true,})}
+              {(!hasWorkspaceLayout || !isFocusMode) ? (
+                <div className="flex shrink-0 items-center gap-1">
+                  {renderWorkspaceReopenTrigger()}
+                  <button
+                    type="button"
+                    onClick={() => onOpenTaskFiles?.()}
+                    className="flex h-8 w-8 items-center justify-center rounded-full text-foreground-subtle transition-colors hover:bg-hover hover:text-foreground"
+                    title="查看当前会话的文件"
+                    aria-label="查看当前会话的文件"
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+              <Conversation
+                key={conversation.id}
+                contextRef={conversationContextRef}
+                className={cn(
+                  "chat-fade-bottom min-h-0 flex-1 overflow-hidden",
+                  hasWorkspaceLayout && "pt-5"
+                  // ⚠️ 水平内边距不能加在这里：use-stick-to-bottom 会在
+                  // Conversation 与 Content 之间注入无类名的滚动 div，
+                  // 滚动条画在它身上 —— 外层一旦有 padding，滚动条就
+                  // 距面板边缘 20px。内边距一律放到 Content 上（见下）。
+                )}
+              >
+                <ConversationContent
+                  // scrollClassName 直接命中真正的滚动容器（库的 scrollRef div），
+                  // 4px 极细滚动条 + 紧贴面板右缘。
+                  scrollClassName="scrollbar-thin"
+                  className={chatContentClassName(
+                    hasWorkspaceLayout,
+                    isFocusMode
+                  )}
+                >
+                  {renderChatDialogues()}
+                </ConversationContent>
+                <ConversationScrollButton />
+              </Conversation>
+
+              {/* 右上角「智能体」浮动面板：全部子智能体（同步 + 后台）的运行态入口
+                      （移植 ZCode ConversationStatusPanel）；已结束的从页脚进目录 tab */}
+              <SubAgentsPanel
+                chat={activeChat}
+                chats={conversation.chatList}
+                variant={agentsPanelVariant}
+                onVariantChange={setAgentsPanelVariant}
+                onOpenAgent={openAgentPanel}
+                onOpenDirectory={openSubAgentDirectory}
+              />
+
+              <ConversationTurnNavigator
+                chats={turnChatList}
+                onBeforeJump={() =>
+                  conversationContextRef.current?.stopScroll()
+                }
+              />
+
+              {!readOnly ? (
+                <div
+                  className={cn(
+                    "shrink-0 bg-[var(--color-bg)]",
+                    hasWorkspaceLayout
+                      ? "pb-4 pt-3"
+                      : "pb-5 pt-4",
+                    hasWorkspaceLayout
+                      ? isFocusMode
+                        ? "px-2"
+                        : "px-4"
+                      : ""
+                  )}
+                  data-composer-dock="true"
+                >
+                  <div
+                    className={cn(
+                      "mx-auto w-full",
+                      !hasWorkspaceLayout && "max-w-[860px]"
+                    )}
+                  >
+                    {renderComposerStack(`input-${conversation.sessionId}-main`)}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </>
+        )}
+      </div>
+    );
+
+    // 单栏：不套 Group / Panel，保持原来的居中布局。
+    if (!hasWorkspaceLayout) {
+      return (
+        <div
+          className="reactor-chat-workspace-layout reactor-single-chat-shell flex h-full w-full justify-center overflow-hidden bg-background px-4 pt-4 md:px-6"
+          data-workspace-open="false"
+          data-workspace-empty={hasWorkspaceContent ? "false" : "true"}
+          data-chat-read-only={readOnly ? "true" : "false"}
+        >
+          {chatColumn}
+        </div>
+      );
+    }
+
+    return (
+      <Group
+        id="chat-workspace"
+        orientation="horizontal"
+        elementRef={workspaceRef}
+        groupRef={groupRef}
+        className={cn(
           "reactor-chat-workspace-layout flex h-full w-full",
           // 双栏：外壳铺一层浅底（与左侧会话栏同色），两个面板保持纯白圆角、**不描边**。
           // 分栏靠这层底色差表达，而不是靠 border —— 这样「面板边框」这条线就不存在了。
-          // 间隙尺寸对齐 ZCode：`ResizablePanelGroup` 本身没有 gap，两栏之间**只留分隔条自身的宽度**。
-          // ZCode `WorkspaceShellLayout.tsx:1626` 的分隔条就是 `w-1`（4px）—— 所以这里 gap 取 0。
-          // 单栏时不留底，让会话直接铺在页面上。
-          hasWorkspaceLayout
-            ? "gap-0 bg-[var(--chat-nav)] p-1"
-            : "reactor-single-chat-shell justify-center overflow-hidden bg-background px-4 pt-4 md:px-6"
+          "gap-0 bg-[var(--chat-nav)] p-1"
         )}
-        data-workspace-open={hasWorkspaceLayout ? "true" : "false"}
+        data-workspace-open="true"
         data-workspace-empty={hasWorkspaceContent ? "false" : "true"}
         data-chat-read-only={readOnly ? "true" : "false"}
+        onLayoutChange={handleLayoutChange}
+        onLayoutChanged={notifyResizeEnd}
       >
         {/* Left Panel - Chat Area */}
-        <div
-          ref={leftPanelRef}
-          className={classNames(
+        <Panel
+          id="chat"
+          className={cn(
             "reactor-chat-panel-left flex min-h-0 flex-col overflow-hidden bg-background",
             // 双栏时只保留圆角，不加描边 —— 与预览面板的分界由外壳底色差表达。
-            hasWorkspaceLayout && "rounded-[var(--workspace-panel-radius)]",
-            !hasWorkspaceLayout && "mx-auto h-full w-full max-w-[980px]",
+            "rounded-[var(--workspace-panel-radius)]",
             isLeftCollapsed && !isFocusMode && "w-14 min-w-14",
-            (!isLeftCollapsed || isFocusMode) && hasWorkspaceLayout && "shrink-0"
+            (!isLeftCollapsed || isFocusMode) && "shrink-0"
           )}
-          style={
-            hasWorkspaceLayout
-              ? {
-                ...((!isLeftCollapsed || isFocusMode)
-                  ? {
-                    width: `var(--workspace-left-width, ${leftPanelWidth}%)`,
-                    minWidth: isFocusMode ? 280 : undefined,
-                    maxWidth: isFocusMode ? "28%" : undefined,
-                  }
-                  : {})
-              }
-              : undefined
-          }
+          minSize={isFocusMode ? 24 : MIN_LEFT_WIDTH}
+          maxSize={isFocusMode ? 28 : MAX_LEFT_WIDTH}
+          defaultSize={isFocusMode ? IMMERSIVE_LEFT_WIDTH : leftPanelWidth}
         >
-          <div
-            className={
-              hasWorkspaceLayout
-                ? "flex h-full min-h-0 w-full flex-col overflow-hidden"
-                : "flex h-full min-h-0 w-full max-w-[980px] flex-col overflow-hidden"
-            }
-            id="chat-view"
-          >
-            {isLeftCollapsed && !isFocusMode ? (
-              // 折叠状态
-              <div className="flex h-full flex-col items-center py-4">
-                <button
-                  onClick={toggleLeftPanel}
-                  className="flex h-10 w-10 items-center justify-center rounded-full text-foreground-subtle transition-colors hover:bg-hover hover:text-foreground"
-                  title="展开聊天区"
-                >
-                  <PanelRightClose className="h-5 w-5" />
-                </button>
-              </div>
-            ) : (
-              <>
-                <div
-                  className={classNames(
-                    "reactor-chat-header flex items-center justify-between",
-                    // 头部不再画横线：面板本身已经是带框的卡片，内部再画一条会把
-                    // 标题框成「卡里套卡」。层级交给间距表达。
-                    hasWorkspaceLayout
-                      ? "py-3.5"
-                      : "mb-3 min-h-[36px]",
-                    hasWorkspaceLayout
-                      ? isFocusMode
-                        ? "px-3"
-                        : "px-5"
-                      : "px-1"
-                  )}
-                >
-                  {renderHeaderStatus({showDeepThink: hasWorkspaceLayout ? !isFocusMode : true,})}
-                  {(!hasWorkspaceLayout || !isFocusMode) ? (
-                    <div className="flex shrink-0 items-center gap-1">
-                      {renderWorkspaceReopenTrigger()}
-                      <button
-                        type="button"
-                        onClick={() => onOpenTaskFiles?.()}
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-foreground-subtle transition-colors hover:bg-hover hover:text-foreground"
-                        title="查看当前会话的文件"
-                        aria-label="查看当前会话的文件"
-                      >
-                        <FolderOpen className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
+          {chatColumn}
+        </Panel>
 
-                <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-                  <Conversation
-                    key={conversation.id}
-                    contextRef={conversationContextRef}
-                    className={classNames(
-                      "chat-fade-bottom min-h-0 flex-1 overflow-hidden",
-                      hasWorkspaceLayout && "pt-5"
-                      // ⚠️ 水平内边距不能加在这里：use-stick-to-bottom 会在
-                      // Conversation 与 Content 之间注入无类名的滚动 div，
-                      // 滚动条画在它身上 —— 外层一旦有 padding，滚动条就
-                      // 距面板边缘 20px。内边距一律放到 Content 上（见下）。
-                    )}
-                  >
-                    <ConversationContent
-                      // scrollClassName 直接命中真正的滚动容器（库的 scrollRef div），
-                      // 4px 极细滚动条 + 紧贴面板右缘。
-                      scrollClassName="scrollbar-thin"
-                      className={chatContentClassName(
-                        hasWorkspaceLayout,
-                        isFocusMode
-                      )}
-                    >
-                      {renderChatDialogues()}
-                    </ConversationContent>
-                    <ConversationScrollButton />
-                  </Conversation>
-
-                  {/* 右上角「智能体」浮动面板：全部子智能体（同步 + 后台）的运行态入口
-                      （移植 ZCode ConversationStatusPanel）；已结束的从页脚进目录 tab */}
-                  <SubAgentsPanel
-                    chat={activeChat}
-                    chats={conversation.chatList}
-                    variant={agentsPanelVariant}
-                    onVariantChange={setAgentsPanelVariant}
-                    onOpenAgent={openAgentPanel}
-                    onOpenDirectory={openSubAgentDirectory}
-                  />
-
-                  <ConversationTurnNavigator
-                    chats={turnChatList}
-                    onBeforeJump={() =>
-                      conversationContextRef.current?.stopScroll()
-                    }
-                  />
-
-                  {!readOnly ? (
-                    <div
-                      className={classNames(
-                        "shrink-0 bg-[var(--color-bg)]",
-                        hasWorkspaceLayout
-                          ? "pb-4 pt-3"
-                          : "pb-5 pt-4",
-                        hasWorkspaceLayout
-                          ? isFocusMode
-                            ? "px-2"
-                            : "px-4"
-                          : ""
-                      )}
-                      data-composer-dock="true"
-                    >
-                      <div
-                        className={classNames(
-                          "mx-auto w-full",
-                          !hasWorkspaceLayout && "max-w-[860px]"
-                        )}
-                      >
-                        {renderComposerStack(`input-${conversation.sessionId}-main`)}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {hasWorkspaceLayout && !isFocusMode && !isLeftCollapsed ? (
-          <div
+        {!isFocusMode && !isLeftCollapsed ? (
+          <Separator
             aria-label="调整对话区和工作区宽度"
-            role="separator"
-            aria-orientation="vertical"
-            onPointerDown={handleDragStart}
-            onPointerMove={handleDragMove}
-            onPointerUp={handleDragEnd}
-            onPointerCancel={handleDragEnd}
-            className={classNames(
+            className={cn(
               // ZCode WorkspaceShellLayout.tsx:1626 —— 分隔条本体是一条透明命中条，
               // 平时完全不可见（无底色、无描边、无手柄），只有 hover / 拖拽 / 焦点时才浮出指示线。
               // 宽度 `w-1`（4px）与 ZCode 的分隔条一致；容器 `gap-0`，所以两栏之间**就只有这 4px**，
-              // 外壳浅底从这条缝里透出来当分界（改前是 gap-1 + w-1 + gap-1 = 12px，太宽）。
+              // 外壳浅底从这条缝里透出来当分界。
               "reactor-workspace-resizer group/handle relative z-10 flex h-full w-1 shrink-0 touch-none cursor-ew-resize items-center justify-center bg-transparent outline-none",
               "focus:outline-none focus-visible:ring-0",
               // 透明命中扩展：把 4px 视觉条的可拖拽区域撑到 12px，兼顾 ZCode 的极简外观与可用性。
@@ -1835,86 +1846,81 @@ const ChatView: ReactorType.FC<Props> = (props) => {
               // 指示线：2px 圆角、三级前景半透明；上下按面板圆角内缩，默认完全透明。
               "after:pointer-events-none after:absolute after:left-1/2 after:-translate-x-1/2 after:w-0.5 after:rounded-full after:bg-foreground-subtlest/50 after:opacity-0 after:transition-opacity after:content-['']",
               "after:inset-y-[var(--workspace-panel-radius)]",
-              // hover / 键盘焦点 / 拖拽中点亮（拖拽态由容器 data-workspace-resizing 驱动，与 ZCode 一致）
+              // hover / 键盘焦点 / 拖拽中点亮（拖拽态由容器 data-workspace-resizing 驱动）
               "hover:after:opacity-100 focus-visible:after:opacity-100 [[data-workspace-resizing=true]_&]:after:opacity-100"
             )}
             title="拖拽调整左右区域宽度"
           />
         ) : null}
 
-        {hasWorkspaceLayout ? (
-          <button
-            type="button"
-            className="reactor-workspace-scrim lg:hidden"
-            aria-label="关闭工作区"
-            onClick={closeMobileWorkspace}
-          />
-        ) : null}
+        <button
+          type="button"
+          className="reactor-workspace-scrim lg:hidden"
+          aria-label="关闭工作区"
+          onClick={closeMobileWorkspace}
+        />
 
-        {hasWorkspaceLayout ? (
-          <div
-            className="reactor-workspace-panel relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--workspace-panel-radius)] bg-background"
-            data-workspace-collapsed="false"
-          >
-            {/* ActionView 常驻挂载，独占面板改为**覆盖层**。
+        <Panel
+          id="workspace"
+          className="reactor-workspace-panel relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--workspace-panel-radius)] bg-background"
+          data-workspace-collapsed="false"
+        >
+          {/* ActionView 常驻挂载，独占面板改为**覆盖层**。
                 原因：ActionView 持有工作区 tab 列表（文件 / 子智能体详情 / 目录），
                 一旦被独占面板顶掉就会卸载、tab 全部丢失 —— 而从子智能体详情里点
                 思考块恰恰会走 openThinkingPanel，等于自毁当前 tab。 */}
-            <ActionView
-              key={conversation.id}
-              pendingPreviewFile={pendingPreviewFile}
-              onPendingPreviewFileConsumed={clearPendingPreviewFile}
-              pendingSourceTab={pendingSourceTab}
-              onPendingSourceTabConsumed={() => setPendingSourceTab(null)}
-              pendingAgentTab={pendingAgentTab}
-              onPendingAgentTabConsumed={() => setPendingAgentTab(null)}
-              pendingAgentDirectoryTab={pendingAgentDirectory}
-              onPendingAgentDirectoryTabConsumed={() =>
-                setPendingAgentDirectory(false)
-              }
-              pendingTaskTab={pendingTaskTab}
-              onPendingTaskTabConsumed={() => setPendingTaskTab(null)}
-              agentRoster={subAgentRoster}
-              onOpenAgent={openAgentPanel}
-              renderAgentTab={renderAgentTab}
-              renderTaskTab={renderTaskTab}
-              onTabsChange={handleWorkspaceTabsChange}
-              workspaceCaption={workspaceCaption}
-              taskList={sessionFileTasks}
-              plan={plan}
-              isFocusMode={isFocusMode}
-              onToggleFocusMode={toggleFocusMode}
-              ref={actionViewRef}
-              onClose={closeActionView}
-            />
+          <ActionView
+            key={conversation.id}
+            pendingPreviewFile={pendingPreviewFile}
+            onPendingPreviewFileConsumed={clearPendingPreviewFile}
+            pendingSourceTab={pendingSourceTab}
+            onPendingSourceTabConsumed={() => setPendingSourceTab(null)}
+            pendingAgentTab={pendingAgentTab}
+            onPendingAgentTabConsumed={() => setPendingAgentTab(null)}
+            pendingAgentDirectoryTab={pendingAgentDirectory}
+            onPendingAgentDirectoryTabConsumed={() =>
+              setPendingAgentDirectory(false)
+            }
+            pendingTaskTab={pendingTaskTab}
+            onPendingTaskTabConsumed={() => setPendingTaskTab(null)}
+            agentRoster={subAgentRoster}
+            onOpenAgent={openAgentPanel}
+            renderAgentTab={renderAgentTab}
+            renderTaskTab={renderTaskTab}
+            onTabsChange={handleWorkspaceTabsChange}
+            workspaceCaption={workspaceCaption}
+            taskList={sessionFileTasks}
+            plan={plan}
+            isFocusMode={isFocusMode}
+            onToggleFocusMode={toggleFocusMode}
+            ref={actionViewRef}
+            onClose={closeActionView}
+          />
 
-            {pendingDesktopStreamUrl ? (
-              <div className="absolute inset-0 z-20 flex min-h-0 flex-col bg-background">
-                <DesktopPreviewPanel
-                  streamUrl={pendingDesktopStreamUrl}
-                  onClose={closeActionView}
-                />
-              </div>
-            ) : thinkingDetail != null ? (
-              <div className="absolute inset-0 z-20 flex min-h-0 flex-col bg-background">
-                <ThinkingPanel
-                  text={thinkingDetail}
-                  onClose={() => {
-                    closeThinkingPanel();
-                    if (!showAction && !workspaceOpenRequested) {
-                      // 走统一的收起入口：tab 哨兵必须一起复位，否则下次打开时
-                      // ActionView 首次上报的 0 会被误判成「刚关掉最后一个 tab」。
-                      collapseWorkspace();
-                    }
-                  }}
-                />
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {contextHolder}
-      </div>
+          {pendingDesktopStreamUrl ? (
+            <div className="absolute inset-0 z-20 flex min-h-0 flex-col bg-background">
+              <DesktopPreviewPanel
+                streamUrl={pendingDesktopStreamUrl}
+                onClose={closeActionView}
+              />
+            </div>
+          ) : thinkingDetail != null ? (
+            <div className="absolute inset-0 z-20 flex min-h-0 flex-col bg-background">
+              <ThinkingPanel
+                text={thinkingDetail}
+                onClose={() => {
+                  closeThinkingPanel();
+                  if (!showAction && !workspaceOpenRequested) {
+                    // 走统一的收起入口：tab 哨兵必须一起复位，否则下次打开时
+                    // ActionView 首次上报的 0 会被误判成「刚关掉最后一个 tab」。
+                    collapseWorkspace();
+                  }
+                }}
+              />
+            </div>
+          ) : null}
+        </Panel>
+      </Group>
     );
   };
 

@@ -52,7 +52,6 @@ ui/
 │   │   ├── LoadingDot/     # 加载中三点动画
 │   │   ├── LoadingSpinner/ # 加载旋转动画
 │   │   ├── Logo/           # Logo 组件
-│   │   ├── Tabs/           # 标签页组件
 │   │   └── NotFound.tsx    # 404 页面
 │   │
 │   ├── hooks/              # 自定义 Hook

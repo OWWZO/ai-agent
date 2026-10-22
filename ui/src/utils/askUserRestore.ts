@@ -3,12 +3,15 @@ import {
   dispatchAskUserResume,
   type AskUserResumeEventDetail,
 } from "@/services/askUser";
-import { buildConversationTaskData, combineData } from "@/utils/chat";
+import { combineData } from "@/utils/chat";
 import { applyWaitingUserInputState } from "@/components/ChatView/streamState";
 import {
   claimHitlResumeDispatch,
+  cloneChatListForHITL,
+  commitHITLChat,
   markChatResuming,
   markChatSettled,
+  resolveHITLChatIndex,
   resolveHitlResumeIntent,
 } from "@/utils/hitlResumeIntent";
 
@@ -94,13 +97,7 @@ export function mergePendingAskUserQuestions(
     return { conversation, autoResumes: [] };
   }
 
-  const chatList = conversation.chatList.map((chat) => ({
-    ...chat,
-    multiAgent: {
-      ...(chat.multiAgent || { tasks: [] }),
-      tasks: [...(chat.multiAgent?.tasks || [])].map((group) => [...(group || [])]),
-    },
-  }));
+  const chatList = cloneChatListForHITL(conversation);
   const autoResumes: AskUserResumeEventDetail[] = [];
 
   for (const payload of pending) {
@@ -109,17 +106,7 @@ export function mergePendingAskUserQuestions(
     const requestId = String(payload.requestId || "");
     const clientStatus = String(payload.status || "pending").toLowerCase();
     const persistenceStatus = String(payload.persistenceStatus || "").toUpperCase();
-    let index = requestId
-      ? chatList.findIndex((chat) => chat.requestId === requestId)
-      : -1;
-    if (index < 0) {
-      index = chatList.findIndex(
-        (chat) => String(chat.metrics?.status || "").toUpperCase() === "WAITING_INPUT"
-      );
-    }
-    if (index < 0) {
-      index = chatList.length - 1;
-    }
+    const index = resolveHITLChatIndex(chatList, requestId);
     if (index < 0) {
       continue;
     }
@@ -208,13 +195,7 @@ export function mergePendingAskUserQuestions(
     }
 
     // Dialogue 渲染 chat.tasks，必须像历史 hydrate 一样从 multiAgent 重建派生层
-    const derived = buildConversationTaskData(chat, conversation.deepThink);
-    chatList[index] = {
-      ...derived.currentChat,
-      tip: chat.tip,
-      loading: chat.loading,
-      metrics: chat.metrics,
-    };
+    commitHITLChat(chatList, index, chat, conversation.deepThink);
   }
 
   return {

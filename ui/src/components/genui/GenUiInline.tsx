@@ -2,7 +2,7 @@ import { FC, memo, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Maximize2, Sparkles, X } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 import GenUiNode, { type GenUiNodeData } from "./GenUiNode";
 import { GenUiRenderProvider } from "./GenUiRenderContext";
 import { applyUiPatches } from "./applyUiPatch";
@@ -72,7 +72,7 @@ const GenUiInline: FC<Props> = memo(
         }}
       >
         <motion.div
-          className={classNames(
+          className={cn(
             "genui-root",
             patchFlash && "genui-patch-flash"
           )}
@@ -152,7 +152,7 @@ const GenUiInline: FC<Props> = memo(
               </span>
               {typeof patchCount === "number" && patchCount > 0 ? (
                 <span
-                  className={classNames(
+                  className={cn(
                     "rounded-full bg-[var(--chat-surface-muted)] px-2 py-0.5 text-[11px] text-[var(--chat-text-soft)] transition-colors",
                     patchFlash && "bg-[var(--chat-accent-soft)] text-[var(--chat-accent)]"
                   )}

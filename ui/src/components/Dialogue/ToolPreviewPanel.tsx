@@ -1,7 +1,8 @@
 import { Fragment, memo, useMemo } from "react";
 import { ArrowLeft, ChevronRightIcon, X } from "lucide-react";
 import { useRequest } from "ahooks";
-import { Alert } from "antd";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Info } from "lucide-react";
 import { DiffCodeFence } from "./markdown/KimiCodeFence";
 import { ToolOutputBlock } from "./tools/ToolOutputBlock";
 import { PatchViewer } from "../ActionPanel/codeViewer/PatchViewer";
@@ -165,12 +166,11 @@ export const ToolPreviewPanel = memo(function ToolPreviewPanel({
       if (!fileUrl) {
         return (
           <div className="p-4">
-            <Alert
-              type="info"
-              showIcon
-              message="该文件不在会话产物中，无法预览"
-              description={source.path}
-            />
+            <Alert variant="info">
+              <Info />
+              <AlertTitle>该文件不在会话产物中，无法预览</AlertTitle>
+              <AlertDescription>{source.path}</AlertDescription>
+            </Alert>
           </div>
         );
       }
@@ -189,12 +189,11 @@ export const ToolPreviewPanel = memo(function ToolPreviewPanel({
     if (unavailableReason) {
       return (
         <div className="p-4">
-          <Alert
-            type="info"
-            showIcon
-            message="该文件不在会话产物中，无法预览"
-            description={unavailableReason}
-          />
+          <Alert variant="info">
+            <Info />
+            <AlertTitle>该文件不在会话产物中，无法预览</AlertTitle>
+            <AlertDescription>{unavailableReason}</AlertDescription>
+          </Alert>
         </div>
       );
     }
@@ -208,12 +207,11 @@ export const ToolPreviewPanel = memo(function ToolPreviewPanel({
     if (error) {
       return (
         <div className="p-4">
-          <Alert
-            type="info"
-            showIcon
-            message="该文件不在会话产物中，无法预览"
-            description={source.path}
-          />
+          <Alert variant="info">
+            <Info />
+            <AlertTitle>该文件不在会话产物中，无法预览</AlertTitle>
+            <AlertDescription>{source.path}</AlertDescription>
+          </Alert>
         </div>
       );
     }

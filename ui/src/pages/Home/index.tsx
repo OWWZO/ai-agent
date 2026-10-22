@@ -29,8 +29,8 @@ import {
   getUniqId,
   peekSessionId,
   setSessionId,
-  showMessage,
 } from "@/utils";
+import { toast } from "sonner";
 import {
   conversationHistoryApi,
   type ConversationRunReplay,
@@ -867,7 +867,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   const handleOpenFeaturedAdmin = useCallback(
     (session: ConversationSessionItem) => {
       if (!canFeatureConversationSession(session)) {
-        showMessage()?.error("请先让该会话至少产生一轮内容，再设为精品");
+        toast.error("请先让该会话至少产生一轮内容，再设为精品");
         return;
       }
 
@@ -889,7 +889,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       syncFeaturedAdminRecord(session, operator)
         .catch((error) => {
           console.error("加载精品对话配置失败", error);
-          showMessage()?.error("加载精品对话配置失败");
+          toast.error("加载精品对话配置失败");
         })
         .finally(() => {
           setFeaturedAdminLoading(false);
@@ -911,7 +911,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
       const validationError = validateFeaturedConversationForm(featuredAdminForm);
       if (validationError) {
-        showMessage()?.error(validationError);
+        toast.error(validationError);
         return;
       }
 
@@ -947,9 +947,9 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
               featuredAdminForm.operator
             );
           }
-          showMessage()?.success("精品对话已上线");
+          toast.success("精品对话已上线");
         } else {
-          showMessage()?.success(
+          toast.success(
             featuredAdminRecord ? "精品对话已更新" : "精品草稿已创建"
           );
         }
@@ -977,7 +977,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
     const operator = featuredAdminForm.operator.trim();
     if (!operator) {
-      showMessage()?.error("请填写操作人");
+      toast.error("请填写操作人");
       return;
     }
 
@@ -988,13 +988,13 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
           featuredAdminRecord.featuredId,
           operator
         );
-        showMessage()?.success("精品对话已下线");
+        toast.success("精品对话已下线");
       } else {
         await featuredConversationAdminApi.online(
           featuredAdminRecord.featuredId,
           operator
         );
-        showMessage()?.success("精品对话已上线");
+        toast.success("精品对话已上线");
       }
 
       await syncFeaturedAdminRecord(featuredAdminTargetSession, operator);

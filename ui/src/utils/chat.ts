@@ -182,6 +182,25 @@ const LEGACY_TIMING_TASK_KEYS: LegacyTimingTaskKey[] = [
   "subAgentElapsedMs",
 ];
 
+/**
+ * 工具状态的生命周期序：越大越靠后。合并流式帧时用来保证 status 只前进不倒退。
+ */
+const TOOL_STATUS_RANK: Record<string, number> = {
+  streaming: 1,
+  preparing: 1,
+  running: 2,
+  success: 3,
+  failed: 3,
+  error: 3,
+};
+
+function toolStatusRank(status?: string): number {
+  const key = String(status || "").toLowerCase();
+  // hasOwn 而非直接下标：status 是后端传来的字符串，"constructor" 这类键
+  // 会命中原型属性并返回 Object 构造函数，比较结果全错。
+  return Object.hasOwn(TOOL_STATUS_RANK, key) ? TOOL_STATUS_RANK[key] : 0;
+}
+
 function mergeTaskTiming(
   previous?: MESSAGE.ReplayTiming,
   next?: MESSAGE.ReplayTiming
@@ -1643,7 +1662,7 @@ function normalizeIncomingToolCallTask(task: MESSAGE.Task): MESSAGE.Task {
  * - 状态按 streaming→running→success 升级
  * - argsStreaming 与 status 解耦：delta 期间 true，running 后仍可短暂保留已生成的完整 args 展示
  */
-function mergeToolCallStreamingTask(
+export function mergeToolCallStreamingTask(
   previous: MESSAGE.Task,
   next: MESSAGE.Task
 ): MESSAGE.Task {
@@ -1661,17 +1680,13 @@ function mergeToolCallStreamingTask(
   const mergedArgs =
     nextArgs.length >= prevArgs.length ? nextArgs : prevArgs || nextArgs;
 
-  const statusRank = (status?: string) => {
-    const s = String(status || "").toLowerCase();
-    if (s === "success" || s === "failed" || s === "error") return 3;
-    if (s === "running") return 2;
-    if (s === "streaming" || s === "preparing") return 1;
-    return 0;
-  };
   const prevStatus = String(prevMap.status || prevNested.status || "");
   const nextStatus = String(nextMap.status || nextNested.status || "");
   const mergedStatus =
-    statusRank(nextStatus) >= statusRank(prevStatus) ? nextStatus || prevStatus : prevStatus;
+    toolStatusRank(nextStatus) >= toolStatusRank(prevStatus)
+      ? nextStatus || prevStatus
+      : prevStatus;
+  const mergedStatusKey = mergedStatus.toLowerCase();
 
   const nextMessageType = String(
     next.messageType || nextMap.messageType || nextNested.messageType || ""
@@ -1692,11 +1707,11 @@ function mergeToolCallStreamingTask(
   } else if (
     nextMessageType === "tool_call_delta" ||
     nextArgsStreamingExplicit ||
-    String(mergedStatus).toLowerCase() === "streaming" ||
-    String(mergedStatus).toLowerCase() === "preparing"
+    mergedStatusKey === "streaming" ||
+    mergedStatusKey === "preparing"
   ) {
     mergedArgsStreaming = true;
-  } else if (prevArgsStreaming && String(mergedStatus).toLowerCase() === "running") {
+  } else if (prevArgsStreaming && mergedStatusKey === "running") {
     // running 刚到：参数已完整，停止逐字，但仍保留完整 args 文本供展示
     mergedArgsStreaming = false;
   } else {
@@ -2137,40 +2152,46 @@ function isSelfReferentialParentId(
  * @param multiAgent 多智能体数据
  * @returns 处理后的数据对象
  */
+/**
+ * 需要在主时间线上出条目卡的消息类型。
+ *
+ * 模块级 Set：原来它是函数里的数组，每次 SSE 事件进来都重建一次，
+ * 而实际只做一次 `includes` 查询。
+ */
+const TIMELINE_MESSAGE_TYPES = new Set([
+  "tool_call",
+  "tool_result",
+  "ask_user_question",
+  "desktop_control",
+  "plan_approval",
+  "session_tasks",
+  "user_brief",
+  "browser",
+  "browser_viewport",
+  "code",
+  "html",
+  "file",
+  "knowledge",
+  "result",
+  "deep_search",
+  "markdown",
+  "ppt",
+  "data_analysis",
+  "ui_tree",
+  "ui_patch",
+]);
+
 export const handleTaskData = (
   currentChat: CHAT.ChatItem,
   deepThink?: boolean,
   multiAgent?: MESSAGE.MultiAgent
 ) => {
+  // 该函数是唯一的派生层：原始 multiAgent.tasks 保留事件事实，chat.tasks/taskList/conclusion 只从事实重建。
   const {
     plan: fullPlan,
     tasks: fullTasks,
     plan_thought: planThought,
   } = multiAgent ?? {};
-
-  // 该函数是唯一的派生层：原始 multiAgent.tasks 保留事件事实，chat.tasks/taskList/conclusion 只从事实重建。
-  const TOOL_TYPES = [
-    "tool_call",
-    "tool_result",
-    "ask_user_question",
-    "desktop_control",
-    "plan_approval",
-    "session_tasks",
-    "user_brief",
-    "browser",
-    "browser_viewport",
-    "code",
-    "html",
-    "file",
-    "knowledge",
-    "result",
-    "deep_search",
-    "markdown",
-    "ppt",
-    "data_analysis",
-    "ui_tree",
-    "ui_patch",
-  ];
 
   currentChat.thought = planThought || "";
 
@@ -2267,7 +2288,7 @@ export const handleTaskData = (
         }
       }
 
-      if (TOOL_TYPES.includes(task?.messageType)) {
+      if (TIMELINE_MESSAGE_TYPES.has(task?.messageType)) {
         // 工作区列表：子工具不进顶层 taskList，只挂在 Agent 下
         if (!parentToolUseId) {
           taskList.push(...processedInfo);
@@ -2358,141 +2379,114 @@ export const buildConversationTaskData = (
   return handleTaskData(snapshotChat, deepThink, snapshotChat.multiAgent);
 };
 
+type TaskAction = { action: string; tool: string; name: string };
+
+/**
+ * 消息类型 → 静态动作文案。
+ *
+ * 这些分支不依赖 task，只是常量映射；放在模块级避免每次调用重建，
+ * 也让「哪些类型有固定文案」一眼可查。需要读 task 的类型不在此表内，
+ * 走下面的 switch 分支。
+ *
+ * 两个坑，都是这次重构踩过的：
+ * - 查找必须走 `Object.hasOwn`：`messageType` 是后端传来的字符串，直接下标
+ *   会让 `"toString"` / `"constructor"` 这类键命中原型方法，返回 function。
+ * - 返回前复制一份：表是模块级共享的，调用方改写字段会永久污染它。
+ */
+const STATIC_TASK_ACTIONS: Record<string, Readonly<TaskAction>> = {
+  ask_user_question: {
+    action: "等待你的回答",
+    tool: "AskUserQuestion",
+    name: "选择题"
+  },
+  desktop_control: {
+    action: "等待你操作桌面",
+    tool: "RequestDesktopControl",
+    name: "桌面控制"
+  },
+  plan_approval: {
+    action: "等待批准计划",
+    tool: "ExitPlanMode",
+    name: "计划批准"
+  },
+  session_tasks: {
+    action: "任务列表已更新",
+    tool: "TaskList",
+    name: "Todo"
+  },
+  code: {
+    action: "正在执行代码",
+    tool: "编辑器",
+    name: ""
+  },
+  html: {
+    action: "正在生成web页面",
+    tool: "编辑器",
+    name: ""
+  },
+  ui_tree: {
+    action: "正在生成界面组件",
+    tool: "GenUI",
+    name: "画布"
+  },
+  ui_patch: {
+    action: "正在更新界面组件",
+    tool: "GenUI",
+    name: "补丁"
+  },
+  plan_thought: {
+    action: "正在思考下一步计划",
+    tool: "",
+    name: ""
+  },
+  plan: {
+    action: "更新任务列表",
+    tool: "",
+    name: ""
+  },
+  knowledge: {
+    action: "正在调用知识库",
+    tool: "文件编辑器",
+    name: "查询知识库"
+  },
+  markdown: {
+    action: "正在生成报告",
+    tool: "markdown",
+    name: ""
+  },
+};
+
 /**
  * 构建任务动作信息
  * @param task 任务对象
  * @returns 包含action、tool和name的动作信息对象
  */
-export const buildAction = (task: CHAT.Task) => {
-  // 定义消息类型常量
-  const MESSAGE_TYPES = {
-    TOOL_CALL: "tool_call",
-    TOOL_RESULT: "tool_result",
-    ASK_USER_QUESTION: "ask_user_question",
-    DESKTOP_CONTROL: "desktop_control",
-    PLAN_APPROVAL: "plan_approval",
-    SESSION_TASKS: "session_tasks",
-    CODE: "code",
-    HTML: "html",
-    UI_TREE: "ui_tree",
-    UI_PATCH: "ui_patch",
-    PLAN_THOUGHT: "plan_thought",
-    PLAN: "plan",
-    FILE: "file",
-    KNOWLEDGE: "knowledge",
-    DEEP_SEARCH: "deep_search",
-    MARKDOWN: "markdown",
-    DATA_ANALYSIS: "data_analysis"
-  };
-
-  const TOOL_NAMES = {
-    WEB_SEARCH: "web_search",
-    INTERNAL_SEARCH: "internal_search",
-    CODE_INTERPRETER: "code_interpreter"
-  };
+export const buildAction = (task: CHAT.Task): TaskAction => {
+  const messageType = task.messageType || "";
+  // hasOwn 而非直接下标：挡住 "toString" / "constructor" 这类原型键
+  if (Object.hasOwn(STATIC_TASK_ACTIONS, messageType)) {
+    // 复制一份，避免调用方改写字段污染模块级表
+    return { ...STATIC_TASK_ACTIONS[messageType] };
+  }
 
   switch (task.messageType) {
-    case MESSAGE_TYPES.TOOL_CALL:
+    case "tool_call":
       return handleToolCallTask(task);
 
-    case MESSAGE_TYPES.TOOL_RESULT:
+    case "tool_result":
       return handleToolResult(task);
 
-    case MESSAGE_TYPES.ASK_USER_QUESTION:
-      return {
-        action: "等待你的回答",
-        tool: "AskUserQuestion",
-        name: "选择题",
-      };
-
-    case MESSAGE_TYPES.DESKTOP_CONTROL:
-      return {
-        action: "等待你操作桌面",
-        tool: "RequestDesktopControl",
-        name: "桌面控制",
-      };
-
-    case MESSAGE_TYPES.PLAN_APPROVAL:
-      return {
-        action: "等待批准计划",
-        tool: "ExitPlanMode",
-        name: "计划批准",
-      };
-
-    case MESSAGE_TYPES.SESSION_TASKS:
-      return {
-        action: "任务列表已更新",
-        tool: "TaskList",
-        name: "Todo",
-      };
-
-    case MESSAGE_TYPES.CODE:
-      return {
-        action: "正在执行代码",
-        tool: "编辑器",
-        name: ""
-      };
-
-    case MESSAGE_TYPES.HTML:
-      return {
-        action: "正在生成web页面",
-        tool: "编辑器",
-        name: ""
-      };
-
-    case MESSAGE_TYPES.UI_TREE:
-      return {
-        action: "正在生成界面组件",
-        tool: "GenUI",
-        name: "画布"
-      };
-
-    case MESSAGE_TYPES.UI_PATCH:
-      return {
-        action: "正在更新界面组件",
-        tool: "GenUI",
-        name: "补丁"
-      };
-
-    case MESSAGE_TYPES.PLAN_THOUGHT:
-      return {
-        action: "正在思考下一步计划",
-        tool: "",
-        name: ""
-      };
-
-    case MESSAGE_TYPES.PLAN:
-      return {
-        action: "更新任务列表",
-        tool: "",
-        name: ""
-      };
-
-    case MESSAGE_TYPES.FILE:
+    case "file":
       return handleFileTask(task);
 
-    case MESSAGE_TYPES.KNOWLEDGE:
-      return {
-        action: "正在调用知识库",
-        tool: "文件编辑器",
-        name: "查询知识库"
-      };
-
-    case MESSAGE_TYPES.DEEP_SEARCH:
+    case "deep_search":
       return handleDeepSearchTask(task);
 
-    case MESSAGE_TYPES.MARKDOWN:
-      return {
-        action: "正在生成报告",
-        tool: "markdown",
-        name: ""
-      };
-
-    case MESSAGE_TYPES.DATA_ANALYSIS:
+    case "data_analysis":
       return {
         action: "正在分析数据",
         tool: "数据分析工具",
-        name: task.resultMap.task
+        name: task.resultMap.task ?? ""
       };
 
     default:
@@ -2540,15 +2534,15 @@ export const buildAction = (task: CHAT.Task) => {
     }
 
     switch (toolName) {
-      case TOOL_NAMES.WEB_SEARCH:
-      case TOOL_NAMES.INTERNAL_SEARCH:
+      case "web_search":
+      case "internal_search":
         return {
           action: "正在搜索",
           tool: "网络查询",
           name: String(toolResult?.toolParam?.query || "")
         };
 
-      case TOOL_NAMES.CODE_INTERPRETER:
+      case "code_interpreter":
         return {
           action: "正在执行代码",
           tool: "编辑器",

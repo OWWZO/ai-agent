@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Modal } from "antd";
+import { confirm } from "@/components/ui/confirm-dialog";
 
 import WorkspaceMRagView from "./view";
 import {
   loadMRagWorkspaceStoredState,
   persistMRagWorkspaceStoredState,
 } from "./utils";
-import { showMessage } from "@/utils";
+import { toast } from "sonner";
 import {
   resolveKnowledgeBaseAfterDeletion,
   resolveSelectedKnowledgeBaseId,
@@ -119,12 +119,12 @@ const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
         deletingKnowledgeBaseId={catalog.deletingKnowledgeBaseId}
         onDeleteKnowledgeBase={(kbId) => {
           // 删除是跨资源操作：成功后同时刷新目录、重置文件全文和查询结果。
-          Modal.confirm({
+          confirm({
             title: "确认删除这个知识库吗？",
             content: "删除后会同时清理向量数据、文件记录和正文回显记录。",
             okText: "确认删除",
             cancelText: "取消",
-            okButtonProps: { danger: true },
+            danger: true,
             async onOk() {
               const deletedResult = await catalog.deleteKnowledgeBaseById(kbId);
               if (!deletedResult) {
@@ -137,7 +137,7 @@ const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
               );
               filesState.resetFullContentState();
               queryState.handleClearQueryResult();
-              showMessage()?.success(
+              toast.success(
                 deletedResult.deletedFileCount > 0
                   ? `知识库已删除，并清理 ${deletedResult.deletedFileCount} 条资料记录`
                   : "知识库已删除"

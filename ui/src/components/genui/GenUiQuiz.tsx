@@ -1,5 +1,5 @@
 import { FC, memo, useMemo, useState } from "react";
-import classNames from "classnames";
+import { cn } from "@/lib/utils";
 import { Check, ChevronRight, Lightbulb, RotateCcw, X } from "lucide-react";
 
 type QuizOption = { id: string; label: string };
@@ -72,7 +72,7 @@ export const GenUiQuiz: FC<{
                   return [o.id];
                 });
               }}
-              className={classNames(
+              className={cn(
                 "flex w-full items-start gap-2 rounded-lg border px-3 py-2.5 text-left text-[13px] transition-colors",
                 show && isAns && "border-emerald-400 bg-emerald-50 text-emerald-800",
                 show && on && !isAns && "border-red-300 bg-red-50 text-red-700",
@@ -115,7 +115,7 @@ export const GenUiQuiz: FC<{
           )}
           {revealed ? (
             <span
-              className={classNames(
+              className={cn(
                 "text-[13px] font-medium",
                 correct ? "text-emerald-600" : "text-red-600"
               )}

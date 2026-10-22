@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { ViewerPanelShell } from "@/components/ui/viewer-panel-shell";
 import { cn } from "@/lib/utils";
+import { copyToClipboard } from "@/utils";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import {
   type ComponentProps,
@@ -161,7 +162,7 @@ export const CodeBlockCopyButton = ({
   const [isCopied, setIsCopied] = useState(false);
   const { code } = useContext(CodeBlockContext);
 
-  const copyToClipboard = async () => {
+  const handleCopy = async () => {
     // 剪贴板不可用时通过 onError 交给外层提示，不在组件内部伪造复制成功状态。
     if (typeof window === "undefined" || !navigator?.clipboard?.writeText) {
       onError?.(new Error("Clipboard API not available"));
@@ -170,7 +171,11 @@ export const CodeBlockCopyButton = ({
 
     try {
       // 只有写入成功才切换图标，并在短暂反馈后恢复复制按钮状态。
-      await navigator.clipboard.writeText(code);
+      const ok = await copyToClipboard(code);
+      if (!ok) {
+        onError?.(new Error("Copy failed"));
+        return;
+      }
       setIsCopied(true);
       onCopy?.();
       setTimeout(() => setIsCopied(false), timeout);
@@ -188,7 +193,7 @@ export const CodeBlockCopyButton = ({
         isCopied && "text-[var(--success)]",
         className
       )}
-      onClick={copyToClipboard}
+      onClick={handleCopy}
       size="icon-sm"
       variant="ghost"
       {...props}

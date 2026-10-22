@@ -11,7 +11,8 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { Modal, Switch } from "antd";
+import { Switch } from "@/components/ui/switch";
+import { confirm } from "@/components/ui/confirm-dialog";
 
 import WorkspaceAdminHeader from "@/components/WorkspaceAdminHeader";
 import { Button } from "@/components/ui/button";
@@ -31,7 +32,7 @@ import {
   type SkillPackagePreview,
   type SkillRow,
 } from "@/services/skillAdmin";
-import { showMessage } from "@/utils";
+import { toast } from "sonner";
 import { isAdminUser, useAuth } from "@/stores/auth";
 
 type Props = { embedded?: boolean };
@@ -113,7 +114,7 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
 
   const onParseZip = async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".zip")) {
-      showMessage()?.error("请上传 .zip 技能包");
+      toast.error("请上传 .zip 技能包");
       return;
     }
     setZipFile(file);
@@ -126,7 +127,7 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
           : skillAdminApi.parsePackage(file)),
       );
     } catch (e) {
-      showMessage()?.error(e instanceof Error ? e.message : "解析失败");
+      toast.error(e instanceof Error ? e.message : "解析失败");
       setZipFile(null);
     } finally {
       setParsing(false);
@@ -136,7 +137,7 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
   const onUploadZip = async () => {
     if (!zipFile || !zipPreview) return;
     if (readOnly && zipPreview.nameTaken) {
-      showMessage()?.error("同名技能已存在，普通用户不能覆盖已有技能");
+      toast.error("同名技能已存在，普通用户不能覆盖已有技能");
       return;
     }
     setSaving(true);
@@ -146,7 +147,7 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
       } else {
         await skillAdminApi.upload(zipFile, !!zipPreview.nameTaken);
       }
-      showMessage()?.success(
+      toast.success(
         zipPreview.nameTaken ? "已替换同名技能" : "技能包已安装",
       );
       setUploadOpen(false);
@@ -154,7 +155,7 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
       setZipPreview(null);
       await refresh();
     } catch (e) {
-      showMessage()?.error(e instanceof Error ? e.message : "上传失败");
+      toast.error(e instanceof Error ? e.message : "上传失败");
     } finally {
       setSaving(false);
     }
@@ -162,7 +163,7 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
 
   const onPasteCreate = async () => {
     if (!pasteContent.trim()) {
-      showMessage()?.error("请粘贴 SKILL.md 正文");
+      toast.error("请粘贴 SKILL.md 正文");
       return;
     }
     setSaving(true);
@@ -181,14 +182,14 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
           replace: false,
         });
       }
-      showMessage()?.success("技能已创建");
+      toast.success("技能已创建");
       setPasteOpen(false);
       setPasteName("");
       setPasteDesc("");
       setPasteContent("");
       await refresh();
     } catch (e) {
-      showMessage()?.error(e instanceof Error ? e.message : "创建失败");
+      toast.error(e instanceof Error ? e.message : "创建失败");
     } finally {
       setSaving(false);
     }
@@ -196,7 +197,7 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
 
   const onImportUrl = async () => {
     if (!importUrl.trim()) {
-      showMessage()?.error("请填写 URL");
+      toast.error("请填写 URL");
       return;
     }
     setSaving(true);
@@ -206,12 +207,12 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
       } else {
         await skillAdminApi.importUrl(importUrl.trim(), false);
       }
-      showMessage()?.success("已从 URL 导入");
+      toast.success("已从 URL 导入");
       setUrlOpen(false);
       setImportUrl("");
       await refresh();
     } catch (e) {
-      showMessage()?.error(e instanceof Error ? e.message : "导入失败");
+      toast.error(e instanceof Error ? e.message : "导入失败");
     } finally {
       setSaving(false);
     }
@@ -221,13 +222,13 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
     if (readOnly) {
       return;
     }
-    Modal.confirm({
+    confirm({
       title: "删除技能",
       content: `确认删除「${name}」？将移除 skill 目录下的文件夹。`,
-      okButtonProps: { danger: true },
+      danger: true,
       onOk: async () => {
         await skillAdminApi.remove(name);
-        showMessage()?.success("已删除");
+        toast.success("已删除");
         await refresh();
       },
     });
@@ -235,7 +236,7 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
 
   const onSaveMcp = async () => {
     if (!mcpForm.mcpId.trim() || !mcpForm.mcpName.trim()) {
-      showMessage()?.error("mcpId 与名称必填");
+      toast.error("mcpId 与名称必填");
       return;
     }
     setSaving(true);
@@ -251,11 +252,11 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
       } else {
         await mcpAdminApi.create(mcpForm);
       }
-      showMessage()?.success("MCP 已保存并热加载");
+      toast.success("MCP 已保存并热加载");
       setMcpOpen(false);
       await refresh();
     } catch (e) {
-      showMessage()?.error(e instanceof Error ? e.message : "保存失败");
+      toast.error(e instanceof Error ? e.message : "保存失败");
     } finally {
       setSaving(false);
     }
@@ -265,13 +266,13 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
     if (readOnly) {
       return;
     }
-    Modal.confirm({
+    confirm({
       title: "删除 MCP",
       content: `确认删除「${mcpId}」？`,
-      okButtonProps: { danger: true },
+      danger: true,
       onOk: async () => {
         await mcpAdminApi.remove(mcpId);
-        showMessage()?.success("已删除");
+        toast.success("已删除");
         await refresh();
       },
     });
@@ -387,7 +388,7 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
                     disabled={readOnly}
                     onClick={() =>
                       void skillAdminApi.reload().then(() => {
-                        showMessage()?.success("已重载技能注册表");
+                        toast.success("已重载技能注册表");
                         return refresh();
                       })
                     }

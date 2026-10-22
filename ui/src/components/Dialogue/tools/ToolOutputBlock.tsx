@@ -1,7 +1,7 @@
 import { ToolJsonBlock, parseToolJson } from "./ToolJsonBlock";
 
 /**
- * 工具出参段（对齐 ZCode `components/ai-elements/tool.tsx` 的 `ToolOutput`）。
+ * 工具出参段。
  *
  * 三条与 ZCode 一致的语义，都是刻意保留的：
  * 1. **有 `errorText` 就只渲染错误文本**，不再渲染结构化输出 —— 失败时

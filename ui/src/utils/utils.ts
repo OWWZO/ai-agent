@@ -1,4 +1,3 @@
-import { MessageInstance } from "antd/es/message/interface";
 import { throttle } from "lodash";
 
 /**
@@ -77,18 +76,45 @@ export const scrollToTop = (dom: Element) => {
   }, 100);
 };
 
-export const copyText = throttle((text?: string | number) => {
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText((text || "") + "");
-  } else {
+/**
+ * 复制文本，返回是否成功。
+ *
+ * `execCommand("copy")` 兜底只在 Clipboard API **整体缺失**时走
+ * （非安全上下文、老浏览器）。API 存在但写入被拒时不兜底 —— 有些调用点
+ * 靠返回值区分「不可用」和「这次失败」，兜底会把两种原因搅在一起，
+ * 也让「复制成功」的 UI 反馈失去意义。
+ */
+export async function copyToClipboard(text?: string | number): Promise<boolean> {
+  const value = (text ?? "") + "";
+  if (!navigator.clipboard) {
+    return copyViaExecCommand(value);
+  }
+  try {
+    await navigator.clipboard.writeText(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function copyViaExecCommand(value: string): boolean {
+  try {
     const input = document.createElement("textarea");
-    input.value = text + "";
+    input.value = value;
     document.body.appendChild(input);
     input.focus();
     input.select();
-    document.execCommand("copy");
+    const ok = document.execCommand("copy");
     document.body.removeChild(input);
+    return ok;
+  } catch {
+    return false;
   }
+}
+
+/** 节流版复制：给不需要结果反馈的调用点（连点、批量按钮）。 */
+export const copyText = throttle((text?: string | number) => {
+  void copyToClipboard(text);
 }, 1000);
 
 /**
@@ -180,23 +206,6 @@ export const peekSessionId = () => {
  * 创建新的稳定会话 ID。
  */
 export const createSessionId = () => `session-${getUniqId()}`;
-
-/**
- * 设置全局消息实例，以便在应用中统一管理消息提示
- */
-let message: MessageInstance | null = null;
-
-/**
- * 设置全局的静态消息实例
- * @param messageCnf 消息实例
- */
-export const setMessage = (messageCnf: typeof message) => {
-  message = messageCnf;
-};
-
-export const showMessage = () => {
-  return message;
-};
 
 export const getOS = () => {
   const userAgent = navigator.userAgent.toLowerCase();

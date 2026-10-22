@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { showMessage } from "@/utils";
+import { toast } from "sonner";
 import { browserRelayApi, type BrowserPairing, type BrowserRelayStatus } from "@/services/browserRelay";
 
 type Props = {
@@ -51,7 +51,7 @@ export default function BrowserRelayChip({ disabled }: Props) {
         void refresh();
         return;
       }
-      if (msg.error) showMessage()?.error(msg.error);
+      if (msg.error) toast.error(msg.error);
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
@@ -70,13 +70,13 @@ export default function BrowserRelayChip({ disabled }: Props) {
     try {
       const data = await browserRelayApi.pairing();
       if (!data?.token || !data?.relayUrl) {
-        showMessage()?.error("发起配对失败");
+        toast.error("发起配对失败");
         return;
       }
       setPairing(data);
       sendPairingToExtension(data);
     } catch (error) {
-      showMessage()?.error(error instanceof Error ? error.message : "发起配对失败");
+      toast.error(error instanceof Error ? error.message : "发起配对失败");
     } finally {
       setBusy(false);
     }

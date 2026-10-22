@@ -975,3 +975,68 @@ describe("interactive 步骤会切开前面的工具组", () => {
     ).toContain("ask1");
   });
 });
+
+describe("resolveProcessStepKind 的子 Agent 优先级", () => {
+  // 子 Agent 判定看的是 toolName（Agent 派发），与 messageType 无关，
+  // 所以它必须先于 messageType 常量表生效。
+  const agentTask = (messageType: string) =>
+    ({
+      messageType,
+      messageId: "m1",
+      resultMap: { toolName: "Agent" },
+    }) as unknown as CHAT.Task;
+
+  it.each([
+    ["deep_search"],
+    ["knowledge"],
+    ["code"],
+    ["html"],
+    ["file"],
+    ["markdown"],
+    ["ppt"],
+    ["data_analysis"],
+    ["browser"],
+  ])("messageType=%s 的 Agent 派发卡仍判为 agent", (messageType) => {
+    expect(resolveProcessStepKind(agentTask(messageType))).toBe("agent");
+  });
+
+  it("非 Agent 派发时这些 messageType 仍走各自的常量映射", () => {
+    const plain = (messageType: string) =>
+      ({
+        messageType,
+        messageId: "m1",
+        resultMap: {}
+      }) as unknown as CHAT.Task;
+    expect(resolveProcessStepKind(plain("deep_search"))).toBe("search");
+    expect(resolveProcessStepKind(plain("code"))).toBe("code");
+    expect(resolveProcessStepKind(plain("file"))).toBe("file");
+    expect(resolveProcessStepKind(plain("markdown"))).toBe("artifact");
+  });
+});
+
+describe("resolveProcessStepKind 的表查找安全性", () => {
+  it("原型键不会命中原型方法，落到工具名判定后的兜底", () => {
+    // 直接下标会让这些键命中 Object.prototype 上的方法，返回 function。
+    for (const key of ["toString", "constructor", "hasOwnProperty", "valueOf"]) {
+      const result = resolveProcessStepKind({
+        messageType: key,
+        messageId: "m1",
+        resultMap: {},
+      } as unknown as CHAT.Task);
+      expect(typeof result).toBe("string");
+      expect(result).toBe("tool");
+    }
+  });
+
+  it("表内类型仍返回正确结果", () => {
+    const plain = (messageType: string) =>
+      ({
+        messageType,
+        messageId: "m1",
+        resultMap: {}
+      }) as unknown as CHAT.Task;
+    expect(resolveProcessStepKind(plain("llm_reasoning"))).toBe("thinking");
+    expect(resolveProcessStepKind(plain("agent_stream"))).toBe("assistant_reply");
+    expect(resolveProcessStepKind(plain("session_tasks"))).toBe("interactive");
+  });
+});

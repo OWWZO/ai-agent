@@ -1,5 +1,5 @@
 import React from 'react';
-import classNames from 'classnames';
+import { cn } from "@/lib/utils";
 import LoadingSpinner from '../LoadingSpinner';
 
 interface LoadingProps {
@@ -22,7 +22,7 @@ const Loading: ReactorType.FC<LoadingProps> = React.memo(({ loading, className, 
   if (!loading) return null;
 
   return (
-    <div className={classNames(LOADING_CONTAINER_CLASS, className)}>
+    <div className={cn(LOADING_CONTAINER_CLASS, className)}>
       <LoadingSpinner className='text-[32px]'>
         <p className={TEXT_CLASS}>{children || '加载中'}</p>
       </LoadingSpinner>

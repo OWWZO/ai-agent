@@ -7,6 +7,7 @@ import {
   combineData,
   getStableTaskIdentity,
   handleTaskData,
+  mergeToolCallStreamingTask,
   settleRootResultConclusion,
 } from "./chat";
 import {
@@ -3442,5 +3443,154 @@ describe("React 循环真实帧序列：中间回复必须夹在工具之间", (
       "reply:正在生成单文件页面，并把适配一起写入。",
       "tool:Read",
     ]);
+  });
+});
+
+describe("mergeToolCallStreamingTask", () => {
+  const tool = (
+    resultMap: Record<string, unknown>,
+    extra: Record<string, unknown> = {}
+  ) =>
+    ({
+      // task 层 messageType 优先于 resultMap 内的，需要 delta 语义时用 extra 覆盖
+      messageType: (extra.messageType as string) || "tool_call",
+      messageId: "m1",
+      toolCallId: "c1",
+      resultMap,
+      ...extra,
+    }) as unknown as MESSAGE.Task;
+
+  it("delta 帧把 argsStreaming 置真，并保留较长的一侧参数", () => {
+    const prev = tool(
+      { argumentsText: '{"a":1}' },
+      { messageId: "stream-key" }
+    );
+    const next = tool(
+      {
+        argumentsText: '{"a":12}',
+        streamToolKey: "stream-key",
+      },
+      { messageId: "stream-key", messageType: "tool_call_delta" }
+    );
+    const merged = mergeToolCallStreamingTask(prev, next);
+    expect(merged.resultMap?.argsStreaming).toBe(true);
+    expect(merged.resultMap?.argumentsText).toBe('{"a":12}');
+    // 稳定 messageId：沿用 previous 上的流式卡 id
+    expect(merged.messageId).toBe("stream-key");
+  });
+
+  it("参数回退时保留更长的 previous 文本", () => {
+    const prev = tool({ argumentsText: '{"a":123456789}' });
+    const next = tool({
+      messageType: "tool_call_delta",
+      argumentsText: '{"a":1}',
+    });
+
+    expect(mergeToolCallStreamingTask(prev, next).resultMap?.argumentsText).toBe(
+      '{"a":123456789}'
+    );
+  });
+
+  it("isFinal 或显式 false 时停止逐字", () => {
+    const prev = tool({ argumentsText: "x", argsStreaming: true });
+    const byFinal = mergeToolCallStreamingTask(
+      prev,
+      tool({ isFinal: true, argumentsText: "x" })
+    );
+    expect(byFinal.resultMap?.argsStreaming).toBe(false);
+
+    const byFalse = mergeToolCallStreamingTask(
+      prev,
+      tool({ argsStreaming: false, argumentsText: "x" })
+    );
+    expect(byFalse.resultMap?.argsStreaming).toBe(false);
+  });
+
+  it("状态按 streaming→running→success 升级，不回退", () => {
+    const running = mergeToolCallStreamingTask(
+      tool({ status: "running" }),
+      tool({ status: "streaming" })
+    );
+    expect(running.resultMap?.status).toBe("running");
+
+    const success = mergeToolCallStreamingTask(
+      tool({ status: "success" }),
+      tool({ status: "running" })
+    );
+    expect(success.resultMap?.status).toBe("success");
+  });
+
+  it("delta 的 messageType 被统一成 tool_call，避免渲染分流", () => {
+    const merged = mergeToolCallStreamingTask(
+      tool({}),
+      tool({ messageType: "tool_call_delta" })
+    );
+    expect(merged.resultMap?.messageType).toBe("tool_call");
+  });
+});
+
+describe("buildAction 的表查找安全性", () => {
+  it("原型键不会命中原型方法", () => {
+    // 直接下标会让这些键命中 Object.prototype 上的方法，返回 function。
+    for (const key of ["toString", "constructor", "hasOwnProperty", "valueOf"]) {
+      const result = buildAction({ messageType: key } as CHAT.Task);
+      expect(typeof result).toBe("object");
+      expect(result.action).toBe("正在调用工具");
+      expect(result.tool).toBe(key);
+    }
+  });
+
+  it("返回的是副本，改写不会污染模块级表", () => {
+    const first = buildAction({ messageType: "session_tasks" } as CHAT.Task);
+    first.name = "被改坏了";
+    const second = buildAction({ messageType: "session_tasks" } as CHAT.Task);
+    expect(second.name).toBe("Todo");
+  });
+
+  it("两次调用返回不同对象引用", () => {
+    const a = buildAction({ messageType: "session_tasks" } as CHAT.Task);
+    const b = buildAction({ messageType: "session_tasks" } as CHAT.Task);
+    expect(a).not.toBe(b);
+  });
+
+  it("表内类型仍返回正确的固定文案", () => {
+    expect(buildAction({ messageType: "ask_user_question" } as CHAT.Task)).toEqual({
+      action: "等待你的回答",
+      tool: "AskUserQuestion",
+      name: "选择题",
+    });
+  });
+});
+
+describe("mergeToolCallStreamingTask 的状态排序安全性", () => {
+  const tool = (status: string) =>
+    ({
+      messageType: "tool_call",
+      messageId: "m1",
+      resultMap: { status },
+    }) as unknown as MESSAGE.Task;
+
+  it("prev 是原型键时，真实状态能正常顶替它", () => {
+    // 裸下标时 toolStatusRank("constructor") 返回 Object 构造函数，
+    // 而 `2 >= Object` 恒为 false，于是 mergedStatus 保留 prev="constructor"，
+    // 卡片会显示一个不是状态的垃圾值。
+    // 修复后 rank 降级为 0，`2 >= 0` 成立，next 的真实状态胜出。
+    const merged = mergeToolCallStreamingTask(
+      tool("constructor"),
+      tool("running")
+    );
+    expect(merged.resultMap?.status).toBe("running");
+  });
+
+  it("正常状态仍按 streaming < running < success 排序", () => {
+    expect(
+      mergeToolCallStreamingTask(tool("running"), tool("streaming")).resultMap?.status
+    ).toBe("running");
+    expect(
+      mergeToolCallStreamingTask(tool("running"), tool("success")).resultMap?.status
+    ).toBe("success");
+    expect(
+      mergeToolCallStreamingTask(tool("success"), tool("running")).resultMap?.status
+    ).toBe("success");
   });
 });

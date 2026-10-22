@@ -230,89 +230,109 @@ function resolveToolCallId(tool: CHAT.Task): string {
   );
 }
 
+/**
+ * 消息类型 → 步骤类型：只在 `isUserBriefTask` / `isSubAgentParentTask` **之前**
+ * 生效的那些常量映射。
+ *
+ * 顺序是刻意的：master 的判断链是
+ *   thinking / assistant_reply → user_brief → 子 Agent → 其余常量 → 工具名关键字
+ * 子 Agent 判定看的是 toolName / input（与 messageType 无关），所以它必须先于
+ * 其余常量表 —— 否则 messageType 为 deep_search / code / file … 的 Agent 派发卡
+ * 会被表抢先命中，降级成 search / code / artifact，子 Agent 的进度行、时长、
+ * liveText 和 Dock 详情全部不渲染。
+ */
+const STEP_KIND_BEFORE_SUBAGENT: Record<string, ProcessStepKind> = {
+  llm_reasoning: "thinking",
+  plan_thought: "thinking",
+  // agent_stream 是 react 主 agent 的正文流行模型：中间轮（moreRounds=true）
+  // 是助手过程回复；终轮由结论区承接（handleAgentStreamMessage 只会把中间轮
+  // 封口进时间线），这里统一按 assistant_reply 渲染，保证它插在工具卡片之间
+  // 而不是沉到对话底部。
+  tool_thought: "assistant_reply",
+  agent_stream: "assistant_reply",
+};
+
+/** 消息类型 → 步骤类型：子 Agent 判定之后的常量映射。 */
+const STEP_KIND_AFTER_SUBAGENT: Record<string, ProcessStepKind> = {
+  ask_user_question: "interactive",
+  desktop_control: "interactive",
+  plan_approval: "interactive",
+  session_tasks: "interactive",
+  browser: "browser",
+  deep_search: "search",
+  knowledge: "search",
+  code: "code",
+  html: "code",
+  file: "file",
+  markdown: "artifact",
+  ppt: "artifact",
+  data_analysis: "artifact",
+  ui_tree: "artifact",
+  ui_patch: "artifact",
+};
+
+/**
+ * 工具名关键字 → 步骤类型。按顺序匹配，命中即返回。
+ *
+ * 工具名没有统一命名规范（同一语义在不同模型下叫法不同），只能靠关键字兜底。
+ *
+ * 拍平成单个有序数组而不是「关键字组」的嵌套表：每个 timeline task 都要过一遍
+ * 这里，嵌套表要为每组新建一个 `.some()` 闭包，长会话下是白费的 GC 压力。
+ */
+const STEP_KIND_BY_TOOL_NAME_KEYWORD: ReadonlyArray<
+  readonly [keyword: string, kind: ProcessStepKind]
+> = [
+  ["read", "read"],
+  ["cat", "read"],
+  ["view", "read"],
+  ["open", "read"],
+  ["edit", "edit"],
+  ["write", "edit"],
+  ["create", "edit"],
+  ["patch", "edit"],
+  ["replace", "edit"],
+  ["bash", "terminal"],
+  ["shell", "terminal"],
+  ["terminal", "terminal"],
+  ["exec", "terminal"],
+  ["run", "terminal"],
+  ["search", "search"],
+  ["grep", "search"],
+  ["web", "search"],
+  ["crawl", "search"],
+];
+
 export function resolveProcessStepKind(tool: CHAT.Task): ProcessStepKind {
   const messageType = tool.messageType || "";
-  if (messageType === "llm_reasoning" || messageType === "plan_thought") {
-    return "thinking";
+
+  // 两张表都用 Object.hasOwn 查：messageType 是后端传来的字符串，
+  // 直接下标会让 "toString" / "constructor" 这类键命中原型方法。
+
+  // 子 Agent 判定之前的常量映射
+  if (Object.hasOwn(STEP_KIND_BEFORE_SUBAGENT, messageType)) {
+    return STEP_KIND_BEFORE_SUBAGENT[messageType];
   }
-  // agent_stream 是 react 主 agent 的正文流行模型：中间轮（moreRounds=true）是助手过程回复；
-  // 终轮由结论区承接（handleAgentStreamMessage 只会把中间轮封口进时间线），这里统一按
-  // assistant_reply 渲染，保证它插在工具卡片之间而不是沉到对话底部。
-  if (messageType === "tool_thought" || messageType === "agent_stream") {
-    return "assistant_reply";
-  }
+
   if (isUserBriefTask(tool)) {
     return "user_message";
   }
-  if (
-    messageType === "ask_user_question" ||
-    messageType === "desktop_control" ||
-    messageType === "plan_approval" ||
-    messageType === "session_tasks"
-  ) {
-    return "interactive";
-  }
+
   if (isSubAgentParentTask(tool)) {
     return "agent";
   }
-  if (messageType === "browser") {
-    return "browser";
-  }
-  if (messageType === "deep_search" || messageType === "knowledge") {
-    return "search";
-  }
-  if (messageType === "code" || messageType === "html") {
-    return "code";
-  }
-  if (
-    messageType === "file" ||
-    messageType === "markdown" ||
-    messageType === "ppt" ||
-    messageType === "data_analysis" ||
-    messageType === "ui_tree" ||
-    messageType === "ui_patch"
-  ) {
-    return messageType === "file" ? "file" : "artifact";
+
+  // 子 Agent 判定之后的常量映射
+  if (Object.hasOwn(STEP_KIND_AFTER_SUBAGENT, messageType)) {
+    return STEP_KIND_AFTER_SUBAGENT[messageType];
   }
 
   const toolName = resolveToolName(tool);
-  if (
-    toolName.includes("read") ||
-    toolName.includes("cat") ||
-    toolName.includes("view") ||
-    toolName.includes("open")
-  ) {
-    return "read";
+  for (const [keyword, kind] of STEP_KIND_BY_TOOL_NAME_KEYWORD) {
+    if (toolName.includes(keyword)) {
+      return kind;
+    }
   }
-  if (
-    toolName.includes("edit") ||
-    toolName.includes("write") ||
-    toolName.includes("create") ||
-    toolName.includes("patch") ||
-    toolName.includes("replace")
-  ) {
-    return "edit";
-  }
-  if (
-    toolName.includes("bash") ||
-    toolName.includes("shell") ||
-    toolName.includes("terminal") ||
-    toolName.includes("exec") ||
-    toolName.includes("run")
-  ) {
-    return "terminal";
-  }
-  if (
-    toolName.includes("search") ||
-    toolName.includes("grep") ||
-    toolName.includes("web") ||
-    toolName.includes("crawl")
-  ) {
-    return "search";
-  }
-  if (messageType === "tool_call" || messageType === "tool_result") {
-    return "tool";
-  }
+
   return "tool";
 }
 
