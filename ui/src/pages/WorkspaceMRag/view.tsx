@@ -1097,6 +1097,8 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
           ) : null}
 
           {knowledgeBases.length ? (
+            // key 用列表长度而非固定值：知识库增删后重挂一次，让 stagger
+            // 入场动画重新播放。子项各自用 kb.id 做 key，不受此影响。
             <StaggerContainer
               key={`kbs-${knowledgeBases.length}`}
               staggerDelay={0.03}
