@@ -1,5 +1,5 @@
 /**
- * bsk 扩展的网页配对桥（021）：让宿主页面（Reactor 前端）一键完成 remote 配对。
+ * bsk 扩展的网页配对桥（021）：让宿主页面（Cute 前端）一键完成 remote 配对。
  *
  * 对齐老 Cute 扩展 `content-pair.js` 的消息协议（source === "cute"），
  * 但监听 bsk 专属的 `bsk-browser-pair` 类型，避免两条扩展在同一页面上

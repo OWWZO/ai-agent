@@ -32,8 +32,8 @@ _BROWSER_HEALTH_CHECK = (
     "grep -z -q '^DISPLAY=:0$' \"/proc/$browser_pid/environ\""
 )
 _LOG_DUMP = """for file in \
-/tmp/reactor-desktop-chromium.log \
-/tmp/reactor-desktop-chromium-start.log \
+/tmp/cute-desktop-chromium.log \
+/tmp/cute-desktop-chromium-start.log \
 /tmp/xfce4.log \
 /tmp/novnc.log; do
   if [ -f "$file" ]; then
@@ -56,7 +56,7 @@ class E2BDesktopStartupDiagnosticsTest(unittest.TestCase):
         from e2b_code_interpreter import Sandbox
 
         template = (
-            os.getenv("E2B_TEMPLATE") or "reactor-code-playwright-desktop"
+            os.getenv("E2B_TEMPLATE") or "cute-code-playwright-desktop"
         ).strip()
         sandbox_timeout = int(os.getenv("E2B_DIAGNOSTIC_SANDBOX_TIMEOUT", "300"))
         launcher_timeout = int(os.getenv("E2B_DIAGNOSTIC_LAUNCHER_TIMEOUT", "120"))
@@ -112,7 +112,7 @@ class E2BDesktopStartupDiagnosticsTest(unittest.TestCase):
                     "pkill -x xfsettingsd || true; "
                     "pkill -x xfce4-notifyd || true; "
                     "pkill -x Xvfb || true; "
-                    "rm -f /tmp/reactor-desktop-chromium.lock",
+                    "rm -f /tmp/cute-desktop-chromium.lock",
                     timeout=10,
                     user="root",
                 )
@@ -204,7 +204,7 @@ class E2BDesktopStartupDiagnosticsTest(unittest.TestCase):
         from cute_tool.tool.e2b_file_upload import write_e2b_files
 
         source = ROOT / "scripts" / "e2b_template" / "desktop_start_command.sh"
-        staging = "/tmp/reactor-diagnostic-desktop-start-command.sh"
+        staging = "/tmp/cute-diagnostic-desktop-start-command.sh"
         write_e2b_files(
             sandbox.files,
             [{"path": staging, "data": source.read_bytes()}],

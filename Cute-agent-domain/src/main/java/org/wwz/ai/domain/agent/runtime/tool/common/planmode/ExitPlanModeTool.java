@@ -49,7 +49,7 @@ public class ExitPlanModeTool implements BaseTool {
         return "计划写完后调用，请求用户批准并退出 plan mode。"
                 + "不要用 AskUserQuestion 问“计划可以吗？”——那是本工具职责。"
                 + "研究/搜索类任务不要调用。可选 plan 参数提交计划正文；"
-                + "也可事先写入 .reactor/plan.md。"
+                + "也可事先写入 .cute/plan.md。"
                 + "调用后当前 run 会结束并等待用户批准；用户提交后由 continuation run 继续。"
                 + "本轮必须是唯一 tool call。";
     }
@@ -98,7 +98,7 @@ public class ExitPlanModeTool implements BaseTool {
                 planContent = state.getPlanContent();
             }
             if (StringUtils.isBlank(planContent)) {
-                return fail("ExitPlanMode 失败：计划正文为空。请先将计划写入 .reactor/plan.md 或在 plan 参数中提供正文。");
+                return fail("ExitPlanMode 失败：计划正文为空。请先将计划写入 .cute/plan.md 或在 plan 参数中提供正文。");
             }
 
             String planFilePath = planFilePathArg;

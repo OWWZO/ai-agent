@@ -102,8 +102,8 @@ public final class PlanModeToolPolicy {
             if (StringUtils.isNotBlank(path) && isPlanRelativePath(path)) {
                 return null;
             }
-            return "Plan mode: 只能写入会话计划文件（.reactor/plan.md），禁止修改其它文件。"
-                    + " 请把计划写到 .reactor/plan.md，或完成后调用 ExitPlanMode 请求用户批准。";
+            return "Plan mode: 只能写入会话计划文件（.cute/plan.md），禁止修改其它文件。"
+                    + " 请把计划写到 .cute/plan.md，或完成后调用 ExitPlanMode 请求用户批准。";
         }
         if (MUTATING.contains(name)) {
             return "Plan mode: 禁止调用会修改系统状态的工具「" + name + "」。"
@@ -121,7 +121,7 @@ public final class PlanModeToolPolicy {
         String normalized = path.replace('\\', '/').trim();
         return normalized.equals(PlanArtifactStore.RELATIVE_PLAN_PATH)
                 || normalized.endsWith("/" + PlanArtifactStore.RELATIVE_PLAN_PATH)
-                || normalized.endsWith(".reactor/plan.md");
+                || normalized.endsWith(".cute/plan.md");
     }
 
     @SuppressWarnings("unchecked")

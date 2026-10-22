@@ -36,8 +36,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -Dfile.encoding=UTF-8 -Duser.timezone=Asia/Shanghai" \
-    REACTOR_OPENCLI_COMMAND=node \
-    REACTOR_OPENCLI_MAIN=/opt/opencli/dist/src/main.js
+    CUTE_OPENCLI_COMMAND=node \
+    CUTE_OPENCLI_MAIN=/opt/opencli/dist/src/main.js
 EXPOSE 8100
 
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar --spring.profiles.active=${SPRING_PROFILES_ACTIVE:-prod}"]
@@ -76,10 +76,10 @@ RUN pnpm install --frozen-lockfile
 COPY ui/ ./
 
 ARG SERVICE_BASE_URL=
-ARG REACTOR_TOOL_BASE_URL=/tool
+ARG CUTE_TOOL_BASE_URL=/tool
 ARG VITE_Mrag_TOOL_URL=/tool
 ENV SERVICE_BASE_URL=${SERVICE_BASE_URL} \
-    REACTOR_TOOL_BASE_URL=${REACTOR_TOOL_BASE_URL} \
+    CUTE_TOOL_BASE_URL=${CUTE_TOOL_BASE_URL} \
     VITE_Mrag_TOOL_URL=${VITE_Mrag_TOOL_URL}
 
 RUN pnpm build

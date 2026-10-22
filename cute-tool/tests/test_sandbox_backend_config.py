@@ -185,7 +185,7 @@ class GetE2BProxyTest(unittest.TestCase):
         self.assertEqual("/usr/local/bin/ensure_desktop_chromium.sh", calls[0][0])
         self.assertIn("install -o root -g root -m 0755", calls[1][0])
         self.assertEqual("/usr/local/bin/ensure_desktop_chromium.sh", calls[2][0])
-        self.assertEqual("/tmp/reactor-ensure-desktop-chromium.sh", writes[0]["path"])
+        self.assertEqual("/tmp/cute-ensure-desktop-chromium.sh", writes[0]["path"])
         self.assertIn(b"nohup /usr/bin/chromium", writes[0]["data"])
 
     def test_ensure_desktop_chromium_reports_launcher_failure(self):

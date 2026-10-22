@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { useEffect, useRef } from "react";
 import { getStatusIcon } from "./config";
 
-const PlanItem: ReactorType.FC<{
+const PlanItem: CuteType.FC<{
   title?: React.ReactNode;
   status?: CHAT.PlanStatus;
 }> = (props) => {

@@ -754,7 +754,7 @@ const PptxViewer: React.FC<{ data: ArrayBuffer; className?: string }> = ({
   );
 };
 
-const PptxRenderer: ReactorType.FC<PptxRendererProps> = React.memo((props) => {
+const PptxRenderer: CuteType.FC<PptxRendererProps> = React.memo((props) => {
   const { fileUrl, fileName, downloadUrl, missingReason, className } = props;
   const resolvedDownload = downloadUrl || fileUrl;
 

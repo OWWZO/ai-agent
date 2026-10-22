@@ -41,8 +41,8 @@
 | 类 | 职责 |
 |---|------|
 | `AgentRepository` | Agent 仓储实现 |
-| `ExecutionLedgerReadRepository` | Reactor 执行账本读仓储实现 |
-| `ExecutionLedgerWriteRepository` | Reactor 执行账本写仓储实现 |
+| `ExecutionLedgerReadRepository` | Cute 执行账本读仓储实现 |
+| `ExecutionLedgerWriteRepository` | Cute 执行账本写仓储实现 |
 | `ChatModelMetadataRepository` | 问数模型元数据仓储实现 |
 
 ### 外部网关
@@ -93,8 +93,8 @@
 |---|------|
 | `AdminUser` | 管理员用户 |
 
-### Reactor Phase 2A 持久化边界
-- Reactor ledger、tool-output、chat-model DAO / Mapper 统一位于 `src/main/java/org/wwz/ai/infrastructure/dao/reactor/`
+### Cute Phase 2A 持久化边界
+- Cute ledger、tool-output、chat-model DAO / Mapper 统一位于 `src/main/java/org/wwz/ai/infrastructure/dao/cute/`
 - `ExecutionLedgerReadRepository`、`ExecutionLedgerWriteRepository`、`ChatModelMetadataRepository` 负责把领域仓储端口映射到这些 DAO
 - `ToolOutputReaderImpl`、`ToolOutputWriterImpl`、`SessionContextMemoryServiceImpl`、`WorkspaceImageGenerationServiceImpl` 当前属于允许直接协作 DAO 的过渡态技术实现
 - **执行事实主路径是 Execution Ledger**；跨轮工作记忆投影由 `SessionWorkingMemoryRepository` + `working_memory_*` Mapper 落地，`SessionWorkingMemoryServiceImpl` 负责 load/persist
@@ -102,13 +102,13 @@
 - 后续阶段若继续收敛，会优先新增 repository seam，而不是把 DAO 或 MyBatis-Plus 细节重新带回 `domain`
 
 ### Agent DDD 最终边界（019）
-- `OkHttpRemoteHttpAdapter`、`OkHttpRemoteStreamAdapter`、`ReactorToolFileArtifactAdapter` 是 runtime 对外部 HTTP / 文件产物的主适配器
+- `OkHttpRemoteHttpAdapter`、`OkHttpRemoteStreamAdapter`、`CuteToolFileArtifactAdapter` 是 runtime 对外部 HTTP / 文件产物的主适配器
 - `DataQueryExecutionAdapter`、`DataQueryMetadataAdapter` 与 `infrastructure.dataquery.jdbc/**` 承接 JDBC provider、catalog、dialect、连接池
 - `domain` 只能通过 port / repository seam 使用这些能力，禁止重新引入技术执行器到领域层
 
 ### Legacy Contract Allowlist（020）
-- 允许继续引用 `org.wwz.ai.domain.agent.reactor.config.data.*`，因为 `DataQueryExecutionAdapter`、`DataQueryMetadataAdapter`、`JdbcUtils` 仍需要共享数据库连接配置契约
-- 允许继续引用 `org.wwz.ai.domain.agent.reactor.model.imagegeneration.*` 与 `org.wwz.ai.domain.agent.reactor.service.IWorkspaceImageGenerationService` / `org.wwz.ai.domain.agent.reactor.service.imagegeneration.*`，因为工作台生图入口与技术执行器仍共用这组稳定历史契约
+- 允许继续引用 `org.wwz.ai.domain.agent.cute.config.data.*`，因为 `DataQueryExecutionAdapter`、`DataQueryMetadataAdapter`、`JdbcUtils` 仍需要共享数据库连接配置契约
+- 允许继续引用 `org.wwz.ai.domain.agent.cute.model.imagegeneration.*` 与 `org.wwz.ai.domain.agent.cute.service.IWorkspaceImageGenerationService` / `org.wwz.ai.domain.agent.cute.service.imagegeneration.*`，因为工作台生图入口与技术执行器仍共用这组稳定历史契约
 - 不允许新增对 `org.wwz.ai.domain.agent.service.execute.*`、`org.wwz.ai.domain.agent.service.armory.*`、已删除 bridge 或其它未登记 legacy 包的依赖
 
 ---

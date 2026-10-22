@@ -1299,13 +1299,13 @@ ol {
   will-change: opacity;
 }
 
-.reactor-spinner {
+.cute-spinner {
   border: 1.5px solid color-mix(in srgb, currentColor 20%, transparent);
   border-top-color: currentColor;
-  animation: reactorSpinner 700ms linear infinite;
+  animation: cuteSpinner 700ms linear infinite;
 }
 
-@keyframes reactorSpinner {
+@keyframes cuteSpinner {
   to { transform: rotate(360deg); }
 }
 
@@ -1449,7 +1449,7 @@ ol {
   }
 
   .ai-stream-cursor,
-  .reactor-spinner,
+  .cute-spinner,
   .thinking-shimmer,
   .animate-marquee,
   .animate-blink,
@@ -1534,7 +1534,7 @@ ol {
   opacity: 0.92;
 }
 
-.reactor-send-btn:active:not(:disabled) {
+.cute-send-btn:active:not(:disabled) {
   transform: scale(0.97);
 }
 
@@ -1546,8 +1546,8 @@ ol {
   transform: none !important;
 }
 
-.reactor-send-btn[data-slot="prompt-input-submit"],
-.reactor-input-flat [data-slot="prompt-input-submit"] {
+.cute-send-btn[data-slot="prompt-input-submit"],
+.cute-input-flat [data-slot="prompt-input-submit"] {
   width: 32px !important;
   height: 32px !important;
   min-width: 32px !important;
@@ -1565,7 +1565,7 @@ ol {
 /* Composer shell — ZCode v4/ConversationComposer.tsx:2232 规格：
    rounded-2xl（已批准的 main composer 例外）+ bg-surface + 轻阴影。
    焦点态走语义 input 边框 token，不再直接吃品牌蓝。 */
-.reactor-input-flat {
+.cute-input-flat {
   background: var(--zc-surface) !important;
   border: 1px solid var(--zc-border) !important;
   border-radius: var(--radius-2xl) !important;
@@ -1574,14 +1574,14 @@ ol {
   transition: border-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out) !important;
 }
 
-.reactor-input-flat:focus-within {
+.cute-input-flat:focus-within {
   border-color: var(--zc-input-border-focused) !important;
   box-shadow: var(--shadow-md), var(--p-focus-ring) !important;
 }
 
-.reactor-input-flat [data-slot="input-group"],
-.reactor-input-flat [data-slot="input-group"]:hover,
-.reactor-input-flat [data-slot="input-group"]:focus-within {
+.cute-input-flat [data-slot="input-group"],
+.cute-input-flat [data-slot="input-group"]:hover,
+.cute-input-flat [data-slot="input-group"]:focus-within {
   background: transparent !important;
   background-color: transparent !important;
   border: none !important;
@@ -1591,8 +1591,8 @@ ol {
   -webkit-backdrop-filter: none !important;
 }
 
-.reactor-input-flat [data-slot="prompt-input-body"],
-.reactor-input-flat [data-slot="prompt-input-body"]:focus-within {
+.cute-input-flat [data-slot="prompt-input-body"],
+.cute-input-flat [data-slot="prompt-input-body"]:focus-within {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
@@ -1600,30 +1600,30 @@ ol {
   padding: 0 !important;
 }
 
-.reactor-input-flat [data-slot="prompt-input-textarea"] {
+.cute-input-flat [data-slot="prompt-input-textarea"] {
   font-size: 14.5px !important;
   line-height: 1.5 !important;
   min-height: 48px !important;
 }
 
-.reactor-input-flat [data-slot="prompt-input-textarea"]::placeholder {
+.cute-input-flat [data-slot="prompt-input-textarea"]::placeholder {
   color: color-mix(in oklab, var(--chat-text-muted) 50%, transparent) !important;
 }
 
 /* 状态灯走语义状态色（DESIGN.md：running 用 --color-warning，不用品牌蓝）。 */
-.reactor-status-dot {
+.cute-status-dot {
   width: 7px;
   height: 7px;
   border-radius: 999px;
   background: var(--zc-border-hover);
 }
 
-.reactor-status-dot.is-running {
+.cute-status-dot.is-running {
   background: var(--zc-warning);
-  animation: reactorStatusPulse 1.5s var(--ease-out) infinite;
+  animation: cuteStatusPulse 1.5s var(--ease-out) infinite;
 }
 
-@keyframes reactorStatusPulse {
+@keyframes cuteStatusPulse {
   0%,
   100% {
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--zc-warning) 34%, transparent);
@@ -1634,7 +1634,7 @@ ol {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .reactor-status-dot.is-running {
+  .cute-status-dot.is-running {
     animation: none;
   }
 }
@@ -2253,7 +2253,7 @@ ol {
 
 /* 失败原因富提示卡（对齐 ZCode `ToolLayout.tsx:240-293` 的 statusTooltip）：
    触发词是虚线状态词，悬停后弹出 384px 浮层，错误原文最多 3 行 + 一个复制按钮。
-   Reactor 的 TooltipContent 默认是深色气泡（bg-foreground/text-background），
+   Cute 的 TooltipContent 默认是深色气泡（bg-foreground/text-background），
    这里整块覆写成浅色内容卡，并隐藏默认箭头（ZCode 的 tooltip 也没有箭头）。 */
 .kimi-tool-fail-tip {
   display: flex;
@@ -3054,12 +3054,12 @@ ol {
 
 /* 滚动边缘渐隐：只在**真的有溢出**的那一侧做 mask，避免两端同时糊掉。
    有了它就可以隐藏滚动条（mask 本身就是「还能滚」的提示）。 */
-.reactor-workspace-tabs.mask-left {
+.cute-workspace-tabs.mask-left {
   mask-image: linear-gradient(to right, transparent 0, #000 16px);
   -webkit-mask-image: linear-gradient(to right, transparent 0, #000 16px);
 }
 
-.reactor-workspace-tabs.mask-right {
+.cute-workspace-tabs.mask-right {
   mask-image: linear-gradient(
     to right,
     #000 calc(100% - 16px),
@@ -3072,7 +3072,7 @@ ol {
   );
 }
 
-.reactor-workspace-tabs.mask-both {
+.cute-workspace-tabs.mask-both {
   mask-image: linear-gradient(
     to right,
     transparent 0,
@@ -3094,7 +3094,7 @@ ol {
    但渐隐会把最后一个字符削掉一半（`个人主页.h` 后面的 `t` 只剩个影子），读起来像渲染
    坏了。改成常规 `text-overflow: ellipsis`：截断点稳定、不随 hover 变化。
    关闭按钮始终占位（tab 容器 `pr-5`），所以省略号不会压到 X 上。 */
-.reactor-workspace-tab-title {
+.cute-workspace-tab-title {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -3102,53 +3102,53 @@ ol {
 
 /* Keep split-pane layout and paint work local to each side of the workspace. */
 @media (min-width: 1024px) {
-  .reactor-chat-workspace-layout {
+  .cute-chat-workspace-layout {
     contain: layout style;
     isolation: isolate;
   }
 
-  .reactor-chat-panel-left,
-  .reactor-workspace-panel {
+  .cute-chat-panel-left,
+  .cute-workspace-panel {
     contain: layout paint;
   }
 
-  .reactor-chat-panel-left .chat-fade-bottom,
-  .reactor-workspace-panel .reactor-workspace-content {
+  .cute-chat-panel-left .chat-fade-bottom,
+  .cute-workspace-panel .cute-workspace-content {
     contain: layout paint;
   }
 
-  .reactor-chat-panel-left .chat-dialogue {
+  .cute-chat-panel-left .chat-dialogue {
     content-visibility: auto;
     contain-intrinsic-size: 320px;
   }
 }
 
-.reactor-chat-workspace-layout[data-workspace-resizing="true"] {
+.cute-chat-workspace-layout[data-workspace-resizing="true"] {
   cursor: col-resize;
   user-select: none;
 }
 
-.reactor-chat-workspace-layout[data-workspace-resizing="true"]
-  .reactor-chat-panel-left,
-.reactor-chat-workspace-layout[data-workspace-resizing="true"]
-  .reactor-workspace-panel {
+.cute-chat-workspace-layout[data-workspace-resizing="true"]
+  .cute-chat-panel-left,
+.cute-chat-workspace-layout[data-workspace-resizing="true"]
+  .cute-workspace-panel {
   transition: none !important;
 }
 
 /* Mobile chat adaptation: the workspace becomes a thumb-reachable bottom sheet. */
-.reactor-workspace-scrim {
+.cute-workspace-scrim {
   display: none;
 }
 
 @media (max-width: 1023px) {
-  .reactor-single-chat-shell,
-  .reactor-data-chat-shell {
+  .cute-single-chat-shell,
+  .cute-data-chat-shell {
     padding: 8px 12px 0;
   }
 
-  .reactor-single-chat-shell [data-composer-dock],
-  .reactor-data-chat-shell [data-composer-dock],
-  .reactor-chat-panel-left [data-composer-dock] {
+  .cute-single-chat-shell [data-composer-dock],
+  .cute-data-chat-shell [data-composer-dock],
+  .cute-chat-panel-left [data-composer-dock] {
     position: sticky;
     bottom: 0;
     z-index: 10;
@@ -3158,13 +3158,13 @@ ol {
     background: var(--color-surface-sunken);
   }
 
-  .reactor-single-chat-shell [data-composer-dock],
-  .reactor-chat-panel-left [data-composer-dock] {
+  .cute-single-chat-shell [data-composer-dock],
+  .cute-chat-panel-left [data-composer-dock] {
     background: var(--color-bg);
   }
 
-  .reactor-chat-workspace-layout[data-workspace-open="true"]
-    .reactor-chat-panel-left [data-composer-dock] {
+  .cute-chat-workspace-layout[data-workspace-open="true"]
+    .cute-chat-panel-left [data-composer-dock] {
     position: fixed;
     right: 0;
     bottom: 0;
@@ -3173,37 +3173,37 @@ ol {
     margin-inline: 0;
   }
 
-  .reactor-single-chat-shell [data-composer-dock] > div,
-  .reactor-data-chat-shell [data-composer-dock] > div,
-  .reactor-chat-panel-left [data-composer-dock] > div {
+  .cute-single-chat-shell [data-composer-dock] > div,
+  .cute-data-chat-shell [data-composer-dock] > div,
+  .cute-chat-panel-left [data-composer-dock] > div {
     max-width: none;
   }
 
-  .reactor-single-chat-shell .reactor-chat-header,
-  .reactor-data-chat-shell .reactor-chat-header,
-  .reactor-chat-panel-left .reactor-chat-header {
+  .cute-single-chat-shell .cute-chat-header,
+  .cute-data-chat-shell .cute-chat-header,
+  .cute-chat-panel-left .cute-chat-header {
     padding-inline: 0;
   }
 
-  .reactor-single-chat-shell .chat-fade-bottom,
-  .reactor-data-chat-shell .chat-fade-bottom,
-  .reactor-chat-panel-left .chat-fade-bottom {
+  .cute-single-chat-shell .chat-fade-bottom,
+  .cute-data-chat-shell .chat-fade-bottom,
+  .cute-chat-panel-left .chat-fade-bottom {
     padding-inline: 0;
   }
 
-  .reactor-single-chat-shell [data-slot="prompt-input-textarea"],
-  .reactor-data-chat-shell [data-slot="prompt-input-textarea"],
-  .reactor-chat-panel-left [data-slot="prompt-input-textarea"] {
+  .cute-single-chat-shell [data-slot="prompt-input-textarea"],
+  .cute-data-chat-shell [data-slot="prompt-input-textarea"],
+  .cute-chat-panel-left [data-slot="prompt-input-textarea"] {
     min-height: 52px !important;
     font-size: 16px !important;
   }
 
-  .reactor-chat-workspace-layout {
+  .cute-chat-workspace-layout {
     gap: 0;
     padding: 0;
   }
 
-  .reactor-chat-panel-left {
+  .cute-chat-panel-left {
     width: 100% !important;
     min-width: 0 !important;
     max-width: none !important;
@@ -3213,15 +3213,15 @@ ol {
     border-left: 0;
   }
 
-  .reactor-chat-panel-left .chat-fade-bottom {
+  .cute-chat-panel-left .chat-fade-bottom {
     padding-top: 12px;
   }
 
-  .reactor-workspace-resizer {
+  .cute-workspace-resizer {
     display: none;
   }
 
-  .reactor-workspace-scrim {
+  .cute-workspace-scrim {
     display: block;
     position: fixed;
     inset: 0;
@@ -3235,7 +3235,7 @@ ol {
     touch-action: none;
   }
 
-  .reactor-workspace-panel {
+  .cute-workspace-panel {
     position: fixed;
     inset-inline: 0;
     bottom: calc(104px + env(safe-area-inset-bottom));
@@ -3258,7 +3258,7 @@ ol {
       visibility var(--duration-panel) var(--ease-out);
   }
 
-  .reactor-workspace-panel::before {
+  .cute-workspace-panel::before {
     position: absolute;
     top: 6px;
     left: 50%;
@@ -3272,38 +3272,38 @@ ol {
     transform: translateX(-50%);
   }
 
-  .reactor-workspace-panel[data-workspace-collapsed="true"] {
+  .cute-workspace-panel[data-workspace-collapsed="true"] {
     visibility: hidden;
     opacity: 0;
     pointer-events: none;
     transform: translateY(100%);
   }
 
-  .reactor-chat-workspace-layout[data-chat-read-only="true"]
-    .reactor-workspace-panel {
+  .cute-chat-workspace-layout[data-chat-read-only="true"]
+    .cute-workspace-panel {
     bottom: 0;
     max-height: calc(100dvh - 48px);
   }
 
-  .reactor-workspace-toolbar {
+  .cute-workspace-toolbar {
     padding-top: 14px;
   }
 
-  .reactor-workspace-tabs {
+  .cute-workspace-tabs {
     scrollbar-width: none;
   }
 
-  .reactor-workspace-tabs::-webkit-scrollbar {
+  .cute-workspace-tabs::-webkit-scrollbar {
     display: none;
   }
 
-  .reactor-action-icon {
+  .cute-action-icon {
     min-width: 44px;
     min-height: 44px;
   }
 
-  .reactor-workspace-panel .kimi-detail-panel-head button,
-  .reactor-workspace-panel .kimi-thinking-panel-head button {
+  .cute-workspace-panel .kimi-detail-panel-head button,
+  .cute-workspace-panel .kimi-thinking-panel-head button {
     min-width: 44px;
     min-height: 44px;
   }
@@ -3334,12 +3334,12 @@ ol {
     padding-inline: 12px;
   }
 
-  .reactor-chat-panel-left [data-slot="prompt-input-submit"],
-  .reactor-single-chat-shell [data-slot="prompt-input-submit"],
-  .reactor-data-chat-shell [data-slot="prompt-input-submit"],
-  .reactor-chat-panel-left button[aria-label="停止"],
-  .reactor-single-chat-shell button[aria-label="停止"],
-  .reactor-data-chat-shell button[aria-label="停止"] {
+  .cute-chat-panel-left [data-slot="prompt-input-submit"],
+  .cute-single-chat-shell [data-slot="prompt-input-submit"],
+  .cute-data-chat-shell [data-slot="prompt-input-submit"],
+  .cute-chat-panel-left button[aria-label="停止"],
+  .cute-single-chat-shell button[aria-label="停止"],
+  .cute-data-chat-shell button[aria-label="停止"] {
     width: 44px !important;
     min-width: 44px !important;
     height: 44px !important;
@@ -3348,7 +3348,7 @@ ol {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .reactor-workspace-panel {
+  .cute-workspace-panel {
     transition: none;
   }
 }
@@ -4646,12 +4646,12 @@ ol {
 
 /* Kimi composer adaptation: keep the existing React input state machine while
    matching the source composer's raised card, quiet toolbar, and compact controls. */
-.reactor-input-flat [data-slot="input-group"] {
+.cute-input-flat [data-slot="input-group"] {
   min-width: 0 !important;
   overflow: visible !important;
 }
 
-.reactor-input-flat textarea.reactor-composer-textarea {
+.cute-input-flat textarea.cute-composer-textarea {
   box-sizing: border-box !important;
   width: 100% !important;
   max-height: 25vh !important;
@@ -4670,24 +4670,24 @@ ol {
   box-shadow: none !important;
 }
 
-.reactor-input-flat textarea.reactor-composer-textarea-medium {
+.cute-input-flat textarea.cute-composer-textarea-medium {
   min-height: 54px !important;
 }
 
-.reactor-input-flat textarea.reactor-composer-textarea-big {
+.cute-input-flat textarea.cute-composer-textarea-big {
   min-height: 76px !important;
 }
 
-.reactor-input-flat textarea.reactor-composer-textarea:not(:placeholder-shown) {
+.cute-input-flat textarea.cute-composer-textarea:not(:placeholder-shown) {
   color: var(--color-text) !important;
 }
 
-.reactor-input-flat textarea.reactor-composer-textarea::placeholder {
+.cute-input-flat textarea.cute-composer-textarea::placeholder {
   color: var(--color-text-muted) !important;
   opacity: 1 !important;
 }
 
-.reactor-input-flat [data-slot="input-group-addon"][data-align="block-end"].reactor-composer-footer {
+.cute-input-flat [data-slot="input-group-addon"][data-align="block-end"].cute-composer-footer {
   box-sizing: border-box !important;
   width: 100% !important;
   min-width: 0 !important;
@@ -4698,28 +4698,28 @@ ol {
   gap: 4px !important;
 }
 
-.reactor-composer-attachments {
+.cute-composer-attachments {
   box-sizing: border-box;
   gap: 6px !important;
   width: 100%;
 }
 
-.reactor-composer-tools {
+.cute-composer-tools {
   min-width: 0 !important;
   gap: 2px !important;
 }
 
-.reactor-composer-tools-left {
+.cute-composer-tools-left {
   overflow: hidden;
 }
 
-.reactor-composer-tools-right {
+.cute-composer-tools-right {
   flex-shrink: 0 !important;
   gap: 8px !important;
 }
 
-.reactor-input-flat .reactor-composer-tool,
-.reactor-input-flat .reactor-composer-icon-button {
+.cute-input-flat .cute-composer-tool,
+.cute-input-flat .cute-composer-icon-button {
   box-sizing: border-box;
   min-height: 32px !important;
   height: 32px !important;
@@ -4730,16 +4730,16 @@ ol {
   box-shadow: none !important;
 }
 
-.reactor-input-flat .reactor-composer-tool:hover:not(:disabled),
-.reactor-input-flat .reactor-composer-tool[aria-expanded="true"],
-.reactor-input-flat .reactor-composer-icon-button:hover:not(:disabled),
-.reactor-input-flat .reactor-composer-icon-button[aria-expanded="true"] {
+.cute-input-flat .cute-composer-tool:hover:not(:disabled),
+.cute-input-flat .cute-composer-tool[aria-expanded="true"],
+.cute-input-flat .cute-composer-icon-button:hover:not(:disabled),
+.cute-input-flat .cute-composer-icon-button[aria-expanded="true"] {
   background: var(--color-surface-sunken) !important;
   color: var(--color-text) !important;
 }
 
-.reactor-input-flat .reactor-composer-stop,
-.reactor-input-flat .reactor-send-btn {
+.cute-input-flat .cute-composer-stop,
+.cute-input-flat .cute-send-btn {
   flex: none;
   box-sizing: border-box;
   width: 32px !important;
@@ -4748,11 +4748,11 @@ ol {
   min-height: 32px !important;
 }
 
-.reactor-input-flat .reactor-composer-stop {
+.cute-input-flat .cute-composer-stop {
   box-shadow: var(--shadow-xs) !important;
 }
 
-.reactor-input-flat .reactor-send-btn {
+.cute-input-flat .cute-send-btn {
   background: var(--color-accent) !important;
   color: var(--color-text-on-accent) !important;
   box-shadow: var(--shadow-xs) !important;
@@ -4762,36 +4762,36 @@ ol {
     transform 120ms var(--ease-out) !important;
 }
 
-.reactor-input-flat .reactor-send-btn:hover:not(:disabled) {
+.cute-input-flat .cute-send-btn:hover:not(:disabled) {
   background: var(--color-accent-hover) !important;
   opacity: 1 !important;
 }
 
-.reactor-input-flat .reactor-send-btn:disabled {
+.cute-input-flat .cute-send-btn:disabled {
   background: var(--color-accent) !important;
   color: var(--color-text-on-accent) !important;
   opacity: 0.42 !important;
 }
 
-.reactor-composer-attachment-chip {
+.cute-composer-attachment-chip {
   min-height: 30px;
 }
 
 @media (max-width: 640px) {
-  .reactor-input-flat {
+  .cute-input-flat {
     border-radius: 16px !important;
   }
 
-  .reactor-input-flat textarea.reactor-composer-textarea {
+  .cute-input-flat textarea.cute-composer-textarea {
     font-size: 16px !important;
   }
 
-  .reactor-input-flat [data-slot="input-group-addon"][data-align="block-end"].reactor-composer-footer {
+  .cute-input-flat [data-slot="input-group-addon"][data-align="block-end"].cute-composer-footer {
     flex-wrap: wrap !important;
     row-gap: 4px !important;
   }
 
-  .reactor-composer-tools-left {
+  .cute-composer-tools-left {
     flex: 1 1 100% !important;
     max-width: 100%;
     overflow-x: auto;
@@ -4799,16 +4799,16 @@ ol {
     scrollbar-width: none;
   }
 
-  .reactor-composer-tools-left::-webkit-scrollbar {
+  .cute-composer-tools-left::-webkit-scrollbar {
     display: none;
   }
 
-  .reactor-composer-tools-right {
+  .cute-composer-tools-right {
     margin-left: auto !important;
   }
 
-  .reactor-input-flat .reactor-composer-stop,
-  .reactor-input-flat .reactor-send-btn {
+  .cute-input-flat .cute-composer-stop,
+  .cute-input-flat .cute-send-btn {
     width: 36px !important;
     min-width: 36px !important;
     height: 36px !important;

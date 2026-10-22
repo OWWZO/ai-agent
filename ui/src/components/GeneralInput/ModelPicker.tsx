@@ -18,7 +18,7 @@ type Props = {
   triggerClassName?: (active?: boolean, disabled?: boolean) => string;
 };
 
-const ModelPicker: ReactorType.FC<Props> = ({
+const ModelPicker: CuteType.FC<Props> = ({
   models,
   value,
   onChange,

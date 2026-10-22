@@ -102,7 +102,7 @@ function ImagePreviewModal({
   );
 }
 
-const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = ({embedded,}) => {
+const WorkspaceImageGeneration: CuteType.FC<WorkspaceImageGenerationProps> = ({embedded,}) => {
   const { config, updateConfig } = useImageGenerationConfig();
   const {
     historyBatches,

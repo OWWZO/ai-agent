@@ -35,7 +35,7 @@ public class DeferredLocalToolCallTest {
         Map<?, ?> row = (Map<?, ?>) ((List<?>) searchData.get("matches")).get(0);
         Assert.assertEquals("document_generate", row.get("name"));
         Assert.assertEquals("local", row.get("source"));
-        Assert.assertEquals("reactor", row.get("source_name"));
+        Assert.assertEquals("cute", row.get("source_name"));
         Assert.assertFalse(row.containsKey("parameters"));
 
         ToolDescribeTool describe = new ToolDescribeTool();
@@ -77,7 +77,7 @@ public class DeferredLocalToolCallTest {
     }
 
     private static DeferredToolEntry localEntry(LocalTool local) {
-        return DeferredToolEntry.local(local, "reactor", local.toParams(), "");
+        return DeferredToolEntry.local(local, "cute", local.toParams(), "");
     }
 
     private static final class LocalTool implements BaseTool {

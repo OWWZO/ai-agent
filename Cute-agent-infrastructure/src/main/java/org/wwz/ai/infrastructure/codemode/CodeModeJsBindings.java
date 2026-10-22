@@ -97,7 +97,7 @@ public final class CodeModeJsBindings {
         contextObject.put("input", GraalJsValueConverter.toJsObject(
                 inputs == null ? Map.of() : inputs));
 
-        context.getBindings("js").putMember("__reactorContext", ProxyObject.fromMap(contextObject));
+        context.getBindings("js").putMember("__cuteContext", ProxyObject.fromMap(contextObject));
         context.getBindings("js").putMember("console", consoleProxy(budget));
         return bindings;
     }

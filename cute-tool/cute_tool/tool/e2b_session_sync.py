@@ -32,7 +32,7 @@ _SKIP_DIR_NAMES = frozenset(
 )
 _E2B_MAX_NAME_BYTES = 200
 _E2B_MAX_PATH_BYTES = 1000
-_FINGERPRINT_REL = ".reactor/e2b-sync.json"
+_FINGERPRINT_REL = ".cute/e2b-sync.json"
 
 
 @dataclass

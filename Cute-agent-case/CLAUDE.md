@@ -4,14 +4,14 @@
 
 ## 模块职责
 
-应用编排层（Application Layer）。`019-agent-ddd-convergence` 起，本模块作为 Trigger 进入主链路的**唯一稳定 seam**：负责按 agent 类型 dispatch 执行策略、装配（armory）、查询（gpt query）、知识库（rag）、数据问答（dataquery）、角色库（role）、任务调度（task）、匿名访客与会话归属（visitor）等跨领域应用编排，不承载底层协议细节，也不再回流到已被 `020-prune-agent-bridges` 删除的 legacy reactor bridge。
+应用编排层（Application Layer）。`019-agent-ddd-convergence` 起，本模块作为 Trigger 进入主链路的**唯一稳定 seam**：负责按 agent 类型 dispatch 执行策略、装配（armory）、查询（gpt query）、知识库（rag）、数据问答（dataquery）、角色库（role）、任务调度（task）、匿名访客与会话归属（visitor）等跨领域应用编排，不承载底层协议细节，也不再回流到已被 `020-prune-agent-bridges` 删除的 legacy cute bridge。
 
 边界要点：
 
 - Trigger 入口必须依赖本层接口（`IAgentDispatchService` / `IExecuteStrategy` / `IGptQueryApplicationService` / `IDataAgentApplicationService` / `IFixRoleQueryService` / `IRagApplicationService` / `IArmoryService` / `ITaskService` 等），不允许直连 `domain/service` 根接口
 - `AgentSessionStream` / `AgentSessionPrinter` 是 case 暴露给 trigger 的**协议无关流式输出端口**；SSE / WebSocket 协议适配只能停在 `trigger` 侧
 - 本层不直接 `new OkHttpClient`、不持有 `SseEmitter`、不调用 `ApplicationContext.getBean(...)`；远端能力通过 domain 暴露的 port → infrastructure 适配落地
-- `domain` 中遗留的 `domain/agent/service` / `domain/agent/reactor` 仅作为延期契约或策略节点供本层消费，禁止把新主链路逻辑下沉回去
+- `domain` 中遗留的 `domain/agent/service` / `domain/agent/cute` 仅作为延期契约或策略节点供本层消费，禁止把新主链路逻辑下沉回去
 
 ---
 

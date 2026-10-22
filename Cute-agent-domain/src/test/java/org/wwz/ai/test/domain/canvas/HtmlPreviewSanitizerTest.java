@@ -30,7 +30,7 @@ public class HtmlPreviewSanitizerTest {
         String out = HtmlPreviewSanitizer.buildPreviewHtml(fragment, true);
         Assert.assertTrue(out.contains("cdn.tailwindcss.com"));
         Assert.assertTrue(out.contains("window.__x=1"));
-        Assert.assertTrue(out.contains("__reactorPreviewIframeBootstrap"));
+        Assert.assertTrue(out.contains("__cutePreviewIframeBootstrap"));
         Assert.assertFalse(out.contains("script-src 'none'"));
         // Must not re-dispatch resize while listening to it (infinite sync loop).
         Assert.assertFalse(out.contains("dispatchEvent(new Event('resize'))"));

@@ -77,7 +77,7 @@ export default function UploadAttachmentChip(props: {
   };
 
   return (
-    <div className="reactor-composer-attachment-chip group flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-[var(--color-line)] bg-[var(--color-surface-raised)] px-1.5 py-1 text-ui-sm shadow-none transition-colors hover:border-[var(--color-line-strong)]">
+    <div className="cute-composer-attachment-chip group flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-[var(--color-line)] bg-[var(--color-surface-raised)] px-1.5 py-1 text-ui-sm shadow-none transition-colors hover:border-[var(--color-line-strong)]">
       <div className="flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--color-surface-sunken)]">
         {isImage ? (
           <img

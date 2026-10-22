@@ -24,8 +24,8 @@ import { createPromptContextId } from "./ids";
  * workspace 过滤；本项目是单会话单输入框，过滤维度换成 `sessionId`（由 hook 持有，
  * 不写进 payload 与 markdown）。
  */
-export const CODE_COMMENT_ADD_TO_CHAT_EVENT = "reactor:code-comment-add-to-chat";
-export const CODE_COMMENT_REMOVE_FROM_CHAT_EVENT = "reactor:code-comment-remove-from-chat";
+export const CODE_COMMENT_ADD_TO_CHAT_EVENT = "cute:code-comment-add-to-chat";
+export const CODE_COMMENT_REMOVE_FROM_CHAT_EVENT = "cute:code-comment-remove-from-chat";
 
 const BLOCK_TITLE = "# Code comments:";
 

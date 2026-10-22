@@ -481,7 +481,7 @@ public class AgentToolCollectionFactory {
         List<String> names = new ArrayList<>();
         for (Map.Entry<String, BaseTool> entry : toolCollection.getToolMap().entrySet()) {
             if (LocalToolDeferralPolicy.isCandidate(entry.getKey())) {
-                entries.add(DeferredToolCatalog.localEntry(entry.getValue(), "reactor"));
+                entries.add(DeferredToolCatalog.localEntry(entry.getValue(), "cute"));
                 names.add(entry.getKey());
             }
         }

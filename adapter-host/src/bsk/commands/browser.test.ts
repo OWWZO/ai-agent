@@ -36,7 +36,7 @@ describe('browser list / status / handshake', () => {
       .reply(METHODS.systemHandshake, { server: 'daemon', protocol_version: '1.0' });
     expect((await ping(client)).pong).toBe(true);
     await handshake(client, {
-      client: 'reactor-adapter',
+      client: 'cute-adapter',
       version: '1.0.0',
       protocolVersion: '1.3',
       instanceId: 'b1',
@@ -45,7 +45,7 @@ describe('browser list / status / handshake', () => {
       minCompatibleProtocol: '1.0',
     });
     expect(client.last(METHODS.systemHandshake).params).toEqual({
-      client: 'reactor-adapter',
+      client: 'cute-adapter',
       version: '1.0.0',
       protocol_version: '1.3',
       instance_id: 'b1',

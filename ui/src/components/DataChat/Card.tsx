@@ -6,7 +6,7 @@ type KpiItem = {
   value?: string | number;
 };
 
-const Card: ReactorType.FC<{ data: Record<string, any> }> = (props) => {
+const Card: CuteType.FC<{ data: Record<string, any> }> = (props) => {
   const { data } = props;
   const kpiList: KpiItem[] = Array.isArray(data?.kpiList) ? data.kpiList : [];
 

@@ -67,7 +67,7 @@ public class McpTool implements BaseTool {
     public String listTool(String mcpServerUrl) {
         try {
 
-            //获取reactor配置
+            //获取cute配置
             CuteConfig cuteConfig = requireCuteConfig();
 
             //构建通用mcp客户端请求路径

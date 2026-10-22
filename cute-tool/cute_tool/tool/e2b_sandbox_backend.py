@@ -196,12 +196,12 @@ class E2BPythonSandboxExecutor:
         if sandbox_factory is None:
             return get_user_sandbox_manager()
 
-        reactor_dir = self._local_workspace / ".reactor"
-        reactor_dir.mkdir(parents=True, exist_ok=True)
+        cute_dir = self._local_workspace / ".cute"
+        cute_dir.mkdir(parents=True, exist_ok=True)
         fd, db_path = tempfile.mkstemp(
             prefix="e2b-sandbox-",
             suffix=".sqlite",
-            dir=str(reactor_dir),
+            dir=str(cute_dir),
         )
         os.close(fd)
 

@@ -734,7 +734,7 @@ public class LLM {
     }
 
     /**
-     * 非流式阻塞调用没有 Reactor 订阅可 dispose，stop 时直接取消执行 Future 以打断等待。
+     * 非流式阻塞调用没有 Cute 订阅可 dispose，stop 时直接取消执行 Future 以打断等待。
      */
     private <T> CompletableFuture<T> abortOnRunCancel(AgentContext context, CompletableFuture<T> future) {
         if (context == null || future == null) {

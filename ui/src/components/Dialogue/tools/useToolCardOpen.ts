@@ -7,13 +7,13 @@ type SetOpen = (next: boolean | ((previous: boolean) => boolean)) => void;
  * 工具卡开合状态：把折叠态从组件内部 `useState` 提升到模块级持久表。
  *
  * 对齐 ZCode `ToolLayout.tsx:107-111` 的状态所有权 —— 那边由壳组件持有 `isOpen`，
- * 初值从 `toolLayoutOpenState` 读取；Reactor 的 renderer 需要根据 open 决定摘要行
+ * 初值从 `toolLayoutOpenState` 读取；Cute 的 renderer 需要根据 open 决定摘要行
  * 显示什么，所以状态仍留在 renderer，只把「持久化」这一段抽出来复用。
  *
  * ⚠️ ZCode 的 `autoOpen` / `autoCollapseOnComplete` 是给 **agent renderer** 用的
  * （`renderers/agent.tsx:382`）：子代理运行中自动展开、完成时自动收起。
- * Reactor 的子代理子工具不在卡内渲染（由 `Timeline.tsx` 的 `SubAgentTimelineCard`
- * 独立承载，且刻意「完成后保持展开」，见该文件注释），因此这两个边沿在 Reactor
+ * Cute 的子代理子工具不在卡内渲染（由 `Timeline.tsx` 的 `SubAgentTimelineCard`
+ * 独立承载，且刻意「完成后保持展开」，见该文件注释），因此这两个边沿在 Cute
  * 没有落点 —— 不要为了「凑齐三件套」硬塞进来。
  *
  * `key` 为空串时视为「无稳定身份」，退化成普通 `useState`，避免所有匿名卡共用一条状态。

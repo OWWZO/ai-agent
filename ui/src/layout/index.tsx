@@ -11,7 +11,7 @@ import {
 import { buildLoginPath, ROUTES } from "@/router/routes";
 
 // Layout 组件：应用的主要布局结构
-const Layout: ReactorType.FC = memo(() => {
+const Layout: CuteType.FC = memo(() => {
   const location = useLocation();
   const navigate = useNavigate();
 

@@ -22,7 +22,7 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public final class CliArtifactCaptureCoordinator {
 
-    public static final String GENERATED_ROOT = ".reactor-artifacts";
+    public static final String GENERATED_ROOT = ".cute-artifacts";
     public static final String OUTPUT_ROOT_INVALID = "artifact_output_root_invalid";
     public static final String OUTPUT_ROOT_OUTSIDE_WORKSPACE = "artifact_output_root_outside_workspace";
     public static final String CAPTURE_ROOT_CONFLICT = "artifact_capture_root_conflict";

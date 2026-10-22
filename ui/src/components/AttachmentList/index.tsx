@@ -144,7 +144,7 @@ function KindBadge({ kind, className }: { kind: FileKind; className?: string }) 
   return <ImageIcon className={cn("size-5", className)} strokeWidth={1.6} />;
 }
 
-const AttachmentList: ReactorType.FC<Props> = (props) => {
+const AttachmentList: CuteType.FC<Props> = (props) => {
   const {
     files,
     preview,

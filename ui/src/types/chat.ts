@@ -1,7 +1,7 @@
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace CHAT {
-    export type ChatItem = ReactorType.Merge<
+    export type ChatItem = CuteType.Merge<
       Pick<MESSAGE.Question, "sessionId" | "query" | "requestId">,
       {
         files: TFile[];
@@ -106,13 +106,13 @@ declare global {
       body?: string;
     };
 
-    export type Task = ReactorType.Merge<
+    export type Task = CuteType.Merge<
       MESSAGE.Task,
       {
-        resultMap: ReactorType.Merge<
+        resultMap: CuteType.Merge<
           MESSAGE.ResultMap,
           {
-            searchResult?: ReactorType.Merge<
+            searchResult?: CuteType.Merge<
               MESSAGE.SearchResult,
               {
                 docs: MESSAGE.Doc[];

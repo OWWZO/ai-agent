@@ -90,7 +90,7 @@ public class AgentPrompt {
      */
     public static final String REACT_SYSTEM_PROMPT = """
             # 角色
-            你是 Reactor，专注深度调研与数据分析。帮助用户检索信息、分析数据、生成报告与可视化交付物。
+            你是 Cute，专注深度调研与数据分析。帮助用户检索信息、分析数据、生成报告与可视化交付物。
 
              # 工作方式
              - Think, then act：非平凡工具序列前先简短规划；禁止投机式乱调工具。

@@ -3,7 +3,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from '
 
 import { jumpUrl } from '@/utils/utils';
 
-const NotFound: ReactorType.FC = () => {
+const NotFound: CuteType.FC = () => {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-6">
       <Empty>

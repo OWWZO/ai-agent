@@ -1,7 +1,7 @@
-const PAIR_SOURCE = 'reactor';
-const EXTENSION_SOURCE = 'reactor-extension';
+const PAIR_SOURCE = 'cute';
+const EXTENSION_SOURCE = 'cute-extension';
 
-// Let an already-open Reactor page know that the extension bridge is present.
+// Let an already-open Cute page know that the extension bridge is present.
 // The page may have loaded before the extension was installed, so the
 // service worker can inject this script again after installation.
 window.postMessage(

@@ -23,7 +23,7 @@ from cute_tool.tool.user_sandbox_manager import (  # noqa: E402
 )
 
 
-TEMPLATE_ALIAS = "reactor-code-playwright-desktop"
+TEMPLATE_ALIAS = "cute-code-playwright-desktop"
 SMOKE_TIMEOUT_SECONDS = 1800
 
 
@@ -178,9 +178,9 @@ def main() -> int:
         _assert_command(
             sandbox,
             'test "$(readlink -f /usr/bin/www-browser)" = '
-            "/usr/local/bin/reactor-opencli-browser && "
+            "/usr/local/bin/cute-opencli-browser && "
             'test "$(xdg-mime query default x-scheme-handler/https)" = '
-            "reactor-opencli-browser.desktop && echo desktop_browser_uses_opencli",
+            "cute-opencli-browser.desktop && echo desktop_browser_uses_opencli",
             "desktop_browser_uses_opencli",
         )
         _assert_command(

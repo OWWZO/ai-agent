@@ -32,7 +32,7 @@ export const MIN_COMPATIBLE_PEER = '0.0.0';
 export const HANDSHAKE_TIMEOUT_MS = 10_000;
 
 /** Client id used when the bridge impersonates a browser peer. */
-export const BRIDGE_CLIENT_ID = 'reactor-opencli-bridge';
+export const BRIDGE_CLIENT_ID = 'cute-opencli-bridge';
 
 /** Minimal caller surface — structurally satisfied by `BskClient`. */
 export interface HandshakeCaller {

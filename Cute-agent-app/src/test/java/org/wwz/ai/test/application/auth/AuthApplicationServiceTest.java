@@ -241,7 +241,7 @@ public class AuthApplicationServiceTest {
                 .createdAt(FIXED_TIME)
                 .build());
         JwtTokenService jwtTokenService = new JwtTokenService(
-                "test-secret-test-secret-test-secret", "reactor-test", Duration.ofMinutes(15), clock);
+                "test-secret-test-secret-test-secret", "cute-test", Duration.ofMinutes(15), clock);
         String accessToken = jwtTokenService.issue(account, "session-1").value();
 
         AuthApplicationService service = new AuthApplicationService(
@@ -262,7 +262,7 @@ public class AuthApplicationServiceTest {
                 accounts,
                 sessions,
                 passwordPolicy,
-                new JwtTokenService("test-secret-test-secret-test-secret", "reactor-test", Duration.ofMinutes(15), clock),
+                new JwtTokenService("test-secret-test-secret-test-secret", "cute-test", Duration.ofMinutes(15), clock),
                 clock);
     }
 

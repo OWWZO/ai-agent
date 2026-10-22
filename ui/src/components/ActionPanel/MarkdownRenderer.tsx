@@ -26,7 +26,7 @@ import {
 import type { BundledLanguage } from 'shiki';
 
 /** 终答 Markdown 内嵌图：点击放大预览 */
-const MarkdownImagePreview: ReactorType.FC<{
+const MarkdownImagePreview: CuteType.FC<{
   src: string;
   alt?: string;
 }> = ({ src, alt }) => {
@@ -54,7 +54,7 @@ const MarkdownImagePreview: ReactorType.FC<{
 };
 
 /** 终答 Markdown 内嵌音视频：内联播放 + 放大预览 Modal */
-const MarkdownMediaPlayer: ReactorType.FC<{
+const MarkdownMediaPlayer: CuteType.FC<{
   kind: 'video' | 'audio';
   src: string;
   title?: string;
@@ -151,7 +151,7 @@ function childrenToText(children: unknown): string {
   return "";
 }
 
-const CodeBlock: ReactorType.FC<{
+const CodeBlock: CuteType.FC<{
   inline?: boolean;
   className?: string;
   children?: unknown;
@@ -185,7 +185,7 @@ const CodeBlock: ReactorType.FC<{
 };
 
 /** react-markdown 默认 pre>code；我们的 fence 自带外壳，必须拆掉外层 pre，否则套住 Shiki 的 pre 会重复渲染 HTML 源码 */
-const MarkdownPre: ReactorType.FC<{ children?: ReactNode }> = ({
+const MarkdownPre: CuteType.FC<{ children?: ReactNode }> = ({
   children,
 }) => <>{children}</>;
 
@@ -193,7 +193,7 @@ function cnInlineCode(className?: string) {
   return cn('kimi-inline-code', className);
 }
 
-const MarkdownRenderer: ReactorType.FC<{
+const MarkdownRenderer: CuteType.FC<{
   markDownContent?: string;
   isStreaming?: boolean;
   /** 本轮产物文件；相对路径 Markdown 引用据此解析为 preview/download URL */

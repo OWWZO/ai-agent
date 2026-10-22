@@ -14,7 +14,7 @@ interface MermaidBlockProps {
  * 从 `MarkdownRenderer` 里抽出，供 Markdown 预览与「代码预览遇到 mermaid 语言」共用：
  * 以 `.mermaid` 容器 + `mermaid.contentLoaded()` 的方式交给 mermaid 自行扫描渲染。
  */
-const MermaidBlock: ReactorType.FC<MermaidBlockProps> = (props) => {
+const MermaidBlock: CuteType.FC<MermaidBlockProps> = (props) => {
   const { children, className } = props;
   const ref = useRef<HTMLDivElement | null>(null);
   const [loadError, setLoadError] = useState(false);

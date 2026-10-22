@@ -31,7 +31,7 @@ public class WorkspaceEditToolTest {
 
     @Before
     public void setUp() throws Exception {
-        workspaceRoot = Files.createTempDirectory("reactor-workspace-edit");
+        workspaceRoot = Files.createTempDirectory("cute-workspace-edit");
         targetFile = workspaceRoot.resolve("demo.txt");
         Files.writeString(targetFile, "alpha\nbeta\ngamma\n", StandardCharsets.UTF_8);
 

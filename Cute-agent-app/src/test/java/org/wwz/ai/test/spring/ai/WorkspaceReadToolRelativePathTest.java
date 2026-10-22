@@ -23,7 +23,7 @@ public class WorkspaceReadToolRelativePathTest {
 
     @Test
     public void shouldReadRelativePathUnderWorkspaceRoot() throws Exception {
-        Path workspaceRoot = Files.createTempDirectory("reactor-workspace-read-rel");
+        Path workspaceRoot = Files.createTempDirectory("cute-workspace-read-rel");
         try {
             Path file = workspaceRoot.resolve("note.txt");
             Files.writeString(file, "hello-rel\n", StandardCharsets.UTF_8);

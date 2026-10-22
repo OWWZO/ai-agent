@@ -14,12 +14,12 @@ export default function BrowserRelayChip({ disabled }: Props) {
   const [busy, setBusy] = useState(false);
 
   const sendPairingToExtension = useCallback((data: BrowserPairing) => {
-    // 老 Reactor 扩展：content-pair.js 监听 reactor/browser-pair，带 ?token= 连 relay。
+    // 老 Cute 扩展：content-pair.js 监听 cute/browser-pair，带 ?token= 连 relay。
     window.postMessage(
       { source: "cute", type: "browser-pair", token: data.token, relayUrl: data.relayUrl },
       window.location.origin
     );
-    // bsk 扩展（021）：bsk-pair bridge 监听 reactor/bsk-browser-pair，
+    // bsk 扩展（021）：bsk-pair bridge 监听 cute/bsk-browser-pair，
     // 收 url#token 形式的配对链接，转存扩展存储后自动连 bsk 网关。
     if (data.bskPairingUrl) {
       window.postMessage(
@@ -45,7 +45,7 @@ export default function BrowserRelayChip({ disabled }: Props) {
     const onMessage = (event: MessageEvent) => {
       if (event.source !== window) return;
       const msg = event.data as { source?: string; type?: string; ok?: boolean; error?: string } | null;
-      if (msg?.source !== "reactor-extension") return;
+      if (msg?.source !== "cute-extension") return;
       if (msg.type !== "browser-pair-result") return;
       if (msg.ok) {
         void refresh();

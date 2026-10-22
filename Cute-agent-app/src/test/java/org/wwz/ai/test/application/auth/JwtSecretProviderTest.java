@@ -11,7 +11,7 @@ public class JwtSecretProviderTest {
 
     @Test
     public void generatesAndPersistsSecretWhenNoExplicitSecretIsConfigured() throws Exception {
-        Path directory = Files.createTempDirectory("reactor-jwt-secret-");
+        Path directory = Files.createTempDirectory("cute-jwt-secret-");
         Path secretFile = directory.resolve("auth.jwt.secret");
         try {
             JwtSecretProvider first = new JwtSecretProvider("", secretFile);

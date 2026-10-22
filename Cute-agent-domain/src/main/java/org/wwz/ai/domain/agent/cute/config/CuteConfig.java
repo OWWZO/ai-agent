@@ -319,7 +319,7 @@ public class CuteConfig {
     @Value("${autobots.multiagent.sseClient.connectTimeout:18000}")
 	private Integer sseClientConnectTimeout;
 
-    @Value("${autobots.autoagent.reactor_base_prompt:}")
+    @Value("${autobots.autoagent.cute_base_prompt:}")
     private String cuteBasePrompt;
 
     private static Map<String, String> parseStringMap(String json) {

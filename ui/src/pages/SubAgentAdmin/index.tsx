@@ -63,7 +63,7 @@ type SubAgentAdminProps = {
   embedded?: boolean;
 };
 
-const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
+const SubAgentAdmin: CuteType.FC<SubAgentAdminProps> = ({ embedded }) => {
   const auth = useAuth();
   const readOnly = !isAdminUser(auth.user);
   const [items, setItems] = useState<SubAgentDefinitionRecord[]>([]);

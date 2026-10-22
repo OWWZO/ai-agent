@@ -36,7 +36,7 @@ public class WorkspaceReadDedupTest {
 
     @Before
     public void setUp() throws Exception {
-        workspaceRoot = Files.createTempDirectory("reactor-ws-dedup");
+        workspaceRoot = Files.createTempDirectory("cute-ws-dedup");
         targetFile = workspaceRoot.resolve("demo.txt");
         Files.writeString(targetFile, "alpha\nbeta\n", StandardCharsets.UTF_8);
 

@@ -47,7 +47,7 @@ class ElasticsearchClientAuthTest(unittest.TestCase):
                 "DATA_AGENT_ES_HOST": "https://elastic.example.com:443",
                 "DATA_AGENT_ES_SCHEME": "https",
                 "DATA_AGENT_ES_API_KEY": "encoded-api-key",
-                "TR_ES_CONFIGS_INDEX": "reactor_model_column_value",
+                "TR_ES_CONFIGS_INDEX": "cute_model_column_value",
             },
             clear=True,
         ):
@@ -64,7 +64,7 @@ class ElasticsearchClientAuthTest(unittest.TestCase):
                 "api_key": "encoded-api-key",
             }
         )
-        self.assertEqual("reactor_model_column_value", retriever.es_index)
+        self.assertEqual("cute_model_column_value", retriever.es_index)
 
     def test_should_retry_without_analyzer_when_ik_plugin_is_missing(self):
         fake_client = unittest.mock.Mock()
@@ -90,7 +90,7 @@ class ElasticsearchClientAuthTest(unittest.TestCase):
                 }
             )
             result = client.search_body(
-                "reactor_model_column_value",
+                "cute_model_column_value",
                 {
                     "query": "销售额",
                     "model_code_list": ["sales_model"],

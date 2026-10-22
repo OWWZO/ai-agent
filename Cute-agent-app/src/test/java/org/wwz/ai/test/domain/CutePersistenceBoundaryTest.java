@@ -27,7 +27,7 @@ public class CutePersistenceBoundaryTest {
         Path legacyMapperDir = DOMAIN_ROOT.resolve("org/wwz/ai/domain/agent/cute/mapper");
         Path legacySessionMemoryImpl = DOMAIN_ROOT.resolve("org/wwz/ai/domain/agent/cute/service/impl/SessionContextMemoryServiceImpl.java");
         Path legacyWorkspaceImageImpl = DOMAIN_ROOT.resolve("org/wwz/ai/domain/agent/cute/service/impl/WorkspaceImageGenerationServiceImpl.java");
-        Assert.assertFalse("domain 不应再保留 reactor mapper 目录", Files.exists(legacyMapperDir));
+        Assert.assertFalse("domain 不应再保留 cute mapper 目录", Files.exists(legacyMapperDir));
         Assert.assertFalse("domain 不应再保留 SessionContextMemoryServiceImpl 技术实现", Files.exists(legacySessionMemoryImpl));
         Assert.assertFalse("domain 不应再保留 WorkspaceImageGenerationServiceImpl 技术实现", Files.exists(legacyWorkspaceImageImpl));
         assertNoContent(DOMAIN_ROOT, "@Mapper");

@@ -99,7 +99,7 @@ public class DataAnalysisTool implements ContextIsolatableTool {
 
             DataAnalysisRequest request = DataAnalysisRequest.builder()
                     .request_id(agentContext.getSessionId())
-                    .erp("reactor")
+                    .erp("cute")
                     .task(task)
                     .report_file_name(reportFileName)
                     .modelCodeList(Arrays.asList("modelCode"))

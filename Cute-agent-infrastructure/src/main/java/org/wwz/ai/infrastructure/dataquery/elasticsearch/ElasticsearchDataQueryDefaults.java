@@ -1,11 +1,11 @@
 package org.wwz.ai.infrastructure.dataquery.elasticsearch;
 
 public final class ElasticsearchDataQueryDefaults {
-    public static final String COLUMN_VALUE_INDEX_NAME = "reactor_model_column_value";
+    public static final String COLUMN_VALUE_INDEX_NAME = "cute_model_column_value";
     public static final String COLUMN_VALUE_INDEX_MAPPING = """
             {
               "aliases": {
-                "reactor_model_column_value_alias": {
+                "cute_model_column_value_alias": {
                 }
               },
               "mappings": {

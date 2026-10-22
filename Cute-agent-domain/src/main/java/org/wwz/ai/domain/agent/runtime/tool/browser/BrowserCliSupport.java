@@ -221,7 +221,7 @@ public final class BrowserCliSupport {
     public static String resolveCacheDir(OpenCliProperties properties, String userId) {
         String root = StringUtils.trimToNull(properties.getCacheDir());
         if (root == null) {
-            root = Path.of(System.getProperty("java.io.tmpdir"), "reactor-opencli").toString();
+            root = Path.of(System.getProperty("java.io.tmpdir"), "cute-opencli").toString();
         }
         return Path.of(root, userId).toString();
     }

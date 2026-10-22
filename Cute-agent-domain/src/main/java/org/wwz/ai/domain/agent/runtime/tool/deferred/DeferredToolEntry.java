@@ -51,7 +51,7 @@ public final class DeferredToolEntry {
                 ? Map.of()
                 : immutableCopy(parameters);
         this.source = source;
-        this.sourceName = StringUtils.defaultIfBlank(sourceName, source == DeferredToolSource.LOCAL ? "reactor" : "other");
+        this.sourceName = StringUtils.defaultIfBlank(sourceName, source == DeferredToolSource.LOCAL ? "cute" : "other");
         this.localTool = localTool;
         this.mcpToolInfo = mcpToolInfo;
         this.searchHint = searchHint == null ? "" : searchHint;

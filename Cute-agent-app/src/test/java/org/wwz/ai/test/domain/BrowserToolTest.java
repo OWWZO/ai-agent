@@ -222,7 +222,7 @@ public class BrowserToolTest {
             List<Map<String, Object>> artifacts = (List<Map<String, Object>>) data.get("artifacts");
             Assert.assertEquals(1, artifacts.size());
             Assert.assertTrue(String.valueOf(artifacts.get(0).get("relativePath"))
-                    .matches("\\.reactor-artifacts/browser/[A-Za-z0-9_-]+/note.jpg"));
+                    .matches("\\.cute-artifacts/browser/[A-Za-z0-9_-]+/note.jpg"));
             Assert.assertFalse(String.valueOf(data).contains(workspace.toString()));
             ArgumentCaptor<CliInvocation> captor = ArgumentCaptor.forClass(CliInvocation.class);
             Mockito.verify(cli).exec(captor.capture());

@@ -150,7 +150,7 @@ export const GenericToolCall = memo(function GenericToolCall({
   /**
    * 失败态只保留可读错误文本：ZCode `ToolOutput` 在 `errorText` 存在时**不渲染**结构化输出，
    * `showInput` 也会被策略层强制关掉 —— 否则 `old_string`/`new_string` 整坨 JSON 会把报错顶下去。
-   * Reactor 的失败原因就藏在 output 里，所以这里直接把它当 errorText 交给结果段。
+   * Cute 的失败原因就藏在 output 里，所以这里直接把它当 errorText 交给结果段。
    */
   const errorText = isError ? output.join("\n").trim() : "";
   const hasParameters = !isError && Boolean(inputJson || arg.trim());
@@ -159,7 +159,7 @@ export const GenericToolCall = memo(function GenericToolCall({
    * 原始 JSON 兜底（对齐 ZCode `renderers/fallback.tsx`）：
    * 只有在**这张卡既没有结构化入参、也没有任何输出**时才铺原始数据。
    * ZCode 的判据是「有没有 inlinePreview」—— 那边 Glob/Grep/WebFetch 都有专用 renderer
-   * 不会走到 fallback；Reactor 这些工具共用本组件，若照抄字面判据会给每张搜索卡
+   * 不会走到 fallback；Cute 这些工具共用本组件，若照抄字面判据会给每张搜索卡
    * 都挂一份原始 JSON 转储，所以这里按「卡片是否为空」等价折算。
    */
   const showRawFallback = !hasParameters && !hasOutput && !isExecute;

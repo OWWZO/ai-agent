@@ -50,7 +50,7 @@ public class PlanModeCchahaParityTest {
 
         Assert.assertNotNull(PlanModeToolPolicy.denyReason(state, "code_interpreter", Map.of()));
         Assert.assertNotNull(PlanModeToolPolicy.denyReason(state, "workspace_write", Map.of("path", "src/Main.java")));
-        Assert.assertNull(PlanModeToolPolicy.denyReason(state, "workspace_write", Map.of("path", ".reactor/plan.md")));
+        Assert.assertNull(PlanModeToolPolicy.denyReason(state, "workspace_write", Map.of("path", ".cute/plan.md")));
         Assert.assertNull(PlanModeToolPolicy.denyReason(state, "workspace_read", Map.of("path", "src/Main.java")));
         Assert.assertNotNull(PlanModeToolPolicy.denyReason(state, "host_cli", Map.of()));
         Assert.assertNotNull(PlanModeToolPolicy.denyReason(state, "browser", Map.of()));

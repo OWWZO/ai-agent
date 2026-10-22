@@ -5,7 +5,7 @@ import { ToolJsonBlock, type ToolJsonValue } from "./ToolJsonBlock";
  *
  * 段标题固定 `Parameters`，容器与出参段同规格：淡底、无描边、上限 240px。
  * 解析不出 JSON 时退化为等宽纯文本 —— ZCode 那边 `input` 已经是对象，
- * 而 Reactor 拿到的是流式累积的 `argumentsText` 原始串，可能尚未成形。
+ * 而 Cute 拿到的是流式累积的 `argumentsText` 原始串，可能尚未成形。
  */
 export function ToolParametersBlock({
   value,

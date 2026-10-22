@@ -22,7 +22,7 @@ export function parseRemoteEndpoint(input: string): RemoteEndpoint {
   if (url.username || url.password || url.search) {
     throw new Error("Credentials and query parameters are not allowed in the server URL");
   }
-  // 021 Reactor 网关复用：允许前端 6 位数字配对码（短码）与 bsk 原生
+  // 021 Cute 网关复用：允许前端 6 位数字配对码（短码）与 bsk 原生
   // 32-256 base64url 凭证并存。短码仅用于人工填入的一次性配对，配对成功
   // 后扩展立即经 /authorize 轮换为自生成的 43 位强 token，安全性不受影响。
   const token = url.hash.slice(1);
@@ -85,7 +85,7 @@ export function remoteSocket(url: string, endpoint: RemoteEndpoint | null): WebS
   if (endpoint && remoteAuthorizationStatus(endpoint) === "expired")
     throw new Error("Browser authorization has expired; pair again");
   if (!endpoint) return new WebSocket(url);
-  // The credential travels in the query string, exactly like the Reactor
+  // The credential travels in the query string, exactly like the Cute
   // browser extension does. Keeping it out of the subprotocol header means
   // no subprotocol negotiation happens, so the handshake cannot be rejected
   // by a client that requires the server to echo a selected subprotocol.

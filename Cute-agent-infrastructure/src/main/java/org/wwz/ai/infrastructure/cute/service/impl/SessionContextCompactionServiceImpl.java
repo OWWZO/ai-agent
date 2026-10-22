@@ -765,7 +765,7 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
         }
         try {
             // 必须 ≤ ai_agent_working_memory_turn.request_id VARCHAR(64)。
-            // 旧拼接 wm-compact-{requestId}-{ts} 在 reactorsession 长 requestId 下可达 70+ 字符触发截断。
+            // 旧拼接 wm-compact-{requestId}-{ts} 在 cutesession 长 requestId 下可达 70+ 字符触发截断。
             // 与 trigger_request_id 的关联写在 compaction 审计表，不依赖嵌入原 requestId。
             String compactRequestId = COMPACT_REQUEST_PREFIX
                     + UUID.randomUUID().toString().replace("-", "");

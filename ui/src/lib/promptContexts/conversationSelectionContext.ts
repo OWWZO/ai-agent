@@ -15,9 +15,9 @@ import { createPromptContextId } from "./ids";
  * 只保留 `path` + `text`，不发送任何内部身份字段（与 ZCode 的发送合同一致）。
  */
 export const CONVERSATION_SELECTION_ADD_TO_CHAT_EVENT =
-  "reactor:conversation-selection-add-to-chat";
+  "cute:conversation-selection-add-to-chat";
 export const CONVERSATION_SELECTION_REMOVE_FROM_CHAT_EVENT =
-  "reactor:conversation-selection-remove-from-chat";
+  "cute:conversation-selection-remove-from-chat";
 
 const BLOCK_TITLE = "# userselect:";
 const BLOCK_FENCE = "userselect";

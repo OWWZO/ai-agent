@@ -21,7 +21,7 @@ export type PlanViewAction = {
   togglePlanView: () => void;
 };
 
-const PlanView: ReactorType.FC<{
+const PlanView: CuteType.FC<{
   plan?: CHAT.Plan;
   ref?: React.Ref<PlanViewAction>;
 }> = forwardRef((props, ref) => {

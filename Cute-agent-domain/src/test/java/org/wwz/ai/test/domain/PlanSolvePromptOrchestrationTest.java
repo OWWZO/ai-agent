@@ -50,7 +50,7 @@ public class PlanSolvePromptOrchestrationTest {
         String plan = AgentPrompt.composePlanSolveSystemPrompt();
         Assert.assertTrue(plan.contains(PlanSolvePrompt.ORCHESTRATION_MARKER));
         Assert.assertTrue(plan.contains(AgentPrompt.USER_FACING_REPLY_CONTRACT_MARKER));
-        Assert.assertFalse(plan.contains("你是 Reactor，专注深度调研与数据分析"));
+        Assert.assertFalse(plan.contains("你是 Cute，专注深度调研与数据分析"));
         Assert.assertTrue(plan.startsWith("# Plan-Execute 主代理职责")
                 || plan.contains("# Plan-Execute 主代理职责"));
     }
@@ -58,7 +58,7 @@ public class PlanSolvePromptOrchestrationTest {
     @Test
     public void subAgentSharesReactBaseWithCoordinatorFacing() {
         String sub = AgentPrompt.composeSubAgentSystemPrompt("专属指令");
-        Assert.assertTrue(sub.contains("你是 Reactor，专注深度调研与数据分析"));
+        Assert.assertTrue(sub.contains("你是 Cute，专注深度调研与数据分析"));
         Assert.assertTrue(sub.contains(AgentPrompt.COORDINATOR_FACING_REPLY_CONTRACT_MARKER));
         Assert.assertFalse(sub.contains(AgentPrompt.USER_FACING_REPLY_CONTRACT_MARKER));
         Assert.assertTrue(sub.contains("# Subagent directive"));

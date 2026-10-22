@@ -21,7 +21,7 @@ export type AskUserAnswerResult = {
   message?: string;
 };
 
-export const ASK_USER_RESUME_EVENT = "reactor-ask-user-resume";
+export const ASK_USER_RESUME_EVENT = "cute-ask-user-resume";
 
 export type AskUserResumeEventDetail = {
   resumeRequestId: string;

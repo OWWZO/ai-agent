@@ -19,7 +19,7 @@ import {
   Table2,
 } from "lucide-react";
 
-const TypeBar: ReactorType.FC<{
+const TypeBar: CuteType.FC<{
   currentType: string;
   chartCfg: DataChatSourceConfig;
   onChange?: (val: string) => void;
@@ -139,7 +139,7 @@ const TypeBar: ReactorType.FC<{
   );
 };
 
-const DataChat: ReactorType.FC<{
+const DataChat: CuteType.FC<{
   data?: DataChatSourceConfig;
 }> = memo((props) => {
   const { data } = props;

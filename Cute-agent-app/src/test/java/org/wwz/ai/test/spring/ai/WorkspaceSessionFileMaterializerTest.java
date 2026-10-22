@@ -31,7 +31,7 @@ public class WorkspaceSessionFileMaterializerTest {
 
     @Before
     public void setUp() throws Exception {
-        workspaceRoot = Files.createTempDirectory("reactor-workspace-materialize");
+        workspaceRoot = Files.createTempDirectory("cute-workspace-materialize");
         WorkspaceRuntimeOptions options = WorkspaceRuntimeOptions.builder()
                 .enabled(true)
                 .rootTemplate(workspaceRoot.toString())

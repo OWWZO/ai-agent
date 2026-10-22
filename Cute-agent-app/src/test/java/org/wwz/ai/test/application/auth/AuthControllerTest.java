@@ -56,7 +56,7 @@ public class AuthControllerTest {
         Assert.assertEquals(new AuthRegisterCommand(" Alice ", "secret", "Alice"), command.getValue());
 
         String cookie = response.getHeaders().getFirst(HttpHeaders.SET_COOKIE);
-        Assert.assertTrue(cookie.contains("reactor_refresh_token=raw-refresh-token"));
+        Assert.assertTrue(cookie.contains("cute_refresh_token=raw-refresh-token"));
         Assert.assertTrue(cookie.contains("Max-Age=2592000"));
         Assert.assertTrue(cookie.contains("Path=/"));
         Assert.assertTrue(cookie.contains("HttpOnly"));
@@ -99,7 +99,7 @@ public class AuthControllerTest {
         Assert.assertEquals(HttpStatus.OK, response.getStatusCode());
         Assert.assertEquals("next-access-token", response.getBody().getData().getAccessToken());
         Assert.assertTrue(response.getHeaders().getFirst(HttpHeaders.SET_COOKIE)
-                .contains("reactor_refresh_token=next-refresh-token"));
+                .contains("cute_refresh_token=next-refresh-token"));
     }
 
     @Test
@@ -158,7 +158,7 @@ public class AuthControllerTest {
     }
 
     private void assertClearedCookie(String cookie) {
-        Assert.assertTrue(cookie.contains("reactor_refresh_token=;"));
+        Assert.assertTrue(cookie.contains("cute_refresh_token=;"));
         Assert.assertTrue(cookie.contains("Max-Age=0"));
         Assert.assertTrue(cookie.contains("Path=/"));
         Assert.assertTrue(cookie.contains("HttpOnly"));

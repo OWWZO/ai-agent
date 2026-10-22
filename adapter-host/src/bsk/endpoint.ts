@@ -7,7 +7,7 @@
  *
  * Variable roles (spec 021, P0-3):
  *   - `OPENCLI_BSK_RELAY_URL` — the bsk WebSocket gateway. Preferred.
- *   - `OPENCLI_RELAY_URL` — the *legacy* Reactor relay, which is an **HTTP**
+ *   - `OPENCLI_RELAY_URL` — the *legacy* Cute relay, which is an **HTTP**
  *     base URL (`http://host/internal/browser/rpc`). It is only reused as a
  *     fallback when it happens to point at a WebSocket gateway, so an HTTP
  *     value is never mistaken for the bsk endpoint.
@@ -62,7 +62,7 @@ export function resolveEndpoint(env: NodeJS.ProcessEnv = process.env): BskEndpoi
     );
   }
 
-  // The legacy Reactor relay uses the same variable as an HTTP base URL, so a
+  // The legacy Cute relay uses the same variable as an HTTP base URL, so a
   // non-WebSocket value must not be accepted as the bsk endpoint.
   if (!parseWebSocketUrl(fallback)) {
     throw new BskEndpointError(

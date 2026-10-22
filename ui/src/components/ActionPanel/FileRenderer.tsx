@@ -47,7 +47,7 @@ const resolveUnavailableReason = (error: Error) => {
  * 这是「不知道文件是什么、只能靠扩展名判断」时的兜底入口 —— 类型判定统一走
  * `resolveFilePreviewKind()`，本组件不再自己维护扩展名表。
  */
-const FileRenderer: ReactorType.FC<FileRendererProps> = React.memo((props) => {
+const FileRenderer: CuteType.FC<FileRendererProps> = React.memo((props) => {
   const {
     fileUrl,
     fileName,

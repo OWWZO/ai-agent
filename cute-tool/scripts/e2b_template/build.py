@@ -1,4 +1,4 @@
-"""Build the Reactor E2B template (requires E2B_API_KEY).
+"""Build the Cute E2B template (requires E2B_API_KEY).
 
 Usage:
   cd cute-tool
@@ -8,7 +8,7 @@ Usage:
 Then set in cute-tool/.env:
   CODE_SANDBOX_BACKEND=e2b
   E2B_API_KEY=e2b_***
-  E2B_TEMPLATE=reactor-code-playwright-desktop
+  E2B_TEMPLATE=cute-code-playwright-desktop
 """
 
 from __future__ import annotations

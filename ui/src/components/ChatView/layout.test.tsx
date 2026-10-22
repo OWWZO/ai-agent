@@ -407,11 +407,11 @@ describe("ChatView layout", () => {
       );
 
       expect(html).toContain('data-workspace-open="false"');
-      expect(html).toContain("reactor-single-chat-shell");
+      expect(html).toContain("cute-single-chat-shell");
       // 单栏不套 Panel（库会给外层硬塞 flexBasis、内层塞 maxWidth:100%，
       // 把居中的 max-w-[980px] 压坏），所以断言落在会话列自身上。
       expect(html).toMatch(/class="[^"]*max-w-\[980px\][^"]*" id="chat-view"/);
-      expect(html).not.toContain("reactor-workspace-panel");
+      expect(html).not.toContain("cute-workspace-panel");
     } finally {
       workspaceLayoutState.rightCollapsed = false;
       workspaceLayoutState.showAction = false;

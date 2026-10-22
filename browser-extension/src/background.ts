@@ -34,8 +34,8 @@ let workerReady: Promise<void> = Promise.resolve();
 let workerRecovered = true;
 let pendingBindTabId: number | undefined;
 
-const PAIRING_TOKEN_KEY = 'reactor_pairing_token';
-const RELAY_URL_KEY = 'reactor_relay_url';
+const PAIRING_TOKEN_KEY = 'cute_pairing_token';
+const RELAY_URL_KEY = 'cute_relay_url';
 
 async function readPairing(): Promise<{ token: string; relayUrl: string } | null> {
   const local = chrome.storage?.local;
@@ -194,7 +194,7 @@ async function connectAttempt(): Promise<void> {
 
   thisWs.onopen = () => {
     if (ws !== thisWs) return;
-    console.log('[opencli] Connected to Reactor relay');
+    console.log('[opencli] Connected to Cute relay');
     reconnectAttempts = 0; // Reset on successful connection
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
@@ -1405,7 +1405,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       sendResponse({
         ok: connected && connectedSocket !== null
           && (connectedSocket.readyState === WebSocket.OPEN || connectedSocket.readyState === WebSocket.CONNECTING),
-        error: connected ? undefined : '配对成功但无法连接 Reactor WSS，请确认 Java 后端地址和端口可访问',
+        error: connected ? undefined : '配对成功但无法连接 Cute WSS，请确认 Java 后端地址和端口可访问',
       });
     })();
     return true;

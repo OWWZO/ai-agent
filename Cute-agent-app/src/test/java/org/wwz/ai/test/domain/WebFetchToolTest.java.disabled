@@ -11,8 +11,8 @@ import org.wwz.ai.domain.agent.adapter.port.RemoteHttpResponse;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.common.WebFetchTool;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
+import org.wwz.ai.domain.agent.cute.config.CuteConfig;
+import org.wwz.ai.test.domain.support.CuteRuntimeTestSupport;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -70,7 +70,7 @@ public class WebFetchToolTest {
             tool.setAgentContext(AgentContext.builder()
                     .requestId("req-wf-1")
                     .sessionId("session-wf-1")
-                    .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(new ReactorConfig(), detailedPort))
+                    .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(new CuteConfig(), detailedPort))
                     .build());
 
             ToolResultPayload missingPrompt = (ToolResultPayload) tool.execute(Map.of("url", "https://example.com/a"));
@@ -109,7 +109,7 @@ public class WebFetchToolTest {
         AgentContext context = AgentContext.builder()
                 .requestId("req-wf-redirect")
                 .sessionId("session-wf-redirect")
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(new ReactorConfig(), httpPort))
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(new CuteConfig(), httpPort))
                 .build();
         WebFetchTool tool = new WebFetchTool();
         tool.setAgentContext(context);
@@ -160,7 +160,7 @@ public class WebFetchToolTest {
         AgentContext context = AgentContext.builder()
                 .requestId("req-wf-www")
                 .sessionId("session-wf-www")
-                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(new ReactorConfig(), httpPort))
+                .runtimeDependencies(CuteRuntimeTestSupport.runtimeDependencies(new CuteConfig(), httpPort))
                 .build();
         WebFetchTool tool = new WebFetchTool();
         tool.setAgentContext(context);

@@ -27,7 +27,7 @@ def session_roots(request_id: str, workspace_root: str | None = None) -> list[Pa
             roots.append(Path(workspace_root).expanduser().resolve())
         except OSError:
             pass
-    # Reactor workspace default: skilloutput/{sessionId}
+    # Cute workspace default: skilloutput/{sessionId}
     cwd = Path.cwd()
     file_save_path = Path(os.getenv("FILE_SAVE_PATH", "file_db_dir")).expanduser()
     if not file_save_path.is_absolute():

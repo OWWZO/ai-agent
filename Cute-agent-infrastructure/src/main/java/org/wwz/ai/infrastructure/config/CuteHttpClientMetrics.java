@@ -14,7 +14,7 @@ public final class CuteHttpClientMetrics {
     public CuteHttpClientMetrics(MeterRegistry registry,
                                      Dispatcher dispatcher,
                                      ConnectionPool connectionPool) {
-        Tags tags = Tags.of("client", "reactor-http");
+        Tags tags = Tags.of("client", "cute-http");
         Gauge.builder("cute.http.calls.running", dispatcher,
                         value -> value.runningCallsCount())
                 .tags(tags)

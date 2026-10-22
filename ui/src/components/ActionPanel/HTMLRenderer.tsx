@@ -33,13 +33,13 @@ interface HTMLRendererProps {
  * 不复用那个常量：`ActionView` 在更上层，互相 import 会成环。
  */
 const HEADER_ICON_BTN_CLASS =
-  "reactor-action-icon flex h-7 w-7 items-center justify-center rounded-lg text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground";
+  "cute-action-icon flex h-7 w-7 items-center justify-center rounded-lg text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground";
 
 /** 没有头部插槽时（对话区文件卡）浮在预览右上角的胶囊按钮样式 */
 const PILL_ICON_BTN_CLASS =
   "h-7 w-7 shrink-0 rounded-full text-[var(--chat-text-soft)] hover:bg-[var(--chat-surface-muted)] hover:text-[var(--chat-text)]";
 
-const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
+const HTMLRenderer: CuteType.FC<HTMLRendererProps> = memo((props) => {
   const {
     htmlUrl,
     className,

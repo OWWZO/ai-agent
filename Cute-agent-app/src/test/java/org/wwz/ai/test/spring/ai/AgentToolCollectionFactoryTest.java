@@ -301,7 +301,7 @@ public class AgentToolCollectionFactoryTest {
         );
 
         AgentContext ctx = buildAgentContext();
-        ctx.setWorkspaceRoot(System.getProperty("java.io.tmpdir") + "/reactor-agent-workspace-test/session-001");
+        ctx.setWorkspaceRoot(System.getProperty("java.io.tmpdir") + "/cute-agent-workspace-test/session-001");
         ToolCollection toolCollection = factory.buildForReact(ctx, buildAgentExecutionCommand("html"));
 
          Assert.assertTrue(toolCollection.getToolMap().containsKey("skill_view"));
@@ -1061,7 +1061,7 @@ public class AgentToolCollectionFactoryTest {
         return new WorkspaceService(
                 WorkspaceRuntimeOptions.builder()
                         .enabled(true)
-                        .rootTemplate(System.getProperty("java.io.tmpdir") + "/reactor-agent-workspace-test/{sessionId}")
+                        .rootTemplate(System.getProperty("java.io.tmpdir") + "/cute-agent-workspace-test/{sessionId}")
                         .build(),
                 new WorkspacePathGuard(),
                 Mockito.mock(org.wwz.ai.domain.agent.runtime.tool.skill.SkillRegistry.class),
@@ -1077,7 +1077,7 @@ public class AgentToolCollectionFactoryTest {
     private WorkspaceRuntimeOptions enabledWorkspaceOptions() {
         return WorkspaceRuntimeOptions.builder()
                 .enabled(true)
-                .rootTemplate(System.getProperty("java.io.tmpdir") + "/reactor-agent-workspace-test/{sessionId}")
+                .rootTemplate(System.getProperty("java.io.tmpdir") + "/cute-agent-workspace-test/{sessionId}")
                 .build();
     }
 

@@ -1,6 +1,6 @@
-# Reactor UI
+# Cute UI
 
-Reactor UI 是一个基于 React、TypeScript 和 Vite 的现代化项目。
+Cute UI 是一个基于 React、TypeScript 和 Vite 的现代化项目。
 
 ## 功能特性
 

@@ -30,7 +30,7 @@ public class WorkspaceFileAccessToolTest {
 
     @Before
     public void setUp() throws Exception {
-        workspaceRoot = Files.createTempDirectory("reactor-workspace-tool-test");
+        workspaceRoot = Files.createTempDirectory("cute-workspace-tool-test");
         options = WorkspaceRuntimeOptions.builder()
                 .enabled(true)
                 .rootTemplate(workspaceRoot.toString())

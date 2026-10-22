@@ -142,7 +142,7 @@ public class ShellAndWebSearchToolTest {
         CuteConfig config = new CuteConfig();
         ReflectionTestUtils.setField(config, "codeInterpreterUrl", "http://cute-tool");
         String workspaceRoot = java.nio.file.Path.of(
-                        System.getProperty("java.io.tmpdir"), "reactor-ws-align", "session-bash-align")
+                        System.getProperty("java.io.tmpdir"), "cute-ws-align", "session-bash-align")
                 .toAbsolutePath()
                 .normalize()
                 .toString();

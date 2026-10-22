@@ -139,7 +139,7 @@ type ModelAdminProps = {
   embedded?: boolean;
 };
 
-const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
+const ModelAdmin: CuteType.FC<ModelAdminProps> = ({ embedded }) => {
   const auth = useAuth();
   const readOnly = !isAdminUser(auth.user);
   const [models, setModels] = useState<LlmModelRecord[]>([]);

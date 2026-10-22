@@ -29,8 +29,8 @@ import { createPromptContextId } from "./ids";
  * ```
  * ```
  */
-export const WEB_ELEMENT_ADD_TO_CHAT_EVENT = "reactor:web-element-add-to-chat";
-export const WEB_ELEMENT_REMOVE_FROM_CHAT_EVENT = "reactor:web-element-remove-from-chat";
+export const WEB_ELEMENT_ADD_TO_CHAT_EVENT = "cute:web-element-add-to-chat";
+export const WEB_ELEMENT_REMOVE_FROM_CHAT_EVENT = "cute:web-element-remove-from-chat";
 
 const BLOCK_TITLE = "# Web page elements:";
 const MAX_MARKDOWN_FIELD_LENGTH = 8_000;

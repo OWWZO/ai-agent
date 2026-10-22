@@ -12,7 +12,7 @@ import { useAuth } from '@/stores/auth';
 const BOOT_SKELETON_ID = 'boot-skeleton';
 
 // App 组件：应用的根组件，设置全局配置和路由
-const App: ReactorType.FC = React.memo(() => {
+const App: CuteType.FC = React.memo(() => {
   const auth = useAuth();
 
   // 骨架屏在 index.html 里、#root 之外，这里在 React 首次提交后同步摘掉：

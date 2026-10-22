@@ -32,7 +32,7 @@ public class WorkspaceReadStateCrossTurnTest {
 
     @Before
     public void setUp() throws Exception {
-        workspaceRoot = Files.createTempDirectory("reactor-ws-cross-turn");
+        workspaceRoot = Files.createTempDirectory("cute-ws-cross-turn");
         targetFile = workspaceRoot.resolve("demo.txt");
         Files.writeString(targetFile, "hello cross turn\n", StandardCharsets.UTF_8);
 
@@ -128,7 +128,7 @@ public class WorkspaceReadStateCrossTurnTest {
         read1.setAgentContext(turn1);
         read1.execute(Map.of("path", "demo.txt"));
         store.persist(turn1);
-        Path storeFile = workspaceRoot.resolve(".reactor/read-state.json");
+        Path storeFile = workspaceRoot.resolve(".cute/read-state.json");
         Assert.assertTrue(Files.isRegularFile(storeFile));
 
         turn1.clearWorkspaceReadState();

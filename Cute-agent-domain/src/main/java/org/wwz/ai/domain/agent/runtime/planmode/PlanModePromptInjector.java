@@ -27,7 +27,7 @@ public final class PlanModePromptInjector {
             Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received. (%s)
 
             ## Plan File
-            - Write/edit ONLY `.reactor/plan.md` (workspace_write path=.reactor/plan.md). This is the only file you may modify.
+            - Write/edit ONLY `.cute/plan.md` (workspace_write path=.cute/plan.md). This is the only file you may modify.
             - Build the plan incrementally in that file. Prefer editing the existing plan over rewriting from scratch when it already exists.
 
             ## Hard constraints
@@ -41,7 +41,7 @@ public final class PlanModePromptInjector {
              1. Understand the request (read-only exploration; use an Agent subtask if helpful)
             2. Design approach and note critical files
             3. AskUserQuestion only for real requirement ambiguities
-            4. Write the final plan to `.reactor/plan.md`
+            4. Write the final plan to `.cute/plan.md`
             5. ExitPlanMode for approval — then implement only after approval
 
             Pure Q&A with no implementation: you may answer in natural language without tools, still without editing files.
@@ -49,7 +49,7 @@ public final class PlanModePromptInjector {
 
     public static final String PLAN_MODE_SPARSE = """
             <system-reminder>
-            (%s) Plan mode still active. Read-only except plan file (.reactor/plan.md). End turns with AskUserQuestion (clarifications) or ExitPlanMode (plan approval). Never self-approve. Never edit business files.
+            (%s) Plan mode still active. Read-only except plan file (.cute/plan.md). End turns with AskUserQuestion (clarifications) or ExitPlanMode (plan approval). Never self-approve. Never edit business files.
             </system-reminder>
             """.formatted(PLAN_MODE_SPARSE_MARKER);
 

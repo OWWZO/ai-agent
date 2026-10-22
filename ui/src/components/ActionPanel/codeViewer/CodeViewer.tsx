@@ -80,7 +80,7 @@ function setOptionalRefValue<T>(ref: Ref<T> | undefined, value: T | null): void 
  * 只传 `selectedLines` 会高亮但**不会滚动**。所以这里必须用 `requestAnimationFrame`
  * 递归重试最多 45 帧，每帧穿透 shadow root 找 `[data-line="N"]`。
  */
-const CodeViewerComponent: ReactorType.FC<CodeViewerProps> = (props) => {
+const CodeViewerComponent: CuteType.FC<CodeViewerProps> = (props) => {
   const {
     code,
     language,

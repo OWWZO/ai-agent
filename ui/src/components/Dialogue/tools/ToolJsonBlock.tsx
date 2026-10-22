@@ -42,7 +42,7 @@ export function parseToolJson(value: unknown): ToolJsonValue | undefined {
   return parseJsonValue(value);
 }
 
-export const ToolJsonBlock: ReactorType.FC<{
+export const ToolJsonBlock: CuteType.FC<{
   data: ToolJsonValue;
   className?: string;
 }> = ({ data, className }) => (

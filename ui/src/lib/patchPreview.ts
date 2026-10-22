@@ -6,7 +6,7 @@
  * - 没有 hunk 的 patch（rename-only / mode-only）退化为保留元信息行，避免展开后一片空白；
  * - 超大 patch 中间插一条截断 marker，由渲染层翻译成「已省略 N 行」。
  *
- * ⚠️ Reactor 的 `buildEditDiffCode()` 产出的是**简化 patch**：文件头 + 裸 `@@` + 正文，
+ * ⚠️ Cute 的 `buildEditDiffCode()` 产出的是**简化 patch**：文件头 + 裸 `@@` + 正文，
  * 没有 `@@ -1,3 +1,3 @@` 的行号区间。所以这里不能依赖行号做校验，只能按前缀分类。
  */
 

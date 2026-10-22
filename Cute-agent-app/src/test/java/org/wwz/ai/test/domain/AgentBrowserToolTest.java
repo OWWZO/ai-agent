@@ -290,7 +290,7 @@ public class AgentBrowserToolTest {
             List<Map<String, Object>> artifacts = (List<Map<String, Object>>) data.get("artifacts");
             Assert.assertEquals(1, artifacts.size());
             Assert.assertTrue(String.valueOf(artifacts.get(0).get("relativePath"))
-                    .matches("\\.reactor-artifacts/agent_browser/[A-Za-z0-9_-]+/note.jpg"));
+                    .matches("\\.cute-artifacts/agent_browser/[A-Za-z0-9_-]+/note.jpg"));
             Assert.assertFalse(JSON.toJSONString(payload).contains(workspace.toString()));
         } finally {
             deleteRecursively(workspace);

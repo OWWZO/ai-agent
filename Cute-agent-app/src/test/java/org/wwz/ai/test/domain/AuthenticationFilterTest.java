@@ -22,7 +22,7 @@ public class AuthenticationFilterTest {
         AuthenticationFilter filter = new AuthenticationFilter(authService, new ObjectMapper());
         MockHttpServletRequest request = request("/api/agent/conversation/sessions");
         request.setParameter("access_token", "query-token");
-        request.addHeader("Cookie", "reactor_refresh_token=cookie-token");
+        request.addHeader("Cookie", "cute_refresh_token=cookie-token");
         MockHttpServletResponse response = new MockHttpServletResponse();
         FilterChain chain = (ignoredRequest, ignoredResponse) -> Assert.fail("unauthorized request reached controller");
 

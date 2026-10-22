@@ -32,7 +32,7 @@ public class JwtTokenService {
 
     @Autowired
     public JwtTokenService(JwtSecretProvider secretProvider,
-                           @Value("${auth.jwt.issuer:reactor}") String issuer,
+                           @Value("${auth.jwt.issuer:cute}") String issuer,
                            @Value("${auth.jwt.access-token-ttl-seconds:900}") long accessTokenTtlSeconds,
                            Clock clock) {
         this(secretProvider.resolve(), issuer, Duration.ofSeconds(Math.max(1, accessTokenTtlSeconds)), clock);

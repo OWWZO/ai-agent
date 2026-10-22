@@ -127,7 +127,7 @@ interface DocxCanvasProps {
  * 纸张按原始像素宽度渲染（A4 ≈ 794px），窄面板下只缩小不放大，
  * 并把缩放后的宽高同步回 frame，避免 `transform` 之后仍保留未缩放的横向滚动区。
  */
-const DocxCanvas: ReactorType.FC<DocxCanvasProps> = (props) => {
+const DocxCanvas: CuteType.FC<DocxCanvasProps> = (props) => {
   const { buffer, className, previewKind = "docx", onRenderError } = props;
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -306,7 +306,7 @@ const DocxCanvas: ReactorType.FC<DocxCanvasProps> = (props) => {
   );
 };
 
-const WordRenderer: ReactorType.FC<WordRendererProps> = React.memo((props) => {
+const WordRenderer: CuteType.FC<WordRendererProps> = React.memo((props) => {
   const {
     fileUrl,
     fileName,

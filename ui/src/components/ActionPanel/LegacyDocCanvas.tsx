@@ -33,7 +33,7 @@ type EditorCanvasProps = {
  * 外层用 transform 缩放页面，但 react-docx 的虚拟列表不识别 transform，
  * 必须同步传入相同 zoomScale，否则滚动坐标按未缩放页高计算，会出现闪白或末页不挂载。
  */
-const EditorCanvas: ReactorType.FC<EditorCanvasProps> = (props) => {
+const EditorCanvas: CuteType.FC<EditorCanvasProps> = (props) => {
   const { module: mod, model, fileName, zoomScale } = props;
   const editor = mod.useDocxEditor({
     starterModel: model,
@@ -59,7 +59,7 @@ const EditorCanvas: ReactorType.FC<EditorCanvasProps> = (props) => {
  * 不把 `.doc` 转成 `.docx` 字节再交给 docx-preview：转换会丢分页，多页文档只剩第 1 页
  * 且被 `overflow: hidden` 裁掉（详见 `@/lib/lazy/legacyDocImport`）。
  */
-const LegacyDocCanvas: ReactorType.FC<LegacyDocCanvasProps> = (props) => {
+const LegacyDocCanvas: CuteType.FC<LegacyDocCanvasProps> = (props) => {
   const { buffer, fileName, className, onRenderError } = props;
 
   const viewportRef = useRef<HTMLDivElement | null>(null);

@@ -84,7 +84,7 @@ import { isTextCopyableFileLike } from "@/utils/taskArtifacts";
 // ZCode PreviewPane.tsx:1596-1605 —— 头部操作一律 ghost 图标按钮：rounded-lg、
 // 三级前景、hover 才升到主前景；不用实心底色，保持头部安静。
 const iconBtnClass =
-  "reactor-action-icon flex h-7 w-7 items-center justify-center rounded-lg text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground";
+  "cute-action-icon flex h-7 w-7 items-center justify-center rounded-lg text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground";
 
 /**
  * 新 tab 的打开时刻。
@@ -779,7 +779,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
   return (
     <motion.div
       className={cn(
-        "reactor-workspace-content flex h-full w-full flex-col overflow-hidden bg-background",
+        "cute-workspace-content flex h-full w-full flex-col overflow-hidden bg-background",
         className
       )}
       initial={{ opacity: 0 }}
@@ -793,7 +793,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
           ZCode `AnimatedSidePanePanel.tsx:946` 的 TabsList 是
           `border-b border-border/50 bg-transparent` —— **半透明分隔线 + 无底色**。
           全量 `border-border` 配 `bg-surface/30` 会把这一行画成一条明显的横杠。 */}
-      <div className="reactor-workspace-toolbar flex h-10 shrink-0 items-center px-3">
+      <div className="cute-workspace-toolbar flex h-10 shrink-0 items-center px-3">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {/* 最左固定位：标签页列表浮层（对齐 ZCode `AnimatedSidePanePanel.tsx:957-960`
               的 `p-2` 固定槽）。放在滚动容器**之外**，溢出时也不会跟着滚走。 */}
@@ -815,7 +815,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
               className={cn(
                 // 滚动条隐藏：边缘渐隐遮罩（mask-*，见 global.css）已经承担「还能滚」的
                 // 提示，再挂一条细滚动条就是多一条线（ZCode 用 `!scrollbar-hide`）。
-                "reactor-workspace-tabs flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                "cute-workspace-tabs flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
                 tabsMask.left && tabsMask.right
                   ? "mask-both"
                   : tabsMask.left
@@ -838,7 +838,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                   // 对齐 ZCode `SidePaneTabTrigger.tsx:147-162`：
                   // - `border border-transparent` 预留边框位，active 只换底色 → 不跳变
                   // - 基准宽 9.75rem（156px），**不增长**、可收缩 → tab 少时等宽整齐，
-                  //   多时收缩后滚动；ZCode 的 `min-w-15`（60px）在 Reactor 的宽面板下
+                  //   多时收缩后滚动；ZCode 的 `min-w-15`（60px）在 Cute 的宽面板下
                   //   会把「徽章 + 标题 + 关闭按钮」挤到看不见标题，故下限抬到 110px。
                   // - 关闭按钮 `absolute right-1`，**不占 flex 流** → 标题宽度恒定
                   // - 中键关闭（ZCode 同款 auxclick 处理，避免浏览器自动滚动）
@@ -855,7 +855,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                       // `pr-5` 给右侧关闭按钮**固定**留位（X 是 absolute，size-4 @ right-1）：
                       // 标题用 `text-overflow: ellipsis` 截断，留位固定，省略号不会压到 X 上，
                       // 也不会因为 hover 时 X 浮出而重新截断。
-                      "reactor-workspace-tab group relative flex h-7 max-w-[156px] min-w-[110px] flex-[0_1_9.75rem] items-center overflow-hidden rounded-lg border border-transparent pl-2 pr-5 transition-colors",
+                      "cute-workspace-tab group relative flex h-7 max-w-[156px] min-w-[110px] flex-[0_1_9.75rem] items-center overflow-hidden rounded-lg border border-transparent pl-2 pr-5 transition-colors",
                       active
                         ? "bg-selected text-foreground"
                         : "text-foreground-subtle hover:bg-surface-hover hover:text-foreground"
@@ -868,7 +868,7 @@ const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) 
                       }}
                     >
                       <WorkspaceTabIcon spec={display.icon} />
-                      <span className="reactor-workspace-tab-title min-w-0 text-ui-sm font-medium">
+                      <span className="cute-workspace-tab-title min-w-0 text-ui-sm font-medium">
                         {display.title}
                       </span>
                     </TabTitleTooltip>

@@ -38,7 +38,7 @@
   - Admin create/update/online/offline/query orchestration
 - Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/po/FeaturedConversationPO.java`
   - Persistence object
-- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor/IFeaturedConversationDao.java`
+- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/cute/IFeaturedConversationDao.java`
   - MyBatis DAO
 - Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/adapter/repository/FeaturedConversationRepository.java`
   - Repository adapter
@@ -795,7 +795,7 @@ git commit -m "feat: add admin featured conversation flow"
 - Create: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/FeaturedConversationRepositoryTest.java`
 - Modify: `Cute-agent-app/src/main/resources/db/schema.sql`
 - Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/po/FeaturedConversationPO.java`
-- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor/IFeaturedConversationDao.java`
+- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/cute/IFeaturedConversationDao.java`
 - Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/adapter/repository/FeaturedConversationRepository.java`
 - Create: `Cute-agent-app/src/main/resources/mybatis/mapper/featured_conversation_mapper.xml`
 
@@ -899,7 +899,7 @@ public class FeaturedConversationPO {
     private Integer deleted;
 }
 
-// Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor/IFeaturedConversationDao.java
+// Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/cute/IFeaturedConversationDao.java
 @Mapper
 public interface IFeaturedConversationDao {
     int upsert(FeaturedConversationPO po);
@@ -950,7 +950,7 @@ public class FeaturedConversationRepository implements IFeaturedConversationRepo
 
 ```xml
 <!-- Cute-agent-app/src/main/resources/mybatis/mapper/featured_conversation_mapper.xml -->
-<mapper namespace="org.wwz.ai.infrastructure.dao.reactor.IFeaturedConversationDao">
+<mapper namespace="org.wwz.ai.infrastructure.dao.cute.IFeaturedConversationDao">
 
     <resultMap id="featuredConversationResultMap" type="org.wwz.ai.infrastructure.dao.po.FeaturedConversationPO">
         <id property="id" column="id"/>
@@ -1011,7 +1011,7 @@ Expected:
 git add Cute-agent-app/src/main/resources/db/schema.sql \
         Cute-agent-app/src/test/java/org/wwz/ai/test/domain/FeaturedConversationRepositoryTest.java \
         Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/po/FeaturedConversationPO.java \
-        Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor/IFeaturedConversationDao.java \
+        Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/cute/IFeaturedConversationDao.java \
         Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/adapter/repository/FeaturedConversationRepository.java \
         Cute-agent-app/src/main/resources/mybatis/mapper/featured_conversation_mapper.xml
 git commit -m "feat: persist featured conversation metadata"
@@ -1499,7 +1499,7 @@ describe("FeaturedConversationDetailView", () => {
 
     expect(html).toContain("发布时间");
     expect(html).toContain("内容最近更新");
-    expect(html).not.toContain("希望 Reactor 为你做哪些任务呢");
+    expect(html).not.toContain("希望 Cute 为你做哪些任务呢");
   });
 
   it("renders a readable fallback when live content is unavailable", () => {

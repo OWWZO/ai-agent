@@ -101,7 +101,7 @@ public class WorkspacePathsTest {
 
     @Test
     public void shouldPreferConfiguredSandboxRootOverSkillOutputDefault() {
-        Path configured = Path.of(System.getProperty("java.io.tmpdir"), "reactor-ws-align", "session-x")
+        Path configured = Path.of(System.getProperty("java.io.tmpdir"), "cute-ws-align", "session-x")
                 .toAbsolutePath()
                 .normalize();
         Assert.assertEquals(

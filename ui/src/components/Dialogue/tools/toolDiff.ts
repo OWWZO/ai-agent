@@ -170,7 +170,7 @@ export type EditFileSummary = {
 /**
  * 把 edit / multi_edit / write 的入参拆成「一个文件一个摘要」。
  *
- * ZCode 的多文件 edit（`rawFileSummaries`）在 Reactor 侧没有对应后端字段，
+ * ZCode 的多文件 edit（`rawFileSummaries`）在 Cute 侧没有对应后端字段，
  * 兼容三种常见的入参形态：
  * 1. `{ files: [{ path, old_string, new_string }, ...] }`
  * 2. `{ edits: [{ file_path, old_string, new_string }, ...] }`

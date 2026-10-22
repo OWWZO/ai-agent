@@ -26,7 +26,7 @@ public class WorkspaceArchiveApplicationServiceTest {
 
     @Test
     public void shouldZipNestedWorkspaceFilesWithRelativePaths() throws Exception {
-        Path workspaceRoot = Files.createTempDirectory("reactor-workspace-archive");
+        Path workspaceRoot = Files.createTempDirectory("cute-workspace-archive");
         Files.createDirectories(workspaceRoot.resolve("site/css"));
         Files.writeString(workspaceRoot.resolve("site/index.html"), "<html></html>", StandardCharsets.UTF_8);
         Files.writeString(workspaceRoot.resolve("site/css/style.css"), "body{}", StandardCharsets.UTF_8);

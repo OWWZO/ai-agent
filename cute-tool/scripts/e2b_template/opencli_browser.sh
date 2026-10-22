@@ -5,7 +5,7 @@ set -euo pipefail
 export DISPLAY=:0
 
 if [ "$(id -u)" != "$(id -u user)" ]; then
-  exec sudo -u user -H env DISPLAY="$DISPLAY" /usr/local/bin/reactor-opencli-browser "$@"
+  exec sudo -u user -H env DISPLAY="$DISPLAY" /usr/local/bin/cute-opencli-browser "$@"
 fi
 
 profile=/home/user/.opencli/chromium-visible

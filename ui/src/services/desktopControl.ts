@@ -20,8 +20,8 @@ export type DesktopControlCompleteResult = {
   message?: string;
 };
 
-export const DESKTOP_CONTROL_RESUME_EVENT = "reactor-desktop-control-resume";
-export const DESKTOP_CONTROL_PREVIEW_EVENT = "reactor-desktop-control-preview";
+export const DESKTOP_CONTROL_RESUME_EVENT = "cute-desktop-control-resume";
+export const DESKTOP_CONTROL_PREVIEW_EVENT = "cute-desktop-control-preview";
 
 export type DesktopControlResumeEventDetail = {
   resumeRequestId: string;

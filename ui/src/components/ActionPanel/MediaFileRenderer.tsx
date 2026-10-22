@@ -28,7 +28,7 @@ interface MediaFileRendererProps {
  *
  * 音视频本身由浏览器直接播放，不需要预取二进制，因此这里不做 fetch。
  */
-const MediaFileRenderer: ReactorType.FC<MediaFileRendererProps> = React.memo((props) => {
+const MediaFileRenderer: CuteType.FC<MediaFileRendererProps> = React.memo((props) => {
   const { kind, fileUrl, fileName, missingReason, className } = props;
 
   const resolvedUrl = useMemo(

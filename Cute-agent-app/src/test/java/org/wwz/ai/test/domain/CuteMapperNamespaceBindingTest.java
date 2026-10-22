@@ -42,7 +42,7 @@ public class CuteMapperNamespaceBindingTest {
     private DataSource testDataSource() {
         DriverManagerDataSource dataSource = new DriverManagerDataSource();
         dataSource.setDriverClassName("org.h2.Driver");
-        dataSource.setUrl("jdbc:h2:mem:reactor_mapper_binding;MODE=MySQL;DB_CLOSE_DELAY=-1");
+        dataSource.setUrl("jdbc:h2:mem:cute_mapper_binding;MODE=MySQL;DB_CLOSE_DELAY=-1");
         dataSource.setUsername("sa");
         dataSource.setPassword("");
         return dataSource;

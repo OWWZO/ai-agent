@@ -105,7 +105,7 @@ class ImageRetrieverGuardTest(unittest.TestCase):
         retriever.vector_store = unittest.mock.Mock()
         retriever.embedding_model.encode_text_batch.return_value = [[0.1, 0.2], [0.3, 0.4]]
         retriever.vector_store.search_image_vector.side_effect = ValueError(
-            "Query vector size 2560 does not match embedding size 1024 for collection t_reactor_mrag_image_vectors"
+            "Query vector size 2560 does not match embedding size 1024 for collection t_cute_mrag_image_vectors"
         )
 
         result = retriever.text2image_search("kb-test", ["问题一", "问题二"])
@@ -118,7 +118,7 @@ class ImageRetrieverGuardTest(unittest.TestCase):
         retriever.vector_store = unittest.mock.Mock()
         retriever.embedding_model.encode_text_batch.return_value = [[0.1, 0.2]]
         retriever.vector_store.search_page_vector.side_effect = ValueError(
-            "Query vector size 2560 does not match embedding size 1024 for collection t_reactor_mrag_page_vectors"
+            "Query vector size 2560 does not match embedding size 1024 for collection t_cute_mrag_page_vectors"
         )
 
         result = retriever.text2page_search("kb-test", ["问题一"])

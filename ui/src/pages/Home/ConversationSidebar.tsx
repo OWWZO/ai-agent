@@ -285,7 +285,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
       {/* 顶部操作区 — Manus 侧栏风格 */}
       <div className="flex h-14 shrink-0 items-center justify-between px-3.5">
         <div className="text-[18px] font-semibold tracking-[-0.02em] text-[var(--chat-text)]">
-          Reactor
+          Cute
         </div>
         <div className="flex items-center gap-0.5">
           {!isTaskFilesPanel ? (

@@ -124,11 +124,11 @@ const LazyFeaturedConversations = lazy(
   () => import("@/pages/FeaturedConversations")
 );
 
-const WorkspaceLoading: ReactorType.FC = () => (
+const WorkspaceLoading: CuteType.FC = () => (
   <Loading loading className="h-full min-h-[240px]" />
 );
 
-const WorkspaceContent: ReactorType.FC<{ children: ReactNode }> = ({ children }) =>
+const WorkspaceContent: CuteType.FC<{ children: ReactNode }> = ({ children }) =>
   <Suspense fallback={<WorkspaceLoading />}>{children}</Suspense>;
 
 const EMPTY_INPUT: CHAT.TInputInfo = {
@@ -203,7 +203,7 @@ const createInitialState = (): InitialState => {
   return {productType: GENERIC_TASK_PRODUCT.type,};
 };
 
-const Home: ReactorType.FC<HomeProps> = memo(() => {
+const Home: CuteType.FC<HomeProps> = memo(() => {
   // Home 持有跨页面的会话壳状态：当前 conversation 负责聊天，侧栏/工作区
   // 状态负责视图切换；认证状态由应用启动时的 Cookie refresh 恢复。
   const navigate = useNavigate();
@@ -1196,7 +1196,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
                 <Menu className="h-5 w-5" />
               </button>
               <div className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-[-0.01em] text-[var(--chat-text)]">
-                Reactor
+                Cute
               </div>
               <button
                 type="button"

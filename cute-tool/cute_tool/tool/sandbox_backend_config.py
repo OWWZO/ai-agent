@@ -17,7 +17,7 @@ _DEFAULT_FULL_PAUSE_DEBOUNCE_SEC = 3
 _DEFAULT_FS_ONLY_IDLE_SEC = 1200
 _DEFAULT_USER_OPERATING_HOLD_SEC = 600
 _E2B_DESKTOP_CHROMIUM_COMMAND = "/usr/local/bin/ensure_desktop_chromium.sh"
-_E2B_DESKTOP_CHROMIUM_STAGING_PATH = "/tmp/reactor-ensure-desktop-chromium.sh"
+_E2B_DESKTOP_CHROMIUM_STAGING_PATH = "/tmp/cute-ensure-desktop-chromium.sh"
 _E2B_DESKTOP_CHROMIUM_HEALTH_CHECK = (
     "browser_pid=$(pgrep -u user -f "
     "'^/usr/bin/chromium --no-sandbox --no-first-run "

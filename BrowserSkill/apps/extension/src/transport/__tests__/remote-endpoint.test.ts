@@ -20,7 +20,7 @@ describe("remote pairing boundary", () => {
   ])("rejects unsafe pairing %s", (input) => {
     expect(() => parseRemoteEndpoint(input)).toThrow();
   });
-  it("accepts the Reactor 6-digit pairing code as a short credential", () => {
+  it("accepts the Cute 6-digit pairing code as a short credential", () => {
     // 021：前端点"连接浏览器"拿到 6 位 code，人工填入 popup 完成配对。
     const parsed = parseRemoteEndpoint(`ws://127.0.0.1:8100/api/agent/browser/bsk-relay#464967`);
     expect(parsed.url).toBe("ws://127.0.0.1:8100/api/agent/browser/bsk-relay");
@@ -46,7 +46,7 @@ describe("remote pairing boundary", () => {
     const remote = parseRemoteEndpoint(`wss://gateway.example/bsk#${token}`);
     remoteSocket(remote.url, remote);
     remoteSocket("ws://localhost:52800", null);
-    // 021：token 走查询参数（与 Reactor 老扩展一致），子协议头同时带上。
+    // 021：token 走查询参数（与 Cute 老扩展一致），子协议头同时带上。
     expect(calls).toEqual([
       [`wss://gateway.example/bsk?token=${token}`, [`bsk-auth.${token}`]],
       ["ws://localhost:52800"],

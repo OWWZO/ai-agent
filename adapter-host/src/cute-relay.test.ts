@@ -6,7 +6,7 @@ import { isRelayMode, relayRequest } from './cute-relay.js';
 import { requestDaemon } from './browser/daemon-transport.js';
 import * as daemonLifecycle from './browser/daemon-lifecycle.js';
 
-describe('reactor relay overlay', () => {
+describe('cute relay overlay', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();

@@ -79,7 +79,7 @@ public class ResumeContextSnapshotTest {
                 .model("gpt-4o-mini")
                 .build();
         context.requirePlanModeState().enterPlanMode();
-        context.getPlanModeState().setPlan("计划正文", ".reactor/plan.md");
+        context.getPlanModeState().setPlan("计划正文", ".cute/plan.md");
         AgentExecutionCommand request = AgentExecutionCommand.builder()
                 .requestId("req-snap")
                 .sessionId("session-snap")
@@ -118,7 +118,7 @@ public class ResumeContextSnapshotTest {
         Assert.assertEquals(PlanModeState.MODE_PLAN, state.getMode());
         Assert.assertEquals("acceptEdits", state.getPrePlanMode());
         Assert.assertEquals("计划正文", state.getPlanContent());
-        Assert.assertEquals(".reactor/plan.md", state.getPlanFilePath());
+        Assert.assertEquals(".cute/plan.md", state.getPlanFilePath());
         Assert.assertTrue(state.isHasExitedPlanMode());
         Assert.assertTrue(state.isExitPendingApproval());
         Assert.assertEquals("待批准计划", state.getPendingPlanContent());
@@ -163,7 +163,7 @@ public class ResumeContextSnapshotTest {
                 .mode(PlanModeState.MODE_PLAN)
                 .prePlanMode("acceptEdits")
                 .planContent("计划正文")
-                .planFilePath(".reactor/plan.md")
+                .planFilePath(".cute/plan.md")
                 .hasExitedPlanMode(true)
                 .exitPendingApproval(true)
                 .pendingPlanContent("待批准计划")
@@ -178,7 +178,7 @@ public class ResumeContextSnapshotTest {
         Assert.assertEquals(PlanModeState.MODE_PLAN, snapshot.getMode());
         Assert.assertEquals("acceptEdits", snapshot.getPrePlanMode());
         Assert.assertEquals("计划正文", snapshot.getPlanContent());
-        Assert.assertEquals(".reactor/plan.md", snapshot.getPlanFilePath());
+        Assert.assertEquals(".cute/plan.md", snapshot.getPlanFilePath());
         Assert.assertTrue(snapshot.isHasExitedPlanMode());
         Assert.assertTrue(snapshot.isExitPendingApproval());
         Assert.assertEquals("待批准计划", snapshot.getPendingPlanContent());

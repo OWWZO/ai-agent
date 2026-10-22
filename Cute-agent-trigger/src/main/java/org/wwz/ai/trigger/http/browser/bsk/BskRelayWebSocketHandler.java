@@ -104,7 +104,7 @@ public class BskRelayWebSocketHandler extends TextWebSocketHandler implements Su
                 if (legacyDelegate != null) {
                     legacyDelegate.onText(session, payload);
                 } else {
-                    log.debug("bsk endpoint ignoring reactor-legacy frame on session {}", session.getId());
+                    log.debug("bsk endpoint ignoring cute-legacy frame on session {}", session.getId());
                 }
             }
             case UNKNOWN -> closeQuietly(session, CloseStatus.BAD_DATA);

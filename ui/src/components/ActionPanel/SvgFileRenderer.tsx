@@ -55,7 +55,7 @@ const resolveFetchError = (error: unknown) => {
  * 所以不能像位图那样只给 `<img>`。图形模式用 data URL 内联，避免同源策略
  * 阻止外部 SVG 的字体 / 内嵌资源；源码模式复用 `SourceCodeView` 的 xml 高亮。
  */
-const SvgFileRenderer: ReactorType.FC<SvgFileRendererProps> = React.memo((props) => {
+const SvgFileRenderer: CuteType.FC<SvgFileRendererProps> = React.memo((props) => {
   const { fileUrl, fileName, downloadUrl, missingReason, hideChrome = false, className } = props;
 
   const [mode, setMode] = useState<PreviewViewMode>("preview");

@@ -12,7 +12,7 @@ from ..utils.logger_utils import logger
 
 
 BM25_MODEL_NAME = "Qdrant/bm25"
-DEFAULT_BM25_MODEL_PATH = Path("/opt/reactor/cute-tool/model_cache/bm25")
+DEFAULT_BM25_MODEL_PATH = Path("/opt/cute/cute-tool/model_cache/bm25")
 
 
 def _resolve_local_bm25_model_path() -> Optional[str]:

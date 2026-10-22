@@ -23,7 +23,7 @@ public class AgentExecutionCommandMapper {
             return null;
         }
         int deepThink = command.getDeepThink() == null ? 0 : command.getDeepThink();
-        String user = command.getUser() == null ? "reactor" : command.getUser();
+        String user = command.getUser() == null ? "cute" : command.getUser();
         String traceId = StringUtils.isBlank(command.getTraceId())
                 ? buildTraceId(user, command.getSessionId(), command.getRequestId())
                 : command.getTraceId();

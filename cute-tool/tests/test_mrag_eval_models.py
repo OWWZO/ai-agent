@@ -16,7 +16,7 @@ class MragEvalModelsTest(unittest.TestCase):
 
         query = EvalQuery(
             query_id="q-1",
-            question="总结 Reactor MRAG 的召回阶段",
+            question="总结 Cute MRAG 的召回阶段",
             requires_retrieval=True,
         )
         qrel = EvalQrel(

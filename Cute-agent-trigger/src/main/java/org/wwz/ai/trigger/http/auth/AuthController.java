@@ -34,7 +34,7 @@ import java.time.Duration;
 @RequestMapping("/api/auth")
 public class AuthController {
 
-    public static final String REFRESH_COOKIE_NAME = "reactor_refresh_token";
+    public static final String REFRESH_COOKIE_NAME = "cute_refresh_token";
 
     private final IAuthApplicationService authApplicationService;
     private final AuthHttpMapper authHttpMapper;

@@ -1,4 +1,4 @@
-export const AUTH_SESSION_EXPIRED_EVENT = "reactor-auth-session-expired";
+export const AUTH_SESSION_EXPIRED_EVENT = "cute-auth-session-expired";
 
 export type AuthSessionExpiredDetail = {
   returnUrl?: string;

@@ -247,7 +247,7 @@ public final class DeferredToolCatalog {
 
     private static String sourceLabel(DeferredToolEntry entry) {
         if (entry.getSource() == DeferredToolSource.LOCAL) {
-            return "reactor local";
+            return "cute local";
         }
         return StringUtils.defaultIfBlank(entry.getSourceName(), "other") + " MCP";
     }

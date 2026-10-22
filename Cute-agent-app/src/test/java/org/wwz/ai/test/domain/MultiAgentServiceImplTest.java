@@ -48,7 +48,7 @@ public class MultiAgentServiceImplTest {
                 .requestId("req-1")
                 .query("基于上传图片改成赛博朋克风")
                 .deepThink(0)
-                .user("reactor")
+                .user("cute")
                 .sessionFiles(sessionFiles)
                 .build();
 

@@ -166,7 +166,7 @@ export function resolveAnswer(
  * 把一条答案渲染成一行可读文本（对齐 ZCode `getAskUserQuestionAnswerText`）。
  *
  * ZCode 那边 answers 值可能是 `string` 或 `string[]`，直接 `join("，")`。
- * Reactor 的值是 `string | true`，且字符串里可能是选项 label、`opt_i_j` id、
+ * Cute 的值是 `string | true`，且字符串里可能是选项 label、`opt_i_j` id、
  * 或自定义文本的逗号拼接，所以先过一遍 `resolveAnswer` 还原成 label。
  */
 export function askAnswerText(
@@ -175,7 +175,7 @@ export function askAnswerText(
   noAnswerText: string
 ): string {
   if (value === undefined) return noAnswerText;
-  // `true` = 后端只回了「已答」这个事实、没给具体选项（Reactor 特有形态）
+  // `true` = 后端只回了「已答」这个事实、没给具体选项（Cute 特有形态）
   if (value === true) return "已回答";
 
   const resolved = resolveAnswer(value, question.options);

@@ -41,7 +41,7 @@ public class EnterPlanModeTool implements BaseTool {
         return "请求进入 plan mode，用于需探索与设计的复杂任务："
                 + "新功能、多方案权衡、架构改动、多文件重构、需求不清。"
                 + "简单修复/明确指令/纯调研不要进入。"
-                + "进入后应只读探索、写计划到 .reactor/plan.md；实现前用 ExitPlanMode 请求用户批准。"
+                + "进入后应只读探索、写计划到 .cute/plan.md；实现前用 ExitPlanMode 请求用户批准。"
                 + "本工具无参数。";
     }
 
@@ -75,7 +75,7 @@ public class EnterPlanModeTool implements BaseTool {
             if (state.isPlanMode()) {
                 Map<String, Object> already = new LinkedHashMap<>();
                 already.put("alreadyInPlanMode", Boolean.TRUE);
-                already.put("message", "Already in plan mode. Continue exploring and writing the plan to .reactor/plan.md.");
+                already.put("message", "Already in plan mode. Continue exploring and writing the plan to .cute/plan.md.");
                 already.put("planFilePath", PlanArtifactStore.RELATIVE_PLAN_PATH);
                 return ToolResultPayload.okData(TaskToolNames.ENTER_PLAN_MODE, already);
             }
@@ -99,7 +99,7 @@ public class EnterPlanModeTool implements BaseTool {
 
             Map<String, Object> fields = new LinkedHashMap<>();
             fields.put("entered", Boolean.TRUE);
-            fields.put("message", "Entered plan mode. Write the plan to .reactor/plan.md, then call ExitPlanMode for approval.");
+            fields.put("message", "Entered plan mode. Write the plan to .cute/plan.md, then call ExitPlanMode for approval.");
             fields.put("planFilePath", planPathHint);
             fields.put("instructions", PlanModePromptInjector.PLAN_MODE_INSTRUCTIONS.trim());
             return ToolResultPayload.okData(TaskToolNames.ENTER_PLAN_MODE, fields);

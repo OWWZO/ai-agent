@@ -24,7 +24,7 @@ import java.util.Map;
 @Component
 public class WorkspaceReadStateStore {
 
-    private static final String RELATIVE_STORE_PATH = ".reactor/read-state.json";
+    private static final String RELATIVE_STORE_PATH = ".cute/read-state.json";
 
     public void hydrate(AgentContext agentContext) {
         if (agentContext == null || StringUtils.isBlank(agentContext.getWorkspaceRoot()) || isSubAgent(agentContext)) {

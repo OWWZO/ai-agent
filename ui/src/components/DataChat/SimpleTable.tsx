@@ -34,7 +34,7 @@ const isNumericLike = (value: unknown) => {
   return /^-?\d+(\.\d+)?%?$/.test(t);
 };
 
-const SimpleTable: ReactorType.FC<SimpleTableProps> = ({ data }) => {
+const SimpleTable: CuteType.FC<SimpleTableProps> = ({ data }) => {
   const { columnList = [], dataList = [] } = data || {};
   const [selected, setSelected] = useState<{ row: number; col: number } | null>(
     null

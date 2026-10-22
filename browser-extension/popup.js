@@ -1,4 +1,4 @@
-const API_ORIGIN_KEY = 'reactor_api_origin';
+const API_ORIGIN_KEY = 'cute_api_origin';
 const originInput = document.getElementById('origin');
 const codeInput = document.getElementById('code');
 const statusEl = document.getElementById('status');

@@ -48,7 +48,7 @@ java -jar Cute-agent-app/target/Cute-agent-app.jar
 - `ai-agent-station-study-infrastructure`: 基础设施层
 
 ### Agent DDD 最终边界（019）
-- `ReactorRuntimeAutoConfiguration` 负责把 `RemoteHttpPort`、`RemoteStreamPort`、`FileArtifactPort` 注入 `ReactorRuntimeDependencies`
+- `CuteRuntimeAutoConfiguration` 负责把 `RemoteHttpPort`、`RemoteStreamPort`、`FileArtifactPort` 注入 `CuteRuntimeDependencies`
 - `AgentHandlerAutoConfiguration` 负责 runtime handlerMap 拓扑，不允许把这类装配回流到 `domain`
 - `DataAgentInitRunner`、`Es7HighLevelClientConfig` 等技术初始化留在 `app`
 - `src/test/java/org/wwz/ai/test/domain/AgentContextConvergenceBoundaryTest.java` 负责锁定 GPT query / dataagent bridge 删除结果

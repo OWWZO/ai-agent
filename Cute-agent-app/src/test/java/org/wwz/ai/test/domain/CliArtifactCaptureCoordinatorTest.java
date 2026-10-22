@@ -53,7 +53,7 @@ public class CliArtifactCaptureCoordinatorTest {
         Assert.assertTrue(first.isArtifactCommand());
         Assert.assertTrue(first.isValid());
         Assert.assertTrue(first.isOutputRootInjected());
-        Assert.assertTrue(first.getCaptureRoot().matches("\\.reactor-artifacts/browser/[A-Za-z0-9_-]+"));
+        Assert.assertTrue(first.getCaptureRoot().matches("\\.cute-artifacts/browser/[A-Za-z0-9_-]+"));
         Assert.assertNotEquals(first.getCaptureRoot(), second.getCaptureRoot());
         Assert.assertEquals("--output", first.getRewrittenArgs().get(first.getRewrittenArgs().size() - 2));
         Assert.assertEquals(first.getCaptureRoot(), first.getRewrittenArgs().get(first.getRewrittenArgs().size() - 1));

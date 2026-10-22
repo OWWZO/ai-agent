@@ -12,7 +12,7 @@ import { LightweightDiffPreview } from "./LightweightDiffPreview";
 const MAX_HIGHLIGHT_CHARS = 120_000;
 
 type EditInlineDiffContentProps = {
-  /** unified diff 文本（Reactor 由 `buildEditDiffCode()` 产出） */
+  /** unified diff 文本（Cute 由 `buildEditDiffCode()` 产出） */
   patch: string;
   /** 目标文件路径，用于推断高亮语言 */
   path?: string;

@@ -130,7 +130,7 @@ public final class SubAgentToolFilter {
                     continue;
                 }
                 if (deferredNames.contains(name)) {
-                    deferred.add(DeferredToolCatalog.localEntry(entry.getValue(), "reactor"));
+                    deferred.add(DeferredToolCatalog.localEntry(entry.getValue(), "cute"));
                 } else {
                     child.addTool(entry.getValue());
                 }

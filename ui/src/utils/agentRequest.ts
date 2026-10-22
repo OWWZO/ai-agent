@@ -3,7 +3,7 @@ import { normalizeFileUrlForBrowser } from "@/utils/fileUrl";
 /**
  * Agent SSE 请求体适配器。
  *
- * <p>该模块把页面输入和附件引用转换为 Reactor 后端契约，集中处理 deepThink 数值
+ * <p>该模块把页面输入和附件引用转换为 Cute 后端契约，集中处理 deepThink 数值
  * 标识和浏览器可访问 URL，避免组件层重复维护协议字段。</p>
  */
 export type AgentSessionFile = {
@@ -61,7 +61,7 @@ export const mapSessionFiles = (files?: CHAT.TFile[]): AgentSessionFile[] => {
 }
 
 /**
- * 统一组装 Reactor SSE 请求，避免协议细节散落在组件里。
+ * 统一组装 Cute SSE 请求，避免协议细节散落在组件里。
  */
 export const buildAgentStreamRequest = ({
   sessionId,

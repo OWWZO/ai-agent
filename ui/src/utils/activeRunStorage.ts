@@ -1,5 +1,5 @@
-const ACTIVE_RUN_STORAGE_KEY = "reactor.activeRun";
-const SESSION_CURSOR_PREFIX = "reactor.sessionCursor.";
+const ACTIVE_RUN_STORAGE_KEY = "cute.activeRun";
+const SESSION_CURSOR_PREFIX = "cute.sessionCursor.";
 
 export type ActiveRunCheckpoint = {
   sessionId: string;

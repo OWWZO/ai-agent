@@ -41,9 +41,9 @@ public List<Message> validPrefix(List<Message> messages);
 
 **Files:**
 - Modify: `Cute-agent-app/src/main/resources/db/schema.sql`
-- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor/IPromptMemoryStreamDao.java`
-- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor/IPromptMemoryTurnDao.java`
-- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor/IPromptMemoryMessageDao.java`
+- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/cute/IPromptMemoryStreamDao.java`
+- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/cute/IPromptMemoryTurnDao.java`
+- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/cute/IPromptMemoryMessageDao.java`
 - Create: `Cute-agent-app/src/main/resources/mybatis/mapper/prompt_memory_stream_mapper.xml`
 - Create: `Cute-agent-app/src/main/resources/mybatis/mapper/prompt_memory_turn_mapper.xml`
 - Create: `Cute-agent-app/src/main/resources/mybatis/mapper/prompt_memory_message_mapper.xml`
@@ -67,7 +67,7 @@ public void publish(PromptMemoryLease lease, List<PromptMemoryMessage> delta) {
 ```
 
 - [ ] Do not hold a database transaction while a model streams.
-- [ ] Run `mvn -pl Cute-agent-app test -Dtest='PromptMemoryRepositoryTest,ReactorMapperNamespaceBindingTest' -DskipTests=false`; expect PASS.
+- [ ] Run `mvn -pl Cute-agent-app test -Dtest='PromptMemoryRepositoryTest,CuteMapperNamespaceBindingTest' -DskipTests=false`; expect PASS.
 - [ ] Commit with `git commit -m "feat: persist prompt memory log"`.
 
 ### Task 3: Domain Lifecycle Service
@@ -76,10 +76,10 @@ public void publish(PromptMemoryLease lease, List<PromptMemoryMessage> delta) {
 - Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/memory/PromptMemoryRepository.java`
 - Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/memory/PromptMemoryExecution.java`
 - Create: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/memory/PromptMemoryService.java`
-- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/reactor/service/PromptMemoryServiceImpl.java`
-- Modify: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/ReactorRuntimeDependencies.java`
-- Modify: `Cute-agent-app/src/main/java/org/wwz/ai/config/reactor/ReactorRuntimeAutoConfiguration.java`
-- Modify: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/support/ReactorRuntimeTestSupport.java`
+- Create: `Cute-agent-infrastructure/src/main/java/org/wwz/ai/infrastructure/cute/service/PromptMemoryServiceImpl.java`
+- Modify: `Cute-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/CuteRuntimeDependencies.java`
+- Modify: `Cute-agent-app/src/main/java/org/wwz/ai/config/cute/CuteRuntimeAutoConfiguration.java`
+- Modify: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/support/CuteRuntimeTestSupport.java`
 - Test: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/PromptMemoryServiceTest.java`
 
 - [ ] Write a failing test that seeds `old`, opens a stream, appends `new`, completes it, and asserts that the second turn contains only `new` while hydration returns `old, new`.
@@ -94,7 +94,7 @@ public interface PromptMemoryService {
 }
 ```
 
-- [ ] `open` acquires the lease and records the hydrated baseline; `complete` projects `Memory[baseline..end]`; `abort` releases an unpublished lease. Wire the service through `ReactorRuntimeDependencies`.
+- [ ] `open` acquires the lease and records the hydrated baseline; `complete` projects `Memory[baseline..end]`; `abort` releases an unpublished lease. Wire the service through `CuteRuntimeDependencies`.
 - [ ] Re-run projector and lifecycle tests; expect PASS.
 - [ ] Commit with `git commit -m "feat: add prompt memory lifecycle"`.
 
@@ -145,11 +145,11 @@ protected void appendRuntimeContext(String content) {
 ### Task 6: Boundary and Full Verification
 
 **Files:**
-- Modify: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/ReactorPersistenceBoundaryTest.java`
-- Modify: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/ReactorMapperNamespaceBindingTest.java`
+- Modify: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/CutePersistenceBoundaryTest.java`
+- Modify: `Cute-agent-app/src/test/java/org/wwz/ai/test/domain/CuteMapperNamespaceBindingTest.java`
 
 - [ ] Add assertions that React and PlanSolve no longer call `buildHistoryDialogue`, prompt-memory mapper namespaces point to infrastructure DAOs, and UI replay remains ledger-backed.
-- [ ] Run `mvn -pl Cute-agent-app test -Dtest='ReactorPersistenceBoundaryTest,ReactorMapperNamespaceBindingTest,*PromptMemory*' -DskipTests=false`; expect PASS.
+- [ ] Run `mvn -pl Cute-agent-app test -Dtest='CutePersistenceBoundaryTest,CuteMapperNamespaceBindingTest,*PromptMemory*' -DskipTests=false`; expect PASS.
 - [ ] Run `mvn -pl Cute-agent-app test -DskipTests=false`; expect PASS with existing external-service exclusions.
 - [ ] Run `mvn clean compile`; expect `BUILD SUCCESS`.
 - [ ] Commit with `git commit -m "test: verify prompt memory boundaries"`.

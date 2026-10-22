@@ -37,7 +37,7 @@ interface SearchListRendererProps {
   className?: string;
 }
 
-const SearchListItemComponent: ReactorType.FC<SearchListItem & { index: number }> = React.memo(
+const SearchListItemComponent: CuteType.FC<SearchListItem & { index: number }> = React.memo(
   ({ name, pageContent, url, index, kind, interactive, metaLabel }) => {
     const host = hostnameFromUrl(url);
     const snippet = normalizeSnippet(pageContent, name);
@@ -123,7 +123,7 @@ SearchListItemComponent.displayName = "SearchListItemComponent";
 /**
  * 工作区检索结果列表：与全局 chat 变量、Instrument 系排版一致，无描边，靠层级与阴影区分。
  */
-const SearchListRenderer: ReactorType.FC<SearchListRendererProps> = React.memo(({
+const SearchListRenderer: CuteType.FC<SearchListRendererProps> = React.memo(({
   list,
   eyebrow = "检索来源",
   title = "网页与文档",

@@ -46,7 +46,7 @@ public class PlanApprovalObservationSupportTest {
         PlanApprovalRecord record = PlanApprovalRecord.builder()
                 .approvalId("pa_1")
                 .planContent("## Plan\n1. do A")
-                .planFilePath(".reactor/plan.md")
+                .planFilePath(".cute/plan.md")
                 .toolCallId("tc1")
                 .status(PlanApprovalStatuses.RESUME_PENDING)
                 .decision(PlanApprovalDecision.builder().approved(true).build())

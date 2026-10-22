@@ -7,11 +7,11 @@ export DISPLAY=:0
 profile=/home/user/.opencli/chromium-visible
 extension=/opt/opencli/extension
 browser_pattern='^/usr/bin/chromium --no-sandbox --no-first-run --disable-dev-shm-usage .*--user-data-dir=/home/user/.opencli/chromium-visible'
-browser_log=/tmp/reactor-desktop-chromium.log
+browser_log=/tmp/cute-desktop-chromium.log
 
 if [ "${ENSURE_DESKTOP_CHROMIUM_LOCKED:-}" != "1" ]; then
   umask 000
-  exec flock --close /tmp/reactor-desktop-chromium.lock \
+  exec flock --close /tmp/cute-desktop-chromium.lock \
     env ENSURE_DESKTOP_CHROMIUM_LOCKED=1 "$0" "$@"
 fi
 umask 022

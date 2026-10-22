@@ -150,7 +150,7 @@ const ConversationTurnNavigator: FC<ConversationTurnNavigatorProps> = ({
       aria-label="会话导航"
       data-testid="conversation-turn-navigator"
       className={cn(
-        // 右边缘贴中线：紧贴 `reactor-workspace-resizer`（ZCode 对齐）。
+        // 右边缘贴中线：紧贴 `cute-workspace-resizer`（ZCode 对齐）。
         // `pointer-events-none` 让出聊天区点击，`pointer-events-auto` 在内部触发区域恢复。
         "pointer-events-none absolute inset-y-0 right-0 z-10 w-12 transition-opacity duration-200",
         hasEnoughItems && visible

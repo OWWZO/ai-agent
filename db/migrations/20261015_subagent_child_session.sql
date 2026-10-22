@@ -1,6 +1,6 @@
 -- Sub-agent child sessions (ZCode-style hidden sessions).
 --
--- 注意：仓库内 Reactor-agent-app/src/main/resources/db/schema.sql 只是**滞后快照**，
+-- 注意：仓库内 Cute-agent-app/src/main/resources/db/schema.sql 只是**滞后快照**，
 -- 可能与线上库结构存在历史差异；本迁移的字段以线上库为准，schema.sql 仅作建表参照。
 --
 -- 子智能体不再是"父会话里的一段内嵌投影"，而是落库为一条真实会话记录：

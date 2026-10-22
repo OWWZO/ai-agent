@@ -1,4 +1,4 @@
-"""Reactor docgen path constants."""
+"""Cute docgen path constants."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 CUTE_DOCGEN_HOME = Path(
     os.getenv("CUTE_DOCGEN_HOME")
     or os.getenv("LEAGENT_HOME")
-    or (Path.home() / ".reactor-docgen")
+    or (Path.home() / ".cute-docgen")
 )
 FONTS_DIR = CUTE_DOCGEN_HOME / "fonts"
 UPLOAD_DIR = Path(

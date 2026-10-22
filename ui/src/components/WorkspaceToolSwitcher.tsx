@@ -54,7 +54,7 @@ function isActiveWorkspaceTool(pathname: string, target: string): boolean {
   return pathname === target || pathname.startsWith(`${target}/`);
 }
 
-const WorkspaceToolSwitcher: ReactorType.FC = ({ className }) => {
+const WorkspaceToolSwitcher: CuteType.FC = ({ className }) => {
   const location = useLocation();
 
   return (

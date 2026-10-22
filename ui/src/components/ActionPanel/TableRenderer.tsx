@@ -50,7 +50,7 @@ interface TableRendererProps {
  * 的 WASM `XlsxViewer`（只读、关闭默认工具栏、只保留 sheet tabs、主题跟随）。
  * CSV 先经 SheetJS 转成工作簿字节，复用同一个查看器，避免维护第二套表格实现。
  */
-const TableRenderer: ReactorType.FC<TableRendererProps> = memo((props) => {
+const TableRenderer: CuteType.FC<TableRendererProps> = memo((props) => {
   const { fileUrl, mode, fileName, downloadUrl, missingReason, className } = props;
   const isDark = useIsDarkTheme();
   const viewerRef = useRef<HTMLDivElement | null>(null);

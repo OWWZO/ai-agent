@@ -41,7 +41,7 @@ def print_logo():
     from pyfiglet import Figlet
 
     f = Figlet(font="slant")
-    print(f.renderText("Reactor Tool"))
+    print(f.renderText("Cute Tool"))
 
 
 def log_setting():

@@ -155,7 +155,7 @@ class ScriptRunnerTest(unittest.IsolatedAsyncioTestCase):
             local_storage_dir = Path(temp_dir) / "skilloutput"
 
             request = ScriptRunnerRequest(
-                request_id="reactorsession-1776000433417-1425:1776000435350-6356",
+                request_id="cutesession-1776000433417-1425:1776000435350-6356",
                 skill_name="demo-skill",
                 skill_base_path=str(skill_dir),
                 script_name="summarize",
@@ -174,7 +174,7 @@ class ScriptRunnerTest(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(saved_file.exists())
             self.assertEqual("summary.md", saved_file.name)
             self.assertNotIn(":", saved_file.parent.name)
-            self.assertIn("reactorsession-1776000433417-1425_1776000435350-6356", saved_file.parent.name)
+            self.assertIn("cutesession-1776000433417-1425_1776000435350-6356", saved_file.parent.name)
 
     async def test_should_reject_path_escape(self):
         with tempfile.TemporaryDirectory(prefix="skill-script-escape-") as temp_dir:

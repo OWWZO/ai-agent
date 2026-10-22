@@ -37,7 +37,7 @@ import { isAdminUser, useAuth } from "@/stores/auth";
 
 type Props = { embedded?: boolean };
 
-const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
+const CapabilityLibrary: CuteType.FC<Props> = ({ embedded }) => {
   const auth = useAuth();
   const readOnly = !isAdminUser(auth.user);
   const [tab, setTab] = useState("skills");

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const STORAGE_KEY = "reactor:code-preview-wrap";
+const STORAGE_KEY = "cute:code-preview-wrap";
 
 /**
  * 测试跑在 node 环境（本仓库没有 jsdom），所以用假的 `window.localStorage`

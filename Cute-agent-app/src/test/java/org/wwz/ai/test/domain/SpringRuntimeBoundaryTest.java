@@ -45,7 +45,7 @@ public class SpringRuntimeBoundaryTest {
                 .resolve("ai")
                 .resolve("domain")
                 .resolve("agent")
-                .resolve("reactor")
+                .resolve("cute")
                 .resolve("handler")
                 .resolve("AgentHandlerConfig.java");
         Assert.assertFalse(

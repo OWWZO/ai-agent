@@ -83,7 +83,7 @@ public final class HtmlPreviewSanitizer {
             """;
 
     private static final String PREVIEW_IFRAME_BOOTSTRAP = """
-            <script>/* __reactorPreviewIframeBootstrap */
+            <script>/* __cutePreviewIframeBootstrap */
             (function () {
               var lastH = -1;
               var syncing = false;
@@ -265,7 +265,7 @@ public final class HtmlPreviewSanitizer {
     }
 
     private static String injectPreviewIframeBootstrap(String html) {
-        if (html != null && html.contains("__reactorPreviewIframeBootstrap")) {
+        if (html != null && html.contains("__cutePreviewIframeBootstrap")) {
             return html;
         }
         // 视口同步脚本只服务预览 iframe 的尺寸，不参与用户页面的业务逻辑。

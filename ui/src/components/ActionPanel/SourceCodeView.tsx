@@ -60,7 +60,7 @@ function getSourceTitle(path: string): string {
  * 4. 自动换行开关 —— 主路径由 `CodeViewer` 自带；降级分支（过大文件）由本组件补一个，
  *    保证两种分支下用户都能切、且共享同一份全局偏好。
  */
-const SourceCodeView: ReactorType.FC<SourceCodeViewProps> = (props) => {
+const SourceCodeView: CuteType.FC<SourceCodeViewProps> = (props) => {
   const { code, language, className, sourcePath, wrapLongLines, hideWrapToggle = false } = props;
   const tooLarge = useMemo(() => estimateByteLength(code) > FILE_VIEWER_MAX_TEXT_BYTES, [code]);
 

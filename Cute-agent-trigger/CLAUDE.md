@@ -160,8 +160,8 @@ A: Admin 接口是面向运营后台的 HTTP 接口，属于触发器职责。
 ### 工具类
 | 文件路径 | 说明 |
 |---------|------|
-| `src/main/java/org/wwz/ai/trigger/http/reactor/support/SseEmitterAgentSessionStream.java` | trigger 侧 SSE 协议适配 |
-| `src/main/java/org/wwz/ai/trigger/http/reactor/support/SseLifecycleSupport.java` | SSE 生命周期与心跳支持 |
+| `src/main/java/org/wwz/ai/trigger/http/cute/support/SseEmitterAgentSessionStream.java` | trigger 侧 SSE 协议适配 |
+| `src/main/java/org/wwz/ai/trigger/http/cute/support/SseLifecycleSupport.java` | SSE 生命周期与心跳支持 |
 | `src/main/java/org/wwz/ai/trigger/http/admin/util/DrawConfigParser.java` | 绘图配置解析器 |
 | `src/main/java/org/wwz/ai/trigger/config/BaseFilterConfig.java` | 过滤器配置 |
 

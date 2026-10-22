@@ -6,11 +6,11 @@ product
 
 ## Users
 
-Reactor users run cross-source research, complex analysis, and agent tasks from a conversation workspace. They need to follow execution, inspect live desktop activity, and review the resulting files and reports without losing the current task context.
+Cute users run cross-source research, complex analysis, and agent tasks from a conversation workspace. They need to follow execution, inspect live desktop activity, and review the resulting files and reports without losing the current task context.
 
 ## Product Purpose
 
-Reactor is a cloud agent workbench for research and complex task execution. It combines public and private information sources, agent workflows, sandboxed tools, and deliverables such as reports and interactive outputs. Success means users can direct the work, understand its current state, and inspect its results in the same session.
+Cute is a cloud agent workbench for research and complex task execution. It combines public and private information sources, agent workflows, sandboxed tools, and deliverables such as reports and interactive outputs. Success means users can direct the work, understand its current state, and inspect its results in the same session.
 
 ## Brand Personality
 

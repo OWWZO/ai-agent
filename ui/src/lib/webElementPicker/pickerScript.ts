@@ -5,8 +5,8 @@ import type { WebElementPayload, WebElementRect, WebElementStyleSummary } from "
  * 网页元素拾取脚本（移植自 ZCode `lib/webElementPickerScript.ts`）。
  *
  * 与 ZCode 的差异：
- * - 全局状态键 `__zcodeWebElementPicker` → `__reactorWebElementPicker`；
- * - overlay 标记 `data-zcode-web-element-picker` → `data-reactor-web-element-picker`；
+ * - 全局状态键 `__zcodeWebElementPicker` → `__cuteWebElementPicker`；
+ * - overlay 标记 `data-zcode-web-element-picker` → `data-cute-web-element-picker`；
  * - labels 中文化（背景 / 颜色 / 字体）。
  *
  * ⚠️ 这个函数会通过 `Function.prototype.toString()` 序列化后注入 iframe，
@@ -45,7 +45,7 @@ const DEFAULT_OPTIONS: WebElementPickerScriptOptions = {
 };
 
 function webElementPickerScript(options: WebElementPickerScriptOptions) {
-  const stateKey = "__reactorWebElementPicker";
+  const stateKey = "__cuteWebElementPicker";
   const existing = (window as unknown as Record<string, { cancel?: () => void }>)[stateKey];
   existing?.cancel?.();
 
@@ -334,7 +334,7 @@ function webElementPickerScript(options: WebElementPickerScriptOptions) {
   });
 
   const overlay = document.createElement("div");
-  overlay.setAttribute("data-reactor-web-element-picker", "overlay");
+  overlay.setAttribute("data-cute-web-element-picker", "overlay");
   Object.assign(overlay.style, {
     background: "rgba(37, 99, 235, 0.12)",
     border: "2px solid #2563eb",
@@ -664,7 +664,7 @@ export function buildWebElementPickerScript(options: WebElementPickerScriptBuild
 export function buildCancelWebElementPickerScript() {
   return [
     "(() => {",
-    "const picker = window.__reactorWebElementPicker;",
+    "const picker = window.__cuteWebElementPicker;",
     "if (picker && typeof picker.cancel === 'function') picker.cancel();",
     "})()",
   ].join("\n");

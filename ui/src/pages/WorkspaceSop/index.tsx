@@ -43,7 +43,7 @@ interface WorkspaceSopProps {
   embedded?: boolean;
 }
 
-const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
+const WorkspaceSop: CuteType.FC<WorkspaceSopProps> = ({ embedded }) => {
   const toolBaseUrl = useMemo(() => resolveToolBaseUrl(), []);
   const [items, setItems] = useState<SopItem[]>([]);
   const [keyword, setKeyword] = useState("");

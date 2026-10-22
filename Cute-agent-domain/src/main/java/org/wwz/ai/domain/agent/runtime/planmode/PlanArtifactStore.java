@@ -13,14 +13,14 @@ import java.util.Optional;
 
 /**
  * 会话计划落盘。
- * 路径：{workspaceRoot}/.reactor/plan.md
+ * 路径：{workspaceRoot}/.cute/plan.md
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class PlanArtifactStore {
 
-    public static final String RELATIVE_PLAN_PATH = ".reactor/plan.md";
+    public static final String RELATIVE_PLAN_PATH = ".cute/plan.md";
 
     private final WorkspaceService workspaceService;
 

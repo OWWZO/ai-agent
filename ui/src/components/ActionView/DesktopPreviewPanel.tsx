@@ -6,9 +6,9 @@ type DesktopPreviewPanelProps = {
 };
 
 const iconButtonClass =
-  "reactor-action-icon flex h-8 w-8 items-center justify-center rounded-full text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-hover)] hover:text-[var(--color-text)]";
+  "cute-action-icon flex h-8 w-8 items-center justify-center rounded-full text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-hover)] hover:text-[var(--color-text)]";
 
-const DesktopPreviewPanel: ReactorType.FC<DesktopPreviewPanelProps> = ({
+const DesktopPreviewPanel: CuteType.FC<DesktopPreviewPanelProps> = ({
   streamUrl,
   onClose,
 }) => (

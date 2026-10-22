@@ -15,7 +15,7 @@ import { DEFAULT_CODE_PREVIEW_SETTINGS } from "./codePreviewSettings";
  * 即默认开启自动换行），保持「默认值只有一个出口」。
  */
 
-const STORAGE_KEY = "reactor:code-preview-wrap";
+const STORAGE_KEY = "cute:code-preview-wrap";
 
 const DEFAULT_WRAP = DEFAULT_CODE_PREVIEW_SETTINGS.wrapLongLines;
 

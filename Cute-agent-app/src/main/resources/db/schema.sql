@@ -1,5 +1,5 @@
 -- =============================================================================
--- Reactor-agent database schema snapshot
+-- Cute-agent database schema snapshot
 --
 -- The live MySQL ai-agent-station schema is authoritative. This file is a
 -- synchronized initialization/reference snapshot and may lag behind it.
@@ -837,4 +837,4 @@ CREATE TABLE IF NOT EXISTS ai_agent_kernel_browser_session (
     UNIQUE KEY uk_kernel_browser_owner (owner_key),
     UNIQUE KEY uk_kernel_browser_session (kernel_session_id),
     UNIQUE KEY uk_kernel_browser_name (kernel_browser_name)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Reactor owner 与 Kernel 云端 browser 外部资源映射（非 Execution Ledger）';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Cute owner 与 Kernel 云端 browser 外部资源映射（非 Execution Ledger）';

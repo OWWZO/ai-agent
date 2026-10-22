@@ -18,9 +18,9 @@ public class QdrantServiceCloudClientTest {
         RecordingIndexPort indexPort = new RecordingIndexPort();
         VectorIndexService service = new VectorIndexService(indexPort);
 
-        service.createCosineCollection("reactor_model_schema", 1024);
+        service.createCosineCollection("cute_model_schema", 1024);
 
-        Assert.assertEquals("reactor_model_schema", indexPort.collectionName);
+        Assert.assertEquals("cute_model_schema", indexPort.collectionName);
         Assert.assertEquals(1024, indexPort.dimension);
     }
 
@@ -29,7 +29,7 @@ public class QdrantServiceCloudClientTest {
         RecordingIndexPort indexPort = new RecordingIndexPort();
         VectorIndexService service = new VectorIndexService(indexPort);
 
-        service.deleteByFilterSync("reactor_model_schema", new VectorFilter(Map.of("modelCode", "sales")));
+        service.deleteByFilterSync("cute_model_schema", new VectorFilter(Map.of("modelCode", "sales")));
 
         Assert.assertEquals("sales", indexPort.filter.getMust().get("modelCode"));
     }

@@ -47,7 +47,7 @@ const resolveFetchError = (error: unknown) => {
  * 与 `MarkdownRenderer` 的分工：后者只负责「把 markdown 渲染成 HTML」，
  * 流式聊天与文件预览共用；本组件负责「文件级」的取数、双模式切换与外壳。
  */
-const MarkdownFileRenderer: ReactorType.FC<MarkdownFileRendererProps> = React.memo((props) => {
+const MarkdownFileRenderer: CuteType.FC<MarkdownFileRendererProps> = React.memo((props) => {
   const { fileUrl, fileName, downloadUrl, missingReason, hideChrome = false, className } = props;
 
   const [mode, setMode] = useState<PreviewViewMode>("preview");

@@ -52,7 +52,7 @@ interface NaturalSize {
   height: number;
 }
 
-const ImageRenderer: ReactorType.FC<ImageRendererProps> = React.memo((props) => {
+const ImageRenderer: CuteType.FC<ImageRendererProps> = React.memo((props) => {
   const { imageUrl, fileName, missingReason, className } = props;
 
   const [naturalSize, setNaturalSize] = useState<NaturalSize | null>(null);

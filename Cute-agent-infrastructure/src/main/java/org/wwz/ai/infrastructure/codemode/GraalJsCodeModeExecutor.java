@@ -47,7 +47,7 @@ public class GraalJsCodeModeExecutor implements CodeModeExecutorPort {
               }
               (async function () {
                 try {
-                  const __r = await main(__reactorContext);
+                  const __r = await main(__cuteContext);
                   __complete(__r);
                 } catch (__e) {
                   __fail(null, __e && __e.message ? __e.message : String(__e));

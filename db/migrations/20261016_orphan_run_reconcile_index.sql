@@ -8,7 +8,7 @@
 -- 启动对账器（BackgroundRunReconciler）一次性扫这三类并收敛到终态，扫描条件为
 -- 「状态仍为运行态 AND started_at < 启动时刻 - 宽限窗」，故补状态前导的复合索引。
 --
--- 注意：仓库内 Reactor-agent-app/src/main/resources/db/schema.sql 只是**滞后快照**，
+-- 注意：仓库内 Cute-agent-app/src/main/resources/db/schema.sql 只是**滞后快照**，
 -- 以线上库为准；本迁移只加索引，不改列、不改数据。
 
 ALTER TABLE ai_agent_dialogue_run

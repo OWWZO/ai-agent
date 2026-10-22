@@ -1,5 +1,5 @@
 /**
- * Reactor overlay: forward OpenCLI daemon HTTP to Java BrowserRelayHub.
+ * Cute overlay: forward OpenCLI daemon HTTP to Java BrowserRelayHub.
  * Upstream OpenCLI talks to 127.0.0.1:19825; this process must not spawn that daemon.
  */
 

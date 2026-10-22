@@ -12,7 +12,7 @@ import java.util.List;
 @ConfigurationProperties(prefix = "autobots.data-agent")
 public class DataQuerySettings {
 
-    public static final String SCHEMA_COLLECTION_NAME = "reactor_model_schema";
+    public static final String SCHEMA_COLLECTION_NAME = "cute_model_schema";
 
     private String agentUrl;
     private Boolean forceRefresh = false;

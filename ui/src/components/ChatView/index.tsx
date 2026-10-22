@@ -278,7 +278,7 @@ const findTaskByStableKey = (
 
 type SessionFileTasks = ReturnType<typeof collectSessionFileTasks>;
 
-const ChatView: ReactorType.FC<Props> = (props) => {
+const ChatView: CuteType.FC<Props> = (props) => {
   const {
     inputInfo: inputInfoProp,
     inputDraft = "",
@@ -1438,7 +1438,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       <button
         type="button"
         onClick={toggleRightPanel}
-        className="reactor-mobile-workspace-trigger flex h-8 w-8 items-center justify-center rounded-full text-foreground-subtle transition-colors hover:bg-hover hover:text-foreground"
+        className="cute-mobile-workspace-trigger flex h-8 w-8 items-center justify-center rounded-full text-foreground-subtle transition-colors hover:bg-hover hover:text-foreground"
         title="打开工作区"
         aria-label="打开工作区"
       >
@@ -1499,7 +1499,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             key={inputKey}
             sessionId={conversation.sessionId}
             contextUsage={activeChat?.contextUsage ?? null}
-            placeholder={sessionBusy ? "任务进行中，可发送指导…" : "希望 Reactor 为你做哪些任务呢？"}
+            placeholder={sessionBusy ? "任务进行中，可发送指导…" : "希望 Cute 为你做哪些任务呢？"}
             showBtn={false}
             size="medium"
             busy={sessionBusy}
@@ -1532,7 +1532,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     <div className="flex min-w-0 items-center gap-2.5">
       <span
         className={cn(
-          "reactor-status-dot shrink-0",
+          "cute-status-dot shrink-0",
           headerStatus && "is-running"
         )}
         aria-hidden="true"
@@ -1676,7 +1676,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
           <>
             <div
               className={cn(
-                "reactor-chat-header flex items-center justify-between",
+                "cute-chat-header flex items-center justify-between",
                 // 头部不再画横线：面板本身已经是带框的卡片，内部再画一条会把
                 // 标题框成「卡里套卡」。层级交给间距表达。
                 hasWorkspaceLayout
@@ -1786,7 +1786,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     if (!hasWorkspaceLayout) {
       return (
         <div
-          className="reactor-chat-workspace-layout reactor-single-chat-shell flex h-full w-full justify-center overflow-hidden bg-background px-4 pt-4 md:px-6"
+          className="cute-chat-workspace-layout cute-single-chat-shell flex h-full w-full justify-center overflow-hidden bg-background px-4 pt-4 md:px-6"
           data-workspace-open="false"
           data-workspace-empty={hasWorkspaceContent ? "false" : "true"}
           data-chat-read-only={readOnly ? "true" : "false"}
@@ -1803,7 +1803,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         elementRef={workspaceRef}
         groupRef={groupRef}
         className={cn(
-          "reactor-chat-workspace-layout flex h-full w-full",
+          "cute-chat-workspace-layout flex h-full w-full",
           // 双栏：外壳铺一层浅底（与左侧会话栏同色），两个面板保持纯白圆角、**不描边**。
           // 分栏靠这层底色差表达，而不是靠 border —— 这样「面板边框」这条线就不存在了。
           "gap-0 bg-[var(--chat-nav)] p-1"
@@ -1818,7 +1818,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         <Panel
           id="chat"
           className={cn(
-            "reactor-chat-panel-left flex min-h-0 flex-col overflow-hidden bg-background",
+            "cute-chat-panel-left flex min-h-0 flex-col overflow-hidden bg-background",
             // 双栏时只保留圆角，不加描边 —— 与预览面板的分界由外壳底色差表达。
             "rounded-[var(--workspace-panel-radius)]",
             isLeftCollapsed && !isFocusMode && "w-14 min-w-14",
@@ -1839,7 +1839,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
               // 平时完全不可见（无底色、无描边、无手柄），只有 hover / 拖拽 / 焦点时才浮出指示线。
               // 宽度 `w-1`（4px）与 ZCode 的分隔条一致；容器 `gap-0`，所以两栏之间**就只有这 4px**，
               // 外壳浅底从这条缝里透出来当分界。
-              "reactor-workspace-resizer group/handle relative z-10 flex h-full w-1 shrink-0 touch-none cursor-ew-resize items-center justify-center bg-transparent outline-none",
+              "cute-workspace-resizer group/handle relative z-10 flex h-full w-1 shrink-0 touch-none cursor-ew-resize items-center justify-center bg-transparent outline-none",
               "focus:outline-none focus-visible:ring-0",
               // 透明命中扩展：把 4px 视觉条的可拖拽区域撑到 12px，兼顾 ZCode 的极简外观与可用性。
               "before:absolute before:-inset-x-1 before:inset-y-0 before:content-['']",
@@ -1855,14 +1855,14 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
         <button
           type="button"
-          className="reactor-workspace-scrim lg:hidden"
+          className="cute-workspace-scrim lg:hidden"
           aria-label="关闭工作区"
           onClick={closeMobileWorkspace}
         />
 
         <Panel
           id="workspace"
-          className="reactor-workspace-panel relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--workspace-panel-radius)] bg-background"
+          className="cute-workspace-panel relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--workspace-panel-radius)] bg-background"
           data-workspace-collapsed="false"
         >
           {/* ActionView 常驻挂载，独占面板改为**覆盖层**。
@@ -1931,7 +1931,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
           className="flex h-full min-h-0 w-full max-w-[980px] flex-col overflow-hidden"
           id="chat-view"
         >
-          <div className="reactor-chat-header mb-3 flex min-h-[36px] items-center justify-between px-1">
+          <div className="cute-chat-header mb-3 flex min-h-[36px] items-center justify-between px-1">
             {renderHeaderStatus({ badge: "数据分析" })}
           </div>
 
@@ -1961,7 +1961,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                     conversation.chatList?.[conversation.chatList.length - 1]
                       ?.contextUsage ?? null
                   }
-                  placeholder={loading ? "任务进行中..." : "希望 Reactor 为你做哪些任务呢？"}
+                  placeholder={loading ? "任务进行中..." : "希望 Cute 为你做哪些任务呢？"}
                   showBtn={false}
                   size="medium"
                   busy={loading}

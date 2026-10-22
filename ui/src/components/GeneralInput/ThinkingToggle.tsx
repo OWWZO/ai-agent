@@ -28,7 +28,7 @@ const OPTIONS: Array<{ key: ThinkingEffort; label: string }> = [
   { key: "high", label: "高" },
 ];
 
-const ThinkingToggle: ReactorType.FC<Props> = ({
+const ThinkingToggle: CuteType.FC<Props> = ({
   supported,
   thinking,
   effort,

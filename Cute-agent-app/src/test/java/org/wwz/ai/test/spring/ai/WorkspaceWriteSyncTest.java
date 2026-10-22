@@ -40,7 +40,7 @@ public class WorkspaceWriteSyncTest {
 
     @Before
     public void setUp() throws Exception {
-        workspaceRoot = Files.createTempDirectory("reactor-workspace-write-sync");
+        workspaceRoot = Files.createTempDirectory("cute-workspace-write-sync");
         WorkspaceRuntimeOptions options = WorkspaceRuntimeOptions.builder()
                 .enabled(true)
                 .rootTemplate(workspaceRoot.toString())

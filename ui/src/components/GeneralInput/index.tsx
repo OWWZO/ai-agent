@@ -151,13 +151,13 @@ const menuItemClassName = (active: boolean) =>
 
 const toolBtnClassName = (active?: boolean, disabled?: boolean) =>
   cn(
-    "reactor-composer-tool inline-flex h-8 max-w-full items-center gap-1 rounded-md px-2 text-ui-base font-medium transition-colors",
+    "cute-composer-tool inline-flex h-8 max-w-full items-center gap-1 rounded-md px-2 text-ui-base font-medium transition-colors",
     "text-foreground-subtle hover:bg-hover hover:text-foreground",
     active && "text-foreground",
     disabled && "cursor-not-allowed opacity-45 hover:bg-transparent hover:text-foreground-subtle"
   );
 
-const GeneralInput: ReactorType.FC<Props> = (props) => {
+const GeneralInput: CuteType.FC<Props> = (props) => {
   const {
     sessionId,
     placeholder,
@@ -213,7 +213,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
   const currentMode = getModeKey(product?.type, deepThink);
   const isDataAgent = product?.type === "dataAgent";
 
-  const modelStorageKey = `reactor:selected-model:${sessionId}`;
+  const modelStorageKey = `cute:selected-model:${sessionId}`;
 
   useEffect(() => {
     // 目录失败不阻断对话；空列表表示使用后端默认模型。
@@ -494,7 +494,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
       <div className="w-full" ref={inputShellRef}>
         <PromptInput
           accept={ATTACHMENT_ACCEPT}
-          className="reactor-input-flat w-full"
+          className="cute-input-flat w-full"
           convertBlobUrlsOnSubmit={false}
           initialFiles={initialFiles}
           onInitialFilesConsumed={onInitialFilesConsumed}
@@ -504,7 +504,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
           onSubmit={handleSubmit}
         >
           <PromptInputBody>
-            <PromptInputAttachments className="reactor-composer-attachments px-1.5 pt-2.5 pb-0">
+            <PromptInputAttachments className="cute-composer-attachments px-1.5 pt-2.5 pb-0">
               {(file) => (
                 <UploadAttachmentChip
                   key={file.id}
@@ -535,10 +535,10 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
 
             <PromptInputTextarea
               className={cn(
-                "reactor-composer-textarea px-4 text-ui-lg leading-[1.5] text-foreground placeholder:text-foreground-subtlest placeholder:opacity-100",
+                "cute-composer-textarea px-4 text-ui-lg leading-[1.5] text-foreground placeholder:text-foreground-subtlest placeholder:opacity-100",
                 size === "big"
-                  ? "reactor-composer-textarea-big min-h-[76px] pt-3.5"
-                  : "reactor-composer-textarea-medium min-h-[54px] pt-3"
+                  ? "cute-composer-textarea-big min-h-[76px] pt-3.5"
+                  : "cute-composer-textarea-medium min-h-[54px] pt-3"
               )}
               disabled={disabled}
               maxLength={MAX_QUERY_CHARS}
@@ -567,13 +567,13 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
             ) : null}
           </PromptInputBody>
 
-          <PromptInputFooter className="reactor-composer-footer items-center justify-between gap-2 px-2.5 pb-2 pt-0.5">
-            <PromptInputTools className="reactor-composer-tools reactor-composer-tools-left min-w-0 flex-1 flex-wrap items-center gap-0.5">
+          <PromptInputFooter className="cute-composer-footer items-center justify-between gap-2 px-2.5 pb-2 pt-0.5">
+            <PromptInputTools className="cute-composer-tools cute-composer-tools-left min-w-0 flex-1 flex-wrap items-center gap-0.5">
               <PromptInputAddAttachmentsButton
                 size="icon-sm"
                 variant="ghost"
                 disabled={disabled}
-                className="reactor-composer-icon-button h-8 w-8 rounded-md border-0 bg-transparent text-foreground-subtle shadow-none ring-0 hover:bg-hover hover:text-foreground focus-visible:ring-0"
+                className="cute-composer-icon-button h-8 w-8 rounded-md border-0 bg-transparent text-foreground-subtle shadow-none ring-0 hover:bg-hover hover:text-foreground focus-visible:ring-0"
               />
 
               <BrowserRelayChip disabled={disabled} />
@@ -718,7 +718,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
               ) : null}
             </PromptInputTools>
 
-            <PromptInputTools className="reactor-composer-tools reactor-composer-tools-right ml-auto shrink-0 items-center gap-1.5 self-end">
+            <PromptInputTools className="cute-composer-tools cute-composer-tools-right ml-auto shrink-0 items-center gap-1.5 self-end">
               <ContextRing
                 usage={contextUsage}
                 contextWindow={currentModelMeta?.contextWindow}
@@ -728,7 +728,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                   <TooltipTrigger asChild>
                     <button
                       type="button"
-                      className="reactor-composer-stop group relative flex size-8 items-center justify-center rounded-full border border-destructive bg-surface p-0 text-destructive transition-[background-color,border-color,color,transform] duration-150 hover:bg-destructive hover:text-destructive-foreground active:scale-[0.92]"
+                      className="cute-composer-stop group relative flex size-8 items-center justify-center rounded-full border border-destructive bg-surface p-0 text-destructive transition-[background-color,border-color,color,transform] duration-150 hover:bg-destructive hover:text-destructive-foreground active:scale-[0.92]"
                       onClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
@@ -749,7 +749,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                   <TooltipTrigger asChild>
                     <PromptInputSubmit
                       className={cn(
-                        "reactor-send-btn relative flex size-8 items-center justify-center rounded-full border-0 p-0 shadow-none transition-opacity",
+                        "cute-send-btn relative flex size-8 items-center justify-center rounded-full border-0 p-0 shadow-none transition-opacity",
                         "bg-primary text-primary-foreground hover:bg-primary/80",
                         "disabled:cursor-not-allowed disabled:bg-primary disabled:text-primary-foreground disabled:opacity-45"
                       )}

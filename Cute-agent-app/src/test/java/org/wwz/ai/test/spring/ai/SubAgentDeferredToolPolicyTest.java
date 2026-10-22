@@ -33,7 +33,7 @@ public class SubAgentDeferredToolPolicyTest {
         Assert.assertTrue(child.getToolMap().containsKey("workspace_read"));
         Assert.assertTrue(child.getToolMap().containsKey("ToolSearch"));
         Assert.assertTrue(child.getDeferredToolCatalog().contains("document_generate"));
-        Assert.assertEquals("reactor", child.getDeferredToolCatalog()
+        Assert.assertEquals("cute", child.getDeferredToolCatalog()
                 .get("document_generate").getSourceName());
     }
 
@@ -41,7 +41,7 @@ public class SubAgentDeferredToolPolicyTest {
     public void inheritedChildKeepsParentDeferredView() {
         ToolCollection parent = new ToolCollection();
         parent.setDeferredToolCatalog(new DeferredToolCatalog(List.of(
-                DeferredToolEntry.local(new NamedTool("document_generate"), "reactor",
+                DeferredToolEntry.local(new NamedTool("document_generate"), "cute",
                         Map.of("type", "object"), ""))));
         ToolCollection child = SubAgentToolFilter.filter(parent, SubAgentDefinition.builder()
                 .agentType(SubAgentDefinition.TOOL_POLICY_INHERIT)
@@ -56,7 +56,7 @@ public class SubAgentDeferredToolPolicyTest {
     public void toolCallWhitelistRetainsParentCatalogWithoutEagerExposure() {
         ToolCollection parent = new ToolCollection();
         parent.setDeferredToolCatalog(new DeferredToolCatalog(List.of(
-                DeferredToolEntry.local(new NamedTool("document_generate"), "reactor",
+                DeferredToolEntry.local(new NamedTool("document_generate"), "cute",
                         Map.of("type", "object"), ""))));
 
         ToolCollection child = SubAgentToolFilter.filter(parent, SubAgentDefinition.builder()

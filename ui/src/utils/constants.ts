@@ -497,7 +497,7 @@ export const GENERIC_TASK_PRODUCT: CHAT.Product = {
   name: "通用任务",
   img: "icon-aichat",
   type: "task",
-  placeholder: "Reactor 会先完成你的任务，再根据内容给出合适的回答",
+  placeholder: "Cute 会先完成你的任务，再根据内容给出合适的回答",
   color: "text-[#4040FF]",
 };
 
@@ -506,7 +506,7 @@ export const productList = [
     name: "数据分析",
     img: "icon-xinjianduihua",
     type: "dataAgent",
-    placeholder: "Reactor 会完成你的数据分析任务",
+    placeholder: "Cute 会完成你的数据分析任务",
     color: "text-[#4040FF]",
   },
 ];

@@ -48,7 +48,7 @@ public class AgentQueryServiceUserIdPropagationTest {
                 .query("重新规划")
                 .deepThink(1)
                 .forcePlanMode(true)
-                .user("reactor")
+                .user("cute")
                 .build();
 
         AgentExecutionCommand agentRequest = mapper.toExecutionCommand(request, null);

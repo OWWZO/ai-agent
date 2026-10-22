@@ -60,12 +60,12 @@ export interface MediaDownloadResult {
 /**
  * Artifact candidate reported to the host for download-type commands.
  *
- * Contract (consumed by Reactor's CliArtifactCandidateParser):
+ * Contract (consumed by Cute's CliArtifactCandidateParser):
  * - `relativePath` is relative to the CLI working directory (Agent workspace),
  *   uses forward slashes, and never contains `..` or an absolute path;
  * - `size` is the byte count on disk;
  * - `mime` is the best-effort content type.
- * Download URLs are NOT produced here: Reactor's file service registers the
+ * Download URLs are NOT produced here: Cute's file service registers the
  * file and generates preview/download URLs, so the two systems never maintain
  * separate URL rules.
  */

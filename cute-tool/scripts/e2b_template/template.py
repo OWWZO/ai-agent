@@ -1,4 +1,4 @@
-"""Composite E2B template for Reactor code execution and desktop workloads.
+"""Composite E2B template for Cute code execution and desktop workloads.
 
 Base: code-interpreter-v1 (keeps the managed run_code kernel).
 Adds: the E2B Desktop environment, the existing data stack, PDF tooling,
@@ -15,7 +15,7 @@ from __future__ import annotations
 from e2b import Template
 
 # Template alias used by Sandbox.create(template=...) / E2B_TEMPLATE env.
-TEMPLATE_ALIAS = "reactor-code-playwright-desktop"
+TEMPLATE_ALIAS = "cute-code-playwright-desktop"
 _DESKTOP_START_COMMAND = "desktop_start_command.sh"
 _OPENCLI_VERSION = "1.8.8"
 _OPENCLI_EXTENSION_VERSION = "1.0.24"
@@ -164,9 +164,9 @@ template = (
         "mkdir -p /etc/systemd/system/jupyter.service.d "
         "/etc/systemd/system/code-interpreter.service.d && "
         "printf '%s\\n' '[Service]' 'Environment=DISPLAY=:0' "
-        "> /etc/systemd/system/jupyter.service.d/reactor-desktop.conf && "
+        "> /etc/systemd/system/jupyter.service.d/cute-desktop.conf && "
         "printf '%s\\n' '[Service]' 'Environment=DISPLAY=:0' "
-        "> /etc/systemd/system/code-interpreter.service.d/reactor-desktop.conf",
+        "> /etc/systemd/system/code-interpreter.service.d/cute-desktop.conf",
         user="root",
     )
     .copy(_DESKTOP_START_COMMAND, "/start_command.sh", user="root", mode=0o755)
@@ -178,13 +178,13 @@ template = (
     )
     .copy(
         "opencli_browser.sh",
-        "/usr/local/bin/reactor-opencli-browser",
+        "/usr/local/bin/cute-opencli-browser",
         user="root",
         mode=0o755,
     )
     .copy(
         "opencli_browser.desktop",
-        "/usr/share/applications/reactor-opencli-browser.desktop",
+        "/usr/share/applications/cute-opencli-browser.desktop",
         user="root",
     )
     .set_envs({"DISPLAY": ":0"})
@@ -214,8 +214,8 @@ template = (
         user="root",
     )
     .run_cmd(
-        "ln -sfn /usr/local/bin/reactor-opencli-browser /usr/bin/www-browser && "
-        "ln -sfn /usr/local/bin/reactor-opencli-browser /usr/bin/x-www-browser && "
+        "ln -sfn /usr/local/bin/cute-opencli-browser /usr/bin/www-browser && "
+        "ln -sfn /usr/local/bin/cute-opencli-browser /usr/bin/x-www-browser && "
         "test -x /usr/bin/www-browser && "
         "test -x /usr/bin/x-www-browser && "
         "readlink -f /usr/bin/www-browser",
@@ -223,11 +223,11 @@ template = (
     )
     .run_cmd(
         "mkdir -p /home/user/.config && "
-        "xdg-mime default reactor-opencli-browser.desktop x-scheme-handler/http && "
-        "xdg-mime default reactor-opencli-browser.desktop x-scheme-handler/https && "
-        "xdg-mime default reactor-opencli-browser.desktop text/html && "
+        "xdg-mime default cute-opencli-browser.desktop x-scheme-handler/http && "
+        "xdg-mime default cute-opencli-browser.desktop x-scheme-handler/https && "
+        "xdg-mime default cute-opencli-browser.desktop text/html && "
         'test "$(xdg-mime query default x-scheme-handler/https)" = '
-        "reactor-opencli-browser.desktop",
+        "cute-opencli-browser.desktop",
         user="user",
     )
     .run_cmd(

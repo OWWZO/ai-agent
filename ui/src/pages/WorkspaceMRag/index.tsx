@@ -21,7 +21,7 @@ interface WorkspaceMRagProps {
   embedded?: boolean;
 }
 
-const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
+const WorkspaceMRag: CuteType.FC<WorkspaceMRagProps> = ({ embedded }) => {
   // 启动时只读取一次本地工作区状态，后续状态变化通过 effect 持久化。
   const initialWorkspaceState = useMemo(() => loadMRagWorkspaceStoredState(), []);
   const toolBaseUrl = initialWorkspaceState.toolBaseUrl;

@@ -37,7 +37,7 @@ public class ExecutionLedgerBoundaryTest {
             Assert.assertFalse(
                     type.getSimpleName() + " 不应继续直接持有 DAO 字段: " + field.getName(),
                     packageName.contains(".domain.agent.cute.mapper")
-                            || packageName.contains(".infrastructure.dao.reactor")
+                            || packageName.contains(".infrastructure.dao.cute")
                             || field.getType().getSimpleName().endsWith("Dao")
             );
         }

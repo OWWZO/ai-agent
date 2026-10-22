@@ -21,7 +21,7 @@ describe("planComposerModel", () => {
         resultMap: {
           approvalId: "a1",
           planContent: "## Steps\n1. A",
-          planFilePath: ".reactor/plan.md",
+          planFilePath: ".cute/plan.md",
           status: "pending",
         },
       },
@@ -30,14 +30,14 @@ describe("planComposerModel", () => {
     expect(pickPlanApprovalFields(task)).toMatchObject({
       approvalId: "a1",
       planContent: "## Steps\n1. A",
-      planFilePath: ".reactor/plan.md",
+      planFilePath: ".cute/plan.md",
       status: "pending",
     });
   });
 
   it("reads absolute planFilePath through live SSE extra resultMap wrapping", () => {
     const planFilePath =
-      "D:\\Java Code\\ai-agent\\Cute-agent\\cute-tool\\skilloutput\\session-1788672643180-455\\.reactor\\plan.md";
+      "D:\\Java Code\\ai-agent\\Cute-agent\\cute-tool\\skilloutput\\session-1788672643180-455\\.cute\\plan.md";
     const task = {
       messageType: "plan_approval",
       resultMap: {

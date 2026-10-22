@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import type { ComposerPromptContextState } from "@/hooks/useComposerPromptContexts";
 
 const CHIP_CLASS =
-  "reactor-composer-context-chip group flex min-w-0 max-w-[min(100%,300px)] items-center gap-1.5 rounded-full border border-[var(--color-line)] bg-[var(--color-surface-raised)] px-1.5 py-1 text-ui-sm shadow-none transition-colors hover:border-[var(--color-line-strong)]";
+  "cute-composer-context-chip group flex min-w-0 max-w-[min(100%,300px)] items-center gap-1.5 rounded-full border border-[var(--color-line)] bg-[var(--color-surface-raised)] px-1.5 py-1 text-ui-sm shadow-none transition-colors hover:border-[var(--color-line-strong)]";
 
 function ChipShell({
   icon,

@@ -134,7 +134,7 @@ export default function LiquidGlassAuth({ mode }: LiquidGlassAuthProps) {
             {isRegister ? "创建账号" : "欢迎回来"}
           </div>
           <div className="text-sm text-card-foreground/70 font-sans">
-            {isRegister ? "注册后即可开始使用 Reactor" : "登录以继续使用 Reactor"}
+            {isRegister ? "注册后即可开始使用 Cute" : "登录以继续使用 Cute"}
           </div>
         </div>
 

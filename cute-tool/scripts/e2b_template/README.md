@@ -1,4 +1,4 @@
-# Reactor E2B Desktop Template（含 Code Interpreter）
+# Cute E2B Desktop Template（含 Code Interpreter）
 
 基于官方 `code-interpreter-v1`，叠加 E2B Desktop 的 Ubuntu 图形环境，保留当前
 `e2b_code_interpreter.Sandbox`、`run_code()`、Bash 和文件同步能力。预装：
@@ -25,7 +25,7 @@ cd cute-tool
 uv run python scripts/e2b_template/build.py
 ```
 
-构建成功后模板别名为：`reactor-code-playwright-desktop`
+构建成功后模板别名为：`cute-code-playwright-desktop`
 
 ## 启用
 
@@ -33,7 +33,7 @@ uv run python scripts/e2b_template/build.py
 # cute-tool/.env
 CODE_SANDBOX_BACKEND=e2b
 E2B_API_KEY=e2b_***
-E2B_TEMPLATE=reactor-code-playwright-desktop
+E2B_TEMPLATE=cute-code-playwright-desktop
 ```
 
 重启 cute-tool。
@@ -96,7 +96,7 @@ Smoke test 会通过桌面启动器打开测试页，再验证 OpenCLI 读取到
 
 每个新沙箱的 profile 独立且初始未登录；不要把 Cookie 或登录态写入模板。扩展会请求 `cookies`、`debugger`、`tabs` 和所有网址的访问权限。
 
-旧模板 `reactor-code-playwright` 保留在 E2B 项目中，可作为回滚模板；新模板验证通过后
+旧模板 `cute-code-playwright` 保留在 E2B 项目中，可作为回滚模板；新模板验证通过后
 才将运行环境中的 `E2B_TEMPLATE` 切换到 Desktop 版本。
 
 ## 说明

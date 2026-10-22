@@ -32,7 +32,7 @@ public class VectorServicePortTest {
         service.setToolExecutor(directExecutor);
 
         VectorRecallRequest request = new VectorRecallRequest(
-                "revenue", "reactor_model_schema", 100, 0.5F, Map.of(), List.of(), 1000L);
+                "revenue", "cute_model_schema", 100, 0.5F, Map.of(), List.of(), 1000L);
 
         List<Map<String, Object>> result = service.vectorRecall(request);
 
@@ -55,7 +55,7 @@ public class VectorServicePortTest {
         service.setToolExecutor(directExecutor);
 
         VectorRecallRequest request = new VectorRecallRequest(
-                "revenue", "reactor_model_schema", 100, 0.5F, Map.of(), List.of(), 1000L);
+                "revenue", "cute_model_schema", 100, 0.5F, Map.of(), List.of(), 1000L);
 
         Assert.assertTrue(service.vectorRecall(request).isEmpty());
     }

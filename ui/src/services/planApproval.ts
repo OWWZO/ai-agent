@@ -6,7 +6,7 @@ const customHost = resolveServiceBaseUrl(SERVICE_BASE_URL);
 
 export const PLAN_APPROVAL_RESUME_URL = `${customHost}/api/agent/plan-approval/resume`;
 
-export const PLAN_APPROVAL_RESUME_EVENT = "reactor-plan-approval-resume";
+export const PLAN_APPROVAL_RESUME_EVENT = "cute-plan-approval-resume";
 
 export type PlanApprovePayload = {
   approvalId: string;

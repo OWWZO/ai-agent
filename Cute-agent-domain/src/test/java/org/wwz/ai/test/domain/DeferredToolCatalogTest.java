@@ -42,7 +42,7 @@ public class DeferredToolCatalogTest {
                         .build(), "github", Map.of("type", "object"), "")));
 
         String listing = catalog.formatListingForToolSearchDescription();
-        Assert.assertTrue(listing.contains("reactor local tools"));
+        Assert.assertTrue(listing.contains("cute local tools"));
         Assert.assertTrue(listing.contains("github MCP tools"));
         Assert.assertFalse(listing.contains("properties"));
     }
@@ -78,7 +78,7 @@ public class DeferredToolCatalogTest {
     }
 
     private static DeferredToolEntry localEntry() {
-        return DeferredToolEntry.local(new LocalTool(), "reactor", Map.of(
+        return DeferredToolEntry.local(new LocalTool(), "cute", Map.of(
                 "type", "object",
                 "properties", Map.of("title", Map.of("type", "string"))), "");
     }

@@ -46,7 +46,7 @@ export async function executeScriptInIframe(
   const targetWin = win;
   const targetDoc = doc;
   const bridge = targetWin as unknown as PickerBridge;
-  const token = `__reactorPickerBridge_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const token = `__cutePickerBridge_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const rejectKey = `${token}_reject`;
 
   return new Promise<unknown>((resolve, reject) => {

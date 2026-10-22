@@ -13,7 +13,7 @@ coverage/
 *.log
 .env
 .env.*
-/reactor-tool/.env
+/cute-tool/.env
 .dockerignore
 
 # Local-only configuration and generated runtime data.
@@ -50,5 +50,5 @@ coverage/
 /openspec/
 /plans/
 /data/
-/Reactor-agent-app/data/
+/Cute-agent-app/data/
 /mcp-server-csdn/

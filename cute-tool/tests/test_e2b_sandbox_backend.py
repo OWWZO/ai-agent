@@ -66,7 +66,7 @@ class _FakeSandbox:
         if (
             "__SESSION_SNAPSHOT__" in code
             or "__SANDBOX_SNAPSHOT__" in code
-            or "__reactor_sandbox_snapshot__" in code
+            or "__cute_sandbox_snapshot__" in code
         ):
             self._set_remote_root_from_code(code)
             files = {}
@@ -480,7 +480,7 @@ class E2BSandboxBackendTest(unittest.TestCase):
                 output_dir=str(output_dir),
                 input_files=[],
             )
-            manager_dir = workspace_root / ".reactor"
+            manager_dir = workspace_root / ".cute"
             manager_dir.mkdir()
             created: list[dict[str, object]] = []
             fake = _FakeSandbox()

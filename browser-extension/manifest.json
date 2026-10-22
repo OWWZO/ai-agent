@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Reactor Browser",
+  "name": "Cute Browser",
   "version": "1.0.24",
-  "description": "Reactor cloud browser relay. Pairs with the Reactor web app and executes trusted OpenCLI commands in Chrome.",
+  "description": "Cute cloud browser relay. Pairs with the Cute web app and executes trusted OpenCLI commands in Chrome.",
   "permissions": [
     "debugger",
     "tabs",
@@ -35,7 +35,7 @@
     }
   ],
   "action": {
-    "default_title": "Reactor Browser",
+    "default_title": "Cute Browser",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",

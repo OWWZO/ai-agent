@@ -1,14 +1,14 @@
-# Design: Reactor Agent Launch Control Demo Deck
+# Design: Cute Agent Launch Control Demo Deck
 
 **Date:** 2026-05-28
-**Scope:** Reactor Agent 对外演示文稿（官网视觉介绍 + 独立转发浏览）
+**Scope:** Cute Agent 对外演示文稿（官网视觉介绍 + 独立转发浏览）
 **Approach:** Option A amplified — `Launch Control`
 
 ---
 
 ## Goal
 
-为 `Reactor Agent` 设计一套更接近发布会气质的短篇演示文稿，用于对外快速传达项目核心价值：
+为 `Cute Agent` 设计一套更接近发布会气质的短篇演示文稿，用于对外快速传达项目核心价值：
 
 - 它不是普通聊天框式 AI 产品
 - 它强调 `多智能体协同任务`
@@ -34,7 +34,7 @@
 
 观众看完后应该记住一句话：
 
-> `Reactor Agent 是一个面向复杂 AI 工作流的多智能体协同任务工作站。`
+> `Cute Agent 是一个面向复杂 AI 工作流的多智能体协同任务工作站。`
 
 ---
 
@@ -151,7 +151,7 @@
 
 **Primary copy**
 
-- `Reactor Agent`
+- `Cute Agent`
 - `多智能体协同任务工作站`
 
 **Visual treatment**
@@ -169,7 +169,7 @@
 **Primary copy**
 
 `大多数 AI 产品只会回答。`
-`Reactor 负责协同完成任务。`
+`Cute 负责协同完成任务。`
 
 **Visual treatment**
 
@@ -334,4 +334,4 @@
 - 不覆盖所有功能细节
 - 不追求重动画视频感交付
 
-本次目标是：用 7 页以内的发布会式 deck，把 `Reactor Agent` 的价值讲狠、讲准、讲可信。
+本次目标是：用 7 页以内的发布会式 deck，把 `Cute Agent` 的价值讲狠、讲准、讲可信。

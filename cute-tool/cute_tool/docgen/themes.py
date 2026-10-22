@@ -28,7 +28,7 @@ def styles_dir() -> Path:
     home = Path(
         os.getenv("CUTE_DOCGEN_HOME")
         or os.getenv("LEAGENT_HOME")
-        or str(Path.home() / ".reactor-docgen")
+        or str(Path.home() / ".cute-docgen")
     )
     return home / "templates" / "styles"
 

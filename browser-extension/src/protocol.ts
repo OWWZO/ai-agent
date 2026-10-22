@@ -116,7 +116,7 @@ export interface Result {
   page?: string;
 }
 
-/** Local OpenCLI daemon constants. Reactor must not connect to these. */
+/** Local OpenCLI daemon constants. Cute must not connect to these. */
 export const DAEMON_PORT = 19825;
 export const DAEMON_HOST = 'localhost';
 export const DAEMON_WS_URL = `ws://${DAEMON_HOST}:${DAEMON_PORT}/ext`;

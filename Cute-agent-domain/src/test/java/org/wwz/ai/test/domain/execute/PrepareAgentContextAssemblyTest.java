@@ -128,12 +128,12 @@ public class PrepareAgentContextAssemblyTest {
     @Test
     public void bothLinksRestoreApprovedPlanOnResume() throws Exception {
         // resume 一个已批准的 ExitPlanMode：编辑后的 plan 内容应落到 PlanModeState 并退出 plan mode
-        String resumeContextJson = UserQuestionResumeContextJson.planMode("plan", "旧计划", ".reactor/plan.md");
+        String resumeContextJson = UserQuestionResumeContextJson.planMode("plan", "旧计划", ".cute/plan.md");
         StubPlanApprovalRepository approvals = new StubPlanApprovalRepository(
                 PlanApprovalRecord.builder()
                         .approvalId("pa-asm-1")
                         .planContent("已批准的计划")
-                        .planFilePath(".reactor/plan.md")
+                        .planFilePath(".cute/plan.md")
                         .decision(PlanApprovalDecision.builder()
                                 .approved(true)
                                 .editedPlanContent("修订后的计划")

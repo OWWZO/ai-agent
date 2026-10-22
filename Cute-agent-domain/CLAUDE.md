@@ -4,9 +4,9 @@
 
 ## 模块职责
 
-核心业务逻辑层，包含领域模型、领域服务、仓储接口定义。当前 Agent 有界上下文已按 `runtime / ledger / memory / rag / role` 收敛核心能力，并仅保留少量 `service` / `reactor` 延期契约与策略节点。
+核心业务逻辑层，包含领域模型、领域服务、仓储接口定义。当前 Agent 有界上下文已按 `runtime / ledger / memory / rag / role` 收敛核心能力，并仅保留少量 `service` / `cute` 延期契约与策略节点。
 
-Reactor Phase 1 之后，本模块不再承载 legacy HTTP controller，也不再承载低风险 Spring 装配类型；这些职责分别回到 `trigger` 与 `app`。当前收敛阶段新增 `ai-agent-station-study-case` 作为应用编排层，`domain` 对外优先保留领域模型、领域服务、仓储端口与外部能力 port 定义，不再新增 HTTP / SSE 协议适配职责。
+Cute Phase 1 之后，本模块不再承载 legacy HTTP controller，也不再承载低风险 Spring 装配类型；这些职责分别回到 `trigger` 与 `app`。当前收敛阶段新增 `ai-agent-station-study-case` 作为应用编排层，`domain` 对外优先保留领域模型、领域服务、仓储端口与外部能力 port 定义，不再新增 HTTP / SSE 协议适配职责。
 
 ---
 
@@ -73,7 +73,7 @@ Reactor Phase 1 之后，本模块不再承载 legacy HTTP controller，也不�
 - `AiAgentEnumVO`: Agent 类型枚举
 - `AiClientTypeEnumVO`: 客户端类型枚举
 
-### Reactor 包模型
+### Cute 包模型
 - `AgentRequest`: Agent 请求
 - `AgentContext`: Agent 上下文
 - `BaseAgent`: Agent 基类
@@ -83,17 +83,17 @@ Reactor Phase 1 之后，本模块不再承载 legacy HTTP controller，也不�
 - `AgentState`: Agent 状态枚举
 - `AgentType`: Agent 类型枚举
 
-### Reactor Phase 1 边界
+### Cute Phase 1 边界
 - legacy `/1/**`、`/data/**` controller 已迁到 `ai-agent-station-study-trigger`
 - `ReplayProjectorAutoConfiguration`、`DataAgentInitRunner`、`Es7HighLevelClientConfig` 已迁到 `ai-agent-station-study-app`
 - execution ledger 只在本模块定义 `IExecutionLedgerReadRepository`、`IExecutionLedgerWriteRepository` 端口，由 `infrastructure` 提供生产实现
 - `CuteConfig` 仍是过渡态共享配置契约，本期仅允许通过测试和文档锁边界，不做物理迁移
 
-### Reactor Phase 2A 边界
-- `domain` 不再承载 Reactor `@Mapper`、`BaseMapper` 或 `org.wwz.ai.domain.agent.reactor.mapper.*`
+### Cute Phase 2A 边界
+- `domain` 不再承载 Cute `@Mapper`、`BaseMapper` 或 `org.wwz.ai.domain.agent.cute.mapper.*`
 - chat-model 元数据通过 `IChatModelMetadataRepository` 端口访问持久化，`ChatModelInfoService`、`ChatModelSchemaService` 不再继承 `ServiceImpl`
 - `SessionContextMemoryService`、`IWorkspaceImageGenerationService` 仍在 `domain` 定义接口，但其基于 DAO 的技术实现已下沉到 `infrastructure`
-- tool-output 读写与 execution ledger 持久化协作统一依赖 `infrastructure.dao.reactor.*`
+- tool-output 读写与 execution ledger 持久化协作统一依赖 `infrastructure.dao.cute.*`
 - **执行事实主路径是 Execution Ledger**；跨轮 LLM 工作记忆默认 hydrate 自 `working_memory_*` 投影表（`SessionWorkingMemoryService`），与本轮 `Memory` 同构，服务 prompt cache
 - `SessionContextMemoryService.buildHistoryDialogue` 仅兼容/调试；history replay 仍只读 ledger
 - 不得再引入 `ai_agent_message*` 或 transcript block 四表作为运行主账本
@@ -103,9 +103,9 @@ Reactor Phase 1 之后，本模块不再承载 legacy HTTP controller，也不�
 - `domain` 中禁止新增 `SseEmitter`、`new OkHttpClient`、`JdbcDataProvider`、`SpringContextHolder`、`applicationContext.getBean(...)`
 - `RemoteHttpPort`、`RemoteStreamPort`、`FileArtifactPort`、`DataQueryExecutionPort`、`DataQueryMetadataPort` 是当前稳定 seam
 - GPT query / dataagent bridge 已删除，新增逻辑必须优先进入 `runtime / ledger / memory / rag / role`
-- `domain/agent/service`、`domain/agent/reactor` 中剩余内容仅允许作为延期契约或策略节点，禁止继续新增 catch-all 主逻辑
+- `domain/agent/service`、`domain/agent/cute` 中剩余内容仅允许作为延期契约或策略节点，禁止继续新增 catch-all 主逻辑
 - 已删除的旧 handler bridge：`AgentHandlerService`、`AgentHandlerFactory`、`PlanSolveHandlerImpl`、`ReactHandlerImpl`
-- 明确延期的 legacy contract 包：`reactor/config/data/**`、`reactor/model/{req,response,multi,dto,imagegeneration}/**`、`reactor/service/**`、`service/{execute,armory,runtime}/**`
+- 明确延期的 legacy contract 包：`cute/config/data/**`、`cute/model/{req,response,multi,dto,imagegeneration}/**`、`cute/service/**`、`service/{execute,armory,runtime}/**`
 - 延期目录必须带中文职责说明，且只允许承载已登记语义，禁止继续扩张
 
 ---
@@ -126,8 +126,8 @@ Reactor Phase 1 之后，本模块不再承载 legacy HTTP controller，也不�
 **Q: 执行策略工厂的作用是什么？**
 A: 工厂模式封装不同 Agent 类型的执行逻辑，支持 AutoAgent、FlowAgent 等不同执行策略的切换。
 
-**Q: Reactor 包是什么？**
-A: Reactor 是 Agent 执行引擎的核心实现，包含 Agent 生命周期管理、工具调用、消息处理等。
+**Q: Cute 包是什么？**
+A: Cute 是 Agent 执行引擎的核心实现，包含 Agent 生命周期管理、工具调用、消息处理等。
 
 ---
 
@@ -148,10 +148,10 @@ A: Reactor 是 Agent 执行引擎的核心实现，包含 Agent 生命周期管�
 | `src/main/java/org/wwz/ai/domain/agent/service/execute/flow/step/factory/DefaultFlowAgentExecuteStrategyFactory.java` | 流程 Agent 策略工厂 |
 | `src/main/java/org/wwz/ai/domain/agent/service/armory/node/factory/DefaultArmoryStrategyFactory.java` | 装配策略工厂 |
 
-### Reactor 核心
+### Cute 核心
 | 文件路径 | 说明 |
 |---------|------|
-| `src/main/java/org/wwz/ai/domain/agent/reactor/model/req/AgentRequest.java` | 延期保留的 legacy Agent 请求契约 |
+| `src/main/java/org/wwz/ai/domain/agent/cute/model/req/AgentRequest.java` | 延期保留的 legacy Agent 请求契约 |
 | `src/main/java/org/wwz/ai/domain/agent/runtime/agent/BaseAgent.java` | Agent 基类 |
 | `src/main/java/org/wwz/ai/domain/agent/runtime/agent/PlanningAgent.java` | 规划 Agent |
 | `src/main/java/org/wwz/ai/domain/agent/runtime/agent/ReactImplAgent.java` | ReAct Agent |
@@ -164,8 +164,8 @@ A: Reactor 是 Agent 执行引擎的核心实现，包含 Agent 生命周期管�
 | `src/main/java/org/wwz/ai/domain/agent/memory/SessionWorkingMemoryService.java` | 跨轮工作记忆 hydrate/persist |
 | `src/main/java/org/wwz/ai/domain/agent/memory/WorkingMemoryProjector.java` | Memory ↔ 行表投影 |
 | `src/main/java/org/wwz/ai/domain/agent/role/IFixRoleService.java` | 角色库领域服务 |
-| `src/main/java/org/wwz/ai/domain/agent/reactor/service/IAgentConversationService.java` | 会话服务接口 |
-| `src/main/java/org/wwz/ai/domain/agent/reactor/service/IAgentStreamPersistService.java` | 流式持久化接口 |
+| `src/main/java/org/wwz/ai/domain/agent/cute/service/IAgentConversationService.java` | 会话服务接口 |
+| `src/main/java/org/wwz/ai/domain/agent/cute/service/IAgentStreamPersistService.java` | 流式持久化接口 |
 
 ---
 

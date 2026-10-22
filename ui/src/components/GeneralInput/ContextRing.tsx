@@ -41,7 +41,7 @@ function formatTokens(n: number) {
  * 上下文占用环：只展示模型返回的真实 prompt_tokens。
  * 展开面板走 Portal，避免被输入框 overflow 裁切。
  */
-const ContextRing: ReactorType.FC<Props> = ({
+const ContextRing: CuteType.FC<Props> = ({
   usage,
   contextWindow,
   className,

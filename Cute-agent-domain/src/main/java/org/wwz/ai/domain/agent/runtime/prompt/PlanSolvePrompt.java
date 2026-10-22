@@ -12,7 +12,7 @@ public final class PlanSolvePrompt {
     public static final String ORCHESTRATION = """
             # Plan-Execute 主代理职责 (%s)
 
-            你是 Reactor 调研/分析**协调者**。本段是 PlanSolve 主代理的系统底座。
+            你是 Cute 调研/分析**协调者**。本段是 PlanSolve 主代理的系统底座。
 
             ## 1. 你的角色
             - 帮助用户完成深度调研、数据分析与报告交付
@@ -68,7 +68,7 @@ public final class PlanSolvePrompt {
             继续 vs 新建：已结束且上下文重叠高 → SendMessage 唤醒；运行中指导 → SendMessage；研究很宽、创作很窄 → 新 Worker + 综合规格；审阅用新视角；无关任务新开。
 
              ## 7. Plan Mode
-            - 会话第一次 PlanExecute 请求可能由系统自动进入 plan mode（只读规划，写 .reactor/plan.md，ExitPlanMode 等人批）。
+            - 会话第一次 PlanExecute 请求可能由系统自动进入 plan mode（只读规划，写 .cute/plan.md，ExitPlanMode 等人批）。
             - 之后默认不在 plan mode。复杂新任务、多方案、需求不清时调用 EnterPlanMode；简单追问、改一处、看结果不要进。
             - 用户可通过前端「计划」为本轮强制进入 plan mode。
             - plan mode 只约束你自己；派出去的 Worker 可检索、写文件。

@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/brand/logo.png" alt="Reactor logo" width="104" height="104">
+  <img src="assets/brand/logo.png" alt="Cute logo" width="104" height="104">
 </p>
 
-<h1 align="center">Reactor</h1>
+<h1 align="center">Cute</h1>
 
 <p align="center">
   <strong>让世界的变化进入你的工作流</strong>
@@ -32,7 +32,7 @@
 
 <p align="center"><em>工作台主页</em></p>
 <p align="center">
-  <img src="assets/readme/主页.png" alt="Reactor 工作台主页" width="960">
+  <img src="assets/readme/主页.png" alt="Cute 工作台主页" width="960">
 </p>
 
 <p align="center"><em>多 Agent 协作</em></p>
@@ -63,13 +63,13 @@
 | Claude | 原生不支持上述任一平台的实时检索 |
 | Grok | 原生深度打通 X 平台实时数据，却无法原生覆盖 Reddit 等更多平台生态 |
 
-而 Reactor 支持导入用户自定义密钥与浏览器会话凭证，打通全部平台数据源。它不止于跨平台全域检索，更能对多源信息进行交叉权重评分，过滤噪音与重复信息，精准提炼真正有价值的核心情报。
+而 Cute 支持导入用户自定义密钥与浏览器会话凭证，打通全部平台数据源。它不止于跨平台全域检索，更能对多源信息进行交叉权重评分，过滤噪音与重复信息，精准提炼真正有价值的核心情报。
 
 ### 为何存在
 
-Reactor 最初诞生于程序员群体的信息焦虑：在技术迭代日新月异的当下，Reddit、X 平台的极客社区始终站在行业最前沿，第一时间涌现最新的技术实践、工具拆解与方向讨论。但各大平台彼此割裂、各自形成封闭的围墙花园，零散的一手经验与技术动态散落在一座座信息孤岛上，没有单一入口可以高效聚合全域信息，我们很难及时、完整地捕捉全社区的原生技术情报，同步跟进最前沿的技术方向。
+Cute 最初诞生于程序员群体的信息焦虑：在技术迭代日新月异的当下，Reddit、X 平台的极客社区始终站在行业最前沿，第一时间涌现最新的技术实践、工具拆解与方向讨论。但各大平台彼此割裂、各自形成封闭的围墙花园，零散的一手经验与技术动态散落在一座座信息孤岛上，没有单一入口可以高效聚合全域信息，我们很难及时、完整地捕捉全社区的原生技术情报，同步跟进最前沿的技术方向。
 
-从解决自身的技术信息痛点出发，Reactor 逐步进化为一款通用全域情报工具，覆盖更多高价值决策场景：
+从解决自身的技术信息痛点出发，Cute 逐步进化为一款通用全域情报工具，覆盖更多高价值决策场景：
 
 1. **行业会议前**  
    一键梳理发言嘉宾的近期观点、公开言论与项目动态，一键聚合目标人物全平台真实动态：
@@ -92,7 +92,7 @@ Reactor 最初诞生于程序员群体的信息焦虑：在技术迭代日新月
    > 对提名内容做名称校验、垃圾信息过滤与内容价值判断，并撰写小红书/ X 平台文章的切入点。随后输出 5–10 个按热度排序的话题；每个结果都包含跨平台数据、热度标签，以及可直接执行的内容切入点。
 
 当你和一位 企业CEO 对坐会谈时，你是否读完了他近 30 天的所有公开推文、播客实录与社区讨论？  
-**Reactor 已经帮你读完了。**
+**Cute 已经帮你读完了。**
 
 ### 信息来源
 
@@ -252,7 +252,7 @@ flowchart LR
 
 ### 1. Observe：深度研究、NL2SQL 与 RAG
 
-Reactor 将“搜索”视为一个可以继续执行的研究过程，而不是一次关键词查询。
+Cute 将“搜索”视为一个可以继续执行的研究过程，而不是一次关键词查询。
 
 - **DeepResearch公域信息检索**：查询拆解、多轮 `extend/search/report` 阶段、并发检索、正文抓取、去重、摘要和 SSE 流式进度，支持 DuckDuckGo、Exa、Tavily、Brave、Grok/OpenAI-compatible 等搜索引擎。
 - **私域媒体检索**：接入 RSS、GitHub、Reddit、Hacker News、Stack Exchange、V2EX、Twitter、Telegram、YouTube、B站、小红书、微博、雪球等授权或公开渠道，补齐搜索引擎拿不到的社区原生内容。
@@ -295,7 +295,7 @@ Reactor 将“搜索”视为一个可以继续执行的研究过程，而不是
 
 ### 6. 协作与控制 Multi-Agent
 
-Reactor 支持把一个复杂目标拆给多个职责明确的 Agent，并让主 Agent 继续推进。
+Cute 支持把一个复杂目标拆给多个职责明确的 Agent，并让主 Agent 继续推进。
 
 - **同步子 Agent**：默认等待子任务结果，适合需要即时汇总的检索、分析和验证步骤。
 - **异步后台 Agent**：设置 `run_in_background=true` 后，长任务在后台运行，主对话可以继续处理其他工作。
@@ -305,7 +305,7 @@ Reactor 支持把一个复杂目标拆给多个职责明确的 Agent，并让主
 
 ### 7. Human-in-the-loop
 
-Agent 不必在所有步骤上自动做决定。Reactor 在执行链路中提供可恢复的人机协作节点：
+Agent 不必在所有步骤上自动做决定。Cute 在执行链路中提供可恢复的人机协作节点：
 
 ```text
 生成计划 -> 等待审批 -> 执行任务 -> 遇到不确定性 -> 向用户提问 -> 继续执行
@@ -357,7 +357,7 @@ Agent 不必在所有步骤上自动做决定。Reactor 在执行链路中提供
 
 ### 异构多服务
 
-Reactor 把实时 Agent 编排和重型工具执行拆开：Java 负责运行时、策略、会话、HITL 和执行账本；Python 负责搜索、RAG、数据处理、文档生成和代码沙箱；React 负责流式工作台、产物预览和 GenUI 渲染。三者通过 HTTP、SSE、MCP 和文件服务协作。
+Cute 把实时 Agent 编排和重型工具执行拆开：Java 负责运行时、策略、会话、HITL 和执行账本；Python 负责搜索、RAG、数据处理、文档生成和代码沙箱；React 负责流式工作台、产物预览和 GenUI 渲染。三者通过 HTTP、SSE、MCP 和文件服务协作。
 
 ```mermaid
 flowchart LR
@@ -520,7 +520,7 @@ Agent 浏览器使用 Kernel 云端服务。在 Backend 环境中设置 `KERNEL_
 
 物化优先级：CLI stdout JSON 明确报告的 `artifacts` 候选 > 命令 `--output` 声明的输出目录 > 同一 workspace 的前后快照（仅 `host_cli`）。浏览器链路只做前两种，因为并发调用共享同一个 workspace，全量 diff 会把别人的文件登记到自己名下。
 
-本地文件如何进入文件服务由 `CUTE_FILE_ARTIFACT_LOCAL_FILE_MODE` 决定（对应 `reactor.file-artifact.local-file-mode`）：
+本地文件如何进入文件服务由 `CUTE_FILE_ARTIFACT_LOCAL_FILE_MODE` 决定（对应 `cute.file-artifact.local-file-mode`）：
 
 | 值 | 行为 | 适用部署 |
 | --- | --- | --- |

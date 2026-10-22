@@ -48,7 +48,7 @@ export default function WorkspaceAdminHeader({
             <Icon />
           </span>
           <div className="workspace-admin-heading-copy">
-            <span className="workspace-admin-kicker">Reactor / 工作台</span>
+            <span className="workspace-admin-kicker">Cute / 工作台</span>
             <h1 className="workspace-admin-title">{title}</h1>
             <p className="workspace-admin-description">{description}</p>
           </div>

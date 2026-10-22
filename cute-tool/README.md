@@ -1,4 +1,4 @@
-# Reactor Tool
+# Cute Tool
 
 `python >= 3.11`
 
@@ -80,10 +80,10 @@ Agent 使用 `host_cli(tool="twitter", ...)` 或 `host_cli(tool="rdt", ...)`，�
 
 启动 OpenCLI 前先让浏览器扩展在线，并在浏览器中完成对应站点登录。
 
-Java Agent 默认通过 `reactor.host-cli.allow` 暴露 Twitter 和 Reddit CLI；不要再把这些站点写入 `autobots.autoagent.tool_list`：
+Java Agent 默认通过 `cute.host-cli.allow` 暴露 Twitter 和 Reddit CLI；不要再把这些站点写入 `autobots.autoagent.tool_list`：
 
 ```yaml
-reactor:
+cute:
   host-cli:
     allow: [twitter, rdt]
 ```

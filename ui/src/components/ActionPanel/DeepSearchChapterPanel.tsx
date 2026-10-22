@@ -11,7 +11,7 @@ type DeepSearchChapterPanelProps = {
 /**
  * 章节工作区：上方该章检索来源列表，下方章节总结。
  */
-const DeepSearchChapterPanel: ReactorType.FC<DeepSearchChapterPanelProps> = memo(
+const DeepSearchChapterPanel: CuteType.FC<DeepSearchChapterPanelProps> = memo(
   ({ model }) => {
     const orderLabel =
       typeof model.order === "number" && model.order > 0

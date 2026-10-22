@@ -18,7 +18,7 @@ from cute_tool.model.protocal import WebFetchRequest
 
 
 DEFAULT_TIMEOUT_SECONDS = 30
-DEFAULT_USER_AGENT = "ReactorToolWebFetch/1.0"
+DEFAULT_USER_AGENT = "CuteToolWebFetch/1.0"
 
 
 @dataclass

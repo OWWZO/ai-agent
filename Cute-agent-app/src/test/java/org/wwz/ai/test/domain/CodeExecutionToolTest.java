@@ -113,7 +113,7 @@ public class CodeExecutionToolTest {
         CuteConfig config = new CuteConfig();
         ReflectionTestUtils.setField(config, "codeInterpreterUrl", "http://cute-tool");
         String workspaceRoot = java.nio.file.Path.of(
-                        System.getProperty("java.io.tmpdir"), "reactor-ws-align", "session-code-001")
+                        System.getProperty("java.io.tmpdir"), "cute-ws-align", "session-code-001")
                 .toAbsolutePath()
                 .normalize()
                 .toString();

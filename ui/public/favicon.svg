@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none" role="img" aria-label="Reactor">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none" role="img" aria-label="Cute">
   <!-- tighter crop + thicker strokes for 16px tab clarity -->
   <ellipse cx="64" cy="64" rx="52" ry="32" transform="rotate(-28 64 64)" stroke="#1D1D1F" stroke-width="8" stroke-linecap="round"/>
   <ellipse cx="64" cy="64" rx="38" ry="54" transform="rotate(18 64 64)" stroke="#1D1D1F" stroke-width="5" opacity="0.35"/>
