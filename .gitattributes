@@ -23,3 +23,8 @@
 *.bat text eol=crlf
 *.cmd text eol=crlf
 *.ps1 text eol=crlf
+
+# 第三方 vendored 源码：仅排除出 GitHub 语言统计，文件仍正常跟踪、编辑、参与测试。
+# BrowserSkill = Tencent/BrowserSkill 原样引入；adapter-host/clis = 上游 opencli 站点适配器。
+BrowserSkill/** linguist-vendored
+adapter-host/clis/** linguist-vendored
