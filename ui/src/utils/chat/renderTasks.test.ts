@@ -151,3 +151,35 @@ describe("getTaskRenderSignature 缓存失效契约", () => {
     ).not.toBe(withRefs);
   });
 });
+
+describe("签名对大 payload 的规模", () => {
+  const base = {
+    messageId: "m1",
+    messageType: "tool_call",
+    messageTime: "1714041600000",
+  } as unknown as Parameters<typeof getTaskRenderSignature>[0];
+
+  const sigWith = (argumentsText: string) =>
+    getTaskRenderSignature(
+      {
+        ...base,
+        resultMap: { messageType: "tool_call", argumentsText },
+      } as never,
+      "m1"
+    );
+
+  it("签名长度不随入参体积线性增长", () => {
+    const small = sigWith('{"a":1}');
+    const huge = sigWith(`{"a":"${"x".repeat(200_000)}"}`);
+    // 全文进签名时 huge 会比 small 长约 20 万字符；哈希方案下两者同量级
+    expect(huge.length).toBeLessThan(small.length + 200);
+  });
+
+  it("同长度不同内容仍能区分", () => {
+    expect(sigWith('{"path":"a.ts"}')).not.toBe(sigWith('{"path":"b.ts"}'));
+  });
+
+  it("内容相同则签名相同（缓存可命中）", () => {
+    expect(sigWith('{"a":1}')).toBe(sigWith('{"a":1}'));
+  });
+});
