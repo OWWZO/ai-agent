@@ -1013,3 +1013,30 @@ describe("resolveProcessStepKind 的子 Agent 优先级", () => {
     expect(resolveProcessStepKind(plain("markdown"))).toBe("artifact");
   });
 });
+
+describe("resolveProcessStepKind 的表查找安全性", () => {
+  it("原型键不会命中原型方法，落到工具名判定后的兜底", () => {
+    // 直接下标会让这些键命中 Object.prototype 上的方法，返回 function。
+    for (const key of ["toString", "constructor", "hasOwnProperty", "valueOf"]) {
+      const result = resolveProcessStepKind({
+        messageType: key,
+        messageId: "m1",
+        resultMap: {},
+      } as unknown as CHAT.Task);
+      expect(typeof result).toBe("string");
+      expect(result).toBe("tool");
+    }
+  });
+
+  it("表内类型仍返回正确结果", () => {
+    const plain = (messageType: string) =>
+      ({
+        messageType,
+        messageId: "m1",
+        resultMap: {}
+      }) as unknown as CHAT.Task;
+    expect(resolveProcessStepKind(plain("llm_reasoning"))).toBe("thinking");
+    expect(resolveProcessStepKind(plain("agent_stream"))).toBe("assistant_reply");
+    expect(resolveProcessStepKind(plain("session_tasks"))).toBe("interactive");
+  });
+});
