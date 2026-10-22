@@ -241,7 +241,7 @@ function resolveToolCallId(tool: CHAT.Task): string {
  * 会被表抢先命中，降级成 search / code / artifact，子 Agent 的进度行、时长、
  * liveText 和 Dock 详情全部不渲染。
  */
-const STEP_KIND_BEFORE_SUBAGENT: Record<string, ProcessStepKind> = {
+export const STEP_KIND_BEFORE_SUBAGENT: Record<string, ProcessStepKind> = {
   llm_reasoning: "thinking",
   plan_thought: "thinking",
   // agent_stream 是 react 主 agent 的正文流行模型：中间轮（moreRounds=true）
@@ -253,7 +253,7 @@ const STEP_KIND_BEFORE_SUBAGENT: Record<string, ProcessStepKind> = {
 };
 
 /** 消息类型 → 步骤类型：子 Agent 判定之后的常量映射。 */
-const STEP_KIND_AFTER_SUBAGENT: Record<string, ProcessStepKind> = {
+export const STEP_KIND_AFTER_SUBAGENT: Record<string, ProcessStepKind> = {
   ask_user_question: "interactive",
   desktop_control: "interactive",
   plan_approval: "interactive",

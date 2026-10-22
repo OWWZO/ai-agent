@@ -65,6 +65,16 @@ function buildDesktopEventData(payload: Record<string, unknown>): MESSAGE.EventD
   };
 }
 
+/**
+ * 把 pending 的桌面控制卡片合并回会话。
+ *
+ * 与 askUser / planApproval 两条路径刻意不同，不要为了「统一」合并：
+ * - 桌面控制只认**最后一轮**（`nextList[last]`），不做 requestId → WAITING_INPUT
+ *   → 最后一轮的三级回退：它的事件总是发生在当前活跃轮，历史分页里不需要回溯。
+ * - 它用 `{...target}` + `combineData` 原地改，不深拷贝 multiAgent 组、
+ *   也不走 commitHITLChat 重建派生层 —— 桌面控制卡片不参与主时间线的
+ *   task 分组，重建派生层反而会把 combineData 刚写进去的结论覆盖掉。
+ */
 export function mergePendingDesktopControls(
   conversation: CHAT.ConversationHistory,
   pending: Record<string, unknown>[]

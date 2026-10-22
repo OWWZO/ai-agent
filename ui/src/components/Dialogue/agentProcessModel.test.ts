@@ -4,6 +4,8 @@ import {
   deriveAgentProcessModel,
   formatProcessDuration,
   parseMessageTimeMs,
+  STEP_KIND_AFTER_SUBAGENT,
+  STEP_KIND_BEFORE_SUBAGENT,
   resolveProcessStepKind,
 } from "./agentProcessModel";
 
@@ -1038,5 +1040,38 @@ describe("resolveProcessStepKind 的表查找安全性", () => {
     expect(resolveProcessStepKind(plain("llm_reasoning"))).toBe("thinking");
     expect(resolveProcessStepKind(plain("agent_stream"))).toBe("assistant_reply");
     expect(resolveProcessStepKind(plain("session_tasks"))).toBe("interactive");
+  });
+});
+
+describe("步骤类型表的顺序契约", () => {
+  // 子 Agent 判定（看 toolName）必须先于「其余常量表」。这条契约靠
+  // 两张表的划分来保证，而不是靠注释——一旦有人把 AFTER 表的类型挪进
+  // BEFORE 表，子 Agent 派发卡就会被抢先命中。
+  it("BEFORE 表只放必须早于子 Agent 判定的类型", () => {
+    expect(Object.keys(STEP_KIND_BEFORE_SUBAGENT).sort()).toEqual([
+      "agent_stream",
+      "llm_reasoning",
+      "plan_thought",
+      "tool_thought",
+    ]);
+  });
+
+  it("两张表的键不重叠", () => {
+    const before = new Set(Object.keys(STEP_KIND_BEFORE_SUBAGENT));
+    const overlap = Object.keys(STEP_KIND_AFTER_SUBAGENT).filter((key) =>
+      before.has(key)
+    );
+    expect(overlap).toEqual([]);
+  });
+
+  it("AFTER 表不得包含 thinking / assistant_reply 这两类", () => {
+    // 这两类在 master 里早于 user_brief 判定，放进 AFTER 表会让它们
+    // 被子 Agent 判定抢先。
+    for (const [key, kind] of Object.entries(STEP_KIND_AFTER_SUBAGENT)) {
+      expect(kind, `${key} 不该在 AFTER 表里得到 ${kind}`).not.toBe("thinking");
+      expect(kind, `${key} 不该在 AFTER 表里得到 ${kind}`).not.toBe(
+        "assistant_reply"
+      );
+    }
   });
 });
