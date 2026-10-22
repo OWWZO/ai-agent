@@ -85,5 +85,8 @@ export function useSyncExternalStoreWithSelector<Snapshot, Selection>(
   return value;
 }
 
-// zustand v4 的 ESM 入口按默认导入取这个函数，具名导出之外再补一个默认导出。
-export default useSyncExternalStoreWithSelector;
+// zustand 的 ESM 入口是 `import X from '.../shim/with-selector.js'` 后再
+// `const { useSyncExternalStoreWithSelector } = X` 解构的（CJS 互操作写法）。
+// 真实包是 CJS，默认导出即 module.exports 对象；这里若直接默认导出函数本身，
+// 解构出来是 undefined，调用时报 `useSyncExternalStoreWithSelector is not a function`。
+export default { useSyncExternalStoreWithSelector };
