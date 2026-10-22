@@ -97,4 +97,25 @@ public final class PendingYieldToolCalls {
         }
         return false;
     }
+
+    /**
+     * yield 时 memory 里只有 assistant.tool_calls、尚无 tool result；先补 waiting 占位，避免网关 400。
+     * <p>
+     * 三条链路（AskUserQuestion / RequestDesktopControl / ExitPlanMode）在落库前都要做这一步，
+     * 判定条件逐字相同，只有占位 observation 的文案不同。已有 tool result 时不动记忆。
+     *
+     * @param messages          当前 memory 消息列表；为 null 时跳过
+     * @param toolCallId        目标 tool_call id；空白时跳过
+     * @param waitingObservation 占位 observation 文案（须含 waiting_user_input 标记）
+     */
+    public static void appendWaitingToolResult(List<Message> messages,
+                                               String toolCallId,
+                                               String waitingObservation) {
+        if (messages == null
+                || StringUtils.isBlank(toolCallId)
+                || hasToolResult(messages, toolCallId)) {
+            return;
+        }
+        messages.add(Message.toolMessage(waitingObservation, toolCallId, null));
+    }
 }

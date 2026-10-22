@@ -11,6 +11,7 @@ import org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord;
 import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwnerResolver;
+import org.wwz.ai.domain.agent.runtime.yield.PendingYieldToolCalls;
 import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReActAgent;
@@ -44,15 +45,11 @@ public class DesktopControlYieldService {
         String toolCallId = DesktopControlObservationSupport.resolveDesktopToolCallId(
                 executor == null || executor.getMemory() == null ? null : executor.getMemory().getMessages(),
                 signal.getToolCallId());
-        if (StringUtils.isNotBlank(toolCallId)
-                && executor != null
-                && executor.getMemory() != null
-                && !DesktopControlObservationSupport.hasToolResult(executor.getMemory().getMessages(), toolCallId)) {
-            executor.getMemory().addMessage(org.wwz.ai.domain.agent.runtime.dto.Message.toolMessage(
-                    DesktopControlObservationSupport.buildWaitingObservation(signal.getReason(), controlId),
-                    toolCallId,
-                    null));
-        }
+        // yield 时 memory 只有 assistant.tool_calls、尚无 tool result；先补 waiting 占位，避免网关 400。
+        PendingYieldToolCalls.appendWaitingToolResult(
+                executor == null || executor.getMemory() == null ? null : executor.getMemory().getMessages(),
+                toolCallId,
+                DesktopControlObservationSupport.buildWaitingObservation(signal.getReason(), controlId));
         Long toolInvocationId = null;
         if (agentContext.getAgentRunState() != null && StringUtils.isNotBlank(toolCallId)) {
             toolInvocationId = agentContext.getAgentRunState().resolveToolInvocationId(toolCallId);
