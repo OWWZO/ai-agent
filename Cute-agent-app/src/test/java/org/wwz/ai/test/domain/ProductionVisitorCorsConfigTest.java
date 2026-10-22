@@ -31,9 +31,9 @@ public class ProductionVisitorCorsConfigTest {
                 StandardCharsets.UTF_8
         );
 
-        Assert.assertTrue("Compose 必须编排 Java Backend", content.contains("reactor-backend:"));
+        Assert.assertTrue("Compose 必须编排 Java Backend", content.contains("cute-backend:"));
         Assert.assertTrue("Compose 必须编排 cute-tool API", content.contains("cute-tool:"));
-        Assert.assertTrue("Compose 必须编排 sandbox 进程", content.contains("reactor-sandbox:"));
+        Assert.assertTrue("Compose 必须编排 sandbox 进程", content.contains("cute-sandbox:"));
         Assert.assertTrue("Compose 必须编排前端反代", content.contains("frontend:"));
     }
 

@@ -7,7 +7,7 @@ $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $pythonExe = Join-Path $projectRoot ".venv\Scripts\python.exe"
 $apiPort = 1601
 $sandboxPort = 1602
-$apiWorkersText = if ([string]::IsNullOrWhiteSpace($env:REACTOR_TOOL_WORKERS)) { "4" } else { $env:REACTOR_TOOL_WORKERS.Trim() }
+$apiWorkersText = if ([string]::IsNullOrWhiteSpace($env:CUTE_TOOL_WORKERS)) { "4" } else { $env:CUTE_TOOL_WORKERS.Trim() }
 
 if (-not (Test-Path $pythonExe)) {
     throw "Missing local virtual environment: $pythonExe. Run 'uv sync' in cute-tool first."
@@ -37,11 +37,11 @@ try {
         $env:FILE_SERVER_URL = "http://127.0.0.1:$apiPort/v1/file_tool"
     }
 
-    $env:REACTOR_SANDBOX_URL = "http://127.0.0.1:$sandboxPort"
+    $env:CUTE_SANDBOX_URL = "http://127.0.0.1:$sandboxPort"
 
     Write-Host "Starting sandbox on :$sandboxPort (workers=1) ..."
-    $sandboxEnv = $env:REACTOR_TOOL_ROLE
-    $env:REACTOR_TOOL_ROLE = "sandbox"
+    $sandboxEnv = $env:CUTE_TOOL_ROLE
+    $env:CUTE_TOOL_ROLE = "sandbox"
     Start-Process -FilePath $pythonExe -ArgumentList @(
         "server.py", "--host", "127.0.0.1", "--port", "$sandboxPort", "--workers", "1", "--role", "sandbox"
     ) -WorkingDirectory $projectRoot -WindowStyle Normal
@@ -49,10 +49,10 @@ try {
     Start-Sleep -Seconds 2
 
     Write-Host "Starting api on :$apiPort (workers=$apiWorkersText) ..."
-    $env:REACTOR_TOOL_ROLE = "api"
+    $env:CUTE_TOOL_ROLE = "api"
     & $pythonExe "server.py" "--host" "0.0.0.0" "--port" "$apiPort" "--workers" $apiWorkersText "--role" "api"
 }
 finally {
-    if ($null -ne $sandboxEnv) { $env:REACTOR_TOOL_ROLE = $sandboxEnv } else { Remove-Item Env:REACTOR_TOOL_ROLE -ErrorAction SilentlyContinue }
+    if ($null -ne $sandboxEnv) { $env:CUTE_TOOL_ROLE = $sandboxEnv } else { Remove-Item Env:CUTE_TOOL_ROLE -ErrorAction SilentlyContinue }
     Pop-Location
 }

@@ -44,7 +44,7 @@ _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,63}$")
 def templates_dir() -> Path:
     """Return the configured doc-template YAML directory."""
     home = Path(
-        os.getenv("REACTOR_DOCGEN_HOME")
+        os.getenv("CUTE_DOCGEN_HOME")
         or os.getenv("LEAGENT_HOME")
         or str(Path.home() / ".reactor-docgen")
     )

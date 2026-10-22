@@ -3,7 +3,7 @@
  *
  * Two backends coexist this round:
  *   - `opencli` (default) — the vendored OpenCLI `Page` wrapped by OpenCliPage
- *   - `bsk`               — the ReactorPage / BskClient path
+ *   - `bsk`               — the CutePage / BskClient path
  *
  * Leaving `BROWSER_BACKEND` unset must behave exactly as before 021.
  */
@@ -26,6 +26,6 @@ export function resolveBackend(raw: string | undefined = process.env.BROWSER_BAC
 }
 
 export { OpenCliPage } from './opencli-page.js';
-export { ReactorPage, NotImplementedError } from './reactor-page.js';
-export type { BskSessionHandle } from './reactor-page.js';
+export { CutePage, NotImplementedError } from './cute-page.js';
+export type { BskSessionHandle } from './cute-page.js';
 export type { IPage } from './ipage.js';

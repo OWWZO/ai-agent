@@ -109,20 +109,20 @@ public class BskFrameRouterTest {
 
     @Test
     public void cuteHelloIsLegacy() {
-        Assert.assertEquals(BskFrameKind.REACTOR_LEGACY, BskFrameRouter.classify(
+        Assert.assertEquals(BskFrameKind.CUTE_LEGACY, BskFrameRouter.classify(
                 "{\"type\":\"hello\"}"));
     }
 
     @Test
     public void cutePingIsLegacy() {
-        Assert.assertEquals(BskFrameKind.REACTOR_LEGACY, BskFrameRouter.classify(
+        Assert.assertEquals(BskFrameKind.CUTE_LEGACY, BskFrameRouter.classify(
                 "{\"type\":\"ping\"}"));
     }
 
     @Test
     public void cuteCommandResultIsLegacy() {
         // Cute 命令结果：{id, ok, data} —— 没有 result/error 键，落到旧协议。
-        Assert.assertEquals(BskFrameKind.REACTOR_LEGACY, BskFrameRouter.classify(
+        Assert.assertEquals(BskFrameKind.CUTE_LEGACY, BskFrameRouter.classify(
                 "{\"id\":\"rpc-1\",\"ok\":true,\"data\":\"x\"}"));
     }
 

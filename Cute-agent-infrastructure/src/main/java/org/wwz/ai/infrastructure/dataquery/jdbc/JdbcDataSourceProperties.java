@@ -16,5 +16,5 @@ public class JdbcDataSourceProperties {
     private String schema;
     private String username;
     private String password;
-    private String key = "reactor-datasource";
+    private String key = "cute-datasource";
 }

@@ -27,13 +27,13 @@ import java.util.logging.Logger;
  * 判定「有产出」时把推理内容也算进去：一旦有增量推给过客户端，就不再重试，避免重复输出。
  *
  * <h3>配置</h3>
- * {@code REACTOR_LLM_EMPTY_COMPLETION_RETRY_ENABLED}：设为 false 关闭空补全重试。
+ * {@code CUTE_LLM_EMPTY_COMPLETION_RETRY_ENABLED}：设为 false 关闭空补全重试。
  */
 public final class LlmResilientCompletionPort implements LlmCompletionPort {
 
     private static final Logger LOG = Logger.getLogger(LlmResilientCompletionPort.class.getName());
 
-    public static final String ENV_EMPTY_COMPLETION_RETRY_ENABLED = "REACTOR_LLM_EMPTY_COMPLETION_RETRY_ENABLED";
+    public static final String ENV_EMPTY_COMPLETION_RETRY_ENABLED = "CUTE_LLM_EMPTY_COMPLETION_RETRY_ENABLED";
 
     private final LlmCompletionPort delegate;
     private final int emptyCompletionMaxRetries;

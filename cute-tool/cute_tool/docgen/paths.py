@@ -6,21 +6,21 @@ import os
 from pathlib import Path
 
 # 优先使用显式配置，其次兼容旧环境变量，最后落到当前用户目录。
-REACTOR_DOCGEN_HOME = Path(
-    os.getenv("REACTOR_DOCGEN_HOME")
+CUTE_DOCGEN_HOME = Path(
+    os.getenv("CUTE_DOCGEN_HOME")
     or os.getenv("LEAGENT_HOME")
     or (Path.home() / ".reactor-docgen")
 )
-FONTS_DIR = REACTOR_DOCGEN_HOME / "fonts"
+FONTS_DIR = CUTE_DOCGEN_HOME / "fonts"
 UPLOAD_DIR = Path(
-    os.getenv("REACTOR_DOCGEN_UPLOAD_DIR") or (REACTOR_DOCGEN_HOME / "uploads")
+    os.getenv("CUTE_DOCGEN_UPLOAD_DIR") or (CUTE_DOCGEN_HOME / "uploads")
 )
 KNOWLEDGE_DIR = Path(
-    os.getenv("REACTOR_DOCGEN_KNOWLEDGE_DIR") or (REACTOR_DOCGEN_HOME / "knowledge")
+    os.getenv("CUTE_DOCGEN_KNOWLEDGE_DIR") or (CUTE_DOCGEN_HOME / "knowledge")
 )
-TEMPLATE_STYLES_DIR = REACTOR_DOCGEN_HOME / "templates" / "styles"
+TEMPLATE_STYLES_DIR = CUTE_DOCGEN_HOME / "templates" / "styles"
 OUTPUT_DIR = Path(
-    os.getenv("REACTOR_DOCGEN_OUTPUT_DIR") or (Path.cwd() / "skilloutput" / "docgen")
+    os.getenv("CUTE_DOCGEN_OUTPUT_DIR") or (Path.cwd() / "skilloutput" / "docgen")
 )
 
 for _p in (FONTS_DIR, UPLOAD_DIR, KNOWLEDGE_DIR, TEMPLATE_STYLES_DIR, OUTPUT_DIR):

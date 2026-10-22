@@ -22,8 +22,8 @@ export interface LightweightDiffLineParts {
 /** 超过这个行数就中间截断：内联 diff 挂在消息流里，不能让它拖垮渲染。 */
 const MAX_PLAIN_TEXT_FALLBACK_RENDER_LINES = 800;
 // 与 ZCode 同样用内部 marker token 承载截断信息，展示文案留给组件层（避免 lib 层硬编码中文）。
-const TRUNCATED_MARKER_PREFIX = "\\ __REACTOR_DIFF_TRUNCATED__:";
-const TRUNCATED_MARKER_REGEX = /^\\ __REACTOR_DIFF_TRUNCATED__:(\d+)$/;
+const TRUNCATED_MARKER_PREFIX = "\\ __CUTE_DIFF_TRUNCATED__:";
+const TRUNCATED_MARKER_REGEX = /^\\ __CUTE_DIFF_TRUNCATED__:(\d+)$/;
 
 function isPatchHunkHeaderLine(line: string): boolean {
   return line === "@@" || line.startsWith("@@ ");

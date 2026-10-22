@@ -5,7 +5,7 @@
  * interface that existing code imports, and that file is NOT modified this
  * round — it remains the source of truth for the current OpenCLI main path.
  * The declaration below is a verbatim copy of `src/types.ts:72` so the new
- * `OpenCliPage` / `ReactorPage` implementations can share one contract
+ * `OpenCliPage` / `CutePage` implementations can share one contract
  * without forcing a repo-wide import migration.
  *
  * Supporting option/result types are re-exported from `../types.js` rather

@@ -67,7 +67,7 @@ public class JwtSecretProvider {
         } catch (IOException e) {
             throw new IllegalStateException(
                     "Unable to load or create JWT secret at " + secretFile
-                            + "; set REACTOR_AUTH_JWT_SECRET or make the runtime data directory writable",
+                            + "; set CUTE_AUTH_JWT_SECRET or make the runtime data directory writable",
                     e
             );
         }

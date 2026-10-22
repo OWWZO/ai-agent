@@ -1,5 +1,5 @@
 /**
- * ReactorPage — bsk-backed `IPage` implementation (spec 021, Phase 4).
+ * CutePage — bsk-backed `IPage` implementation (spec 021, Phase 4).
  *
  * This adapter deliberately delegates wire construction to `src/bsk/commands/**`.
  * It only translates the IPage contract to bsk command arguments and adapts the
@@ -42,14 +42,14 @@ import {
 } from '../bsk/commands/index.js';
 import type { IPage } from './ipage.js';
 
-/** Minimal RPC surface ReactorPage needs from a bsk session. */
+/** Minimal RPC surface CutePage needs from a bsk session. */
 export interface BskSessionHandle {
   call<T>(method: string, params: unknown, opts?: { timeoutMs?: number; signal?: AbortSignal }): Promise<T>;
   sessionId: string;
 }
 
 /**
- * Thrown by `ReactorPage` methods that have no bsk implementation.
+ * Thrown by `CutePage` methods that have no bsk implementation.
  *
  * Carries the method name and the suggested replacement so callers can surface
  * an actionable message instead of a bare "not implemented".
@@ -216,7 +216,7 @@ function staticNetworkEntry(entry: unknown): boolean {
     || type === 'script';
 }
 
-export class ReactorPage implements IPage {
+export class CutePage implements IPage {
   private activeTabId: number | undefined;
 
   constructor(readonly handle: BskSessionHandle) {}

@@ -82,7 +82,7 @@ public class CuteRuntimeAutoConfiguration {
      * Domain 侧只认 {@link LlmCompletionPort}，因此在这里统一套一层韧性装饰器：
      * 空补全重试（200 但无产出时补一次）即对所有出站调用路径生效，无需改动调用编排代码。
      * 原始 Bean 不受影响（连接测试等仍可直接注入裸端口）。
-     * 可通过 {@code REACTOR_LLM_EMPTY_COMPLETION_RETRY_ENABLED=false} 关闭空补全重试。
+     * 可通过 {@code CUTE_LLM_EMPTY_COMPLETION_RETRY_ENABLED=false} 关闭空补全重试。
      */
     @Bean
     public CuteLlmDependencies cuteLlmDependencies(LlmCompletionPort completionPort,

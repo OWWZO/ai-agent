@@ -4,10 +4,10 @@
 unset VIRTUAL_ENV
 
 # systemd / start-split 传入的角色参数必须压过 .env，否则 sandbox 会被 WORKERS=3 覆盖
-_LAUNCH_ROLE="${REACTOR_TOOL_ROLE:-}"
-_LAUNCH_HOST="${REACTOR_TOOL_HOST:-}"
-_LAUNCH_PORT="${REACTOR_TOOL_PORT:-}"
-_LAUNCH_WORKERS="${REACTOR_TOOL_WORKERS:-}"
+_LAUNCH_ROLE="${CUTE_TOOL_ROLE:-}"
+_LAUNCH_HOST="${CUTE_TOOL_HOST:-}"
+_LAUNCH_PORT="${CUTE_TOOL_PORT:-}"
+_LAUNCH_WORKERS="${CUTE_TOOL_WORKERS:-}"
 
 # 激活当前项目虚拟环境
 . .venv/bin/activate
@@ -20,14 +20,14 @@ if [[ -f ".env" ]]; then
   set +a
 fi
 
-[[ -n "${_LAUNCH_ROLE}" ]] && export REACTOR_TOOL_ROLE="${_LAUNCH_ROLE}"
-[[ -n "${_LAUNCH_HOST}" ]] && export REACTOR_TOOL_HOST="${_LAUNCH_HOST}"
-[[ -n "${_LAUNCH_PORT}" ]] && export REACTOR_TOOL_PORT="${_LAUNCH_PORT}"
-[[ -n "${_LAUNCH_WORKERS}" ]] && export REACTOR_TOOL_WORKERS="${_LAUNCH_WORKERS}"
+[[ -n "${_LAUNCH_ROLE}" ]] && export CUTE_TOOL_ROLE="${_LAUNCH_ROLE}"
+[[ -n "${_LAUNCH_HOST}" ]] && export CUTE_TOOL_HOST="${_LAUNCH_HOST}"
+[[ -n "${_LAUNCH_PORT}" ]] && export CUTE_TOOL_PORT="${_LAUNCH_PORT}"
+[[ -n "${_LAUNCH_WORKERS}" ]] && export CUTE_TOOL_WORKERS="${_LAUNCH_WORKERS}"
 
 # EnvironmentFile 里的 WORKERS=3 可能压过 unit 的 Environment=；sandbox 角色强制单进程
-if [[ "${REACTOR_TOOL_ROLE:-}" == "sandbox" ]]; then
-  export REACTOR_TOOL_WORKERS=1
+if [[ "${CUTE_TOOL_ROLE:-}" == "sandbox" ]]; then
+  export CUTE_TOOL_WORKERS=1
 fi
 
 export ENV="${ENV:-prod}"
@@ -56,7 +56,7 @@ mkdir -p "$FILE_SAVE_PATH"
 
 # 运行Python服务器
 python server.py \
-  --host "${REACTOR_TOOL_HOST:-0.0.0.0}" \
-  --port "${REACTOR_TOOL_PORT:-1601}" \
-  --workers "${REACTOR_TOOL_WORKERS:-3}" \
-  --role "${REACTOR_TOOL_ROLE:-all}"
+  --host "${CUTE_TOOL_HOST:-0.0.0.0}" \
+  --port "${CUTE_TOOL_PORT:-1601}" \
+  --workers "${CUTE_TOOL_WORKERS:-3}" \
+  --role "${CUTE_TOOL_ROLE:-all}"

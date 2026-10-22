@@ -13,7 +13,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { IPage } from './ipage.js';
-import { ReactorPage, type BskSessionHandle } from './reactor-page.js';
+import { CutePage, type BskSessionHandle } from './cute-page.js';
 import type { IBrowserFactory } from '../runtime.js';
 
 /** Specifier kept in a variable so TS does not try to resolve it at build time. */
@@ -100,7 +100,7 @@ function isUnknownMethodError(err: unknown): boolean {
 }
 
 export class BskBrowserFactory implements IBrowserFactory {
-  private _page: ReactorPage | null = null;
+  private _page: CutePage | null = null;
   private _client: BskClientLike | null = null;
   private _sessionId: string | null = null;
   /** 关闭阶段 tool.session_stop 的真实失败；不影响连接清理，仅用于排查。 */
@@ -169,7 +169,7 @@ export class BskBrowserFactory implements IBrowserFactory {
 
     this._client = client;
     this._sessionId = sessionId;
-    this._page = new ReactorPage(handle);
+    this._page = new CutePage(handle);
     return this._page;
   }
 

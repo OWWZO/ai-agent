@@ -66,7 +66,7 @@ public class BskCliWebSocketHandler extends TextWebSocketHandler {
             case BSK_HANDSHAKE -> submit(session, payload);
             case BSK_EVENT -> log.debug("bsk cli endpoint ignoring event frame on session {}", session.getId());
             case BSK_RESPONSE -> log.debug("bsk cli endpoint ignoring response frame on session {}", session.getId());
-            case REACTOR_LEGACY -> log.debug("bsk cli endpoint ignoring reactor-legacy frame on session {}", session.getId());
+            case CUTE_LEGACY -> log.debug("bsk cli endpoint ignoring reactor-legacy frame on session {}", session.getId());
             case UNKNOWN -> BskWebSocketSink.closeQuietly(session, CloseStatus.BAD_DATA);
         }
     }

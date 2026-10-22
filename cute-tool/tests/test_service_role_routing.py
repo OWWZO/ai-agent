@@ -8,12 +8,12 @@ from cute_tool.service_role import get_sandbox_base_url, get_service_role, sandb
 
 class ServiceRoleRoutingTest(unittest.TestCase):
     def setUp(self):
-        self._prev_role = os.environ.get("REACTOR_TOOL_ROLE")
-        self._prev_url = os.environ.get("REACTOR_SANDBOX_URL")
+        self._prev_role = os.environ.get("CUTE_TOOL_ROLE")
+        self._prev_url = os.environ.get("CUTE_SANDBOX_URL")
 
     def tearDown(self):
-        self._restore("REACTOR_TOOL_ROLE", self._prev_role)
-        self._restore("REACTOR_SANDBOX_URL", self._prev_url)
+        self._restore("CUTE_TOOL_ROLE", self._prev_role)
+        self._restore("CUTE_SANDBOX_URL", self._prev_url)
 
     @staticmethod
     def _restore(key: str, value):
@@ -23,11 +23,11 @@ class ServiceRoleRoutingTest(unittest.TestCase):
             os.environ[key] = value
 
     def test_default_role_is_all(self):
-        os.environ.pop("REACTOR_TOOL_ROLE", None)
+        os.environ.pop("CUTE_TOOL_ROLE", None)
         self.assertEqual("all", get_service_role())
 
     def test_sandbox_forces_single_worker(self):
-        os.environ["REACTOR_TOOL_ROLE"] = "sandbox"
+        os.environ["CUTE_TOOL_ROLE"] = "sandbox"
         self.assertTrue(sandbox_requires_single_worker())
         self.assertEqual(
             1,
@@ -35,8 +35,8 @@ class ServiceRoleRoutingTest(unittest.TestCase):
         )
 
     def test_api_router_proxies_sandbox_paths(self):
-        os.environ["REACTOR_TOOL_ROLE"] = "api"
-        os.environ["REACTOR_SANDBOX_URL"] = "http://127.0.0.1:1602"
+        os.environ["CUTE_TOOL_ROLE"] = "api"
+        os.environ["CUTE_SANDBOX_URL"] = "http://127.0.0.1:1602"
         from cute_tool.api import build_api_router
 
         router = build_api_router()
@@ -47,7 +47,7 @@ class ServiceRoleRoutingTest(unittest.TestCase):
         self.assertEqual("http://127.0.0.1:1602", get_sandbox_base_url())
 
     def test_sandbox_router_only_sandbox_tools(self):
-        os.environ["REACTOR_TOOL_ROLE"] = "sandbox"
+        os.environ["CUTE_TOOL_ROLE"] = "sandbox"
         from cute_tool.api import build_api_router
 
         router = build_api_router()

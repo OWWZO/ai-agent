@@ -25,11 +25,11 @@ public record LlmRetryPolicy(int maxAttempts,
     public static final double DEFAULT_BACKOFF_FACTOR = 2d;
     public static final long DEFAULT_MAX_DELAY_MS = 60_000L;
 
-    public static final String ENV_MAX_RETRIES = "REACTOR_LLM_RETRY_MAX_RETRIES";
-    public static final String ENV_BASE_DELAY_MS = "REACTOR_LLM_RETRY_BASE_DELAY_MS";
-    public static final String ENV_BACKOFF_FACTOR = "REACTOR_LLM_RETRY_BACKOFF_FACTOR";
-    public static final String ENV_MAX_DELAY_MS = "REACTOR_LLM_RETRY_MAX_DELAY_MS";
-    public static final String ENV_JITTER = "REACTOR_LLM_RETRY_JITTER";
+    public static final String ENV_MAX_RETRIES = "CUTE_LLM_RETRY_MAX_RETRIES";
+    public static final String ENV_BASE_DELAY_MS = "CUTE_LLM_RETRY_BASE_DELAY_MS";
+    public static final String ENV_BACKOFF_FACTOR = "CUTE_LLM_RETRY_BACKOFF_FACTOR";
+    public static final String ENV_MAX_DELAY_MS = "CUTE_LLM_RETRY_MAX_DELAY_MS";
+    public static final String ENV_JITTER = "CUTE_LLM_RETRY_JITTER";
 
     public LlmRetryPolicy {
         if (maxAttempts < 1) {

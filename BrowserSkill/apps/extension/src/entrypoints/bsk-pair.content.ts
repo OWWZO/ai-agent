@@ -1,11 +1,11 @@
 /**
  * bsk 扩展的网页配对桥（021）：让宿主页面（Reactor 前端）一键完成 remote 配对。
  *
- * 对齐老 Reactor 扩展 `content-pair.js` 的消息协议（source === "reactor"），
+ * 对齐老 Cute 扩展 `content-pair.js` 的消息协议（source === "cute"），
  * 但监听 bsk 专属的 `bsk-browser-pair` 类型，避免两条扩展在同一页面上
  * 互相消费对方的配对消息：
  *
- *   window.postMessage({ source: "reactor", type: "bsk-browser-pair",
+ *   window.postMessage({ source: "cute", type: "bsk-browser-pair",
  *                        pairingUrl: "wss://host/api/agent/browser/bsk-relay#<token>" },
  *                      origin)
  *
@@ -19,8 +19,8 @@
  * 本脚本不做重复校验——非法串会被 background 拒绝并回传错误。
  */
 
-const PAIR_SOURCE = "reactor";
-const EXTENSION_SOURCE = "reactor-bsk-extension";
+const PAIR_SOURCE = "cute";
+const EXTENSION_SOURCE = "cute-bsk-extension";
 const PAIR_TYPE = "bsk-browser-pair";
 
 export default defineContentScript({

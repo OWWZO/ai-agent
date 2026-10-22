@@ -26,7 +26,7 @@ def styles_dir() -> Path:
     """Return the configured custom-theme YAML directory."""
     # 环境变量允许部署把主题与代码分离；未配置时落到用户目录，避免写入仓库。
     home = Path(
-        os.getenv("REACTOR_DOCGEN_HOME")
+        os.getenv("CUTE_DOCGEN_HOME")
         or os.getenv("LEAGENT_HOME")
         or str(Path.home() / ".reactor-docgen")
     )

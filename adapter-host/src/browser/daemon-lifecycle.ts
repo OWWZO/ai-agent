@@ -7,7 +7,7 @@ import { BrowserConnectError } from '../errors.js';
 import { PKG_VERSION } from '../version.js';
 import { waitForBridgeReady } from './bridge-readiness.js';
 import { fetchDaemonStatus, getDaemonHealth, requestDaemonShutdown, type DaemonHealth, type DaemonStatus } from './daemon-transport.js';
-import { isRelayMode, relayStatusBody } from '../reactor-relay.js';
+import { isRelayMode, relayStatusBody } from '../cute-relay.js';
 
 export interface DaemonLaunchSpec {
   binary: string;

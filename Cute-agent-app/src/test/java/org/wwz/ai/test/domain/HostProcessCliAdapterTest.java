@@ -47,8 +47,8 @@ public class HostProcessCliAdapterTest {
         HostProcessCliAdapter adapter = new HostProcessCliAdapter();
         CliResult env = adapter.exec(CliInvocation.builder()
                 .tool("node")
-                .args(List.of("-e", "process.stdout.write(process.env.REACTOR_CLI_TEST || '')"))
-                .env(Map.of("REACTOR_CLI_TEST", "merged"))
+                .args(List.of("-e", "process.stdout.write(process.env.CUTE_CLI_TEST || '')"))
+                .env(Map.of("CUTE_CLI_TEST", "merged"))
                 .timeoutMs(10_000)
                 .maxOutputChars(1_000)
                 .capture("both")

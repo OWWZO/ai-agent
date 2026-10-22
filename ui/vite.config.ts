@@ -129,13 +129,13 @@ export default defineConfig(({ command, mode }) => {
           target: env.SERVICE_BASE_URL,
           changeOrigin: true,
         },
-        '/tool': createToolProxyConfig(env.REACTOR_TOOL_BASE_URL),
+        '/tool': createToolProxyConfig(env.CUTE_TOOL_BASE_URL),
       },
     },
     define: {
       // 一定要序列化，否则打包时会报错
       SERVICE_BASE_URL: JSON.stringify(env.SERVICE_BASE_URL),
-      REACTOR_TOOL_BASE_URL: JSON.stringify(env.REACTOR_TOOL_BASE_URL || ''),
+      CUTE_TOOL_BASE_URL: JSON.stringify(env.CUTE_TOOL_BASE_URL || ''),
     },
     build: {
       outDir: 'dist',

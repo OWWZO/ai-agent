@@ -4,7 +4,7 @@
 # Author: liumin.423
 # Date:   2025/7/7
 # =====================
-"""FastAPI 路由聚合：按 REACTOR_TOOL_ROLE 装配 api / sandbox / all。"""
+"""FastAPI 路由聚合：按 CUTE_TOOL_ROLE 装配 api / sandbox / all。"""
 
 from fastapi import APIRouter
 
@@ -16,7 +16,7 @@ def build_api_router() -> APIRouter:
 
     - all：单进程全量（默认，兼容旧启动方式）
     - sandbox：仅 bash + code_execution + desktop_session（应 workers=1）
-    - api：其余工具 + 把 bash/code_execution/desktop_session 反代到 REACTOR_SANDBOX_URL
+    - api：其余工具 + 把 bash/code_execution/desktop_session 反代到 CUTE_SANDBOX_URL
     """
     role = get_service_role()
     api_router = APIRouter(prefix="/v1")

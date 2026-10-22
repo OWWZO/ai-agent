@@ -439,7 +439,7 @@ mysql -u root -p ai-agent-station < db/migrations/20261005_auth_account_session.
 mysql -u root -p ai-agent-station < db/migrations/20261005_user_id_ownership.sql
 ```
 
-旧账号初始化和首个管理员创建属于一次性部署操作，完成后不要保留初始化脚本或初始化密码。正式启动 Backend 前必须配置随机的 `REACTOR_AUTH_JWT_SECRET`；生产环境同时设置 `REACTOR_AUTH_REFRESH_COOKIE_SECURE=true`。不要把初始化密码或 JWT secret 写入源码、SQL、日志或 Git 跟踪文件。
+旧账号初始化和首个管理员创建属于一次性部署操作，完成后不要保留初始化脚本或初始化密码。正式启动 Backend 前必须配置随机的 `CUTE_AUTH_JWT_SECRET`；生产环境同时设置 `CUTE_AUTH_REFRESH_COOKIE_SECURE=true`。不要把初始化密码或 JWT secret 写入源码、SQL、日志或 Git 跟踪文件。
 
 ### 3. 启动 Python Tool Runtime
 
@@ -501,8 +501,8 @@ npm run build
 Windows PowerShell：
 
 ```powershell
-$env:REACTOR_OPENCLI_COMMAND = "node"
-$env:REACTOR_OPENCLI_MAIN = "D:\Java Code\ai-agent\Cute-agent\adapter-host\dist\src\main.js"
+$env:CUTE_OPENCLI_COMMAND = "node"
+$env:CUTE_OPENCLI_MAIN = "D:\Java Code\ai-agent\Cute-agent\adapter-host\dist\src\main.js"
 $env:ADAPTER_HOST_SECRET = "..."
 ```
 
@@ -520,11 +520,11 @@ Agent 浏览器使用 Kernel 云端服务。在 Backend 环境中设置 `KERNEL_
 
 物化优先级：CLI stdout JSON 明确报告的 `artifacts` 候选 > 命令 `--output` 声明的输出目录 > 同一 workspace 的前后快照（仅 `host_cli`）。浏览器链路只做前两种，因为并发调用共享同一个 workspace，全量 diff 会把别人的文件登记到自己名下。
 
-本地文件如何进入文件服务由 `REACTOR_FILE_ARTIFACT_LOCAL_FILE_MODE` 决定（对应 `reactor.file-artifact.local-file-mode`）：
+本地文件如何进入文件服务由 `CUTE_FILE_ARTIFACT_LOCAL_FILE_MODE` 决定（对应 `reactor.file-artifact.local-file-mode`）：
 
 | 值 | 行为 | 适用部署 |
 | --- | --- | --- |
-| `register`（默认） | 只登记元数据，零拷贝 | Backend 与文件服务共享 workspace 目录。Docker Compose 即此模式：`reactor-data` 卷同时挂给 Backend 与 `cute-tool`，`WORKSPACE_ROOT=/data/skilloutput` 与 `FILE_SAVE_PATH=/data/skilloutput` 一致 |
+| `register`（默认） | 只登记元数据，零拷贝 | Backend 与文件服务共享 workspace 目录。Docker Compose 即此模式：`cute-data` 卷同时挂给 Backend 与 `cute-tool`，`WORKSPACE_ROOT=/data/skilloutput` 与 `FILE_SAVE_PATH=/data/skilloutput` 一致 |
 | `upload` | multipart 流式上传二进制 | Backend 与文件服务**不**共享目录。单文件上限 200MB，文件名清洗为 basename |
 
 仅当 Backend 与文件服务不在同一台机器、或没有共享卷时才改成 `upload`；共享卷下改成 `upload` 会白白多传一遍文件内容。
@@ -549,7 +549,7 @@ cp cute-tool/.env_template cute-tool/.env
 
 docker compose --env-file cute-tool/.env build
 
-# 首次创建 reactor-data 卷后初始化文件服务 SQLite 元数据
+# 首次创建 cute-data 卷后初始化文件服务 SQLite 元数据
 # Compose 会将 SQLITE_DB_PATH 设置为 /data/autobots.db，并写入持久化卷
 docker compose --env-file cute-tool/.env run --rm --no-deps --entrypoint python cute-tool -m cute_tool.db.db_engine
 
@@ -560,9 +560,9 @@ docker compose --env-file cute-tool/.env up -d
 
 Java 生产配置模板是 [`application-prod.yml`](Cute-agent-app/src/main/resources/application-prod.yml)，以静态配置为主，已清除真实密钥和密码；部署者需要按实际环境填写空缺凭证和地址。MySQL 初始化脚本只会在首次创建 `mysql-data` 卷时执行；修改 `schema.sql` 或 `data.sql` 后需要按实际情况迁移已有数据库。已有库请执行 [`db/migrations/20260918_dialogue_session_event_seq.sql`](db/migrations/20260918_dialogue_session_event_seq.sql) 为 `ai_agent_dialogue_session` 补 `event_seq`；执行 [`db/migrations/20260925_sub_agent_tool_loading_policy.sql`](db/migrations/20260925_sub_agent_tool_loading_policy.sql) 为子 Agent 定义增加工具继承/自定义与 deferred 工具配置字段。
 
-Compose 部署时，`WORKSPACE_ROOT` 应保持为 `/data/skilloutput`，Backend 与 `cute-tool` 会通过 `reactor-data` 卷共享会话工作区和文件产物。
+Compose 部署时，`WORKSPACE_ROOT` 应保持为 `/data/skilloutput`，Backend 与 `cute-tool` 会通过 `cute-data` 卷共享会话工作区和文件产物。
 
-`reactor-data` 卷保存 Python 文件服务的 `autobots.db`、MRAG SQLite 元数据和文件产物。
+`cute-data` 卷保存 Python 文件服务的 `autobots.db`、MRAG SQLite 元数据和文件产物。
 
 ### 给 Coding Agent 的部署 Prompt
 

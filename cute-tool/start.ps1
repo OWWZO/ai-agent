@@ -4,16 +4,16 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $pythonExe = Join-Path $projectRoot ".venv\\Scripts\\python.exe"
 $port = 1601
-$workerCountText = if ([string]::IsNullOrWhiteSpace($env:REACTOR_TOOL_WORKERS)) { "1" } else { $env:REACTOR_TOOL_WORKERS.Trim() }
+$workerCountText = if ([string]::IsNullOrWhiteSpace($env:CUTE_TOOL_WORKERS)) { "1" } else { $env:CUTE_TOOL_WORKERS.Trim() }
 $workerCount = 1
 $isWorkerCountParsed = [int]::TryParse($workerCountText, [ref]$workerCount)
 
 if (-not $isWorkerCountParsed) {
-    throw "Invalid REACTOR_TOOL_WORKERS value: $($workerCountText). Expected a positive integer."
+    throw "Invalid CUTE_TOOL_WORKERS value: $($workerCountText). Expected a positive integer."
 }
 
 if ($workerCount -lt 1) {
-    throw "Invalid REACTOR_TOOL_WORKERS value: $($workerCountText). Expected a positive integer."
+    throw "Invalid CUTE_TOOL_WORKERS value: $($workerCountText). Expected a positive integer."
 }
 
 function Get-ProcessInfo([int]$processId) {

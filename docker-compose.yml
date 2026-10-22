@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-ai-agent-station}
-      MYSQL_USER: ${MYSQL_USER:-reactor}
+      MYSQL_USER: ${MYSQL_USER:-cute}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
     volumes:
@@ -19,7 +19,7 @@ services:
       timeout: 5s
       retries: 20
 
-  reactor-sandbox:
+  cute-sandbox:
     build:
       context: .
       dockerfile: Dockerfile
@@ -29,21 +29,21 @@ services:
       - ./cute-tool/.env
     environment:
       ENV: prod
-      REACTOR_TOOL_ROLE: sandbox
-      REACTOR_TOOL_HOST: 0.0.0.0
-      REACTOR_TOOL_PORT: 1602
-      REACTOR_TOOL_WORKERS: 1
+      CUTE_TOOL_ROLE: sandbox
+      CUTE_TOOL_HOST: 0.0.0.0
+      CUTE_TOOL_PORT: 1602
+      CUTE_TOOL_WORKERS: 1
       FILE_SAVE_PATH: /data/skilloutput
       FILE_SERVER_URL: ${PUBLIC_TOOL_URL:-http://localhost:3000/tool}/v1/file_tool
       FILE_SERVER_INTERNAL_URL: http://cute-tool:1601/v1/file_tool
       SQLITE_DB_PATH: /data/autobots.db
       SQLITE_PATH: /data/mrag_sqlite.db
-      LOG_PATH: /data/logs/reactor-sandbox.log
+      LOG_PATH: /data/logs/cute-sandbox.log
       E2B_FULL_PAUSE_DEBOUNCE_SEC: ${E2B_FULL_PAUSE_DEBOUNCE_SEC:-3}
       E2B_FS_ONLY_IDLE_SEC: ${E2B_FS_ONLY_IDLE_SEC:-1200}
       E2B_USER_OPERATING_HOLD_SEC: ${E2B_USER_OPERATING_HOLD_SEC:-600}
     volumes:
-      - reactor-data:/data
+      - cute-data:/data
     healthcheck:
       test:
         - CMD
@@ -64,11 +64,11 @@ services:
       - ./cute-tool/.env
     environment:
       ENV: prod
-      REACTOR_TOOL_ROLE: api
-      REACTOR_TOOL_HOST: 0.0.0.0
-      REACTOR_TOOL_PORT: 1601
-      REACTOR_TOOL_WORKERS: ${TOOL_WORKERS:-3}
-      REACTOR_SANDBOX_URL: http://reactor-sandbox:1602
+      CUTE_TOOL_ROLE: api
+      CUTE_TOOL_HOST: 0.0.0.0
+      CUTE_TOOL_PORT: 1601
+      CUTE_TOOL_WORKERS: ${TOOL_WORKERS:-3}
+      CUTE_SANDBOX_URL: http://cute-sandbox:1602
       FILE_SAVE_PATH: /data/skilloutput
       FILE_SERVER_URL: ${PUBLIC_TOOL_URL:-http://localhost:3000/tool}/v1/file_tool
       FILE_SERVER_INTERNAL_URL: http://cute-tool:1601/v1/file_tool
@@ -78,9 +78,9 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - reactor-data:/data
+      - cute-data:/data
     depends_on:
-      reactor-sandbox:
+      cute-sandbox:
         condition: service_healthy
     healthcheck:
       test:
@@ -92,7 +92,7 @@ services:
       timeout: 5s
       retries: 12
 
-  reactor-backend:
+  cute-backend:
     build:
       context: .
       dockerfile: Dockerfile
@@ -105,21 +105,21 @@ services:
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306
       MYSQL_DATABASE: ${MYSQL_DATABASE:-ai-agent-station}
-      MYSQL_USER: ${MYSQL_USER:-reactor}
+      MYSQL_USER: ${MYSQL_USER:-cute}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
-      REACTOR_TOOL_BASE_URL: http://cute-tool:1601
+      CUTE_TOOL_BASE_URL: http://cute-tool:1601
       WORKSPACE_ROOT: /data/skilloutput
       SKILL_DIR: /app/runtime/skills
-      REACTOR_OPENCLI_COMMAND: node
-      REACTOR_OPENCLI_MAIN: /opt/opencli/dist/src/main.js
-      # backend 与 cute-tool 共享 reactor-data 卷（/data/skilloutput），
+      CUTE_OPENCLI_COMMAND: node
+      CUTE_OPENCLI_MAIN: /opt/opencli/dist/src/main.js
+      # backend 与 cute-tool 共享 cute-data 卷（/data/skilloutput），
       # 文件产物走零拷贝 register；若改成不共享目录的部署，改成 upload。
-      REACTOR_FILE_ARTIFACT_LOCAL_FILE_MODE: ${REACTOR_FILE_ARTIFACT_LOCAL_FILE_MODE:-register}
+      CUTE_FILE_ARTIFACT_LOCAL_FILE_MODE: ${CUTE_FILE_ARTIFACT_LOCAL_FILE_MODE:-register}
       ADAPTER_HOST_SECRET: ${ADAPTER_HOST_SECRET:?ADAPTER_HOST_SECRET is required}
       KERNEL_API_KEY: ${KERNEL_API_KEY:-}
     volumes:
-      - reactor-data:/data
-      - reactor-data:/app/data
+      - cute-data:/data
+      - cute-data:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -135,15 +135,15 @@ services:
       target: frontend
       args:
         SERVICE_BASE_URL: ${SERVICE_BASE_URL:-}
-        REACTOR_TOOL_BASE_URL: ${REACTOR_TOOL_BASE_URL:-/tool}
+        CUTE_TOOL_BASE_URL: ${CUTE_TOOL_BASE_URL:-/tool}
         VITE_Mrag_TOOL_URL: ${VITE_Mrag_TOOL_URL:-/tool}
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-3000}:80"
     depends_on:
-      - reactor-backend
+      - cute-backend
       - cute-tool
 
 volumes:
   mysql-data:
-  reactor-data:
+  cute-data:

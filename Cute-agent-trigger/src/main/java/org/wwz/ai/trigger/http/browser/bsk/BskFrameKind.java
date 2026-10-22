@@ -22,7 +22,7 @@ public enum BskFrameKind {
     BSK_EVENT,
 
     /** 不是 bsk 帧，交给现有 Cute 中继处理。 */
-    REACTOR_LEGACY,
+    CUTE_LEGACY,
 
     /** 无法归类（非法 JSON / 非对象 / 响应帧 result 与 error 同现或缺席）。 */
     UNKNOWN

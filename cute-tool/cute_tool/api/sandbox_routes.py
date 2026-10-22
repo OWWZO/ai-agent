@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""有状态沙箱路由：bash + code_execution（应跑在 REACTOR_TOOL_ROLE=sandbox 单进程上）。"""
+"""有状态沙箱路由：bash + code_execution（应跑在 CUTE_TOOL_ROLE=sandbox 单进程上）。"""
 
 from __future__ import annotations
 

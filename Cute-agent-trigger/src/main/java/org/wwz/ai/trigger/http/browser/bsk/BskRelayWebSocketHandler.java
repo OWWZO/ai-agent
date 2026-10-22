@@ -25,7 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>bsk 帧（请求 / 响应 / 事件）在本类内闭环处理，
  *       绝不进入 {@code BrowserRelayFrameMapper}——那个 mapper 会把
  *       bsk 的扁平 {@code {id, result}} 帧误读成 Cute 命令结果。</li>
- *   <li>仅当帧被分类为 {@link BskFrameKind#REACTOR_LEGACY} 时才委托给
+ *   <li>仅当帧被分类为 {@link BskFrameKind#CUTE_LEGACY} 时才委托给
  *       {@code BrowserRelayHub}。bsk 专用端点下这条路径正常不会命中，
  *       但保留它可以让旧扩展误连本端点时的行为与旧端点一致。</li>
  * </ul>
@@ -100,7 +100,7 @@ public class BskRelayWebSocketHandler extends TextWebSocketHandler implements Su
                 // 事件帧只作为活性信号；透传语义由后续批次（case 层路由）承接。
                 log.debug("bsk event on session {}: {}", session.getId(), payload);
             }
-            case REACTOR_LEGACY -> {
+            case CUTE_LEGACY -> {
                 if (legacyDelegate != null) {
                     legacyDelegate.onText(session, payload);
                 } else {

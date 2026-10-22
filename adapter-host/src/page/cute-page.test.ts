@@ -1,12 +1,12 @@
 /**
- * ReactorPage — bsk mapping tests (spec 021, Phase 4).
+ * CutePage — bsk mapping tests (spec 021, Phase 4).
  *
  * `BskSessionHandle` is a recording stub so these tests assert on the exact
- * wire method + params ReactorPage produces, without a daemon or extension.
+ * wire method + params CutePage produces, without a daemon or extension.
  */
 
 import { describe, expect, it } from 'vitest';
-import { NotImplementedError, ReactorPage, type BskSessionHandle } from './reactor-page.js';
+import { NotImplementedError, CutePage, type BskSessionHandle } from './cute-page.js';
 
 interface RecordedCall {
   method: string;
@@ -34,12 +34,12 @@ function paramsOf(calls: RecordedCall[]): Record<string, unknown> {
   return calls[0].params as Record<string, unknown>;
 }
 
-describe('ReactorPage core method mapping', () => {
+describe('CutePage core method mapping', () => {
   it('goto issues tool.navigate with the session and url', async () => {
     const { handle, calls } = makeHandle({
       'tool.navigate': { tab_id: 1, url: 'https://example.com', reached: 'load' },
     });
-    await new ReactorPage(handle).goto('https://example.com');
+    await new CutePage(handle).goto('https://example.com');
 
     expect(calls).toHaveLength(1);
     expect(calls[0].method).toBe('tool.navigate');
@@ -50,7 +50,7 @@ describe('ReactorPage core method mapping', () => {
     const { handle, calls } = makeHandle({
       'tool.evaluate': { ok: true, tab_id: 1, value: { a: 1 } },
     });
-    const value = await new ReactorPage(handle).evaluate<{ a: number }>('({ a: 1 })');
+    const value = await new CutePage(handle).evaluate<{ a: number }>('({ a: 1 })');
 
     expect(calls[0].method).toBe('tool.evaluate');
     expect(paramsOf(calls)).toMatchObject({ session_id: 'test-session', expression: '({ a: 1 })' });
@@ -61,14 +61,14 @@ describe('ReactorPage core method mapping', () => {
     const { handle } = makeHandle({
       'tool.evaluate': { ok: false, tab_id: 1, error: { text: 'boom' } },
     });
-    await expect(new ReactorPage(handle).evaluate('throw new Error("x")')).rejects.toThrow(/boom/);
+    await expect(new CutePage(handle).evaluate('throw new Error("x")')).rejects.toThrow(/boom/);
   });
 
   it('snapshot issues tool.snapshot without a second call', async () => {
     const { handle, calls } = makeHandle({
       'tool.snapshot': { text: 'snapshot', ref_count: 3, tab_id: 1, truncated: false },
     });
-    const result = await new ReactorPage(handle).snapshot();
+    const result = await new CutePage(handle).snapshot();
 
     expect(calls).toHaveLength(1);
     expect(calls[0].method).toBe('tool.snapshot');
@@ -79,7 +79,7 @@ describe('ReactorPage core method mapping', () => {
     const { handle, calls } = makeHandle({
       'tool.click': { tab_id: 1, used_ref: '@e1', x: 10, y: 20 },
     });
-    const result = await new ReactorPage(handle).click('@e1');
+    const result = await new CutePage(handle).click('@e1');
 
     expect(calls[0].method).toBe('tool.click');
     expect(paramsOf(calls)).toMatchObject({ session_id: 'test-session', ref: '@e1' });
@@ -93,7 +93,7 @@ describe('ReactorPage core method mapping', () => {
     const { handle, calls } = makeHandle({
       'tool.fill': { tab_id: 1, used_ref: '@e2', value_length: 5 },
     });
-    const result = await new ReactorPage(handle).fillText('@e2', 'hello');
+    const result = await new CutePage(handle).fillText('@e2', 'hello');
 
     expect(calls[0].method).toBe('tool.fill');
     expect(paramsOf(calls)).toMatchObject({ session_id: 'test-session', ref: '@e2', value: 'hello' });
@@ -111,7 +111,7 @@ describe('ReactorPage core method mapping', () => {
     const { handle, calls } = makeHandle({
       'tool.fill': { tab_id: 1, used_ref: '@e2', value_length: 3 },
     });
-    const result = await new ReactorPage(handle).typeText('@e2', 'abc');
+    const result = await new CutePage(handle).typeText('@e2', 'abc');
 
     expect(calls[0].method).toBe('tool.fill');
     const params = paramsOf(calls);
@@ -122,7 +122,7 @@ describe('ReactorPage core method mapping', () => {
 
   it('pressKey issues tool.press with the raw key', async () => {
     const { handle, calls } = makeHandle({ 'tool.press': { tab_id: 1, key: 'Enter', code: 'Enter' } });
-    await new ReactorPage(handle).pressKey('Enter');
+    await new CutePage(handle).pressKey('Enter');
 
     expect(calls[0].method).toBe('tool.press');
     expect(paramsOf(calls)).toMatchObject({ session_id: 'test-session', key: 'Enter' });
@@ -132,7 +132,7 @@ describe('ReactorPage core method mapping', () => {
     const { handle, calls } = makeHandle({
       'tool.screenshot': { image_base64: 'aGk=', width: 10, height: 20, format: 'png', tab_id: 1 },
     });
-    const result = await new ReactorPage(handle).screenshot();
+    const result = await new CutePage(handle).screenshot();
 
     expect(calls[0].method).toBe('tool.screenshot');
     expect(typeof result).toBe('string');
@@ -140,11 +140,11 @@ describe('ReactorPage core method mapping', () => {
   });
 });
 
-describe('ReactorPage waits stay client-side', () => {
+describe('CutePage waits stay client-side', () => {
   it('wait(0.5) sends no RPC and completes after roughly 500ms', async () => {
     const { handle, calls } = makeHandle();
     const started = Date.now();
-    await new ReactorPage(handle).wait(0.5);
+    await new CutePage(handle).wait(0.5);
     const elapsed = Date.now() - started;
 
     // `tool.wait_ms` is daemon-only; the extension answers unknown_method.
@@ -154,7 +154,7 @@ describe('ReactorPage waits stay client-side', () => {
 
   it('sleep(0.2) sends no RPC', async () => {
     const { handle, calls } = makeHandle();
-    await new ReactorPage(handle).sleep(0.2);
+    await new CutePage(handle).sleep(0.2);
     expect(calls).toEqual([]);
   });
 
@@ -162,7 +162,7 @@ describe('ReactorPage waits stay client-side', () => {
     const { handle, calls } = makeHandle({
       'tool.evaluate': { ok: true, tab_id: 1, value: true },
     });
-    await new ReactorPage(handle).wait({ text: 'Ready' });
+    await new CutePage(handle).wait({ text: 'Ready' });
 
     expect(calls.length).toBeGreaterThan(0);
     expect(calls.every((call) => call.method === 'tool.evaluate')).toBe(true);
@@ -182,7 +182,7 @@ describe('ReactorPage waits stay client-side', () => {
         return { ok: true, tab_id: 1, value: attempts >= 3, error: undefined } as unknown as T;
       },
     };
-    await new ReactorPage(handle).wait({ selector: '#ready', timeout: 5 });
+    await new CutePage(handle).wait({ selector: '#ready', timeout: 5 });
 
     expect(attempts).toBe(3);
     expect(calls[0].method).toBe('tool.evaluate');
@@ -190,12 +190,12 @@ describe('ReactorPage waits stay client-side', () => {
   });
 });
 
-describe('ReactorPage tab and diagnostic methods', () => {
+describe('CutePage tab and diagnostic methods', () => {
   it('tabs issues tool.tab_list and returns the tab array', async () => {
     const { handle, calls } = makeHandle({
       'tool.tab_list': { tabs: [{ tab_id: 1, active: true, url: 'https://example.com' }] },
     });
-    const tabs = await new ReactorPage(handle).tabs();
+    const tabs = await new CutePage(handle).tabs();
 
     expect(calls[0].method).toBe('tool.tab_list');
     expect(Array.isArray(tabs)).toBe(true);
@@ -206,7 +206,7 @@ describe('ReactorPage tab and diagnostic methods', () => {
     const { handle, calls } = makeHandle({
       'tool.tab_create': { tab_id: 7, window_id: 1, url: 'https://example.com' },
     });
-    const id = await new ReactorPage(handle).newTab('https://example.com');
+    const id = await new CutePage(handle).newTab('https://example.com');
 
     expect(calls[0].method).toBe('tool.tab_create');
     expect(paramsOf(calls)).toMatchObject({ url: 'https://example.com' });
@@ -216,7 +216,7 @@ describe('ReactorPage tab and diagnostic methods', () => {
 
   it('selectTab issues tool.tab_select with a numeric tab id', async () => {
     const { handle, calls } = makeHandle({ 'tool.tab_select': { tab_id: 3, window_id: 1 } });
-    await new ReactorPage(handle).selectTab(3);
+    await new CutePage(handle).selectTab(3);
 
     expect(calls[0].method).toBe('tool.tab_select');
     expect(paramsOf(calls)).toMatchObject({ tab_id: 3 });
@@ -227,7 +227,7 @@ describe('ReactorPage tab and diagnostic methods', () => {
       'tool.tab_list': { tabs: [{ tab_id: 4, active: true }] },
       'tool.tab_close': { tab_id: 4 },
     });
-    await new ReactorPage(handle).closeTab();
+    await new CutePage(handle).closeTab();
 
     expect(calls.map((c) => c.method)).toEqual(['tool.tab_list', 'tool.tab_close']);
     expect(calls[1].params).toMatchObject({ tab_id: 4 });
@@ -245,7 +245,7 @@ describe('ReactorPage tab and diagnostic methods', () => {
         ],
       },
     });
-    const entries = await new ReactorPage(handle).networkRequests(false);
+    const entries = await new CutePage(handle).networkRequests(false);
 
     expect(calls[0].method).toBe('tool.network');
     expect(entries).toHaveLength(1);
@@ -255,7 +255,7 @@ describe('ReactorPage tab and diagnostic methods', () => {
     const { handle, calls } = makeHandle({
       'tool.console': { tab_id: 1, entries: [{ sequence: 1, level: 'error', text: 'x', truncated: false }], next_since: 0, truncated: false },
     });
-    const messages = await new ReactorPage(handle).consoleMessages('error');
+    const messages = await new CutePage(handle).consoleMessages('error');
 
     expect(calls[0].method).toBe('tool.console');
     expect(messages).toHaveLength(1);
@@ -263,7 +263,7 @@ describe('ReactorPage tab and diagnostic methods', () => {
 
   it('scroll issues tool.wheel with a direction delta', async () => {
     const { handle, calls } = makeHandle({ 'tool.wheel': { tab_id: 1, delta_x: 0, delta_y: 100 } });
-    await new ReactorPage(handle).scroll('down', 100);
+    await new CutePage(handle).scroll('down', 100);
 
     expect(calls[0].method).toBe('tool.wheel');
     expect(paramsOf(calls)).toMatchObject({ delta_y: 100 });
@@ -273,7 +273,7 @@ describe('ReactorPage tab and diagnostic methods', () => {
     const { handle, calls } = makeHandle({
       'tool.scroll_to': { tab_id: 1, used_ref: '@e1', x: 0, y: 10, width: 1, height: 2 },
     });
-    const result = await new ReactorPage(handle).scrollTo('@e1');
+    const result = await new CutePage(handle).scrollTo('@e1');
 
     expect(calls[0].method).toBe('tool.scroll_to');
     expect(result).toMatchObject({ y: 10, matches_n: 1, match_level: 'exact' });
@@ -285,7 +285,7 @@ describe('ReactorPage tab and diagnostic methods', () => {
       'tool.focus': { tab_id: 1, used_ref: '@e1', focused: true },
       'tool.click': { tab_id: 1, used_ref: '@e1', x: 1, y: 2 },
     });
-    const page = new ReactorPage(handle);
+    const page = new CutePage(handle);
     const hover = await page.hover('@e1');
     const focus = await page.focus('@e1');
     const dblClick = await page.dblClick('@e1');
@@ -301,7 +301,7 @@ describe('ReactorPage tab and diagnostic methods', () => {
     const { handle, calls } = makeHandle({
       'tool.evaluate': { ok: true, tab_id: 1, value: 'https://example.com/now' },
     });
-    const url = await new ReactorPage(handle).getCurrentUrl();
+    const url = await new CutePage(handle).getCurrentUrl();
 
     expect(calls[0].method).toBe('tool.evaluate');
     expect(url).toBe('https://example.com/now');
@@ -311,7 +311,7 @@ describe('ReactorPage tab and diagnostic methods', () => {
     const { handle, calls } = makeHandle({
       'tool.evaluate': { ok: true, tab_id: 1, value: { ok: true, status: 200, statusText: 'OK', text: '{"a":1}', url: 'https://example.com/api' } },
     });
-    const data = await new ReactorPage(handle).fetchJson('https://example.com/api');
+    const data = await new CutePage(handle).fetchJson('https://example.com/api');
 
     expect(calls[0].method).toBe('tool.evaluate');
     expect(String((calls[0].params as Record<string, unknown>).expression)).toContain("credentials: 'include'");
@@ -340,7 +340,7 @@ describe('ReactorPage tab and diagnostic methods', () => {
       },
     });
 
-    const cookies = await new ReactorPage(handle).getCookies({ domain: 'example.test' });
+    const cookies = await new CutePage(handle).getCookies({ domain: 'example.test' });
 
     expect(calls[0].method).toBe('tool.cookies');
     expect(calls[0].params).toMatchObject({ domain: 'example.test' });
@@ -367,7 +367,7 @@ describe('ReactorPage tab and diagnostic methods', () => {
 
   it('getCookies rejects a malformed result instead of returning an empty list', async () => {
     const { handle } = makeHandle({ 'tool.cookies': { tab_id: 1 } });
-    await expect(new ReactorPage(handle).getCookies()).rejects.toThrow(/invalid result/);
+    await expect(new CutePage(handle).getCookies()).rejects.toThrow(/invalid result/);
   });
 });
 
@@ -379,10 +379,10 @@ const NOT_IMPLEMENTED = [
   'evaluateInFrame', 'nativeClick', 'nativeType', 'nativeKeyPress',
 ] as const;
 
-describe('ReactorPage unimplemented surface', () => {
+describe('CutePage unimplemented surface', () => {
   it.each(NOT_IMPLEMENTED)('%s throws NotImplementedError naming the method', async (method) => {
     const { handle, calls } = makeHandle();
-    const page = new ReactorPage(handle) as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
+    const page = new CutePage(handle) as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
 
     await expect(page[method]()).rejects.toBeInstanceOf(NotImplementedError);
     await expect(page[method]()).rejects.toThrow(new RegExp(`IPage\\.${method}`));
@@ -395,13 +395,13 @@ describe('ReactorPage unimplemented surface', () => {
     ['setActivePage'],
   ] as const)('%s throws NotImplementedError synchronously', (method) => {
     const { handle } = makeHandle();
-    const page = new ReactorPage(handle) as unknown as Record<string, () => unknown>;
+    const page = new CutePage(handle) as unknown as Record<string, () => unknown>;
     expect(() => page[method]()).toThrow(new RegExp(`IPage\\.${method}`));
   });
 
   it('never resolves an unimplemented method to an empty value', async () => {
     const { handle } = makeHandle();
-    const page = new ReactorPage(handle) as unknown as Record<string, () => Promise<unknown>>;
+    const page = new CutePage(handle) as unknown as Record<string, () => Promise<unknown>>;
     for (const method of NOT_IMPLEMENTED) {
       await expect(page[method]()).rejects.toBeInstanceOf(Error);
     }

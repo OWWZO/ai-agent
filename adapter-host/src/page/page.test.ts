@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { OpenCliPage } from './opencli-page.js';
-import { NotImplementedError, ReactorPage, type BskSessionHandle } from './reactor-page.js';
+import { NotImplementedError, CutePage, type BskSessionHandle } from './cute-page.js';
 import type { Page } from '../browser/page.js';
 import { getBrowserFactory } from '../runtime.js';
 
@@ -150,10 +150,10 @@ describe('OpenCliPage', () => {
 });
 
 /**
- * Methods ReactorPage still refuses to fake (no bsk RPC, or remote-session
- * rejection). Everything else is covered by reactor-page.test.ts.
+ * Methods CutePage still refuses to fake (no bsk RPC, or remote-session
+ * rejection). Everything else is covered by cute-page.test.ts.
  */
-// evaluateWithArgs IS implemented (safe-arg evaluate, see reactor-page.ts).
+// evaluateWithArgs IS implemented (safe-arg evaluate, see cute-page.ts).
 const NOT_IMPLEMENTED_METHODS = [
   'setChecked', 'uploadFiles', 'drag',
   'getFormState', 'waitForDownload', 'autoScroll', 'installInterceptor',
@@ -164,18 +164,18 @@ const NOT_IMPLEMENTED_METHODS = [
   'nativeType', 'nativeKeyPress',
 ] as const;
 
-describe('ReactorPage', () => {
+describe('CutePage', () => {
   const handle: BskSessionHandle = {
     sessionId: 'test-session',
     call: vi.fn(),
   };
 
   it('exposes the session id', () => {
-    expect(new ReactorPage(handle).handle.sessionId).toBe('test-session');
+    expect(new CutePage(handle).handle.sessionId).toBe('test-session');
   });
 
   it.each(NOT_IMPLEMENTED_METHODS)('throws NotImplementedError from %s', async (method) => {
-    const page = new ReactorPage(handle) as unknown as Record<string, (...args: unknown[]) => unknown>;
+    const page = new CutePage(handle) as unknown as Record<string, (...args: unknown[]) => unknown>;
 
     // Sync methods (getActivePage / setActivePage) throw before returning;
     // async methods reject. Normalise both into one captured error.
@@ -197,14 +197,14 @@ describe('ReactorPage', () => {
   });
 
   it('rejects async methods rather than resolving to empty values', async () => {
-    const page = new ReactorPage(handle);
+    const page = new CutePage(handle);
     await expect(page.setFileInput(['/tmp/a.png'])).rejects.toBeInstanceOf(NotImplementedError);
     // Explicitly assert no silent empty-array / false return path.
     await expect(page.getInterceptedRequests()).rejects.not.toBeUndefined();
   });
 
   it('names the bsk alternative in the error message', async () => {
-    const page = new ReactorPage(handle);
+    const page = new CutePage(handle);
     await expect(page.installInterceptor('/api')).rejects.toThrow(/tool\.network/);
   });
 });

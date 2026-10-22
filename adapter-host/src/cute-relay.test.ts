@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import http from 'node:http';
 import { AddressInfo } from 'node:net';
 
-import { isRelayMode, relayRequest } from './reactor-relay.js';
+import { isRelayMode, relayRequest } from './cute-relay.js';
 import { requestDaemon } from './browser/daemon-transport.js';
 import * as daemonLifecycle from './browser/daemon-lifecycle.js';
 

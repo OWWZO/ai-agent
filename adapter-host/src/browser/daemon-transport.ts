@@ -1,5 +1,5 @@
 import { DEFAULT_DAEMON_PORT, isIgnorableDaemonPortEnv, unsupportedDaemonPortEnvMessage } from '../constants.js';
-import { isRelayMode, relayRequest } from '../reactor-relay.js';
+import { isRelayMode, relayRequest } from '../cute-relay.js';
 
 const DAEMON_PORT = DEFAULT_DAEMON_PORT;
 const DAEMON_URL = `http://127.0.0.1:${DAEMON_PORT}`;

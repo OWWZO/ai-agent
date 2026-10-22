@@ -191,7 +191,7 @@ When the site you need is not yet covered, use the `opencli-adapter-author` skil
 | Backend | File | Transport | Notes |
 |---|---|---|---|
 | `opencli` (default) | `src/browser/page.ts` via `OpenCliPage` | BrowserBridge / CDPBridge | Original behavior, byte-identical when the env var is unset |
-| `bsk` | `src/page/reactor-page.ts` | `BskClient` → WebSocket relay → bsk extension → `chrome.debugger` | Adds bsk primitives (observe, emulate, cancel, request-help). `tool.wait_ms` / `tool.upload` / `tool.download` are daemon-only and are not supported over the relay. |
+| `bsk` | `src/page/cute-page.ts` | `BskClient` → WebSocket relay → bsk extension → `chrome.debugger` | Adds bsk primitives (observe, emulate, cancel, request-help). `tool.wait_ms` / `tool.upload` / `tool.download` are daemon-only and are not supported over the relay. |
 
 The bsk command layer is also available as a **library** (`import { click, fill, navigate } from './src/bsk/index.js'`) and as a **CLI** (`npx tsx src/bsk-cli.ts --help`, 31 subcommands) — both reach the same implementation in `src/bsk/commands/`. `bsk-cli` speaks bsk natively and is the entry for bsk-series commands; `opencli browser *` keeps its original command surface untouched.
 

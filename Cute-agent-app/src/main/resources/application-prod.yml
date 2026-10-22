@@ -6,12 +6,12 @@ cute:
   #   register = 后端与文件服务共享 workspace 目录（docker-compose 的 cute-data 卷），零拷贝登记；
   #   upload   = 后端与文件服务不共享目录，改走 multipart 二进制上传。
   file-artifact:
-    local-file-mode: ${REACTOR_FILE_ARTIFACT_LOCAL_FILE_MODE:register}
+    local-file-mode: ${CUTE_FILE_ARTIFACT_LOCAL_FILE_MODE:register}
   opencli:
     enabled: true
-    command: ${REACTOR_OPENCLI_COMMAND:node}
+    command: ${CUTE_OPENCLI_COMMAND:node}
     prefix-args:
-      - ${REACTOR_OPENCLI_MAIN:/opt/opencli/dist/src/main.js}
+      - ${CUTE_OPENCLI_MAIN:/opt/opencli/dist/src/main.js}
     extra-args:
       - -f
       - json

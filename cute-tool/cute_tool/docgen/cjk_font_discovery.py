@@ -122,7 +122,7 @@ def _managed_font_path(*, is_bold: bool) -> str | None:
     circular import — docgen builds on this module.
     """
     try:
-        from cute_tool.docgen.paths import REACTOR_DOCGEN_HOME as LEAGENT_HOME
+        from cute_tool.docgen.paths import CUTE_DOCGEN_HOME as LEAGENT_HOME
     except Exception:  # noqa: BLE001 - constants must never break discovery
         return None
     name = "NotoSansSC-Bold.ttf" if is_bold else "NotoSansSC-Regular.ttf"

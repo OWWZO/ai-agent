@@ -18,8 +18,8 @@ from cute_tool.util.blocking_executor import run_blocking
 from cute_tool.util.file_util import download_all_files_in_path, upload_file_by_path
 
 # cute-tool 包根：.../cute-tool/cute_tool/tool/this.py → parents[2] = cute-tool
-_REACTOR_TOOL_ROOT = Path(__file__).resolve().parents[2]
-_DEFAULT_SKILL_OUTPUT = _REACTOR_TOOL_ROOT / "skilloutput"
+_CUTE_TOOL_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULT_SKILL_OUTPUT = _CUTE_TOOL_ROOT / "skilloutput"
 
 
 async def execute_code(request: CodeExecutionRequest) -> dict:
@@ -147,7 +147,7 @@ def _workspace_path(request: CodeExecutionRequest) -> Path:
         return (Path(env_root).expanduser().resolve() / safe_id).resolve()
 
     skill_root = (
-        os.getenv("SKILL_OUTPUT_ROOT") or os.getenv("REACTOR_SKILL_OUTPUT_ROOT") or ""
+        os.getenv("SKILL_OUTPUT_ROOT") or os.getenv("CUTE_SKILL_OUTPUT_ROOT") or ""
     ).strip()
     if skill_root:
         return (Path(skill_root).expanduser().resolve() / safe_id).resolve()

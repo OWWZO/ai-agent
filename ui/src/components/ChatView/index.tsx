@@ -1926,7 +1926,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   const renderDataAgent = () => {
     return (
-      <div className="reactor-data-chat-shell flex h-full w-full justify-center overflow-hidden bg-[var(--color-surface-sunken)] px-4 pt-4 md:px-6">
+      <div className="cute-data-chat-shell flex h-full w-full justify-center overflow-hidden bg-[var(--color-surface-sunken)] px-4 pt-4 md:px-6">
         <div
           className="flex h-full min-h-0 w-full max-w-[980px] flex-col overflow-hidden"
           id="chat-view"

@@ -113,12 +113,12 @@ if __name__ == "__main__":
         dest="role",
         type="string",
         default=None,
-        help="all|api|sandbox；也可用环境变量 REACTOR_TOOL_ROLE",
+        help="all|api|sandbox；也可用环境变量 CUTE_TOOL_ROLE",
     )
     (options, args) = parser.parse_args()
 
     if options.role:
-        os.environ["REACTOR_TOOL_ROLE"] = str(options.role).strip().lower()
+        os.environ["CUTE_TOOL_ROLE"] = str(options.role).strip().lower()
 
     from cute_tool.service_role import (
         get_service_role,

@@ -32,7 +32,7 @@ from typing import Any
 
 import cute_tool.docgen._structlog as structlog
 
-from cute_tool.docgen.paths import REACTOR_DOCGEN_HOME as LEAGENT_HOME
+from cute_tool.docgen.paths import CUTE_DOCGEN_HOME as LEAGENT_HOME
 from cute_tool.docgen.cjk_font_discovery import (
     discover_cjk_font_file,
 )
