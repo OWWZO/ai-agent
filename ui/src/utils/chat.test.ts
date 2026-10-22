@@ -5,6 +5,7 @@ import {
   buildConversationTaskData,
   buildTaskFromEventData,
   combineData,
+  getIcon,
   getStableTaskIdentity,
   handleTaskData,
   mergeToolCallStreamingTask,
@@ -3592,5 +3593,24 @@ describe("mergeToolCallStreamingTask 的状态排序安全性", () => {
     expect(
       mergeToolCallStreamingTask(tool("success"), tool("running")).resultMap?.status
     ).toBe("success");
+  });
+});
+
+describe("getIcon 的表查找安全性", () => {
+  it("原型键不会命中原型方法，返回默认图标", () => {
+    // `in` 判断会让这些键命中 Object.prototype，ICON_MAP[type] 是 function，
+    // 被当成 className 渲染成 `font_family function toString() { ... }`。
+    for (const key of ["toString", "constructor", "hasOwnProperty", "valueOf"]) {
+      expect(getIcon(key)).toBe("icon-tiaoshi");
+    }
+  });
+
+  it("表内类型仍返回对应图标", () => {
+    // file → icon-bianji，与默认的 icon-tiaoshi 不同，才有区分力
+    expect(getIcon("file")).toBe("icon-bianji");
+  });
+
+  it("未知类型返回默认图标", () => {
+    expect(getIcon("no-such-type")).toBe("icon-tiaoshi");
   });
 });

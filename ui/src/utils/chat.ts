@@ -2146,13 +2146,6 @@ function isSelfReferentialParentId(
 }
 
 /**
- * 处理多智能体任务数据，整合聊天、计划和任务信息
- * @param currentChat 当前聊天对象
- * @param deepThink 深度思考
- * @param multiAgent 多智能体数据
- * @returns 处理后的数据对象
- */
-/**
  * 需要在主时间线上出条目卡的消息类型。
  *
  * 模块级 Set：原来它是函数里的数组，每次 SSE 事件进来都重建一次，
@@ -2181,6 +2174,13 @@ const TIMELINE_MESSAGE_TYPES = new Set([
   "ui_patch",
 ]);
 
+/**
+ * 处理多智能体任务数据，整合聊天、计划和任务信息
+ * @param currentChat 当前聊天对象
+ * @param deepThink 深度思考
+ * @param multiAgent 多智能体数据
+ * @returns 处理后的数据对象
+ */
 export const handleTaskData = (
   currentChat: CHAT.ChatItem,
   deepThink?: boolean,
@@ -2379,7 +2379,7 @@ export const buildConversationTaskData = (
   return handleTaskData(snapshotChat, deepThink, snapshotChat.multiAgent);
 };
 
-type TaskAction = { action: string; tool: string; name: string };
+type TaskAction = { action: string; tool: string; name?: string };
 
 /**
  * 消息类型 → 静态动作文案。
@@ -2486,7 +2486,7 @@ export const buildAction = (task: CHAT.Task): TaskAction => {
       return {
         action: "正在分析数据",
         tool: "数据分析工具",
-        name: task.resultMap.task ?? ""
+        name: task.resultMap.task
       };
 
     default:
@@ -2661,7 +2661,9 @@ const DEFAULT_ICON = 'icon-tiaoshi';
  * @returns 对应的图标名称，如果类型不存在则返回默认图标
  */
 export const getIcon = (type: string): string => {
-  if (type in ICON_MAP) {
+  // hasOwn 而非 `in`：type 来自后端的 messageType，`"toString" in ICON_MAP`
+  // 为 true 会把原型方法当 className 返回，渲染出 `font_family function ...`。
+  if (Object.hasOwn(ICON_MAP, type)) {
     return ICON_MAP[type as IconType];
   }
   return DEFAULT_ICON;

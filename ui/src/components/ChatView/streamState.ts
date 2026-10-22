@@ -886,7 +886,8 @@ function markHITLCardsSettled(
       if (options.id && currentId !== options.id) {
         return tool;
       }
-      const nested = {        ...nestedMap,
+      const nested = {
+        ...nestedMap,
         status: options.status,
         ...(options.extra || {}),
       };
