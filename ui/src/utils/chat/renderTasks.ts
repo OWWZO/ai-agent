@@ -80,6 +80,44 @@ export function clonePlanForRender(plan?: MESSAGE.Plan) {
   };
 }
 
+/**
+ * 任务事实的轻量版本签名：结构 + 每张卡的完成度。
+ *
+ * 用途是给「要不要重建 chat.tasks」提供一个**能反映原地修改**的判据。
+ * `combineData` 是 `multiAgent.tasks.push(...)` 原地改写，引用永远不变，
+ * 拿引用比对会把同一轮里第二个及以后的工具卡全部跳过。
+ *
+ * 只取分组数、每组卡片数、以及每张卡的 `messageType` / `isFinal` /
+ * `resultMap.status` / 入参与出参的长度 —— 这几项覆盖了「卡片新增」与
+ * 「同一张卡内容推进」两类变化，又不至于每帧对全文做哈希。
+ */
+export function buildTaskFactsSignature(
+  multiAgent?: MESSAGE.MultiAgent
+): string {
+  const groups = multiAgent?.tasks;
+  if (!groups?.length) {
+    return "";
+  }
+  const parts: string[] = [];
+  for (const group of groups) {
+    const cards: string[] = [];
+    for (const task of group || []) {
+      const resultMap = (task?.resultMap || {}) as Record<string, unknown>;
+      cards.push(
+        [
+          task?.messageType || "",
+          task?.isFinal ? 1 : 0,
+          String(resultMap.status || ""),
+          String(resultMap.result || "").length,
+          JSON.stringify(resultMap.args ?? "").length,
+        ].join(":")
+      );
+    }
+    parts.push(cards.join(","));
+  }
+  return parts.join("|");
+}
+
 export function cloneTaskSnapshot(task: MESSAGE.Task): MESSAGE.Task {
   return {
     ...task,
@@ -95,7 +133,6 @@ export function cloneTaskSnapshot(task: MESSAGE.Task): MESSAGE.Task {
       : task.toolResult,
   };
 }
-
 
 function getChaptersSignature(resultMap?: MESSAGE.ResultMap): string {
   const chapters = resultMap?.chapters;

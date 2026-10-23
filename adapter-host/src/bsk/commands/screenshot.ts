@@ -35,6 +35,8 @@ export async function screenshot(client: BskCaller, args: ScreenshotArgs): Promi
     session_id: args.sessionId,
     ...(args.tabId === undefined ? {} : { tab_id: args.tabId }),
     ...(args.ref === undefined ? {} : { ref: args.ref }),
+    ...(args.width === undefined ? {} : { width: args.width }),
+    ...(args.height === undefined ? {} : { height: args.height }),
   };
   return client.call<ScreenshotResult>(METHODS.toolScreenshot, params, {
     timeoutMs: TOOL_TIMEOUT_MS,

@@ -557,15 +557,7 @@ export class DebugManager {
     if (!params?.session_id || !this.active(params.session_id)) return;
     const context = this.sessions.get(params.session_id);
     if (!context) return;
-    const tabId =
-      params.tab_id ??
-      (
-        await deadline(
-          this.tabs.query({ windowId: context.agentWindowId, active: true }),
-          OBSERVATION_TIMEOUT_MS,
-          signal,
-        )
-      )[0]?.id;
+    const tabId = params.tab_id ?? context.boundTabId ?? undefined;
     if (tabId === undefined || !this.owned(params.session_id, tabId)) return;
     const state = this.active(params.session_id, tabId);
     if (!state) return;
@@ -988,7 +980,10 @@ export class DebugManager {
     this.sync();
     return Promise.all(
       this.sessions.list().map(async (context) => {
-        const tab = (await this.tabs.query({ windowId: context.agentWindowId, active: true }))[0];
+        const tab =
+          context.boundTabId === null
+            ? undefined
+            : await this.tabs.get(context.boundTabId).catch(() => undefined);
         const latest = [...this.runs.values()]
           .filter(({ run, released }) => !released && run.session_id === context.sessionId)
           .at(-1);

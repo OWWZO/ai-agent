@@ -1129,6 +1129,8 @@ export function useConversationStream(
     let pendingFlushFrame: number | null = null;
     let lastConversationFlushAt = 0;
     let lastTaskFlushAt = 0;
+    /** 上次派生重建所依据的输入：用于跳过纯正文增量触发的空重建。 */
+    let lastDerivedFacts: string | undefined;
     const CONVERSATION_FLUSH_INTERVAL = 16;
     const TASK_FLUSH_INTERVAL = 96;
 
@@ -1138,15 +1140,28 @@ export function useConversationStream(
       }
       const now = performance.now();
       if (taskDataDirty) {
-        const derived = handleTaskData(
-          currentChat,
-          normalizedDeepThink,
-          currentChat.multiAgent
-        );
-        syncDerivedConversationSnapshot(derived.currentChat);
-        taskDataDirty = false;
-        if (force || now - lastTaskFlushAt >= TASK_FLUSH_INTERVAL) {
-          pendingTaskData = derived;
+        // 跳过无意义的重复重建：`handleTaskData` 只消费 `multiAgent` 与 `conclusion`。
+        //
+        // ⚠️ 判据**不能**用 `multiAgent` 的引用比较：`combineData` → `handleTaskMessage`
+        // 是 `tasks.push(...)` 原地改写，引用永远不变。用引用比对会把同一轮里第二个
+        // 及以后的工具卡全部跳过，时间线永久停在第 1 张卡（实测 facts 1→2 而 view 1→1）。
+        // `taskFactsSignature` 由 `combineData` 每次合并后按任务内容重算，
+        // 能反映原地修改；正文增量不改任务事实，签名不变即跳过。
+        const facts = currentChat.taskFactsSignature;
+        if (facts === lastDerivedFacts) {
+          taskDataDirty = false;
+        } else {
+          lastDerivedFacts = facts;
+          const derived = handleTaskData(
+            currentChat,
+            normalizedDeepThink,
+            currentChat.multiAgent
+          );
+          syncDerivedConversationSnapshot(derived.currentChat);
+          taskDataDirty = false;
+          if (force || now - lastTaskFlushAt >= TASK_FLUSH_INTERVAL) {
+            pendingTaskData = derived;
+          }
         }
       }
       const shouldFlushConversation =
@@ -1224,6 +1239,24 @@ export function useConversationStream(
         setLoading(false);
       }
       syncRunningConversation();
+    };
+
+    /**
+     * 流式序号断档：中间帧丢了，增量正文无法自愈。
+     *
+     * 对齐 ZCode 的「断档不猜、不缓存补偿」——它靠 `frame.fromSeq === snapshot.seq`
+     * 判定，断档时携当前水位重订阅，由服务端裁决 resume/snapshot。
+     * 这里复用既有账本重同步：重放会把该 run 的完整过程与正文补齐。
+     *
+     * 每个 run 只触发一次：重同步本身可能再次断流，反复触发会打转。
+     */
+    const gapResyncRequestIdsRef = new Set<string>();
+    const markStreamGap = () => {
+      if (gapResyncRequestIdsRef.has(requestId)) {
+        return;
+      }
+      gapResyncRequestIdsRef.add(requestId);
+      void applyFollowIdleReplay({ allowReconnect: false });
     };
 
     /**
@@ -1419,6 +1452,24 @@ export function useConversationStream(
         return;
       }
       if (eventSeq > 0 && eventSeq > lastEventSeq) {
+        /**
+         * 断档检测（对齐 ZCode：delta 只在序号连续时 apply，断档不猜）。
+         * 丢了帧的正文无法从后续增量里补齐，必须走一次账本重同步收口 ——
+         * 否则 UI 会永久停在一段截断的正文上，直到用户手动刷新。
+         *
+         * ⚠️ 只看**本 run** 的帧。后端 `eventSeq` 是会话级严格自增，且对每一个
+         * 出帧都编号、只对 durable 帧回写水位 —— 同一会话的另一个 run、
+         * 以及被 SSE 队列丢掉的非 durable 帧，都会让序号跳号。那不是本 run
+         * 丢帧，据此触发重放会让用户看到「正在同步任务结果…」闪一下并中途重放。
+         * 首帧（`lastEventSeq === 0`）不判定：起始水位来自续接游标，天然可能跳跃。
+         */
+        if (
+          isTargetFrame &&
+          lastEventSeq > 0 &&
+          eventSeq > lastEventSeq + 1
+        ) {
+          markStreamGap();
+        }
         lastEventSeqRef.current.set(requestId, eventSeq);
         updateActiveRunSeq(sessionId, eventSeq);
       }
@@ -1636,9 +1687,7 @@ export function useConversationStream(
           eventData.resultMap?.messageType === "tool_thought" ||
           eventData.resultMap?.messageType === "llm_reasoning" ||
           eventData.resultMap?.messageType === "subagent_progress" ||
-          eventData.resultMap?.messageType === "context_usage" ||
-          eventData.resultMap?.messageType === "ui_tree" ||
-          eventData.resultMap?.messageType === "ui_patch";
+          eventData.resultMap?.messageType === "context_usage";
         scheduleNonChatFlush(forceTimeline);
       }
     };
@@ -3002,9 +3051,7 @@ export function useConversationStream(
           eventData.resultMap?.messageType === "tool_thought" ||
           eventData.resultMap?.messageType === "llm_reasoning" ||
           eventData.resultMap?.messageType === "subagent_progress" ||
-          eventData.resultMap?.messageType === "context_usage" ||
-          eventData.resultMap?.messageType === "ui_tree" ||
-          eventData.resultMap?.messageType === "ui_patch";
+          eventData.resultMap?.messageType === "context_usage";
         scheduleNonChatFlush(forceTimeline);
       }
     };

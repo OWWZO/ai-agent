@@ -56,7 +56,7 @@ function fakeAgentWindow(ids: number[]) {
       return { windowId: id, initialTabIds: [] };
     }),
     remove: vi.fn(async () => {}),
-    ensureActiveTab: vi.fn(async () => 1),
+    ensureActiveTab: vi.fn(async () => 4),
   };
 }
 
@@ -129,13 +129,16 @@ describe("handleScreenshot", () => {
     throw new Error("tab not found");
   });
 
-  it("captures the Agent Window's active tab when tab_id is omitted", async () => {
+  it("captures the session's bound tab when tab_id is omitted", async () => {
     const sm = new SessionManager({ agentWindow: fakeAgentWindow([100]) });
-    await sm.start("aa11");
+    const ctx = await sm.start("aa11");
+    // The user switching tabs must not retarget the agent: the active tab is a
+    // different tab than the session's binding, and it is never consulted.
+    ctx.boundTabId = 7;
     const capture = vi.fn(async (_w: number) => `data:image/png;base64,${TINY_PNG}`);
-    const get = vi.fn();
+    const get = vi.fn(async (tabId: number) => ({ id: tabId, windowId: 100, active: true }) as chrome.tabs.Tab);
     const query = vi.fn(async (_q: chrome.tabs.QueryInfo) => [
-      { id: 7, windowId: 100, active: true } as chrome.tabs.Tab,
+      { id: 9, windowId: 100, active: true } as chrome.tabs.Tab,
     ]);
     const res = await handleScreenshot(
       sm,
@@ -149,7 +152,7 @@ describe("handleScreenshot", () => {
     expect(res.width).toBe(1);
     expect(res.height).toBe(1);
     expect(capture).toHaveBeenCalledWith(100, { format: "png" });
-    expect(get).not.toHaveBeenCalled();
+    expect(query).not.toHaveBeenCalled();
   });
 
   it("returns not_found when Agent Window has no active tab", async () => {
@@ -244,7 +247,7 @@ describe("handleScreenshot", () => {
     });
     const res = await handleScreenshot(
       sm,
-      { session_id: "aa11" },
+      { session_id: "aa11", tab_id: 7 },
       makeScreenshotDeps({ cdp, captureVisibleTab: capture }),
     );
     if ("code" in res) throw new Error(`unexpected error: ${JSON.stringify(res)}`);
@@ -269,7 +272,7 @@ describe("handleScreenshot", () => {
     });
     const res = await handleScreenshot(
       sm,
-      { session_id: "aa11" },
+      { session_id: "aa11", tab_id: 7 },
       makeScreenshotDeps({ cdp, captureVisibleTab: capture }),
     );
     expect(res).toMatchObject({
@@ -290,7 +293,7 @@ describe("handleScreenshot", () => {
     const { cdp, sent } = makeFakeCdp({});
     const res = await handleScreenshot(
       sm,
-      { session_id: "aa11" },
+      { session_id: "aa11", tab_id: 7 },
       makeScreenshotDeps({ cdp, captureVisibleTab: capture }),
     );
     if ("code" in res) throw new Error(`unexpected error: ${JSON.stringify(res)}`);
@@ -490,7 +493,7 @@ describe("handleScreenshot overlay suppression", () => {
     });
     const res = await handleScreenshot(
       sm,
-      { session_id: "aa11" },
+      { session_id: "aa11", tab_id: 7 },
       { ...makeScreenshotDeps({ captureVisibleTab: capture }), sendToTab: bridge.sendToTab },
     );
     if ("code" in res) throw new Error(`unexpected error: ${JSON.stringify(res)}`);
@@ -542,7 +545,7 @@ describe("handleScreenshot overlay suppression", () => {
     const capture = vi.fn(async (_w: number) => `data:image/png;base64,${TINY_PNG}`);
     const res = await handleScreenshot(
       sm,
-      { session_id: "aa11" },
+      { session_id: "aa11", tab_id: 7 },
       { ...makeScreenshotDeps({ captureVisibleTab: capture }), sendToTab },
     );
     if ("code" in res) throw new Error(`unexpected error: ${JSON.stringify(res)}`);
@@ -3084,7 +3087,9 @@ describe("handleSnapshot", () => {
         trackSessionTab: vi.fn(),
       },
       tabsApi: {
-        get: vi.fn(),
+        get: vi.fn(
+          async (tabId: number) => ({ id: tabId, windowId: 100, active: true }) as chrome.tabs.Tab,
+        ),
         query: vi.fn(async () => [{ id: 4, windowId: 100, active: true } as chrome.tabs.Tab]),
       },
     };
@@ -4470,6 +4475,9 @@ it.each([
   const ctx = await manager.start("aa11");
   ctx.borrowedTabs.set(7, { tabId: 7, originalWindowId: 200, originalIndex: 0 });
   ctx.agentCreatedTabs.add(8);
+  // Borrowing binds the session to the borrowed tab, so a default-target call
+  // keeps hitting tab 7 even after the user activates tab 8.
+  if (mode === "borrowed-default") ctx.boundTabId = 7;
   const capture = vi.fn();
   const { cdp } = makeFakeCdp({
     "Page.getFrameTree": () => ({ frameTree: { frame: { id: "main" } } }),
@@ -4481,7 +4489,7 @@ it.each([
     "Page.captureScreenshot": () => ({ data: TINY_PNG }),
   });
   cdp.getAttachmentId = () => "attachment";
-  let activeTab = mode === "borrowed-default" ? 7 : 8;
+  let activeTab = 8;
   const tab = (id: number) => ({ id, windowId: 100, active: id === activeTab }) as chrome.tabs.Tab;
   const query = vi.fn(async () => [tab(activeTab)]);
   const deps = makeScreenshotDeps({
@@ -4505,9 +4513,8 @@ it.each([
   expect(cdp.send).toHaveBeenCalledWith(7, "Page.captureScreenshot", expect.any(Object));
   expect(capture).not.toHaveBeenCalled();
   expect(activeTab).toBe(8);
-  if (mode === "borrowed-default")
-    expect(query).toHaveBeenCalledWith({ active: true, windowId: 100 });
-  else expect(query).not.toHaveBeenCalled();
+  // Neither mode may consult Chrome's active tab.
+  expect(query).not.toHaveBeenCalled();
 });
 
 it.each([

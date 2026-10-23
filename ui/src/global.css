@@ -2660,6 +2660,23 @@ ol {
   line-height: 1.65;
 }
 
+/* 超长输出的「展开剩余 N 行」：贴着内容尾部，UI 字号（内容区是等宽，按钮不是操作区）。 */
+.kimi-tool-section-more {
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-brand);
+  font-family: var(--font-ui);
+  font-size: var(--text-ui-base);
+  line-height: 1.65;
+  cursor: pointer;
+}
+
+.kimi-tool-section-more:hover {
+  text-decoration: underline;
+}
+
 .kimi-tool-json {
   margin: 0;
   scrollbar-gutter: stable;

@@ -12,7 +12,7 @@ function fakeAgentWindow(ids: number[]) {
       return { windowId: id, initialTabIds: [] };
     }),
     remove: vi.fn(async () => {}),
-    ensureActiveTab: vi.fn(async () => 1),
+    ensureActiveTab: vi.fn(async () => 4),
   };
 }
 
@@ -57,9 +57,15 @@ function makeFakeCdp(opts: FakeCdpOptions = {}) {
     throw new Error(`unexpected CDP call ${method}`);
   };
   const send = vi.fn(sendImpl);
+  const sendToTarget = vi.fn(sendImpl);
   const cdp: CdpRunner = {
     send: send as unknown as <T = unknown>(
       tabId: number,
+      method: string,
+      params?: object,
+    ) => Promise<T>,
+    sendToTarget: sendToTarget as unknown as <T = unknown>(
+      target: { tabId: number; sessionId?: string },
       method: string,
       params?: object,
     ) => Promise<T>,
@@ -74,7 +80,7 @@ function makeFakeCdp(opts: FakeCdpOptions = {}) {
     get: vi.fn(async (tabId: number) => ({ id: tabId, windowId, active: true }) as chrome.tabs.Tab),
     query: vi.fn(async () => [{ id: 4, windowId, active: true } as chrome.tabs.Tab]),
   };
-  return { cdp, tabsApi, sent };
+  return { cdp, tabsApi, sent, sendToTarget };
 }
 
 describe("handleEvaluate", () => {
@@ -254,6 +260,124 @@ describe("handleEvaluate", () => {
     );
     if ("code" in res) throw new Error(`unexpected error: ${JSON.stringify(res)}`);
     expect(res.ok).toBe(true);
+  });
+
+  describe("frame targeting", () => {
+    /** Frame graph with one same-process child and one out-of-process child. */
+    function frameGraph(windowId: number) {
+      return {
+        rootFrameId: "root",
+        frames: [
+          { frameId: "root", target: { tabId: 4, windowId } },
+          { frameId: "child", parentFrameId: "root", target: { tabId: 4, windowId } },
+          {
+            frameId: "oopif",
+            parentFrameId: "root",
+            target: { tabId: 4, sessionId: "session-1", windowId },
+          },
+        ],
+      };
+    }
+
+    function withFrameGraph(fake: ReturnType<typeof makeFakeCdp>, windowId = 100) {
+      fake.cdp.getFrameGraph = vi.fn(async () => frameGraph(windowId));
+      return fake;
+    }
+
+    it("evaluates in a same-process child frame", async () => {
+      const sm = new SessionManager({ agentWindow: fakeAgentWindow([100]) });
+      await sm.start("aa11");
+      const fake = withFrameGraph(makeFakeCdp());
+      const res = await handleEvaluate(
+        sm,
+        { session_id: "aa11", expression: "1+1", frame_id: "child" },
+        { cdp: fake.cdp, tabsApi: fake.tabsApi },
+      );
+      if ("code" in res) throw new Error(`unexpected error: ${JSON.stringify(res)}`);
+      expect(res.ok).toBe(true);
+      expect(res.frame_id).toBe("child");
+      expect(fake.cdp.send).toHaveBeenCalledWith(4, "Runtime.evaluate", expect.any(Object));
+      expect(fake.cdp.sendToTarget).not.toHaveBeenCalled();
+    });
+
+    it("routes an out-of-process frame through its own CDP session", async () => {
+      const sm = new SessionManager({ agentWindow: fakeAgentWindow([100]) });
+      await sm.start("aa11");
+      const fake = withFrameGraph(makeFakeCdp());
+      const res = await handleEvaluate(
+        sm,
+        { session_id: "aa11", expression: "1+1", frame_id: "oopif" },
+        { cdp: fake.cdp, tabsApi: fake.tabsApi },
+      );
+      if ("code" in res) throw new Error(`unexpected error: ${JSON.stringify(res)}`);
+      expect(res.ok).toBe(true);
+      expect(res.frame_id).toBe("oopif");
+      expect(fake.cdp.sendToTarget).toHaveBeenCalledWith(
+        { tabId: 4, sessionId: "session-1" },
+        "Runtime.evaluate",
+        expect.any(Object),
+      );
+    });
+
+    it("omits frame_id from the result for the main frame", async () => {
+      const sm = new SessionManager({ agentWindow: fakeAgentWindow([100]) });
+      await sm.start("aa11");
+      const fake = withFrameGraph(makeFakeCdp());
+      const res = await handleEvaluate(
+        sm,
+        { session_id: "aa11", expression: "1+1" },
+        { cdp: fake.cdp, tabsApi: fake.tabsApi },
+      );
+      if ("code" in res) throw new Error(`unexpected error: ${JSON.stringify(res)}`);
+      expect(res).not.toHaveProperty("frame_id");
+      // The main frame never needs the frame graph.
+      expect(fake.cdp.getFrameGraph).not.toHaveBeenCalled();
+    });
+
+    it("reports not_found for a frame that left the graph", async () => {
+      const sm = new SessionManager({ agentWindow: fakeAgentWindow([100]) });
+      await sm.start("aa11");
+      const fake = withFrameGraph(makeFakeCdp());
+      const res = await handleEvaluate(
+        sm,
+        { session_id: "aa11", expression: "1+1", frame_id: "gone" },
+        { cdp: fake.cdp, tabsApi: fake.tabsApi },
+      );
+      expect(res).toMatchObject({ code: "not_found" });
+      expect(fake.cdp.send).not.toHaveBeenCalled();
+    });
+
+    it("rejects an empty frame_id instead of falling back to the main frame", async () => {
+      const sm = new SessionManager({ agentWindow: fakeAgentWindow([100]) });
+      await sm.start("aa11");
+      const fake = withFrameGraph(makeFakeCdp());
+      const res = await handleEvaluate(
+        sm,
+        { session_id: "aa11", expression: "1+1", frame_id: "" },
+        { cdp: fake.cdp, tabsApi: fake.tabsApi },
+      );
+      expect(res).toMatchObject({ code: "invalid_params" });
+      expect(fake.cdp.send).not.toHaveBeenCalled();
+    });
+
+    it("still refuses a frame in a tab outside the Agent Window", async () => {
+      const sm = new SessionManager({ agentWindow: fakeAgentWindow([100]) });
+      await sm.start("aa11");
+      const fake = withFrameGraph(makeFakeCdp());
+      // Tab 9 lives in a user window and was never borrowed.
+      fake.tabsApi.get = vi.fn(
+        async () => ({ id: 9, windowId: 300, active: true }) as chrome.tabs.Tab,
+      );
+      const res = await handleEvaluate(
+        sm,
+        { session_id: "aa11", expression: "1+1", tab_id: 9, frame_id: "child" },
+        { cdp: fake.cdp, tabsApi: fake.tabsApi },
+      );
+      expect(res).toMatchObject({ code: "permission_denied" });
+      expect(fake.cdp.send).not.toHaveBeenCalled();
+      // The sandbox check runs before frame resolution.
+      expect(fake.cdp.getFrameGraph).not.toHaveBeenCalled();
+    });
   });
 
   it("returns dialogs observed during evaluate", async () => {

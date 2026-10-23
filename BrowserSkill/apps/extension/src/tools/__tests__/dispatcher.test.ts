@@ -68,7 +68,7 @@ describe("ToolDispatcher", () => {
       agentWindow: {
         create: vi.fn(async () => ({ windowId: 4242, initialTabIds: [] })),
         remove: vi.fn(),
-        ensureActiveTab: vi.fn(),
+        ensureActiveTab: vi.fn(async () => 7),
       },
     });
     await sessions.start("test");
@@ -487,6 +487,7 @@ describe("ToolDispatcher", () => {
     vi.stubGlobal("chrome", {
       tabs: {
         query: vi.fn(async () => [{ id: 7, windowId: 4242, active: true }]),
+        get: vi.fn(async (tabId: number) => ({ id: tabId, windowId: 4242, active: true })),
       },
     });
     const { transport, sent, deliver } = fakeTransport();
@@ -494,7 +495,7 @@ describe("ToolDispatcher", () => {
       agentWindow: {
         create: vi.fn(async () => ({ windowId: 4242, initialTabIds: [] })),
         remove: vi.fn(async () => {}),
-        ensureActiveTab: vi.fn(async () => 1),
+        ensureActiveTab: vi.fn(async () => 7),
       },
     });
     await sessions.start("aa11");
@@ -1263,7 +1264,7 @@ describe("ToolDispatcher", () => {
     expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(2);
   });
 
-  it("limits default-target hover reassertion to the active tab", async () => {
+  it("limits default-target hover reassertion to the bound tab", async () => {
     vi.stubGlobal("chrome", {
       tabs: {
         query: vi.fn(async () => [{ id: 9, windowId: 4242, active: true }]),
@@ -1276,7 +1277,7 @@ describe("ToolDispatcher", () => {
       agentWindow: {
         create: vi.fn(async () => ({ windowId: 4242, initialTabIds: [] })),
         remove: vi.fn(async () => {}),
-        ensureActiveTab: vi.fn(async () => 1),
+        ensureActiveTab: vi.fn(async () => 9),
       },
     });
     await sessions.start("aa11");

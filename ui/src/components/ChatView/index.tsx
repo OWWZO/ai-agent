@@ -1598,8 +1598,16 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   type ChatTurn = (typeof chatTurns)[number];
 
-  /** 虚拟列表的行 key：turn 的 requestId 跨渲染稳定，可作测高缓存索引。 */
-  const getTurnKey = (turn: ChatTurn) => turn.key;
+  /**
+   * 虚拟列表的行 key：turn 的 requestId 跨渲染稳定，可作测高缓存索引。
+   *
+   * ⚠️ 必须 `useMemoizedFn`：tanstack 的 `getMeasurementOptions` memo 依赖数组里
+   * **直接含 `getItemKey` 本身**，身份一变就 `pendingMin = null` 从第 0 行重建
+   * 全部 N 行测量，`getVirtualItems()` 因此每次返回新数组 → 触发上报 effect →
+   * `setVirtualTurnRows` → 重渲染。每次渲染新建箭头函数会让流式期间每帧走一遍，
+   * 形成无界重渲染循环，正是虚拟化要消除的开销。
+   */
+  const getTurnKey = useMemoizedFn((turn: ChatTurn) => turn.key);
 
   /**
    * 单轮渲染。

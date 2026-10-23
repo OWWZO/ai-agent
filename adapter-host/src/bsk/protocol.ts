@@ -623,6 +623,8 @@ export interface EvaluateParams {
   session_id: string;
   expression: string;
   tab_id?: number;
+  /** Frame from `bsk frames`; omitted means the main frame. */
+  frame_id?: string;
   await_promise?: boolean;
   return_by_value?: boolean;
   timeout_ms?: number;
@@ -638,6 +640,8 @@ export interface EvaluateError {
 export interface EvaluateResult {
   ok: boolean;
   tab_id: number;
+  /** Echoed when a frame was requested. */
+  frame_id?: string;
   value?: unknown;
   error?: EvaluateError;
   dialogs?: JavaScriptDialogInfo[];
@@ -649,6 +653,9 @@ export interface ScreenshotParams {
   session_id: string;
   tab_id?: number;
   ref?: string;
+  /** Capture at this CSS-pixel size instead of the tab's current viewport. */
+  width?: number;
+  height?: number;
 }
 
 export interface ScreenshotResult {

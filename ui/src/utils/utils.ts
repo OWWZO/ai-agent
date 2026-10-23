@@ -1,4 +1,5 @@
-import { throttle } from "lodash";
+// 精确引入：`lodash` 整包会把全部工具函数拉进首屏 chunk，这里只用到 throttle。
+import throttle from "lodash/throttle";
 
 /**
  * 检查字符串是否为有效的 JSON

@@ -194,6 +194,36 @@ describe("SessionManager", () => {
       expect(isAgentControlledTab(ctx, 0)).toBe(true);
     });
 
+    it("binds the session to its home tab at start", async () => {
+      const aw = fakeAgentWindow();
+      aw.ensureActiveTabMock.mockResolvedValue(7);
+      const sm = new SessionManager({ agentWindow: aw });
+      const ctx = await sm.start("aa11");
+      expect(ctx.homeTabId).toBe(7);
+      expect(ctx.boundTabId).toBe(7);
+    });
+
+    it("drops the binding when the bound tab closes and keeps the home tab", async () => {
+      const aw = fakeAgentWindow();
+      aw.ensureActiveTabMock.mockResolvedValue(7);
+      const sm = new SessionManager({ agentWindow: aw });
+      const ctx = await sm.start("aa11");
+      ctx.boundTabId = 42;
+      sm.forgetClosedTab(42);
+      expect(ctx.boundTabId).toBeNull();
+      expect(ctx.homeTabId).toBe(7);
+    });
+
+    it("clears the home tab id when the home tab itself closes", async () => {
+      const aw = fakeAgentWindow();
+      aw.ensureActiveTabMock.mockResolvedValue(7);
+      const sm = new SessionManager({ agentWindow: aw });
+      const ctx = await sm.start("aa11");
+      sm.forgetClosedTab(7);
+      expect(ctx.homeTabId).toBeNull();
+      expect(ctx.boundTabId).toBeNull();
+    });
+
     it("forgets closed borrows idempotently without affecting other tabs or sessions", async () => {
       const sm = new SessionManager({ agentWindow: fakeAgentWindow() });
       const a = await sm.start("aa11");

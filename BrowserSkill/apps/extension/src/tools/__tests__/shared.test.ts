@@ -49,6 +49,55 @@ describe("lookupSession", () => {
   });
 });
 
+describe("resolveTargetTab default targeting", () => {
+  /** A session bound to tab 3 while Chrome reports tab 9 as active. */
+  async function boundSession() {
+    const sm = new SessionManager({ agentWindow: fakeAgentWindow() });
+    const ctx = await sm.start("aa11");
+    ctx.boundTabId = 3;
+    const tabsApi = {
+      get: vi.fn(
+        async (tabId: number) =>
+          ({ id: tabId, windowId: 100, active: tabId === 9 }) as chrome.tabs.Tab,
+      ),
+      query: vi.fn(async () => [{ id: 9, windowId: 100, active: true } as chrome.tabs.Tab]),
+    };
+    return { sm, ctx, tabsApi };
+  }
+
+  it("keeps the bound tab when the user switches to another tab", async () => {
+    const { sm, ctx, tabsApi } = await boundSession();
+    await expect(resolveTargetTab(sm, ctx, undefined, tabsApi)).resolves.toMatchObject({
+      tabId: 3,
+    });
+    expect(tabsApi.query).not.toHaveBeenCalled();
+  });
+
+  it("lets an explicit tab_id win without moving the binding", async () => {
+    const { sm, ctx, tabsApi } = await boundSession();
+    await expect(resolveTargetTab(sm, ctx, 9, tabsApi)).resolves.toMatchObject({ tabId: 9 });
+    expect(ctx.boundTabId).toBe(3);
+  });
+
+  it("reports not_found instead of guessing when no tab is bound", async () => {
+    const { sm, ctx, tabsApi } = await boundSession();
+    ctx.boundTabId = null;
+    await expect(resolveTargetTab(sm, ctx, undefined, tabsApi)).resolves.toMatchObject({
+      code: "not_found",
+    });
+    expect(tabsApi.query).not.toHaveBeenCalled();
+  });
+
+  it("clears a binding whose tab has disappeared and reports not_found", async () => {
+    const { sm, ctx, tabsApi } = await boundSession();
+    tabsApi.get.mockRejectedValue(new Error("No tab with id: 3"));
+    await expect(resolveTargetTab(sm, ctx, undefined, tabsApi)).resolves.toMatchObject({
+      code: "not_found",
+    });
+    expect(ctx.boundTabId).toBeNull();
+  });
+});
+
 describe("parseBufferedReadBounds", () => {
   it("applies shared defaults and caps", () => {
     expect(parseBufferedReadBounds({})).toEqual({
@@ -107,37 +156,39 @@ describe("CDP target URL guard", () => {
     });
   });
 
-  it("falls back from a restricted default active tab to an accessible agent tab", async () => {
+  it("falls back from a restricted bound tab to another tab this session controls", async () => {
     const sm = new SessionManager({ agentWindow: fakeAgentWindow() });
     const ctx = await sm.start("aa11");
+    ctx.agentCreatedTabs.add(8);
+    // The binding is the restricted tab; the session's other tab is a fallback.
+    ctx.boundTabId = 7;
     const tabsApi = {
-      get: vi.fn(),
-      query: vi.fn(async (query: chrome.tabs.QueryInfo) => {
-        if (query.active) {
-          return [
-            {
-              id: 7,
-              windowId: ctx.agentWindowId,
-              active: true,
-              url: "chrome-extension://other-extension/page.html",
-            } as chrome.tabs.Tab,
-          ];
-        }
-        return [
-          {
-            id: 7,
+      get: vi.fn(
+        async (tabId: number) =>
+          ({
+            id: tabId,
             windowId: ctx.agentWindowId,
-            active: true,
-            url: "chrome-extension://other-extension/page.html",
-          } as chrome.tabs.Tab,
-          {
-            id: 8,
-            windowId: ctx.agentWindowId,
-            active: false,
-            url: "https://example.test/",
-          } as chrome.tabs.Tab,
-        ];
-      }),
+            active: tabId === 7,
+            url:
+              tabId === 7
+                ? "chrome-extension://other-extension/page.html"
+                : "https://example.test/",
+          }) as chrome.tabs.Tab,
+      ),
+      query: vi.fn(async () => [
+        {
+          id: 7,
+          windowId: ctx.agentWindowId,
+          active: true,
+          url: "chrome-extension://other-extension/page.html",
+        } as chrome.tabs.Tab,
+        {
+          id: 8,
+          windowId: ctx.agentWindowId,
+          active: false,
+          url: "https://example.test/",
+        } as chrome.tabs.Tab,
+      ]),
     };
 
     await expect(
@@ -145,6 +196,45 @@ describe("CDP target URL guard", () => {
     ).resolves.toMatchObject({
       tabId: 8,
       url: "https://example.test/",
+    });
+  });
+
+  it("never falls back to a tab the user opened", async () => {
+    const sm = new SessionManager({ agentWindow: fakeAgentWindow() });
+    const ctx = await sm.start("aa11");
+    ctx.boundTabId = 7;
+    const tabsApi = {
+      get: vi.fn(
+        async (tabId: number) =>
+          ({
+            id: tabId,
+            windowId: ctx.agentWindowId,
+            active: true,
+            url: "chrome-extension://other-extension/page.html",
+          }) as chrome.tabs.Tab,
+      ),
+      query: vi.fn(async () => [
+        {
+          id: 7,
+          windowId: ctx.agentWindowId,
+          active: true,
+          url: "chrome-extension://other-extension/page.html",
+        } as chrome.tabs.Tab,
+        // Opened by the user: not agent-controlled, so it is not a fallback.
+        {
+          id: 8,
+          windowId: ctx.agentWindowId,
+          active: false,
+          url: "https://example.test/",
+        } as chrome.tabs.Tab,
+      ]),
+    };
+
+    await expect(
+      resolveCdpAccessibleTargetTab(sm, ctx, undefined, tabsApi, "snapshot"),
+    ).resolves.toMatchObject({
+      code: "permission_denied",
+      data: { reason: "restricted_tab_url" },
     });
   });
 
