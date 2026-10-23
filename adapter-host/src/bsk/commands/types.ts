@@ -136,6 +136,8 @@ export interface GetHtmlArgs extends SessionScopedArgs {
 
 export interface EvaluateArgs extends SessionScopedArgs, TimeoutArgs {
   expression: string;
+  /** Frame id from `bsk frames`; omitted means the main frame. */
+  frameId?: string;
   awaitPromise?: boolean;
   returnByValue?: boolean;
 }
@@ -144,6 +146,9 @@ export interface EvaluateArgs extends SessionScopedArgs, TimeoutArgs {
 
 export interface ScreenshotArgs extends SessionScopedArgs {
   ref?: string;
+  /** Capture at this CSS-pixel size; both must be given together. */
+  width?: number;
+  height?: number;
 }
 
 export interface ScreenshotFullPageArgs extends SessionScopedArgs, TimeoutArgs {

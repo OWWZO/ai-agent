@@ -1027,6 +1027,7 @@ function createBskCli(options: BskCliBuildOptions): { cli: Command; runtime: Bsk
 
   const evaluate = program.command('evaluate <expression>').description('evaluate JavaScript in the page');
   evaluate
+    .option('--frame-id <id>', 'frame id from "bsk frames"; defaults to the main frame')
     .option('--await-promise')
     .option('--no-await-promise')
     .option('--return-by-value')
@@ -1037,6 +1038,7 @@ function createBskCli(options: BskCliBuildOptions): { cli: Command; runtime: Bsk
       sessionId: requiredSession(root, 'evaluate'),
       tabId: root.tabId,
       expression: asString(positional[0], 'evaluate expression'),
+      ...(typeof local.frameId === 'string' ? { frameId: local.frameId } : {}),
       awaitPromise: asBooleanOrUndefined(local.awaitPromise),
       returnByValue: asBooleanOrUndefined(local.returnByValue),
       timeoutMs: typeof local.timeout === 'number' ? local.timeout : undefined,
@@ -1046,6 +1048,8 @@ function createBskCli(options: BskCliBuildOptions): { cli: Command; runtime: Bsk
   const screenshot = program.command('screenshot').description('capture a screenshot');
   screenshot
     .option('--ref <ref>')
+    .option('--width <n>', 'capture width in CSS pixels (requires --height)', (value: string) => parseInteger(value, '--width'))
+    .option('--height <n>', 'capture height in CSS pixels (requires --width)', (value: string) => parseInteger(value, '--height'))
     .option('--full-page')
     .option('--scope <scope>', 'follow or current')
     .option('--timeout <duration>', 'full-page timeout', parseTimeout)
@@ -1064,6 +1068,8 @@ function createBskCli(options: BskCliBuildOptions): { cli: Command; runtime: Bsk
         sessionId,
         tabId: root.tabId,
         ref: typeof local.ref === 'string' ? local.ref : undefined,
+        width: typeof local.width === 'number' ? local.width : undefined,
+        height: typeof local.height === 'number' ? local.height : undefined,
       }, outPath);
     // `artifacts` 是 Java 侧的产物登记协议（CliArtifactCandidateParser）：
     // 路径必须是 cwd 相对路径，绝对路径会被协议层直接丢弃。
