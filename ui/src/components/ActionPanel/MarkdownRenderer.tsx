@@ -23,7 +23,15 @@ import {
   resolveMarkdownMediaKind,
   rewriteMarkdownArtifactRefs,
 } from '@/utils/markdownArtifacts';
+import {
+  collectLinkDefinitions,
+  splitMarkdownBlocks,
+  withLinkDefinitions,
+} from '@/lib/markdownBlocks';
 import type { BundledLanguage } from 'shiki';
+
+/** `ReactMarkdown` 的 props 形状：块级组件只取插件相关的三个字段。 */
+type ReactMarkdownProps = ComponentProps<typeof ReactMarkdown>;
 
 /** 终答 Markdown 内嵌图：点击放大预览 */
 const MarkdownImagePreview: ReactorType.FC<{
@@ -151,47 +159,155 @@ function childrenToText(children: unknown): string {
   return "";
 }
 
-const CodeBlock: ReactorType.FC<{
+/**
+ * 代码围栏渲染器工厂。
+ *
+ * 做成工厂而不是模块级常量，是因为 `streaming` 必须来自当前渲染上下文 ——
+ * 流式期间要跳过 shiki 高亮与 Mermaid（对齐 ZCode
+ * `enableSyntaxHighlighting={!renderStreaming}` / `renderMermaid={!renderStreaming}`）。
+ */
+const createCodeBlock = (streaming: boolean): ReactorType.FC<{
   inline?: boolean;
   className?: string;
   children?: unknown;
-}> = ({ inline, className, children, ...rest }) => {
-  // Streamdown 用 data-block 标记围栏；react-markdown 用 inline=false
-  const isBlock =
-    !inline || Object.prototype.hasOwnProperty.call(rest, "data-block");
-  const match = /language-(\w+)/.exec(className || "");
-  const trimmed = childrenToText(children).replace(/\n$/, "");
+}> =>
+  function CodeBlock({ inline, className, children, ...rest }) {
+    // Streamdown 用 data-block 标记围栏；react-markdown 用 inline=false
+    const isBlock =
+      !inline || Object.prototype.hasOwnProperty.call(rest, "data-block");
+    const match = /language-(\w+)/.exec(className || "");
+    const trimmed = childrenToText(children).replace(/\n$/, "");
 
-  if (match?.[1] === "mermaid") {
-    return <MermaidBlock>{children as ReactNode}</MermaidBlock>;
-  }
+    // Mermaid 解析 + 渲染比 shiki 更重，流式时先按普通代码块展示。
+    if (match?.[1] === "mermaid" && !streaming) {
+      return <MermaidBlock>{children as ReactNode}</MermaidBlock>;
+    }
 
-  if (isBlock && match?.[1] === "diff") {
-    return <DiffCodeFence code={trimmed} />;
-  }
+    if (isBlock && match?.[1] === "diff") {
+      return <DiffCodeFence code={trimmed} />;
+    }
 
-  if (isBlock && match) {
-    const rawLang = match[1];
-    const safeLanguage = rawLang as BundledLanguage;
-    return <KimiCodeFence code={trimmed} language={safeLanguage} />;
-  }
+    if (isBlock && match) {
+      const rawLang = match[1];
+      const safeLanguage = rawLang as BundledLanguage;
+      return (
+        <KimiCodeFence
+          code={trimmed}
+          language={safeLanguage}
+          streaming={streaming}
+        />
+      );
+    }
 
-  // 无 language 的多行 fence：仍按代码块渲染，避免掉进行内 chip
-  if (isBlock && trimmed.includes("\n")) {
-    return <KimiCodeFence code={trimmed} language="text" />;
-  }
+    // 无 language 的多行 fence：仍按代码块渲染，避免掉进行内 chip
+    if (isBlock && trimmed.includes("\n")) {
+      return (
+        <KimiCodeFence code={trimmed} language="text" streaming={streaming} />
+      );
+    }
 
-  return <code className={cnInlineCode(className)}>{children as ReactNode}</code>;
-};
+    return (
+      <code className={cnInlineCode(className)}>{children as ReactNode}</code>
+    );
+  };
 
 /** react-markdown 默认 pre>code；我们的 fence 自带外壳，必须拆掉外层 pre，否则套住 Shiki 的 pre 会重复渲染 HTML 源码 */
-const MarkdownPre: ReactorType.FC<{ children?: ReactNode }> = ({
-  children,
-}) => <>{children}</>;
+const MarkdownPre: ReactorType.FC<{ children?: ReactNode }> = ({ children }) => (
+  <>{children}</>
+);
 
 function cnInlineCode(className?: string) {
   return cn('kimi-inline-code', className);
 }
+
+/**
+ * components 工厂。
+ *
+ * 提到模块级是为了让「已落定」与「流式」两套 components 各自**引用稳定** ——
+ * 它们是块级 `memo` 的 prop，每次渲染新建对象会让所有块的 memo 全部失效。
+ */
+const buildMarkdownComponents = (
+  artifactFiles: CHAT.TFile[] | undefined,
+  isStreaming: boolean
+) => {
+  const resolveHref = (href?: string | null) =>
+    resolveMarkdownArtifactHref(href, artifactFiles);
+
+  // 链接统一新标签打开；相对文件名先走产物表解析。
+  // 指向 mp4/mp3 等时内嵌 video/audio，避免只显示冷链接。
+  const MarkdownLink = (linkProps: unknown) => {
+    const anchorProps = { ...(linkProps as Record<string, unknown>) };
+    delete anchorProps.node;
+    const href = resolveHref(
+      typeof anchorProps.href === 'string' ? anchorProps.href : undefined
+    );
+    const mediaKind = resolveMarkdownMediaKind(href);
+    if ((mediaKind === 'video' || mediaKind === 'audio') && href) {
+      const label =
+        typeof anchorProps.children === 'string'
+          ? anchorProps.children
+          : undefined;
+      return <MarkdownMediaPlayer kind={mediaKind} src={href} title={label} />;
+    }
+    return (
+      <a
+        {...(anchorProps as ComponentProps<'a'>)}
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+      />
+    );
+  };
+
+  const MarkdownImage = (imageProps: unknown) => {
+    const imgProps = { ...(imageProps as Record<string, unknown>) };
+    delete imgProps.node;
+    const src = resolveHref(
+      typeof imgProps.src === 'string' ? imgProps.src : undefined
+    );
+    const alt = typeof imgProps.alt === 'string' ? imgProps.alt : undefined;
+    const mediaKind = resolveMarkdownMediaKind(src);
+    if ((mediaKind === 'video' || mediaKind === 'audio') && src) {
+      return <MarkdownMediaPlayer kind={mediaKind} src={src} title={alt} />;
+    }
+    return <MarkdownImagePreview src={src || ''} alt={alt} />;
+  };
+
+  return {
+    pre: MarkdownPre,
+    code: createCodeBlock(isStreaming),
+    a: MarkdownLink,
+    img: MarkdownImage,
+  };
+};
+
+/**
+ * 单个 Markdown 块。
+ *
+ * `memo` 是块级增量的关键：流式时只有最后一块内容在变，前面的块靠 memo 跳过
+ * 整棵子树的重新解析与 reconcile。
+ *
+ * 所有 prop 都必须引用稳定：`components` 由 `buildMarkdownComponents` 工厂按
+ * `artifactFiles` 缓存，remark / rehype 插件按 `mathPlugins` 缓存。
+ * 任一 prop 每次渲染都新建对象，都会让所有块的 memo 全部失效。
+ */
+const MarkdownBlock = memo(function MarkdownBlock(props: {
+  content: string;
+  components: ReturnType<typeof buildMarkdownComponents>;
+  remarkPlugins: ReactMarkdownProps['remarkPlugins'];
+  rehypePlugins: ReactMarkdownProps['rehypePlugins'];
+}) {
+  const { content, components, remarkPlugins, rehypePlugins } = props;
+  return (
+    <ReactMarkdown
+      remarkPlugins={remarkPlugins}
+      rehypePlugins={rehypePlugins}
+      components={components}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+});
 
 const MarkdownRenderer: ReactorType.FC<{
   markDownContent?: string;
@@ -243,57 +359,20 @@ const MarkdownRenderer: ReactorType.FC<{
     [mathPlugins]
   );
 
-  const markdownComponents = useMemo(() => {
-    const resolveHref = (href?: string | null) =>
-      resolveMarkdownArtifactHref(href, artifactFiles);
-
-    // 链接统一新标签打开；相对文件名先走产物表解析。
-    // 指向 mp4/mp3 等时内嵌 video/audio，避免只显示冷链接。
-    const MarkdownLink = (linkProps: unknown) => {
-      const anchorProps = { ...(linkProps as Record<string, unknown>) };
-      delete anchorProps.node;
-      const href = resolveHref(
-        typeof anchorProps.href === 'string' ? anchorProps.href : undefined
-      );
-      const mediaKind = resolveMarkdownMediaKind(href);
-      if ((mediaKind === 'video' || mediaKind === 'audio') && href) {
-        const label =
-          typeof anchorProps.children === 'string'
-            ? anchorProps.children
-            : undefined;
-        return <MarkdownMediaPlayer kind={mediaKind} src={href} title={label} />;
-      }
-      return (
-        <a
-          {...(anchorProps as ComponentProps<'a'>)}
-          href={href}
-          target="_blank"
-          rel="noreferrer"
-        />
-      );
-    };
-
-    const MarkdownImage = (imageProps: unknown) => {
-      const imgProps = { ...(imageProps as Record<string, unknown>) };
-      delete imgProps.node;
-      const src = resolveHref(
-        typeof imgProps.src === 'string' ? imgProps.src : undefined
-      );
-      const alt = typeof imgProps.alt === 'string' ? imgProps.alt : undefined;
-      const mediaKind = resolveMarkdownMediaKind(src);
-      if ((mediaKind === 'video' || mediaKind === 'audio') && src) {
-        return <MarkdownMediaPlayer kind={mediaKind} src={src} title={alt} />;
-      }
-      return <MarkdownImagePreview src={src || ''} alt={alt} />;
-    };
-
-    return {
-      pre: MarkdownPre,
-      code: CodeBlock,
-      a: MarkdownLink,
-      img: MarkdownImage,
-    };
-  }, [artifactFiles]);
+  /**
+   * 两套 components，**引用必须稳定**，否则每个块的 `memo` 都会失效。
+   *
+   * 区别只在 `code` 渲染器要不要跳过 shiki / Mermaid：已落定的块应该高亮，
+   * 正在增长的最后一块才跳过 —— 流式时每帧重跑 TextMate 语法是纯浪费。
+   */
+  const settledComponents = useMemo(
+    () => buildMarkdownComponents(artifactFiles, false),
+    [artifactFiles]
+  );
+  const streamingComponents = useMemo(
+    () => buildMarkdownComponents(artifactFiles, true),
+    [artifactFiles]
+  );
 
   useEffect(() => {
     if (!isStreaming || !normalizedContent) return;
@@ -302,6 +381,28 @@ const MarkdownRenderer: ReactorType.FC<{
     lastScrollAtRef.current = now;
     scrollToBottom?.();
   }, [normalizedContent, scrollToBottom, isStreaming]);
+
+  /**
+   * 块级切分 + 链接引用定义收集。
+   *
+   * 必须在任何早退之前调用（hooks 不能条件执行）。
+   *
+   * 流式时整段重解析是 O(n²)：内容每帧增长，每帧都把**全部**文本再解析一遍
+   * （实测每帧 +10 行、累计 400 行：整段 51.6ms/帧，块级 13.2ms/帧，3.9x）。
+   *
+   * 切块后每块是独立的 `ReactMarkdown`，配 `memo`：内容没变的块不会重解析，
+   * 只有最后一块（正在增长的那块）会。
+   *
+   * 切分用 `streamdown` 的 `parseMarkdownIntoBlocks`，但它有个坑：块与块之间是
+   * 独立文档，链接引用定义（`[ref]: url`）落在别的块里时，正文块的 `[文本][ref]`
+   * 会退化成字面文本。所以要把收集到的定义追加回每个块 —— 定义段渲染为空，
+   * 追加它不会有可见内容。脚注定义**不能**追加（会渲染出重复的脚注区）。
+   */
+  const blocks = useMemo(
+    () => splitMarkdownBlocks(normalizedContent),
+    [normalizedContent]
+  );
+  const linkDefs = useMemo(() => collectLinkDefinitions(blocks), [blocks]);
 
   if (!normalizedContent) {
     return (
@@ -315,17 +416,22 @@ const MarkdownRenderer: ReactorType.FC<{
     );
   }
 
-  // 流式/落定统一走 ReactMarkdown + KimiCodeFence(tokens)。
-  // 不再用 Streamdown 自带 Shiki：会与自定义 code 叠出「高亮 + HTML 源码」两段。
   return (
     <div className={cn('w-full markdown-body kimi-md', className)}>
-      <ReactMarkdown
-        remarkPlugins={remarkPlugins}
-        rehypePlugins={rehypePlugins}
-        components={markdownComponents}
-      >
-        {normalizedContent}
-      </ReactMarkdown>
+      {blocks.map((block, index) => (
+        <MarkdownBlock
+          key={index}
+          content={withLinkDefinitions(block, linkDefs)}
+          remarkPlugins={remarkPlugins}
+          rehypePlugins={rehypePlugins}
+          // 已落定的块要补上 shiki / Mermaid；只有正在增长的最后一块跳过。
+          components={
+            isStreaming && index === blocks.length - 1
+              ? streamingComponents
+              : settledComponents
+          }
+        />
+      ))}
     </div>
   );
 };
