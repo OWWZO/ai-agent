@@ -118,7 +118,6 @@ public class AgentBrowserTool implements BaseTool {
                     .toolResult(JSON.toJSONString(redacted))
                     .llmObservation(JSON.toJSONString(fields))
                     .llmData(fields)
-                    .ledgerObservation(JSON.toJSONString(redacted))
                     .failed(Boolean.FALSE)
                     .build();
         }

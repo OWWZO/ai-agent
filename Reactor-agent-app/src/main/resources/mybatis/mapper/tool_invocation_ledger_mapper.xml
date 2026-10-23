@@ -18,6 +18,7 @@
         <result column="tool_provider" property="toolProvider"/>
         <result column="input_json" property="inputJson"/>
         <result column="llm_oberserve" property="llmObservation"/>
+        <result column="tool_result" property="toolResult"/>
         <result column="status" property="status"/>
         <result column="error_msg" property="errorMsg"/>
         <result column="started_at" property="startedAt"/>
@@ -31,7 +32,7 @@
     <sql id="toolInvocationColumns">
         id, run_id, llm_invocation_id, tool_call_id, parent_tool_call_id, sub_agent_id, sub_agent_type,
         sub_agent_description, dispatch_index, agent_name, step_no, tool_name, tool_provider,
-        input_json, llm_oberserve, status, error_msg, started_at, finished_at, duration_ms,
+        input_json, llm_oberserve, tool_result, status, error_msg, started_at, finished_at, duration_ms,
         create_time, update_time, deleted
     </sql>
 
@@ -53,6 +54,7 @@
         <result column="tool_provider" property="toolProvider"/>
         <result column="input_json" property="inputJson"/>
         <result column="llm_oberserve" property="llmObservation"/>
+        <result column="tool_result" property="toolResult"/>
         <result column="status" property="status"/>
         <result column="error_msg" property="errorMsg"/>
         <result column="duration_ms" property="durationMs"/>
@@ -66,12 +68,12 @@
         INSERT INTO ai_agent_tool_invocation (
             run_id, llm_invocation_id, tool_call_id, parent_tool_call_id, sub_agent_id, sub_agent_type,
             sub_agent_description, dispatch_index, agent_name, step_no,
-            tool_name, tool_provider, input_json, llm_oberserve, status, error_msg,
+            tool_name, tool_provider, input_json, llm_oberserve, tool_result, status, error_msg,
             started_at, finished_at, duration_ms, create_time, update_time, deleted
         ) VALUES (
             #{runId}, #{llmInvocationId}, #{toolCallId}, #{parentToolCallId}, #{subAgentId}, #{subAgentType},
             #{subAgentDescription}, #{dispatchIndex}, #{agentName}, #{stepNo},
-            #{toolName}, #{toolProvider}, #{inputJson}, #{llmObservation}, #{status}, #{errorMsg},
+            #{toolName}, #{toolProvider}, #{inputJson}, #{llmObservation}, #{toolResult}, #{status}, #{errorMsg},
             #{startedAt}, #{finishedAt}, #{durationMs}, NOW(), NOW(), 0
         )
     </insert>
@@ -80,6 +82,7 @@
         UPDATE ai_agent_tool_invocation
         SET status = #{status},
             llm_oberserve = #{llmObservation},
+            tool_result = #{toolResult},
             error_msg = #{errorMsg},
             finished_at = #{finishedAt},
             duration_ms = CASE
@@ -127,7 +130,7 @@
         SELECT t.id, t.run_id, t.llm_invocation_id, t.tool_call_id, t.parent_tool_call_id,
                t.sub_agent_id, t.sub_agent_type, t.sub_agent_description, t.dispatch_index,
                t.agent_name, t.step_no, t.tool_name, t.tool_provider, t.input_json,
-               t.llm_oberserve, t.status, t.error_msg, t.started_at, t.finished_at,
+               t.llm_oberserve, t.tool_result, t.status, t.error_msg, t.started_at, t.finished_at,
                t.duration_ms, t.create_time, t.update_time, t.deleted
         FROM ai_agent_tool_invocation t
         INNER JOIN ai_agent_dialogue_run r ON r.id = t.run_id AND r.deleted = 0
@@ -158,6 +161,7 @@
                t.tool_provider,
                t.input_json,
                t.llm_oberserve,
+               t.tool_result,
                t.status,
                t.error_msg,
                t.duration_ms,

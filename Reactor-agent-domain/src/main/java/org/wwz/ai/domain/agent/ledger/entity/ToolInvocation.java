@@ -60,8 +60,11 @@ public class ToolInvocation {
     /** 入参 JSON */
     private String inputJson;
 
-    /** 主智能体 observation */
+    /** 主智能体 observation（模型实际看到的紧凑文本，与 working_memory 一致） */
     private String llmObservation;
+
+    /** 工具完整结果 JSON（历史回放 / 前端卡片 / 右侧预览用） */
+    private String toolResult;
 
     /** 状态 */
     private Integer status;

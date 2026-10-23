@@ -86,9 +86,10 @@ public class BrowserToolTest {
         ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of("args", List.of("browser", "cookies")));
 
         Assert.assertFalse(Boolean.TRUE.equals(payload.getFailed()));
+        // 敏感命令：模型需要完整输出才能继续推理，落库/回放/前端只保留脱敏版。
         Assert.assertTrue(payload.getLlmObservation().contains("secret-cookie"));
-        Assert.assertFalse(payload.getLedgerObservation().contains("secret-cookie"));
-        Assert.assertTrue(payload.getLedgerObservation().contains("redacted"));
+        Assert.assertFalse(payload.getToolResult().contains("secret-cookie"));
+        Assert.assertTrue(payload.getToolResult().contains("redacted"));
         ArgumentCaptor<CliInvocation> captor = ArgumentCaptor.forClass(CliInvocation.class);
         Mockito.verify(cli).exec(captor.capture());
         Assert.assertEquals(List.of("main.js", "browser", "cookies"), captor.getValue().getArgs());

@@ -852,6 +852,7 @@ public final class ExecutionLedgerFixtureFactory {
             }
             existing.setStatus(invocation.getStatus());
             existing.setLlmObservation(invocation.getLlmObservation());
+            existing.setToolResult(invocation.getToolResult());
             existing.setErrorMsg(invocation.getErrorMsg());
             existing.setFinishedAt(invocation.getFinishedAt());
             existing.setDurationMs(duration(existing.getStartedAt(), invocation.getFinishedAt()));
@@ -926,6 +927,7 @@ public final class ExecutionLedgerFixtureFactory {
                                 .toolProvider(item.getToolProvider())
                                 .inputJson(item.getInputJson())
                                 .llmObservation(item.getLlmObservation())
+                                .toolResult(item.getToolResult())
                                 .status(item.getStatus())
                                 .errorMsg(item.getErrorMsg())
                                 .durationMs(item.getDurationMs())
@@ -1286,6 +1288,7 @@ public final class ExecutionLedgerFixtureFactory {
                 .toolProvider(invocation.getToolProvider())
                 .inputJson(invocation.getInputJson())
                 .llmObservation(invocation.getLlmObservation())
+                .toolResult(invocation.getToolResult())
                 .status(invocation.getStatus())
                 .errorMsg(invocation.getErrorMsg())
                 .startedAt(invocation.getStartedAt())

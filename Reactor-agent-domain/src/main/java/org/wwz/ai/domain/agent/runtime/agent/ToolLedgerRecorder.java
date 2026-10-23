@@ -140,8 +140,9 @@ final class ToolLedgerRecorder {
         LocalDateTime finishedAt = timing == null || timing.getFinishedAt() == null
                 ? LocalDateTime.now()
                 : timing.getFinishedAt();
-        String observation = outcome == null ? null : StringUtils.defaultIfBlank(
-                outcome.getLedgerObservation(), outcome.getLlmObservation());
+        // 两列语义独立：llm_oberserve 存模型实际看到的文本（与 working_memory 一致），
+        // tool_result 存完整结果 JSON 供历史回放/前端使用。
+        String observation = outcome == null ? null : outcome.getLlmObservation();
         // 后台 ACK 不是工具完成：子 Agent 还在后台跑。此时必须保持 status=RUNNING、
         // finished_at=null，否则 settle（persistLedgerSettlement）的终态更新会被
         // updateToolInvocationFinish 的守卫（status=0 AND finished_at IS NULL）挡掉，
@@ -162,6 +163,7 @@ final class ToolLedgerRecorder {
                 .toolName(toolName)
                 .status(ledgerStatus)
                 .llmObservation(observation)
+                .toolResult(outcome == null ? null : outcome.getToolResult())
                 .structuredOutput(outcome == null ? null : outcome.getStructuredOutput())
                 .errorMsg(outcome == null ? null : outcome.getErrorMsg())
                 .finishedAt(ledgerFinishedAt)

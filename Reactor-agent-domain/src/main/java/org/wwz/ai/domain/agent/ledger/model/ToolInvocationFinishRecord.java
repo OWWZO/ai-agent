@@ -33,6 +33,9 @@ public class ToolInvocationFinishRecord {
 
     private String llmObservation;
 
+    /** 工具完整结果 JSON（历史回放/前端用）；与 llmObservation 独立写入 */
+    private String toolResult;
+
     private ToolStructuredOutput structuredOutput;
 
     private String errorMsg;
