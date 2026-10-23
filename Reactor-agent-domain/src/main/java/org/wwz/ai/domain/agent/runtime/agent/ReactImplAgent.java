@@ -4,6 +4,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.math.NumberUtils;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolChoice;
@@ -48,7 +49,7 @@ public class ReactImplAgent extends ReActAgent {
      * @param context 智能体上下文（携带请求ID、用户查询、工具集合、文件信息等全量上下文）
      */
     public ReactImplAgent(AgentContext context) {
-        AgentBootstrap.configure(this, context, new AgentBootstrap.Profile(
+        ReactorConfig reactorConfig = AgentBootstrap.configure(this, context, new AgentBootstrap.Profile(
                 "react",
                 "an agent that can execute tool calls.",
                 config -> Map.of(),
@@ -58,6 +59,9 @@ public class ReactImplAgent extends ReActAgent {
                 true,
                 true
         ));
+        // maxObserve 之前从未被赋值，yml 里的 max_observe 是死配置，实际只有 96k 序列化兜底生效。
+        // 0 表示不截断（truncateForLlm 对 cap<=0 直接返回原文），与字段原本的 null 语义一致。
+        this.maxObserve = NumberUtils.toInt(reactorConfig.getMaxObserve(), 0);
     }
 
     /**

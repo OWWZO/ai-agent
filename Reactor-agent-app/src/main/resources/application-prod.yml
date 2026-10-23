@@ -190,7 +190,7 @@ autobots:
       max_steps: 150
     executor:
       max_steps: 150
-      max_observe: 10000
+      max_observe: 40000
     tool:
       deep_search:
         page_count: 5
