@@ -1,23 +1,12 @@
 import ReactMarkdown from 'react-markdown';
 import gfm from 'remark-gfm';
 import { memo, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
-import { ZoomableImage } from "@/components/ui/zoomable-image";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Empty, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
 import { cn } from '@/lib/utils';
-import { Expand } from 'lucide-react';
 import { usePanelContext } from './PanelProvider';
-import MermaidBlock from './MermaidBlock';
 import { containsMath, loadMathPlugins, type MathPlugins } from '@/lib/lazy/math';
-import {
-  DiffCodeFence,
-  KimiCodeFence,
-} from '@/components/Dialogue/markdown/KimiCodeFence';
+import { createCodeBlock } from './MarkdownCodeBlock';
+import { MarkdownImagePreview, MarkdownMediaPlayer } from './MarkdownMedia';
 import {
   resolveMarkdownArtifactHref,
   resolveMarkdownMediaKind,
@@ -28,197 +17,14 @@ import {
   splitMarkdownBlocks,
   withLinkDefinitions,
 } from '@/lib/markdownBlocks';
-import type { BundledLanguage } from 'shiki';
 
 /** `ReactMarkdown` 的 props 形状：块级组件只取插件相关的三个字段。 */
 type ReactMarkdownProps = ComponentProps<typeof ReactMarkdown>;
-
-/** 终答 Markdown 内嵌图：点击放大预览 */
-const MarkdownImagePreview: ReactorType.FC<{
-  src: string;
-  alt?: string;
-}> = ({ src, alt }) => {
-  if (!src) {
-    return null;
-  }
-  return (
-    <span className="markdown-media-image-root">
-      <ZoomableImage
-        src={src}
-        alt={alt || '图片'}
-        className="markdown-media-image"
-        style={{
-          maxWidth: 'min(360px, 100%)',
-          maxHeight: 280,
-          width: 'auto',
-          height: 'auto',
-          objectFit: 'contain',
-          borderRadius: '0.65rem',
-          cursor: 'zoom-in'
-        }}
-      />
-    </span>
-  );
-};
-
-/** 终答 Markdown 内嵌音视频：内联播放 + 放大预览 Modal */
-const MarkdownMediaPlayer: ReactorType.FC<{
-  kind: 'video' | 'audio';
-  src: string;
-  title?: string;
-}> = ({ kind, src, title }) => {
-  const [open, setOpen] = useState(false);
-  if (!src) {
-    return null;
-  }
-
-  return (
-    <>
-      <div className="markdown-media-player-wrap">
-        {kind === 'video' ? (
-          <video
-            className="markdown-media-video"
-            src={src}
-            controls
-            preload="metadata"
-            title={title}
-          />
-        ) : (
-          <audio
-            className="markdown-media-audio"
-            src={src}
-            controls
-            preload="metadata"
-            title={title}
-          />
-        )}
-        <button
-          type="button"
-          className="markdown-media-expand-btn"
-          title="放大预览"
-          aria-label="放大预览"
-          onClick={() => setOpen(true)}
-        >
-          <Expand className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent
-          className={cn(
-            "markdown-media-preview-modal",
-            kind === "video"
-              ? "max-w-[min(920px,96vw)]"
-              : "max-w-[min(520px,94vw)]"
-          )}
-        >
-          <DialogHeader>
-            <DialogTitle>
-              {title || (kind === "video" ? "视频预览" : "音频预览")}
-            </DialogTitle>
-          </DialogHeader>
-          {open ? (
-            kind === "video" ? (
-              <video
-                className="markdown-media-video-preview"
-                src={src}
-                controls
-                autoPlay
-                preload="metadata"
-              />
-            ) : (
-              <audio
-                className="markdown-media-audio-preview"
-                src={src}
-                controls
-                autoPlay
-                preload="metadata"
-              />
-            )
-          ) : null}
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-};
-
-function childrenToText(children: unknown): string {
-  if (children == null || typeof children === "boolean") {
-    return "";
-  }
-  if (typeof children === "string" || typeof children === "number") {
-    return String(children);
-  }
-  if (Array.isArray(children)) {
-    return children.map(childrenToText).join("");
-  }
-  if (typeof children === "object" && "props" in children) {
-    return childrenToText(
-      (children as { props?: { children?: unknown } }).props?.children
-    );
-  }
-  return "";
-}
-
-/**
- * 代码围栏渲染器工厂。
- *
- * 做成工厂而不是模块级常量，是因为 `streaming` 必须来自当前渲染上下文 ——
- * 流式期间要跳过 shiki 高亮与 Mermaid（对齐 ZCode
- * `enableSyntaxHighlighting={!renderStreaming}` / `renderMermaid={!renderStreaming}`）。
- */
-const createCodeBlock = (streaming: boolean): ReactorType.FC<{
-  inline?: boolean;
-  className?: string;
-  children?: unknown;
-}> =>
-  function CodeBlock({ inline, className, children, ...rest }) {
-    // Streamdown 用 data-block 标记围栏；react-markdown 用 inline=false
-    const isBlock =
-      !inline || Object.prototype.hasOwnProperty.call(rest, "data-block");
-    const match = /language-(\w+)/.exec(className || "");
-    const trimmed = childrenToText(children).replace(/\n$/, "");
-
-    // Mermaid 解析 + 渲染比 shiki 更重，流式时先按普通代码块展示。
-    if (match?.[1] === "mermaid" && !streaming) {
-      return <MermaidBlock>{children as ReactNode}</MermaidBlock>;
-    }
-
-    if (isBlock && match?.[1] === "diff") {
-      return <DiffCodeFence code={trimmed} />;
-    }
-
-    if (isBlock && match) {
-      const rawLang = match[1];
-      const safeLanguage = rawLang as BundledLanguage;
-      return (
-        <KimiCodeFence
-          code={trimmed}
-          language={safeLanguage}
-          streaming={streaming}
-        />
-      );
-    }
-
-    // 无 language 的多行 fence：仍按代码块渲染，避免掉进行内 chip
-    if (isBlock && trimmed.includes("\n")) {
-      return (
-        <KimiCodeFence code={trimmed} language="text" streaming={streaming} />
-      );
-    }
-
-    return (
-      <code className={cnInlineCode(className)}>{children as ReactNode}</code>
-    );
-  };
 
 /** react-markdown 默认 pre>code；我们的 fence 自带外壳，必须拆掉外层 pre，否则套住 Shiki 的 pre 会重复渲染 HTML 源码 */
 const MarkdownPre: ReactorType.FC<{ children?: ReactNode }> = ({ children }) => (
   <>{children}</>
 );
-
-function cnInlineCode(className?: string) {
-  return cn('kimi-inline-code', className);
-}
 
 /**
  * components 工厂。
