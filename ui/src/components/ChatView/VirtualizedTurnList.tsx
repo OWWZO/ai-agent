@@ -89,7 +89,6 @@ export function VirtualizedTurnList<T>({
   onReady,
 }: VirtualizedTurnListProps<T>) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const headerSlotRef = useRef<HTMLDivElement | null>(null);
   const heightCacheRef = useRef(new TimelineRowHeightCache());
   const itemsRef = useRef(items);
   itemsRef.current = items;
@@ -216,7 +215,7 @@ export function VirtualizedTurnList<T>({
   return (
     <div ref={scrollRef} data-virtualized-turns="true">
       {headerSlot ? (
-        <div ref={headerSlotRef} data-virtualized-header-slot="true">
+        <div data-virtualized-header-slot="true">
           {headerSlot}
         </div>
       ) : null}

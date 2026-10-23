@@ -8,6 +8,7 @@ import {
   resolveActiveItemIndex,
   resolveActiveItemIndexFromVirtualRows,
   resolveBarVisualState,
+  type VirtualRowPosition,
 } from "./conversationNavigator";
 
 function createChat(overrides: Partial<CHAT.ChatItem> = {}): CHAT.ChatItem {
@@ -142,10 +143,22 @@ describe("resolveActiveItemIndex", () => {
 
 describe("resolveActiveItemIndexFromVirtualRows", () => {
   // 虚拟化后离屏轮次没有 DOM，导航轨必须能只凭行位置 + 滚动偏移定位。
-  const rows = [
-    { index: 0, start: 0, size: 100 },
-    { index: 1, start: 100, size: 200 },
-    { index: 2, start: 300, size: 400 },
+  const rows: VirtualRowPosition[] = [
+    {
+      index: 0,
+      start: 0,
+      size: 100,
+    },
+    {
+      index: 1,
+      start: 100,
+      size: 200,
+    },
+    {
+      index: 2,
+      start: 300,
+      size: 400,
+    },
   ];
 
   it("挑与视口重叠且起点离视口顶部最近的行", () => {

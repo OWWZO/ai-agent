@@ -29,12 +29,9 @@ export function ToolOutputBlock({
   const [expanded, setExpanded] = useState(false);
 
   const outputText = (lines ?? []).join("\n").trim();
-  // 展开后走原始全文；未展开时先裁行，再试解析 JSON（裁断的 JSON 解析失败会自然退回纯文本）。
+  // 展开后传 limit=0：`clampOutputLines` 对 `limit <= 0` 原样返回，与手写空窗等价。
   const windowed = expanded
-    ? {
-      text: outputText,
-      hiddenCount: 0,
-    }
+    ? clampOutputLines(outputText, 0)
     : clampOutputLines(outputText);
 
   /**
