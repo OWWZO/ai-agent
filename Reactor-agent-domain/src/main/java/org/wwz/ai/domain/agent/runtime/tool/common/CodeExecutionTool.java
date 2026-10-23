@@ -36,6 +36,7 @@ public class CodeExecutionTool implements BaseTool {
                 + "例如 Path('chinagt-shanghai-fire-report/index.html').read_text(encoding='utf-8')；"
                 + "plt.savefig('chart.png')；df.to_excel('结果.xlsx')。\n"
                 + "本次新增或修改的工作区文件会自动采集上传，前端可预览/下载。\n"
+                + "结果里的 produced_files[].url 可直接作为 document_generate 的 image.url。\n"
                 + "禁止写死宿主绝对路径。fileNames 仅用于 http(s) URL 或工作区外绝对路径。";
     }
 
@@ -139,7 +140,6 @@ public class CodeExecutionTool implements BaseTool {
                     files.add(row);
                 }
                 data.put("produced_files", files);
-                data.put("hint", "Use produced_files.url as image.url for document_generate when needed.");
             }
             if (!"ok".equals(response.getString("status"))) {
                 // stdout/stderr/result 仍保留在失败 payload 中，模型需要这些上下文才能决定是否重试。

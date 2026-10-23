@@ -45,6 +45,8 @@ public class CodeInterpreterTool implements BaseTool {
             - 严禁处理纯文本文件，例如 .txt, .md , .html 等文件的直接处理。如果需要对这些文件分析，则应该先通过读取这些文件内容，保存成 .csv 文件格式的数据表后再进行处理。
 
             - 如果上下文中有.xlsx 、.csv 等Excel表格文件需要处理分析，可以直接使用此工具读取 .xlsx 、.csv 等Excel表格文件进行分析处理
+
+            - 结果里的 produced_files[].url 可直接作为 document_generate 的 image.url。
             """;
 
     private static final String PARAMS = """
@@ -290,7 +292,6 @@ public class CodeInterpreterTool implements BaseTool {
                     produced.add(row);
                 }
                 data.put("produced_files", produced);
-                data.put("hint", "Use produced_files.url as image.url for document_generate when needed.");
             }
         }
         if (!data.containsKey("codeOutput") && StringUtils.isNotBlank(displayText)) {

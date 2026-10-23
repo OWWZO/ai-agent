@@ -7,6 +7,8 @@ import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanModeToolPolicy;
+import org.wwz.ai.domain.agent.runtime.tool.ToolObservationBudget;
+import org.wwz.ai.domain.agent.runtime.tool.ToolObservationFormatter;
 import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.canvas.CanvasPublishArgSalvage;
@@ -253,7 +255,7 @@ final class ToolExecutionPipeline {
                 );
             }
 
-            ToolResultPayload payload = normalizeToolResultPayload(resultObject);
+            ToolResultPayload payload = normalizeToolResultPayload(toolName, resultObject);
             String toolResult = StringUtils.defaultString(payload.getToolResult());
             String llmObservation = StringUtils.defaultIfBlank(payload.getLlmObservation(), toolResult);
             if (Boolean.TRUE.equals(payload.getFailed())) {
@@ -265,8 +267,7 @@ final class ToolExecutionPipeline {
                 );
             }
             return ToolExecutionOutcome.success(toolResult, llmObservation, payload.getStructuredOutput(),
-                    payload.getBase64Image(), payload.getImageMimeType())
-                    .setLedgerObservation(payload.getLedgerObservation());
+                    payload.getBase64Image(), payload.getImageMimeType());
         } catch (UserInputRequiredException yield) {
             throw yield;
         } catch (DesktopControlRequiredException yield) {
@@ -490,27 +491,33 @@ final class ToolExecutionPipeline {
         return null;
     }
 
-    private ToolResultPayload normalizeToolResultPayload(Object rawResult) {
+    private ToolResultPayload normalizeToolResultPayload(String toolName, Object rawResult) {
         if (rawResult instanceof ToolResultPayload payload) {
             boolean failed = Boolean.TRUE.equals(payload.getFailed());
             String toolResult = StringUtils.defaultString(payload.getToolResult());
             String llmObservation = payload.getLlmObservation();
             if (StringUtils.isBlank(llmObservation)) {
-                if (payload.getLlmData() != null || failed) {
+                String compact = failed ? null : ToolObservationFormatter.format(toolName, payload.getLlmData());
+                if (compact != null) {
+                    // 投影后仍可能超大（大仓库 grep / 长文件 read）：完整内容落工作区，模型拿到可续读的信封。
+                    llmObservation = ToolObservationBudget.apply(agent.getContext(), toolName, compact);
+                } else if (payload.getLlmData() != null || failed) {
                     llmObservation = ToolObservationSerializer.serializePayload(payload);
                 } else {
                     llmObservation = toolResult;
                 }
             }
             if (StringUtils.isBlank(toolResult)) {
-                toolResult = llmObservation;
+                // 完整结果落 tool_result 列：优先结构化 JSON，绝不落到紧凑投影文本。
+                toolResult = payload.getLlmData() != null || failed
+                        ? ToolObservationSerializer.serializePayload(payload)
+                        : llmObservation;
             }
             return ToolResultPayload.builder()
                     .toolResult(toolResult)
                     .llmObservation(llmObservation)
                     .llmData(payload.getLlmData())
                     .structuredOutput(payload.getStructuredOutput())
-                    .ledgerObservation(payload.getLedgerObservation())
                     .base64Image(payload.getBase64Image())
                     .imageMimeType(payload.getImageMimeType())
                     .failed(failed)
@@ -588,15 +595,14 @@ final class ToolExecutionPipeline {
         }
         DeferredToolCall.Result result = DeferredToolCall.resolve(agent.getAvailableTools(), parsed);
         if (!result.ok()) {
-            ToolResultPayload payload = normalizeToolResultPayload(result.errorPayload());
+            ToolResultPayload payload = normalizeToolResultPayload(originalName, result.errorPayload());
             String toolResult = StringUtils.defaultString(payload.getToolResult());
             String observation = StringUtils.defaultIfBlank(payload.getLlmObservation(), toolResult);
             ToolExecutionOutcome early = Boolean.TRUE.equals(payload.getFailed())
                     ? ToolExecutionOutcome.failure(toolResult, observation, payload.getStructuredOutput(),
                     StringUtils.defaultIfBlank(payload.getErrorMsg(), toolResult))
                     : ToolExecutionOutcome.success(toolResult, observation, payload.getStructuredOutput(),
-                    payload.getBase64Image(), payload.getImageMimeType())
-                    .setLedgerObservation(payload.getLedgerObservation());
+                    payload.getBase64Image(), payload.getImageMimeType());
             return new ToolDispatch(originalName, parsed, true, ToolCallJson.normalize(originalArgs), early);
         }
         return new ToolDispatch(result.name(), result.arguments(), true, ToolCallJson.write(result.arguments()), null);

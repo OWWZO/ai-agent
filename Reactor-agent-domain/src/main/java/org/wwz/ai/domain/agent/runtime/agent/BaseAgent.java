@@ -650,8 +650,12 @@ public abstract class BaseAgent {
             return observation;
         }
         if ("struct_parse".equals(llm.getFunctionCallType())) {
+            // struct_parse 没有 tool_use_id 绑定，observation 直接拼进 assistant content，
+            // 投影后 JSON 里的 tool 字段已不存在，必须补回工具名，否则模型不知道结果归属。
+            String toolName = command.getFunction() == null ? "tool" : command.getFunction().getName();
             String content = getMemory().getLastMessage().getContent();
-            getMemory().getLastMessage().setContent(content + "\n 工具执行结果为:\n" + observation);
+            getMemory().getLastMessage().setContent(
+                    content + "\n 工具执行结果为:\n[" + toolName + "] " + observation);
             return observation;
         }
         getMemory().addMessage(Message.toolMessage(observation, command.getId(), outcome.getBase64Image()));
