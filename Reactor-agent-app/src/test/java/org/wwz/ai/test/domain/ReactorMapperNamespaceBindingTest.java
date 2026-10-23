@@ -37,6 +37,10 @@ public class ReactorMapperNamespaceBindingTest {
         Assert.assertTrue(configuration.hasStatement("org.wwz.ai.infrastructure.dao.reactor.IToolInvocationLedgerDao.queryByRunId"));
         Assert.assertTrue(configuration.hasStatement("org.wwz.ai.infrastructure.dao.reactor.IArtifactLedgerDao.queryByRunId"));
         Assert.assertTrue(configuration.hasStatement("org.wwz.ai.infrastructure.dao.reactor.IToolOutputImageGenerationDao.queryPageByRequestSource"));
+        // session_search 的 read / scroll 模式依赖这条语句；声明了但 XML 没实现时运行期才报
+        // "Invalid bound statement (not found)"，所以在这里锁住。
+        Assert.assertTrue(configuration.hasStatement(
+                "org.wwz.ai.infrastructure.dao.reactor.IWorkingMemoryMessageDao.selectHistoryBySession"));
     }
 
     private DataSource testDataSource() {
