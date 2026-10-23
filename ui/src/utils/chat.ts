@@ -16,6 +16,7 @@ import {
   handlePlanThoughtMessage,
 } from "./chat/planner";
 import {
+  buildTaskFactsSignature,
   clonePlanForRender,
   cloneTaskSnapshot,
   processTaskForRender,
@@ -105,6 +106,10 @@ export const combineData = (
     default:
       break;
   }
+  // 任务事实可能被**原地**改写（`tasks.push` / 卡片字段赋值），引用不变。
+  // 在这里打一次内容签名，供派生层判断「是否需要重建 chat.tasks」——
+  // 调用方只需比较签名字符串，不必自己深挖 multiAgent 结构。
+  currentChat.taskFactsSignature = buildTaskFactsSignature(currentChat.multiAgent);
   return currentChat;
 };
 
