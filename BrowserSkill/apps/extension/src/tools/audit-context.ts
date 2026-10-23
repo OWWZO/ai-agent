@@ -12,10 +12,11 @@ export async function auditContext(
   if (!context) return null;
   const ref = typeof params.ref === "string" ? context.refStore.resolveEntry(params.ref) : null;
   const requestedTab = typeof params.tab_id === "number" ? params.tab_id : null;
-  const tab =
-    requestedTab !== null
-      ? await chrome.tabs.get(requestedTab)
-      : (await chrome.tabs.query({ windowId: context.agentWindowId, active: true }))[0];
+  // Audit must describe the same tab the operation will use: the session's
+  // bound tab, never Chrome's active tab.
+  const targetTabId = requestedTab ?? context.boundTabId;
+  if (targetTabId === null) return null;
+  const tab = await chrome.tabs.get(targetTabId).catch(() => null);
   if (!tab?.id || !isAgentControlledTab(context, tab.id)) return null;
   let url: string | undefined;
   try {
