@@ -16,6 +16,7 @@
 //   so the agent can read the throw text in-band (M9 review intent).
 
 import { ChromiumCdp } from "@/browser-driver/chromium-cdp";
+import type { CdpFrameGraph, CdpTarget } from "@/browser-driver/frame-graph";
 import type { SessionManager } from "@/session-manager/manager";
 import type { EvaluateError, EvaluateParams, EvaluateResult, RpcError } from "@/transport/types";
 import { attachDialogs, markDialogCursor } from "./dialogs";
@@ -150,25 +151,27 @@ export async function handleEvaluate(
   if (abortedError(deps.signal)) {
     return { code: "cancelled", message: "evaluate aborted" };
   }
+  const frameTarget = await resolveFrameTarget(deps.cdp, target.tabId, params.frame_id);
+  if (isRpcError(frameTarget)) return frameTarget;
   const dialogCursor = markDialogCursor(deps.cdp, target.tabId);
   deps.cdp.trackSessionTab?.(ctx.sessionId, target.tabId);
   try {
-    const reply = await deps.cdp.send<RuntimeEvaluateReply>(target.tabId, "Runtime.evaluate", {
-      expression: params.expression,
+    const reply = await sendEvaluate(deps.cdp, frameTarget, params.expression, {
       awaitPromise: params.await_promise ?? true,
       returnByValue: params.return_by_value ?? true,
-      throwOnSideEffect: false,
     });
     if (reply.exceptionDetails) {
       return attachDialogs(deps.cdp, target.tabId, dialogCursor, {
         ok: false,
         tab_id: target.tabId,
+        ...(params.frame_id ? { frame_id: params.frame_id } : {}),
         error: buildEvaluateError(reply.exceptionDetails),
       });
     }
     return attachDialogs(deps.cdp, target.tabId, dialogCursor, {
       ok: true,
       tab_id: target.tabId,
+      ...(params.frame_id ? { frame_id: params.frame_id } : {}),
       value: extractValue(reply.result),
     });
   } catch (err) {
@@ -177,4 +180,67 @@ export async function handleEvaluate(
       message: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+/**
+ * Resolve `frame_id` to the CDP target that owns it.
+ *
+ * The frame graph is the authority: it already carries each frame's target,
+ * including the extra session id an out-of-process iframe needs. Reusing it
+ * avoids a second discovery mechanism and keeps a frame that navigated away
+ * from the graph an error instead of a silent fallback to the main frame.
+ */
+async function resolveFrameTarget(
+  cdp: CdpRunner,
+  tabId: number,
+  frameId: string | undefined,
+): Promise<CdpTarget | RpcError> {
+  const root: CdpTarget = { tabId };
+  if (frameId === undefined) return root;
+  if (frameId.length === 0) {
+    return { code: "invalid_params", message: "frame_id must be a non-empty string" };
+  }
+  if (!cdp.getFrameGraph) {
+    return { code: "cdp_failed", message: "frame_id requires a CDP driver with frame discovery" };
+  }
+  let graph: CdpFrameGraph;
+  try {
+    graph = await cdp.getFrameGraph(tabId);
+  } catch (err) {
+    return {
+      code: "cdp_failed",
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
+  const frame = graph.frames.find((candidate) => candidate.frameId === frameId);
+  if (!frame) {
+    return {
+      code: "not_found",
+      message: `frame ${frameId} not found in tab ${tabId}; run tool.frames again`,
+    };
+  }
+  // The graph is per-tab, so a frame's target always addresses this tab. Pass
+  // the session id through when the frame runs out of process.
+  return frame.target.sessionId === undefined
+    ? { tabId: frame.target.tabId }
+    : { tabId: frame.target.tabId, sessionId: frame.target.sessionId };
+}
+
+/** Dispatch `Runtime.evaluate` on a target, preferring the target-scoped path. */
+function sendEvaluate(
+  cdp: CdpRunner,
+  target: CdpTarget,
+  expression: string,
+  options: { awaitPromise: boolean; returnByValue: boolean },
+): Promise<RuntimeEvaluateReply> {
+  const params = {
+    expression,
+    awaitPromise: options.awaitPromise,
+    returnByValue: options.returnByValue,
+    throwOnSideEffect: false,
+  };
+  if (target.sessionId !== undefined && cdp.sendToTarget) {
+    return cdp.sendToTarget<RuntimeEvaluateReply>(target, "Runtime.evaluate", params);
+  }
+  return cdp.send<RuntimeEvaluateReply>(target.tabId, "Runtime.evaluate", params);
 }
