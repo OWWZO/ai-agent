@@ -3,46 +3,34 @@ import { hashContent } from "@/lib/hashContent";
 import { parseToolJson } from "@/components/Dialogue/tools/ToolJsonBlock";
 
 /**
- * 验证「内容哈希 → 复用解析结果」成立的**前提**，而不测组件内部实现。
+ * 验证 `ToolOutputBlock` 用**原文**而非哈希作为 memo 依赖的理由。
  *
- * 实测（受控 harness，2000 条工具输出）：
- *   hash ≈0.2-0.5ms / parse ≈0.3-0.6ms / ReactJsonPretty 渲染 ≈15.2ms
- * 两者都在毫秒以下且互相重叠，所以哈希的意义**不是**省掉 parse —— 而是让
- * `ToolJsonBlock` 的 `memo` 拿到同一引用、跳过那 15ms 的渲染。
- *
- * ⚠️ 这里**不**对耗时做断言：hash 与 parse 在同一量级且抖动大到会翻号
- * （连测 5 轮有 1 轮反超），写成 `expect(hashMs).toBeLessThan(parseMs)`
- * 就是个偶发红测。真正的收益来自引用稳定，那由下面的相等性断言覆盖。
+ * 这里保留对 `hashContent` 的断言，是因为它现在是「不要用哈希做唯一身份」的
+ * 反例来源：32 位 djb2 在几十个样本内就能撞到，而一旦碰撞，`useMemo` 会返回
+ * 上一次的解析结果 —— 卡片把**上一个工具**的 JSON 显示在当前工具名下，
+ * 且完全静默。这比多解析一次的代价严重得多，所以组件改用原文比较。
  */
-describe("工具输出的内容哈希缓存前提", () => {
-  it("相同文本得到相同哈希", () => {
-    const text = JSON.stringify({
-      a: 1,
-      b: [1, 2, 3]
-    });
-    expect(hashContent(text)).toBe(hashContent(text));
+describe("工具输出缓存的依赖选择", () => {
+  it("hashContent 会碰撞，不能作为唯一身份", () => {
+    // 实测这两个短串落在同一个 32 位值上。
+    expect(hashContent("o4r")).toBe(hashContent("o60"));
   });
 
-  it("不同文本得到不同哈希（含尾部差一字符）", () => {
-    expect(hashContent('{"a":1}')).not.toBe(hashContent('{"a":2}'));
-    expect(hashContent("line\n")).not.toBe(hashContent("line"));
-  });
-
-  it("长文本不同则哈希不同（抗低频碰撞）", () => {
-    const rows = Array.from({ length: 2000 }, (_, i) => ({
-      id: i,
-      path: `src/m-${i}/f-${i}.ts`,
-    }));
-    const a = JSON.stringify({
-      total: rows.length,
-      rows
-    }, null, 2);
-    const b = `${a} `;
-    expect(hashContent(a)).not.toBe(hashContent(b));
+  it("原文比较不会把不同内容判成相同", () => {
+    expect("o4r").not.toBe("o60");
+    expect('{"a":1}').not.toBe('{"a":2}');
   });
 
   it("解析结果值相等（引用稳定由调用方的 useMemo 保证）", () => {
     const text = '{"a":1}';
+    expect(parseToolJson(text)).toEqual(parseToolJson(text));
+  });
+
+  it("相同原文解析出同一份值（内容不变即可复用）", () => {
+    const text = JSON.stringify({
+      total: 2,
+      rows: [{ id: 1 }, { id: 2 }]
+    });
     expect(parseToolJson(text)).toEqual(parseToolJson(text));
   });
 });

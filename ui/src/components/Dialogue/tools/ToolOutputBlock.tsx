@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { ToolJsonBlock, parseToolJson } from "./ToolJsonBlock";
 import { clampOutputLines } from "./toolOutputLimit";
-import { hashContent } from "@/lib/hashContent";
 
 /**
  * 工具出参段。
@@ -35,7 +34,7 @@ export function ToolOutputBlock({
     : clampOutputLines(outputText);
 
   /**
-   * 按**内容哈希**缓存解析结果，且必须在任何早退之前调用（hooks 不能条件执行）。
+   * 按内容缓存解析结果，且必须在任何早退之前调用（hooks 不能条件执行）。
    *
    * 流式期间 `lines` 每次都是新数组（`resolveTaskToolOutput` 每帧重建），引用必变，
    * 但**内容常常没变**（工具输出只在真正产出时才增长）。对齐 ZCode
@@ -43,11 +42,16 @@ export function ToolOutputBlock({
    * 省掉 `JSON.parse`，并让 `ToolJsonBlock`（已 memo）拿到**同一个对象引用**
    * 从而整个跳过 `ReactJsonPretty` 的全量序列化（实测 2000 条约 15ms）。
    *
-   * 依赖用哈希而非原文：原文是几十 KB 的大字符串，比较它本身就是开销。
+   * ⚠️ 依赖是**原文本身**，不是内容哈希。哈希曾用 32 位 djb2，而它的失败模式
+   * 不是「多解析一次」：碰撞时 `useMemo` 直接返回上一次的结果，卡片会把
+   * **上一个工具**的 JSON 显示在当前工具名下，且完全静默。实测该哈希 217 个
+   * 样本内即可撞到（`hashContent("o4r") === hashContent("o60")`）。
+   * 字符串比较虽是 O(n)，但只在依赖数组求值时做一次，远小于省下的序列化成本。
    */
-  const outputKey = hashContent(windowed.text);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const jsonOutput = useMemo(() => parseToolJson(windowed.text), [outputKey]);
+  const jsonOutput = useMemo(
+    () => parseToolJson(windowed.text),
+    [windowed.text]
+  );
 
   if (trimmedError) {
     return (

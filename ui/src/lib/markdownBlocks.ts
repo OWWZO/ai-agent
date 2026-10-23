@@ -30,13 +30,33 @@ const FOOTNOTE_DEF_LINE = /^\s{0,3}\[\^[^\]]+\]:/;
  * 收集全部块里的链接引用定义（去重、保序）。
  *
  * 返回空串表示「这份内容没有链接引用定义」，调用方据此跳过追加。
+ *
+ * ⚠️ 必须跳过代码围栏内的行。围栏里的 `[ref]: url` 只是被展示的文本，
+ * CommonMark 不会把它当作链接定义 —— 实测整段渲染 `WHOLE_HAS_ANCHOR=false`，
+ * 若把它提升为文档级定义再追加给正文块，就会凭空生成指向该 URL 的真实 `<a>`：
+ * 任何展示 YAML / Markdown 示例配置的回答都会中招（内容完整性 + 链接注入）。
  */
 export function collectLinkDefinitions(blocks: readonly string[]): string {
   const defs: string[] = [];
   const seen = new Set<string>();
 
   for (const block of blocks) {
+    let fence: string | null = null;
     for (const line of block.split("\n")) {
+      const fenceMatch = /^\s{0,3}(`{3,}|~{3,})/.exec(line);
+      if (fenceMatch) {
+        const marker = fenceMatch[1][0];
+        if (fence === null) {
+          fence = marker;
+        } else if (fence === marker) {
+          fence = null;
+        }
+        continue;
+      }
+      // 围栏内（含缩进代码块）一律不参与定义收集。
+      if (fence !== null || /^\s{4,}\S/.test(line)) {
+        continue;
+      }
       if (FOOTNOTE_DEF_LINE.test(line)) {
         continue;
       }
@@ -69,14 +89,19 @@ export function splitMarkdownBlocks(content: string): string[] {
  * 定义段渲染出来是**空的**（实测 `[ref]: https://e.com` → `""`），所以追加
  * 它不会多出可见内容，只是让 `[文档][ref]` 能在块内解析成真正的链接。
  *
- * 未追加的情况：没有定义，或这个块自己就含定义（避免重复）。
+ * 只追加**该块还没有**的那几行。原先用 `block.includes(defs)` 整组判等：
+ * 块只含多个定义中的某一个时判定失败，整组被重复追加（实测
+ * `"[r]: https://x.com"` → `"[r]: https://x.com\n\n[r]: https://x.com\n[r2]: https://y.com"`）。
+ * CommonMark 取首个定义，所以不致错渲染，但每帧都要多解析这段冗余文本。
  */
 export function withLinkDefinitions(block: string, defs: string): string {
   if (!defs) {
     return block;
   }
-  if (block.includes(defs)) {
+  const existing = new Set(block.split("\n"));
+  const missing = defs.split("\n").filter((line) => !existing.has(line));
+  if (missing.length === 0) {
     return block;
   }
-  return `${block}\n\n${defs}`;
+  return `${block}\n\n${missing.join("\n")}`;
 }

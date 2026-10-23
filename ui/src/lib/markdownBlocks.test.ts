@@ -90,4 +90,72 @@ describe("markdownBlocks", () => {
     expect(defs).toBe("");
     expect(blocks.map((b) => withLinkDefinitions(b, defs))).toEqual(blocks);
   });
+
+  /**
+   * 回归：代码围栏里的 `[x]: url` 只是被展示的文本，不是链接定义。
+   *
+   * 曾把它收集成文档级定义并追加给正文块，结果整段渲染不出链接、
+   * 分块渲染却凭空生成指向该 URL 的真实 `<a>`（实测 diff：整段
+   * `WHOLE_HAS_ANCHOR=false` vs 分块 `BLOCK_HAS_ANCHOR=true`）。
+   * 展示 YAML / Markdown 示例配置的回答都会中招，属内容完整性问题。
+   */
+  it("代码围栏内的定义不会被提升为文档级链接定义", () => {
+    const md = [
+      "示例配置：",
+      "",
+      "```yaml",
+      "[r]: https://evil.example",
+      "```",
+      "",
+      "参见 [文档][r]。",
+    ].join("\n");
+
+    const blocks = splitMarkdownBlocks(md);
+    const defs = collectLinkDefinitions(blocks);
+    expect(defs).toBe("");
+
+    // 关键：`evil.example` 仍应作为代码文本出现，但两种渲染模式都不能把它
+    // 变成指向它的链接。整段渲染与分块渲染必须一致。
+    const whole = renderWhole(md);
+    const blocked = renderBlocks(md);
+    expect(whole).toContain("evil.example");
+    expect(blocked).toContain("evil.example");
+    expect(whole).not.toMatch(/<a [^>]*evil\.example/);
+    expect(blocked).not.toMatch(/<a [^>]*evil\.example/);
+    // 参照：修复前分块渲染会产出 `<a href="https://evil.example">文档</a>`
+    expect(blocked).not.toContain("<a ");
+  });
+
+  it("围栏外的真实定义仍会被收集（不能误伤正常路径）", () => {
+    const md = "参见 [文档][r]。\n\n```yaml\n[ignored]: https://x.example\n```\n\n[r]: https://real.example";
+    const blocks = splitMarkdownBlocks(md);
+    expect(collectLinkDefinitions(blocks)).toBe("[r]: https://real.example");
+    expect(renderBlocks(md)).toContain('href="https://real.example"');
+  });
+
+  it("缩进代码块内的定义同样不收集", () => {
+    const md = "正文\n\n    [r]: https://indented.example\n\n参见 [文档][r]。";
+    expect(collectLinkDefinitions(splitMarkdownBlocks(md))).toBe("");
+  });
+
+  /** 回归：只含部分定义时，原先整组追加会产生重复定义行。 */
+  it("只追加缺失的定义，不重复已存在的", () => {
+    const defs = "[r]: https://x.com\n[r2]: https://y.com";
+    const out = withLinkDefinitions("[r]: https://x.com", defs);
+    expect(out.split("[r]: https://x.com").length - 1).toBe(1);
+    expect(out).toContain("[r2]: https://y.com");
+  });
+
+  it("块已含全部定义时原样返回", () => {
+    const defs = "[r]: https://x.com\n[r2]: https://y.com";
+    const block = `正文\n\n${defs}`;
+    expect(withLinkDefinitions(block, defs)).toBe(block);
+  });
+
+  it("单个定义且块已含它时原样返回", () => {
+    const defs = "[r]: https://x.com";
+    expect(withLinkDefinitions(`正文\n\n${defs}`, defs)).toBe(
+      `正文\n\n${defs}`
+    );
+  });
 });

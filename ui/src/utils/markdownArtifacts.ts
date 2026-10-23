@@ -180,6 +180,20 @@ export function resolveMarkdownArtifactHref(
 }
 
 /**
+ * 建一次 lookup、返回一个可复用的解析函数。
+ *
+ * 渲染层每个 `<a>` / `<img>` 都要解析一次 href，而 `buildArtifactFileLookup`
+ * 是 O(文件数)：200 个产物 × 300 个链接 = 6 万次操作。用这个工厂在
+ * `components` 构建时建一次表，避免把上面刚修掉的热点在渲染层又引回来。
+ */
+export function createMarkdownArtifactHrefResolver(
+  files?: CHAT.TFile[] | null
+): (href?: string | null) => string {
+  const lookup = buildArtifactFileLookup(files);
+  return (href) => resolveMarkdownArtifactHrefWithLookup(href, lookup);
+}
+
+/**
  * 已持有 lookup 表时的解析。
  *
  * `buildArtifactFileLookup` 是 O(文件数)，而 `rewriteMarkdownArtifactRefs` 要对

@@ -8,7 +8,7 @@ import { containsMath, loadMathPlugins, type MathPlugins } from '@/lib/lazy/math
 import { createCodeBlock } from './MarkdownCodeBlock';
 import { MarkdownImagePreview, MarkdownMediaPlayer } from './MarkdownMedia';
 import {
-  resolveMarkdownArtifactHref,
+  createMarkdownArtifactHrefResolver,
   resolveMarkdownMediaKind,
   rewriteMarkdownArtifactRefs,
 } from '@/utils/markdownArtifacts';
@@ -36,8 +36,10 @@ const buildMarkdownComponents = (
   artifactFiles: CHAT.TFile[] | undefined,
   isStreaming: boolean
 ) => {
-  const resolveHref = (href?: string | null) =>
-    resolveMarkdownArtifactHref(href, artifactFiles);
+  // 产物 lookup 在这里建一次，供该 components 下的所有链接 / 图片复用。
+  // 每个 `<a>` / `<img>` 各自重建是 O(链接 × 文件) —— 正是 markdownArtifacts
+  // 里刚修掉的热点，不能在渲染层又引回来。
+  const resolveHref = createMarkdownArtifactHrefResolver(artifactFiles);
 
   // 链接统一新标签打开；相对文件名先走产物表解析。
   // 指向 mp4/mp3 等时内嵌 video/audio，避免只显示冷链接。
