@@ -346,3 +346,48 @@ describe("markdownArtifacts", () => {
     ]);
   });
 });
+
+/**
+ * 性能回归护栏。
+ *
+ * `rewriteMarkdownArtifactRefs` 在 `MarkdownRenderer` 里**每次渲染都跑**，流式期间
+ * 每帧一次。原实现有两个 O(文件数 × 内容量) 的陷阱：
+ * 1. 每个裸文件引用单独建一个 `RegExp`、单独扫一遍全文；
+ * 2. `resolveMarkdownArtifactHref` 每解析一个链接就重建整张 lookup 表。
+ *
+ * 修好前实测 32KB 内容 + 200 个文件要 **741ms**（单帧预算 16ms），修好后 3.8ms。
+ *
+ * 阈值取 60ms 而不是 4ms：CI 机器比开发机慢、且这个量级仍然远在单帧预算内，
+ * 留足余量避免偶发红测。真正要守的是「别退化回 O(文件 × 内容)」—— 那会是
+ * 数百毫秒，远超阈值。
+ */
+describe("rewriteMarkdownArtifactRefs 性能", () => {
+  it("200 个文件 + 32KB 内容应远低于单帧预算", () => {
+    const files = Array.from({ length: 200 }, (_, index) => ({
+      name: `report-${index}.md`,
+      url: `https://cdn.example.com/report-${index}.md`,
+      relativePath: `out/report-${index}.md`,
+      type: "md",
+    })) as unknown as CHAT.TFile[];
+
+    const lines: string[] = [];
+    for (let index = 0; index < 600; index += 1) {
+      lines.push(
+        `第 ${index} 行，引用 out/report-${index % 10}.md 与 [链接](out/report-${(index + 1) % 10}.md)。`
+      );
+      if (index % 30 === 0) {
+        lines.push("```ts\nconst x = 1;\n```");
+      }
+    }
+    const content = lines.join("\n");
+
+    // 预热：让 JIT 与正则缓存进入稳态，避免首调用噪声。
+    rewriteMarkdownArtifactRefs(content, files);
+
+    const startedAt = performance.now();
+    rewriteMarkdownArtifactRefs(content, files);
+    const elapsed = performance.now() - startedAt;
+
+    expect(elapsed).toBeLessThan(60);
+  });
+});
