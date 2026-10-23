@@ -213,10 +213,13 @@ const FALLBACK: FailureInfo = {
  */
 export function classifyFailure(error: unknown): FailureInfo {
   if (!(error instanceof BskRpcError)) {
-    // Local usage errors are fixable; anything else is unknown.
-    return error instanceof BskUsageError
-      ? { class: 'retry_after_fix', hint: FALLBACK.hint }
-      : FALLBACK;
+    // Local usage errors are fixable; the message itself already says what to
+    // change (an unwritable --out, a bad --ref), so surface it as the hint
+    // instead of the generic "retrying won't help" — which reads as fatal.
+    if (error instanceof BskUsageError) {
+      return { class: 'retry_after_fix', hint: error.message };
+    }
+    return FALLBACK;
   }
   for (const rule of RULES) {
     if (rule.test(error.code, error.message)) return rule.info;

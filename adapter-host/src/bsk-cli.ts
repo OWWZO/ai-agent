@@ -7,6 +7,8 @@
  * It never starts a local daemon or spawns a child process.
  */
 
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { InvalidArgumentError, Command, Option as CommanderOption } from 'commander';
 
@@ -16,6 +18,7 @@ import {
   type BskClientOptions,
 } from './bsk/client.js';
 import * as commandLayer from './bsk/commands/index.js';
+import { validateScreenshotChunk } from './bsk/commands/screenshot.js';
 import type { BskCaller } from './bsk/commands/types.js';
 import { parseDurationMs, parsePositiveInt, parseTimeoutMs } from './bsk/commands/args.js';
 import { BskRpcError, BskUsageError, classifyFailure } from './bsk/errors.js';
@@ -60,6 +63,8 @@ type CommandLayer = Pick<
   | 'evaluate'
   | 'screenshot'
   | 'screenshotFullPage'
+  | 'screenshotRead'
+  | 'screenshotRelease'
   | 'console'
   | 'network'
   | 'cookies'
@@ -294,6 +299,125 @@ function asString(value: unknown, label: string): string {
 
 function asBooleanOrUndefined(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined;
+}
+
+/**
+ * 未指定 `--out` 时的落盘位置：cwd 下的普通文件，与 Rust 版的 `--out` 默认值对齐但落在工作区内。
+ *
+ * <p>序号而不是毫秒时间戳：同一轮里模型会先截图看首屏、再截图验证结果，两个调用
+ * 可能落在同一毫秒，也可能只差几毫秒。同进程内自增的序号保证「先拿到的 path」
+ * 永远指向先写下的那张图，后一次截图不会把前一次覆盖掉——模型在上下文里持有的是
+ * 它自己那次调用返回的 path，被覆盖就读不到当时那张了。</p>
+ */
+function defaultScreenshotPath(): string {
+  return `screenshot-${Date.now()}-${++screenshotSeq}.png`;
+}
+
+interface WrittenScreenshot {
+  /** 相对 cwd 的路径，直接进 `artifacts[].relativePath` 与 CLI 输出。 */
+  relativePath: string;
+  byteSize: number;
+  meta: Record<string, unknown>;
+}
+
+/** 进程内截图计数器，保证默认文件名互不覆盖（见 {@link defaultScreenshotPath}）。 */
+let screenshotSeq = 0;
+
+/**
+ * 把截图字节写到 `outPath`，返回 cwd 相对路径。
+ *
+ * <p>Java 侧只接受 workspace 内相对路径：绝对路径和 `..` 会在
+ * {@code CliArtifactCandidateParser} 被丢弃，所以这里统一转相对路径后再上报。</p>
+ *
+ * <p>落盘失败必须与「截图失败」区分：图片字节此刻已经完整拿到（base64 已返回），
+ * 只是没写到盘上。裸 IO 错误冒泡出去，Java 会把整条工具结果判成截图失败，
+ * 模型收到的是模糊的 EBADF/ENOSPC，不知道该改路径还是该重试。所以这里包成
+ * {@link BskUsageError}，让分类器给出「改 --out 再重试」而不是「别重试」。</p>
+ */
+async function writeScreenshot(outPath: string, bytes: Uint8Array): Promise<WrittenScreenshot> {
+  const absolute = path.resolve(outPath);
+  try {
+    await fs.promises.mkdir(path.dirname(absolute), { recursive: true });
+    await fs.promises.writeFile(absolute, bytes);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new BskUsageError(
+      `screenshot captured (${bytes.length} bytes) but could not be written to "${outPath}": ${reason}; `
+      + 'retry with a writable relative --out path',
+    );
+  }
+  return {
+    relativePath: path.relative(process.cwd(), absolute).split(path.sep).join('/'),
+    byteSize: bytes.length,
+    meta: {},
+  };
+}
+
+/** 视口截图：协议回 base64，解码后写盘。 */
+async function captureViewportToFile(
+  runtime: BskCliRuntime,
+  client: BskCaller,
+  args: Parameters<typeof commandLayer.screenshot>[1],
+  outPath: string,
+): Promise<WrittenScreenshot> {
+  const result = await runtime.command('screenshot')(client, args);
+  const bytes = Buffer.from(result.image_base64, 'base64');
+  const written = await writeScreenshot(outPath, bytes);
+  written.meta = {
+    tab_id: result.tab_id,
+    width: result.width,
+    height: result.height,
+    format: result.format,
+    ...(result.capture_id === undefined ? {} : { capture_id: result.capture_id }),
+    ...(result.capture_unavailable === undefined ? {} : { capture_unavailable: result.capture_unavailable }),
+  };
+  return written;
+}
+
+/**
+ * 全页截图：分片拉取后一次性写盘。
+ *
+ * <p>{@code tool.screenshot_full_page} 只回 capture id，图本身要按 offset 分块读，
+ * 读完必须 release 让扩展丢掉缓存。这里自己走 read/release 循环而不是复用
+ * {@code readScreenshotCapture}，是为了让两个调用都能被 {@code commandLayer} 替换
+ * （测试与宿主注入），与 Rust 版 {@code write_full_page} 的分工一致。</p>
+ */
+async function captureFullPageToFile(
+  runtime: BskCliRuntime,
+  client: BskCaller,
+  args: Parameters<typeof commandLayer.screenshotFullPage>[1],
+  outPath: string,
+): Promise<WrittenScreenshot> {
+  const capture = await runtime.command('screenshotFullPage')(client, args);
+  const chunks: Buffer[] = [];
+  let offset = 0;
+  try {
+    for (;;) {
+      const chunk = await runtime.command('screenshotRead')(client, {
+        sessionId: args.sessionId,
+        captureId: capture.capture_id,
+        offset,
+      });
+      chunks.push(validateScreenshotChunk(chunk, offset, capture.byte_size));
+      offset = chunk.next_offset;
+      if (chunk.eof) break;
+    }
+  } finally {
+    // release 是尽力而为：读取失败不能掩盖真正的错误。
+    await runtime.command('screenshotRelease')(client, {
+      sessionId: args.sessionId,
+      captureId: capture.capture_id,
+    }).catch(() => undefined);
+  }
+  const written = await writeScreenshot(outPath, Buffer.concat(chunks));
+  written.meta = {
+    tab_id: capture.tab_id,
+    width: capture.width,
+    height: capture.height,
+    format: capture.format,
+    ...(capture.scope === undefined ? {} : { scope: capture.scope }),
+  };
+  return written;
 }
 
 function humanLine(label: string, result: unknown, sessionId?: string): string {
@@ -924,22 +1048,31 @@ function createBskCli(options: BskCliBuildOptions): { cli: Command; runtime: Bsk
     .option('--ref <ref>')
     .option('--full-page')
     .option('--scope <scope>', 'follow or current')
-    .option('--timeout <duration>', 'full-page timeout', parseTimeout);
-  addAction(runtime, screenshot, 'screenshot', (_positional, local, client, root) => {
+    .option('--timeout <duration>', 'full-page timeout', parseTimeout)
+    .option('--out <path>', 'output PNG path (relative to cwd); defaults to ./screenshot-<unix-ms>.png');
+  addAction(runtime, screenshot, 'screenshot', async (_positional, local, client, root) => {
     const sessionId = requiredSession(root, 'screenshot');
-    if (local.fullPage === true) {
-      return runtime.command('screenshotFullPage')(client, {
+    const outPath = typeof local.out === 'string' ? local.out : defaultScreenshotPath();
+    const written = local.fullPage === true
+      ? await captureFullPageToFile(runtime, client, {
         sessionId,
         tabId: root.tabId,
         scope: typeof local.scope === 'string' ? local.scope as ScreenshotScope : undefined,
         timeoutMs: typeof local.timeout === 'number' ? local.timeout : undefined,
-      });
-    }
-    return runtime.command('screenshot')(client, {
-      sessionId,
-      tabId: root.tabId,
-      ref: typeof local.ref === 'string' ? local.ref : undefined,
-    });
+      }, outPath)
+      : await captureViewportToFile(runtime, client, {
+        sessionId,
+        tabId: root.tabId,
+        ref: typeof local.ref === 'string' ? local.ref : undefined,
+      }, outPath);
+    // `artifacts` 是 Java 侧的产物登记协议（CliArtifactCandidateParser）：
+    // 路径必须是 cwd 相对路径，绝对路径会被协议层直接丢弃。
+    return {
+      ...written.meta,
+      path: written.relativePath,
+      byte_size: written.byteSize,
+      artifacts: [{ relativePath: written.relativePath, size: written.byteSize, mime: 'image/png' }],
+    };
   });
 
   const waitForNavigation = program.command('wait-for-navigation').description('wait for navigation to settle');
