@@ -264,4 +264,263 @@ public class ToolObservationFormatterTest {
         Assert.assertTrue(ToolObservationFormatter.format("agent_browser", data)
                 .contains("Agent 浏览器已重建"));
     }
+
+    // ---- 新增覆盖：检索类 ----
+
+    @Test
+    public void webSearchDropsEchoAndTruncatesSnippet() {
+        Map<String, Object> hit = new LinkedHashMap<>();
+        hit.put("title", "Title A");
+        hit.put("url", "https://a.example");
+        hit.put("snippet", "s".repeat(1000));
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("tool", "web_search");
+        data.put("ok", Boolean.TRUE);
+        data.put("query", "模型刚发过的查询");
+        data.put("provider", "exa");
+        data.put("durationSec", 3.49);
+        data.put("reminder", "Cite sources with markdown hyperlinks in the final answer.");
+        data.put("hits", List.of(hit));
+
+        String projected = ToolObservationFormatter.format("WebSearch", data);
+
+        Assert.assertTrue(projected.contains("https://a.example"));
+        // query / provider / durationSec 是入参回显与计时，不进上下文。
+        Assert.assertFalse(projected.contains("模型刚发过的查询"));
+        Assert.assertFalse(projected.contains("durationSec"));
+        Assert.assertFalse(projected.contains("provider"));
+        // snippet 保留但截断，引用要求折成一行页脚。
+        Assert.assertTrue(projected.contains("…"));
+        Assert.assertEquals(1, countOccurrences(projected, "Cite sources"));
+    }
+
+    @Test
+    public void webSearchEmptyHitsSaysNoResults() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("ok", Boolean.TRUE);
+        data.put("hits", List.of());
+
+        Assert.assertTrue(ToolObservationFormatter.format("WebSearch", data).contains("No results found"));
+    }
+
+    @Test
+    public void webFetchKeepsContentAndDropsRequestEcho() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("ok", Boolean.TRUE);
+        data.put("url", "https://a.example");
+        data.put("status", 200);
+        data.put("prompt", "抽取关键结论");
+        data.put("bytes", 4721);
+        data.put("durationMs", 15576);
+        data.put("contentFormat", "markdown");
+        data.put("wordCount", 642);
+        data.put("content", "页面正文");
+
+        String projected = ToolObservationFormatter.format("WebFetch", data);
+
+        Assert.assertEquals("页面正文", projected);
+        Assert.assertFalse(projected.contains("抽取关键结论"));
+        Assert.assertFalse(projected.contains("wordCount"));
+    }
+
+    @Test
+    public void webFetchReportsNonSuccessStatusOnly() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("ok", Boolean.TRUE);
+        data.put("status", 404);
+        data.put("content", "not found body");
+
+        String projected = ToolObservationFormatter.format("WebFetch", data);
+
+        Assert.assertTrue(projected.contains("status: 404"));
+    }
+
+    @Test
+    public void deepSearchAcceptsPojoPayload() {
+        // deep_search 传的是 POJO 而非 Map：入口必须归一化，否则投影整个失效。
+        Map<String, Object> chapter = new LinkedHashMap<>();
+        chapter.put("title", "第一章");
+        chapter.put("summary", "章节结论");
+        Map<String, Object> doc = new LinkedHashMap<>();
+        doc.put("title", "Doc A");
+        doc.put("url", "https://doc.example");
+        Map<String, Object> queryResult = new LinkedHashMap<>();
+        queryResult.put("query", "子查询");
+        queryResult.put("docs", List.of(doc));
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("tool", "deep_search");
+        data.put("query", "原始查询回显");
+        data.put("answerSummary", "总结正文");
+        data.put("chapters", List.of(chapter));
+        data.put("results", List.of(queryResult));
+
+        String projected = ToolObservationFormatter.format("deep_search", data);
+
+        Assert.assertTrue(projected.startsWith("总结正文"));
+        Assert.assertTrue(projected.contains("第一章"));
+        Assert.assertTrue(projected.contains("https://doc.example"));
+        Assert.assertFalse(projected.contains("原始查询回显"));
+    }
+
+    // ---- 新增覆盖：子 Agent ----
+
+    @Test
+    public void agentKeepsAgentIdWithActionableHint() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("ok", Boolean.TRUE);
+        data.put("status", "completed");
+        data.put("agentId", "b968e75b");
+        data.put("content", "done");
+        data.put("agentType", "code-executor");
+        data.put("totalToolUseCount", 3);
+        data.put("childSessionId", "sub_b968e75b");
+
+        String projected = ToolObservationFormatter.format("Agent", data);
+
+        Assert.assertTrue(projected.startsWith("done"));
+        // agentId 是续跑入口，必须带可执行的 SendMessage 提示。
+        Assert.assertTrue(projected.contains("agentId: b968e75b"));
+        Assert.assertTrue(projected.contains("SendMessage with to: 'b968e75b'"));
+        Assert.assertFalse(projected.contains("sub_b968e75b"));
+    }
+
+    @Test
+    public void agentWithoutContentSaysSo() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("ok", Boolean.TRUE);
+        data.put("status", "completed");
+        data.put("agentId", "a1");
+        data.put("content", "");
+
+        Assert.assertTrue(ToolObservationFormatter.format("Agent", data)
+                .contains("Subagent completed but returned no output"));
+    }
+
+    // ---- 新增覆盖：Plan Mode ----
+
+    @Test
+    public void enterPlanModeDropsDuplicateInstructions() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("ok", Boolean.TRUE);
+        data.put("entered", Boolean.TRUE);
+        data.put("message", "Entered plan mode.");
+        data.put("planFilePath", ".reactor/plan.md");
+        data.put("instructions", "PLAN_MODE_INSTRUCTIONS_V2".repeat(100));
+
+        String projected = ToolObservationFormatter.format("EnterPlanMode", data);
+
+        // instructions 已注入 system prompt，工具结果再带一份就是双份全文。
+        Assert.assertFalse(projected.contains("PLAN_MODE_INSTRUCTIONS_V2"));
+        Assert.assertTrue(projected.contains(".reactor/plan.md"));
+    }
+
+    @Test
+    public void exitPlanModeDropsDuplicatePlanBody() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("ok", Boolean.TRUE);
+        data.put("approved", Boolean.TRUE);
+        data.put("message", "User has approved your plan.\n\n## Approved Plan:\n\n步骤一");
+        data.put("plan", "步骤一");
+
+        String projected = ToolObservationFormatter.format("ExitPlanMode", data);
+
+        Assert.assertEquals(1, countOccurrences(projected, "步骤一"));
+    }
+
+    // ---- 新增覆盖：bash / code_execution ----
+
+    @Test
+    public void bashDropsSkillInventory() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("ok", Boolean.TRUE);
+        data.put("stdout", "ok\n");
+        data.put("stderr", "");
+        data.put("exit_code", 0);
+        data.put("cwd", ".");
+        data.put("duration_ms", 9462);
+        data.put("skills_materialized", List.of("a", "b", "c"));
+        data.put("skills_synced_back", List.of());
+
+        String projected = ToolObservationFormatter.format("bash", data);
+
+        Assert.assertEquals("ok", projected);
+        Assert.assertFalse(projected.contains("skills_materialized"));
+        Assert.assertFalse(projected.contains("duration_ms"));
+        Assert.assertFalse(projected.contains("cwd"));
+    }
+
+    @Test
+    public void codeExecutionSurfacesErrorAndFiles() {
+        Map<String, Object> file = new LinkedHashMap<>();
+        file.put("file_name", "out.csv");
+        file.put("url", "https://files.example/out.csv");
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("ok", Boolean.TRUE);
+        data.put("status", "ok");
+        data.put("stdout", "rows: 10");
+        data.put("stderr", "");
+        data.put("hint", "Use produced_files.url as image.url");
+        data.put("produced_files", List.of(file));
+
+        String projected = ToolObservationFormatter.format("code_execution", data);
+
+        Assert.assertTrue(projected.contains("rows: 10"));
+        Assert.assertTrue(projected.contains("out.csv"));
+        Assert.assertFalse(projected.contains("produced_files.url as image.url"));
+    }
+
+    // ---- 新增覆盖：任务 / 画布 / 检索元工具 ----
+
+    @Test
+    public void taskListRendersCompactRows() {
+        Map<String, Object> task = new LinkedHashMap<>();
+        task.put("id", "1");
+        task.put("status", "pending");
+        task.put("subject", "写计划");
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("ok", Boolean.TRUE);
+        data.put("tasks", List.of(task));
+
+        Assert.assertEquals("- [1] pending 写计划", ToolObservationFormatter.format("TaskList", data));
+    }
+
+    @Test
+    public void emitUiTreeDoesNotEchoSubmittedTree() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("ok", Boolean.TRUE);
+        data.put("message", "GenUI tree emitted successfully.");
+        data.put("canvasId", "c1");
+        data.put("tree", Map.of("root", Map.of("kind", "Card")));
+
+        String projected = ToolObservationFormatter.format("emit_ui_tree", data);
+
+        Assert.assertFalse(projected.contains("Card"));
+        Assert.assertTrue(projected.contains("c1"));
+    }
+
+    @Test
+    public void toolSearchKeepsMatchesAndHint() {
+        Map<String, Object> match = new LinkedHashMap<>();
+        match.put("name", "mcp__maps__text_search");
+        match.put("description", "按关键词搜索地点");
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("ok", Boolean.TRUE);
+        data.put("matches", List.of(match));
+        data.put("hint", "Retry with the service name.");
+
+        String projected = ToolObservationFormatter.format("ToolSearch", data);
+
+        Assert.assertTrue(projected.contains("mcp__maps__text_search"));
+        Assert.assertTrue(projected.contains("Retry with the service name."));
+    }
+
+    private static int countOccurrences(String haystack, String needle) {
+        int count = 0;
+        int index = haystack.indexOf(needle);
+        while (index >= 0) {
+            count++;
+            index = haystack.indexOf(needle, index + needle.length());
+        }
+        return count;
+    }
 }

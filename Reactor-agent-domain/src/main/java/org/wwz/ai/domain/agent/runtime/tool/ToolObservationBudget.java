@@ -19,20 +19,31 @@ import java.util.Map;
 @Slf4j
 public final class ToolObservationBudget {
 
+    /**
+     * 默认上限：所有未单独登记的工具都走这个预算。
+     * 对齐 zCode 的 {@code MAX_INLINE_OUTPUT_BYTES}（bash 30 KB）。
+     */
+    public static final int DEFAULT_CAP = 30_000;
+
     /** grep / glob / list 上限，对齐 zCode 的 MAX_GREP_MODEL_BYTES。 */
     public static final int GREP_GLOB_LIST_CAP = 20_000;
 
     /** read 上限：正文本身是模型要用的，比检索类宽松一些。 */
     public static final int READ_CAP = 30_000;
 
+    /** 检索类上限：命中列表是候选集，不需要整段进上下文。 */
+    public static final int SEARCH_CAP = 20_000;
+
     /** 信封里的预览字符数，对齐 zCode 的 PERSISTED_OUTPUT_PREVIEW_CHARS。 */
     static final int PREVIEW_CHARS = 2_000;
 
+    /** 只登记与默认值不同的工具，其余一律 {@link #DEFAULT_CAP}。 */
     private static final Map<String, Integer> CAPS_BY_TOOL = Map.of(
+            "workspace_read", READ_CAP,
             "workspace_grep", GREP_GLOB_LIST_CAP,
             "workspace_glob", GREP_GLOB_LIST_CAP,
             "workspace_list", GREP_GLOB_LIST_CAP,
-            "workspace_read", READ_CAP
+            "WebSearch", SEARCH_CAP
     );
 
     private static final String OBSERVATION_DIR = ".reactor/observations";
@@ -45,14 +56,14 @@ public final class ToolObservationBudget {
     }
 
     /**
-     * 未注册工具或工作区不可用时返回原文本（截断由 {@code maxObserve} 兜底）。
+     * 空工具名或工作区不可用时返回原文本（截断由 {@code maxObserve} 兜底）。
      */
     public static String apply(AgentContext context, String toolName, String observation) {
         if (context == null || StringUtils.isBlank(observation) || toolName == null) {
             return observation;
         }
-        Integer cap = CAPS_BY_TOOL.get(toolName);
-        if (cap == null || observation.length() <= cap) {
+        int cap = CAPS_BY_TOOL.getOrDefault(toolName, DEFAULT_CAP);
+        if (observation.length() <= cap) {
             return observation;
         }
         Path file = persist(context, toolName, observation);

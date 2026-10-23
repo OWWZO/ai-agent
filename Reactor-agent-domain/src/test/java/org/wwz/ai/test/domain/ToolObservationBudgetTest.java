@@ -51,12 +51,16 @@ public class ToolObservationBudgetTest {
     }
 
     @Test
-    public void unregisteredToolIsNotBudgeted() throws Exception {
+    public void unregisteredToolUsesDefaultCap() throws Exception {
         Path root = folder.newFolder("ws").toPath();
         AgentContext context = AgentContext.builder().workspaceRoot(root.toString()).build();
-        String body = "z".repeat(40_000);
+        String body = "z".repeat(ToolObservationBudget.DEFAULT_CAP + 5_000);
 
-        Assert.assertEquals(body, ToolObservationBudget.apply(context, "some_other_tool", body));
+        String result = ToolObservationBudget.apply(context, "some_other_tool", body);
+
+        // 未登记投影器的工具也必须落盘：它们只有全局 maxObserve 兜底，单次几十 KB 会反复重放进上下文。
+        Assert.assertTrue(result.contains("<persisted-output>"));
+        Assert.assertTrue(result.contains("some_other_tool-"));
     }
 
     @Test

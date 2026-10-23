@@ -502,7 +502,10 @@ final class ToolExecutionPipeline {
                     // 投影后仍可能超大（大仓库 grep / 长文件 read）：完整内容落工作区，模型拿到可续读的信封。
                     llmObservation = ToolObservationBudget.apply(agent.getContext(), toolName, compact);
                 } else if (payload.getLlmData() != null || failed) {
-                    llmObservation = ToolObservationSerializer.serializePayload(payload);
+                    // 未登记投影器的工具（MCP / Python / legacy）同样要过预算：
+                    // 否则它们只能靠全局 maxObserve 兜底，单次几十 KB 的结果照样反复重放进上下文。
+                    llmObservation = ToolObservationBudget.apply(
+                            agent.getContext(), toolName, ToolObservationSerializer.serializePayload(payload));
                 } else {
                     llmObservation = toolResult;
                 }
