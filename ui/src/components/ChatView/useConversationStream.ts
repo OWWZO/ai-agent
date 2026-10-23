@@ -1129,6 +1129,9 @@ export function useConversationStream(
     let pendingFlushFrame: number | null = null;
     let lastConversationFlushAt = 0;
     let lastTaskFlushAt = 0;
+    /** 上次派生重建所依据的输入：用于跳过纯正文增量触发的空重建。 */
+    let lastDerivedMultiAgent: MESSAGE.MultiAgent | undefined;
+    let lastDerivedConclusion: CHAT.Task | undefined;
     const CONVERSATION_FLUSH_INTERVAL = 16;
     const TASK_FLUSH_INTERVAL = 96;
 
@@ -1138,15 +1141,29 @@ export function useConversationStream(
       }
       const now = performance.now();
       if (taskDataDirty) {
-        const derived = handleTaskData(
-          currentChat,
-          normalizedDeepThink,
-          currentChat.multiAgent
-        );
-        syncDerivedConversationSnapshot(derived.currentChat);
-        taskDataDirty = false;
-        if (force || now - lastTaskFlushAt >= TASK_FLUSH_INTERVAL) {
-          pendingTaskData = derived;
+        // 跳过无意义的重复重建：`handleTaskData` 只消费 `multiAgent` 与 `conclusion`，
+        // 纯正文增量（agent_stream）不改这两者 —— 此时重建会白跑一遍全量任务遍历。
+        // 正文本身走 conversation 通道更新，不依赖这里。
+        //
+        // ⚠️ 缓存的是**重建前的输入引用**：`handleTaskData` 会原地改写
+        // `currentChat.conclusion`，拿重建后的值做基准会在下一次比较时失真。
+        const multiAgent = currentChat.multiAgent;
+        const conclusion = currentChat.conclusion;
+        if (multiAgent === lastDerivedMultiAgent && conclusion === lastDerivedConclusion) {
+          taskDataDirty = false;
+        } else {
+          lastDerivedMultiAgent = multiAgent;
+          lastDerivedConclusion = conclusion;
+          const derived = handleTaskData(
+            currentChat,
+            normalizedDeepThink,
+            multiAgent
+          );
+          syncDerivedConversationSnapshot(derived.currentChat);
+          taskDataDirty = false;
+          if (force || now - lastTaskFlushAt >= TASK_FLUSH_INTERVAL) {
+            pendingTaskData = derived;
+          }
         }
       }
       const shouldFlushConversation =
@@ -1224,6 +1241,24 @@ export function useConversationStream(
         setLoading(false);
       }
       syncRunningConversation();
+    };
+
+    /**
+     * 流式序号断档：中间帧丢了，增量正文无法自愈。
+     *
+     * 对齐 ZCode 的「断档不猜、不缓存补偿」——它靠 `frame.fromSeq === snapshot.seq`
+     * 判定，断档时携当前水位重订阅，由服务端裁决 resume/snapshot。
+     * 这里复用既有账本重同步：重放会把该 run 的完整过程与正文补齐。
+     *
+     * 每个 run 只触发一次：重同步本身可能再次断流，反复触发会打转。
+     */
+    const gapResyncRequestIdsRef = new Set<string>();
+    const markStreamGap = () => {
+      if (gapResyncRequestIdsRef.has(requestId)) {
+        return;
+      }
+      gapResyncRequestIdsRef.add(requestId);
+      void applyFollowIdleReplay({ allowReconnect: false });
     };
 
     /**
@@ -1419,6 +1454,14 @@ export function useConversationStream(
         return;
       }
       if (eventSeq > 0 && eventSeq > lastEventSeq) {
+        // 断档检测（对齐 ZCode：delta 只在序号连续时 apply，断档不猜）。
+        // 后端 eventSeq 是会话级 AtomicLong 严格自增，跳号就意味着中间帧丢了。
+        // 丢了帧的正文无法从后续增量里补齐，必须走一次账本重同步收口 ——
+        // 否则 UI 会永久停在一段截断的正文上，直到用户手动刷新。
+        // 只在「确实跳号 + 本 run 已收过帧」时触发一次，避免首帧误判。
+        if (lastEventSeq > 0 && eventSeq > lastEventSeq + 1) {
+          markStreamGap();
+        }
         lastEventSeqRef.current.set(requestId, eventSeq);
         updateActiveRunSeq(sessionId, eventSeq);
       }
@@ -1636,9 +1679,7 @@ export function useConversationStream(
           eventData.resultMap?.messageType === "tool_thought" ||
           eventData.resultMap?.messageType === "llm_reasoning" ||
           eventData.resultMap?.messageType === "subagent_progress" ||
-          eventData.resultMap?.messageType === "context_usage" ||
-          eventData.resultMap?.messageType === "ui_tree" ||
-          eventData.resultMap?.messageType === "ui_patch";
+          eventData.resultMap?.messageType === "context_usage";
         scheduleNonChatFlush(forceTimeline);
       }
     };
@@ -3002,9 +3043,7 @@ export function useConversationStream(
           eventData.resultMap?.messageType === "tool_thought" ||
           eventData.resultMap?.messageType === "llm_reasoning" ||
           eventData.resultMap?.messageType === "subagent_progress" ||
-          eventData.resultMap?.messageType === "context_usage" ||
-          eventData.resultMap?.messageType === "ui_tree" ||
-          eventData.resultMap?.messageType === "ui_patch";
+          eventData.resultMap?.messageType === "context_usage";
         scheduleNonChatFlush(forceTimeline);
       }
     };
