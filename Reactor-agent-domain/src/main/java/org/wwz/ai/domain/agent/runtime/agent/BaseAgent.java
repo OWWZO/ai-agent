@@ -62,8 +62,7 @@ public abstract class BaseAgent {
             "code_interpreter", "document_generate", "slides_generate",
             "excel_generator", "checklist_generate", "template_filler", "document_template",
             "theme_designer", "chart_generator", "deep_search",
-            "multimodalagent_tool", "data_analysis", "canvas_publish",
-            "get_genui_guide", "list_ui_components", "emit_ui_tree", "emit_ui_patch");
+            "multimodalagent_tool", "data_analysis", "canvas_publish");
 
     /** 只有最终文件交付工具需要把 artifactKey 暴露给模型完成精确文件选择。 */
     private static final Set<String> TOOLS_REQUIRING_LLM_ARTIFACT_SUMMARY = Set.of(

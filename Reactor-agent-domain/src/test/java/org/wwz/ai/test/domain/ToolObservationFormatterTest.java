@@ -485,20 +485,6 @@ public class ToolObservationFormatterTest {
     }
 
     @Test
-    public void emitUiTreeDoesNotEchoSubmittedTree() {
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("ok", Boolean.TRUE);
-        data.put("message", "GenUI tree emitted successfully.");
-        data.put("canvasId", "c1");
-        data.put("tree", Map.of("root", Map.of("kind", "Card")));
-
-        String projected = ToolObservationFormatter.format("emit_ui_tree", data);
-
-        Assert.assertFalse(projected.contains("Card"));
-        Assert.assertTrue(projected.contains("c1"));
-    }
-
-    @Test
     public void toolSearchKeepsMatchesAndHint() {
         Map<String, Object> match = new LinkedHashMap<>();
         match.put("name", "mcp__maps__text_search");

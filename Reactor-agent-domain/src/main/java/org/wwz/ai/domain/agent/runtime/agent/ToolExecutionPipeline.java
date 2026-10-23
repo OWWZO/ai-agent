@@ -12,7 +12,6 @@ import org.wwz.ai.domain.agent.runtime.tool.ToolObservationFormatter;
 import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.canvas.CanvasPublishArgSalvage;
-import org.wwz.ai.domain.agent.runtime.tool.canvas.EmitUiTreeArgSalvage;
 import org.wwz.ai.domain.agent.runtime.askuser.UserInputRequiredException;
 import org.wwz.ai.domain.agent.runtime.desktopcontrol.DesktopControlRequiredException;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalRequiredException;
@@ -474,15 +473,6 @@ final class ToolExecutionPipeline {
             Map<String, Object> salvaged = CanvasPublishArgSalvage.parseOrSalvage(normalizedPayload);
             if (salvaged != null && !salvaged.isEmpty()) {
                 log.warn("{} canvas_publish args salvaged after parse failure: {}",
-                        context == null ? "-" : context.getRequestId(),
-                        parseError.getMessage());
-                return salvaged;
-            }
-        }
-        if (EmitUiTreeArgSalvage.isEmitUiTree(toolName)) {
-            Map<String, Object> salvaged = EmitUiTreeArgSalvage.parseOrSalvage(normalizedPayload);
-            if (salvaged != null && !salvaged.isEmpty()) {
-                log.warn("{} emit_ui_tree args salvaged after parse failure: {}",
                         context == null ? "-" : context.getRequestId(),
                         parseError.getMessage());
                 return salvaged;

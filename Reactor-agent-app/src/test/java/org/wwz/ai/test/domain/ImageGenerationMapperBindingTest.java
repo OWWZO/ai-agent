@@ -20,9 +20,7 @@ public class ImageGenerationMapperBindingTest {
             "tool_output_data_analysis_mapper.xml", "IToolOutputDataAnalysisDao",
             "tool_output_multimodal_agent_mapper.xml", "IToolOutputMultimodalAgentDao",
             "tool_output_image_generation_mapper.xml", "IToolOutputImageGenerationDao",
-            "tool_output_canvas_publish_mapper.xml", "IToolOutputCanvasPublishDao",
-            "tool_output_emit_ui_tree_mapper.xml", "IToolOutputEmitUiTreeDao",
-            "tool_output_emit_ui_patch_mapper.xml", "IToolOutputEmitUiPatchDao");
+            "tool_output_canvas_publish_mapper.xml", "IToolOutputCanvasPublishDao");
 
     @Test
     public void shouldRegisterToolOutputStatements() throws Exception {

@@ -67,8 +67,6 @@ public final class ToolObservationFormatter {
             Map.entry(TaskToolNames.EXIT_PLAN_MODE, ToolObservationFormatter::projectExitPlanMode),
             Map.entry(AskUserQuestionTool.NAME, ToolObservationFormatter::projectAskUserQuestion),
             Map.entry(RequestDesktopControlTool.NAME, ToolObservationFormatter::projectDesktopControl),
-            Map.entry(CanvasToolNames.EMIT_UI_TREE, ToolObservationFormatter::projectEmitUiTree),
-            Map.entry(CanvasToolNames.EMIT_UI_PATCH, ToolObservationFormatter::projectEmitUiPatch),
             Map.entry(CanvasToolNames.CANVAS_PUBLISH, ToolObservationFormatter::projectCanvasPublish),
             Map.entry(McpToolNames.TOOL_SEARCH, ToolObservationFormatter::projectToolSearch),
             Map.entry(McpToolNames.TOOL_DESCRIBE, ToolObservationFormatter::projectToolDescribe),
@@ -653,38 +651,7 @@ public final class ToolObservationFormatter {
         return out.length() == 0 ? null : out.toString();
     }
 
-    // ---- GenUI canvas ----
-
-    private static String projectEmitUiTree(Map<?, ?> data) {
-        // tree 是模型刚提交的入参回显，不重复给。
-        String message = text(data.get("message"));
-        if (StringUtils.isBlank(message)) {
-            return null;
-        }
-        StringBuilder out = new StringBuilder(message);
-        String canvasId = text(data.get("canvasId"));
-        if (StringUtils.isNotBlank(canvasId)) {
-            out.append("\ncanvasId: ").append(canvasId);
-        }
-        if (Boolean.TRUE.equals(data.get("salvaged"))) {
-            out.append("\n[args salvaged]");
-        }
-        return out.toString();
-    }
-
-    private static String projectEmitUiPatch(Map<?, ?> data) {
-        String message = text(data.get("message"));
-        if (StringUtils.isBlank(message)) {
-            return null;
-        }
-        StringBuilder out = new StringBuilder(message);
-        String canvasId = text(data.get("canvasId"));
-        if (StringUtils.isNotBlank(canvasId)) {
-            out.append("\ncanvasId: ").append(canvasId);
-        }
-        appendIfNotZero(out, data, "patchCount", "patches");
-        return out.toString();
-    }
+    // ---- canvas ----
 
     private static String projectCanvasPublish(Map<?, ?> data) {
         String message = text(data.get("message"));
