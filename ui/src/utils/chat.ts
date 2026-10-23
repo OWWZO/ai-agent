@@ -356,10 +356,6 @@ function handleTaskMessageByType(
     case "code":
       handleContentMessage(eventData, currentChat, taskIndex, toolIndex);
       break;
-    case "ui_tree":
-    case "ui_patch":
-      handleNonStreamingMessage(eventData, currentChat, taskIndex);
-      break;
     case "deep_search":
       handleDeepSearchMessage(eventData, currentChat, taskIndex);
       break;
@@ -2145,8 +2141,6 @@ const TIMELINE_MESSAGE_TYPES = new Set([
   "markdown",
   "ppt",
   "data_analysis",
-  "ui_tree",
-  "ui_patch",
 ]);
 
 /**
@@ -2398,16 +2392,6 @@ const STATIC_TASK_ACTIONS: Record<string, Readonly<TaskAction>> = {
     action: "正在生成web页面",
     tool: "编辑器",
     name: ""
-  },
-  ui_tree: {
-    action: "正在生成界面组件",
-    tool: "GenUI",
-    name: "画布"
-  },
-  ui_patch: {
-    action: "正在更新界面组件",
-    tool: "GenUI",
-    name: "补丁"
   },
   plan_thought: {
     action: "正在思考下一步计划",

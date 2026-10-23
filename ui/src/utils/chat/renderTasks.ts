@@ -96,31 +96,6 @@ export function cloneTaskSnapshot(task: MESSAGE.Task): MESSAGE.Task {
   };
 }
 
-function getGenUiRenderSignature(resultMap?: MESSAGE.ResultMap): string {
-  if (!resultMap) {
-    return "";
-  }
-  const nested =
-    (resultMap as { resultMap?: MESSAGE.ResultMap }).resultMap &&
-    typeof (resultMap as { resultMap?: MESSAGE.ResultMap }).resultMap === "object"
-      ? ((resultMap as { resultMap?: MESSAGE.ResultMap }).resultMap as MESSAGE.ResultMap)
-      : resultMap;
-  const nestedAny = nested as {
-    tree?: unknown;
-    patchCount?: number;
-    lastPatchedAt?: string;
-    appliedPatches?: unknown[];
-  };
-  const applied = Array.isArray(nestedAny.appliedPatches)
-    ? nestedAny.appliedPatches.length
-    : 0;
-  return [
-    nestedAny.tree ? "1" : "0",
-    nestedAny.patchCount ?? 0,
-    nestedAny.lastPatchedAt || "",
-    applied,
-  ].join(",");
-}
 
 function getChaptersSignature(resultMap?: MESSAGE.ResultMap): string {
   const chapters = resultMap?.chapters;
@@ -252,8 +227,6 @@ export function getTaskRenderSignature(
     docsSignature,
     getChaptersSignature(resultMap as MESSAGE.ResultMap),
     Array.isArray(plan?.stepStatus) ? plan.stepStatus.join(",") : "",
-    // emit_ui_patch mutates ui_tree in place; include GenUI markers so render cache invalidates.
-    getGenUiRenderSignature(resultMap as MESSAGE.ResultMap),
   ].join("|");
 }
 

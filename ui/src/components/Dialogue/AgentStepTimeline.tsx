@@ -67,8 +67,6 @@ const RICH_INLINE_TYPES = new Set([
   "desktop_control",
   "plan_approval",
   "session_tasks",
-  "ui_tree",
-  "ui_patch",
   "browser",
   "task_summary",
 ]);

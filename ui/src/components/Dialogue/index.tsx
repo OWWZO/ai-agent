@@ -146,8 +146,6 @@ const DialogueComponent: FC<Props> = (props) => {
       ? `${planVersionIndex + 1}/${plannerRounds.length}`
       : undefined;
   const planIsHistoricalSnapshot = planVersionIndex < latestRoundIndex;
-  // multiAgent.tasks 原地 push/merge 时数组引用不变；必须以 chat 快照为依赖，
-  // 每次 Dialogue 因 chat 引用更新而渲染时重算 featured（含 emit_ui_patch 重放）。
   const showStandaloneResponse =
     isReactType && !!chat.response && !chat.conclusion;
   const showProcessTimeline =

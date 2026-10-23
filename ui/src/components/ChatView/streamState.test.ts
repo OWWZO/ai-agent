@@ -354,23 +354,6 @@ describe("streamState presence & attention", () => {
     ).toBe(true);
   });
 
-  it("ui_patch 不抢工作区（GenUI 在对话主区展示）", () => {
-    expect(
-      shouldRefreshWorkspaceTask({
-        messageType: "task",
-        messageId: "m3",
-        taskId: "t1",
-        messageOrder: 3,
-        taskOrder: 1,
-        resultMap: {
-          messageType: "ui_patch",
-          isFinal: true,
-          patches: [{ op: "replace", path: "/root/props/title", value: "X" }],
-        },
-      } as unknown as MESSAGE.EventData)
-    ).toBe(false);
-  });
-
   it("发送后首包前应为 queued/thinking 存在感", () => {
     const presence = resolveRunPresence({
       loading: true,
@@ -688,7 +671,6 @@ describe("工作区可见性判定链", () => {
     expect(isWorkspaceRenderableTask(undefined)).toBe(false);
     expect(isWorkspaceRenderableTask(task("tool_thought"))).toBe(false);
     expect(isWorkspaceRenderableTask(task("llm_reasoning"))).toBe(false);
-    expect(isWorkspaceRenderableTask(task("ui_tree"))).toBe(false);
     expect(isWorkspaceRenderableTask(task("html"))).toBe(true);
     expect(isWorkspaceRenderableTask(task("file"))).toBe(true);
   });
