@@ -7,17 +7,12 @@ import {
   type FC,
 } from "react";
 import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from "@/components/ui/hover-card";
-import {
   buildNavigatorItems,
   resolveActiveItemIndex,
   resolveActiveItemIndexFromVirtualRows,
-  resolveBarVisualState,
   type VirtualRowPosition,
 } from "@/lib/conversationNavigator";
+import { TurnNavigatorMarks } from "./TurnNavigatorMarks";
 import { cn } from "@/lib/utils";
 
 type ConversationTurnNavigatorProps = {
@@ -80,9 +75,6 @@ const ConversationTurnNavigator: FC<ConversationTurnNavigatorProps> = ({
   const containerRef = useRef<HTMLElement | null>(null);
   const [visible, setVisible] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [interactionIndex, setInteractionIndex] = useState<number | undefined>(
-    undefined
-  );
   const items = useMemo(() => buildNavigatorItems(chats), [chats]);
   /** 会话历史是异步到达的：不足 2 条时 nav 仍要渲染（见下），只是不出刻度。 */
   const hasEnoughItems = items.length >= 2;
@@ -226,8 +218,6 @@ const ConversationTurnNavigator: FC<ConversationTurnNavigatorProps> = ({
     [onBeforeJump, onJumpToIndex]
   );
 
-  const focusIndex = interactionIndex ?? activeIndex;
-
   // nav 无条件渲染（ref 必须始终挂载，宽度测量才有效）；不足 2 条时不渲染刻度
   // 且强制隐藏 —— 消息异步到达后 hasEnoughItems 翻转，刻度自然出现。
   return (
@@ -246,95 +236,11 @@ const ConversationTurnNavigator: FC<ConversationTurnNavigatorProps> = ({
       )}
     >
       {hasEnoughItems ? (
-        <HoverCard
-          openDelay={150}
-          closeDelay={120}
-          onOpenChange={(open) =>
-            setInteractionIndex(open ? activeIndex : undefined)
-          }
-        >
-          <HoverCardTrigger asChild>
-            <div className="pointer-events-auto absolute right-0 top-1/2 flex max-h-[calc(100%-6rem)] w-9 -translate-y-1/2 flex-col items-end justify-center gap-1.5 overflow-y-auto">
-              {items.map((item, index) => {
-                const state = resolveBarVisualState(index, focusIndex);
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    className="flex h-2.5 w-9 shrink-0 items-center justify-end"
-                    aria-label={`跳转到第 ${index + 1} 条消息`}
-                    onClick={() => handleJump(index)}
-                  >
-                    <span
-                      className={cn(
-                        "block h-0.5 w-3 origin-right rounded-full transition-[transform,opacity,background-color] duration-150 ease-out motion-reduce:transition-none",
-                        state.colorTone === "focus"
-                          ? "bg-[var(--chat-text)]"
-                          : "bg-[var(--chat-text-muted)]"
-                      )}
-                      style={{
-                        opacity: state.opacity,
-                        transform: `scaleX(${state.scaleX})`,
-                      }}
-                    />
-                  </button>
-                );
-              })}
-            </div>
-          </HoverCardTrigger>
-          {/*
-          悬停弹出列表：所有 prompt 一屏可见，活跃项高亮。
-          `side="left"` 让浮层出现在触发器左侧（深入聊天区），不挡住 resizer。
-        */}
-          <HoverCardContent
-            side="left"
-            align="center"
-            sideOffset={12}
-            className="w-96 max-h-[70vh] overflow-y-auto scrollbar-thin p-1.5"
-          >
-            {items.map((item, index) => {
-              const isActive = index === activeIndex;
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() => handleJump(index)}
-                  className={cn(
-                    "group block w-full rounded-md px-3 py-2 text-left transition-colors",
-                    isActive
-                      ? "bg-[var(--color-info,#3b82f6)]/10"
-                      : "hover:bg-[var(--chat-nav)]"
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "line-clamp-2 text-ui-sm",
-                      isActive
-                        ? "font-medium text-[var(--color-info,#3b82f6)]"
-                        : "text-[var(--chat-text)]"
-                    )}
-                  >
-                    {item.userPreview}
-                  </div>
-                  {item.assistantPreview ? (
-                    <div
-                      className={cn(
-                        "mt-1 line-clamp-2 whitespace-pre-line text-ui-xs",
-                        item.isRunning
-                          ? "text-[var(--color-warning)]"
-                          : isActive
-                            ? "text-[var(--chat-text-muted)]"
-                            : "text-[var(--chat-text-muted)]/80"
-                      )}
-                    >
-                      {item.assistantPreview}
-                    </div>
-                  ) : null}
-                </button>
-              );
-            })}
-          </HoverCardContent>
-        </HoverCard>
+        <TurnNavigatorMarks
+          items={items}
+          activeIndex={activeIndex}
+          onJump={handleJump}
+        />
       ) : null}
     </nav>
   );
