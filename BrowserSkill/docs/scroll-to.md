@@ -26,10 +26,11 @@ Refs accept `@e3` and `e3`. CSS selectors search only the main document; use ref
 for elements in iframes (including out-of-process iframes) or shadow roots.
 Refs belong to one session and tab and may become stale after page changes.
 
-`--session` is required. `--tab-id` defaults to the Agent Window's active tab.
-`--timeout` defaults to `30s` and must be positive; durations such as `5000ms` and
-`5s` are accepted. The command operates on Agent Window tabs, including user tabs
-explicitly borrowed into that window.
+`--session` is required. `--tab-id` defaults to the session's current tab, set by
+`bsk tab select` (and by `tab borrow`); switching tabs in the browser does not
+change it. `--timeout` defaults to `30s` and must be positive; durations such as
+`5000ms` and `5s` are accepted. The command operates on Agent Window tabs,
+including user tabs explicitly borrowed into that window.
 
 Example JSON output:
 
