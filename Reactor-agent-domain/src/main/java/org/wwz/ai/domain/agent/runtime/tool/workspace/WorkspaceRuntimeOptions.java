@@ -40,4 +40,10 @@ public class WorkspaceRuntimeOptions {
 
     @Builder.Default
     private int maxWriteChars = 200000;
+
+    /**
+     * 图片作为多模态读取的字节上限；0 表示使用工具内默认值。
+     */
+    @Builder.Default
+    private long maxImageBytes = 0L;
 }

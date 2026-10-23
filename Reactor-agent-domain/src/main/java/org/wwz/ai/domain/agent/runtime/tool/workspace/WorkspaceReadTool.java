@@ -26,6 +26,9 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
             "File unchanged since last read. The content from the earlier workspace_read tool_result "
                     + "in this conversation is still current — refer to that instead of re-reading.";
 
+    /** 图片多模态读取默认上限：base64 后约 6.7MB，留足供应商请求体与 MEDIUMTEXT 的余量。 */
+    public static final long DEFAULT_MAX_IMAGE_BYTES = 5L * 1024 * 1024;
+
     public WorkspaceReadTool(WorkspaceService workspaceService, WorkspaceRuntimeOptions workspaceRuntimeOptions) {
         super(workspaceService, workspaceRuntimeOptions);
     }
@@ -139,6 +142,13 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
     }
 
     private ToolResultPayload readImage(Path filePath) throws IOException {
+        long size = Files.size(filePath);
+        String agentPath = toAgentPath(filePath);
+        // 图片走多模态而不是文本截断，所以体积必须自己把关：整图 base64 会放大 4/3，
+        // 供应商请求体上限和 working_memory_message.base64_image（MEDIUMTEXT）都扛不住超大图。
+        if (size > maxImageBytes()) {
+            return imageTooLarge(agentPath, size);
+        }
         byte[] bytes = Files.readAllBytes(filePath);
         String mimeType = Files.probeContentType(filePath);
         if (mimeType == null || !mimeType.startsWith("image/")) {
@@ -153,7 +163,7 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
         String dataUrl = "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(bytes);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("type", "image");
-        data.put("path", toAgentPath(filePath));
+        data.put("path", agentPath);
         data.put("mimeType", mimeType);
         data.put("size", bytes.length);
         data.put("message", "Image loaded as multimodal content; inspect the attached image media.");
@@ -163,6 +173,27 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
                 .imageMimeType(mimeType)
                 .failed(Boolean.FALSE)
                 .build();
+    }
+
+    private long maxImageBytes() {
+        long configured = workspaceRuntimeOptions.getMaxImageBytes();
+        return configured > 0 ? configured : DEFAULT_MAX_IMAGE_BYTES;
+    }
+
+    /**
+     * 超大图不加载成多模态，只回元数据 + 可执行的下一步。
+     * 直接失败会诱使模型反复重读同一张图，所以这里用 ok=false 的结构化结果说明原因。
+     */
+    private ToolResultPayload imageTooLarge(String agentPath, long size) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("type", "image_too_large");
+        data.put("path", agentPath);
+        data.put("size", size);
+        data.put("maxBytes", maxImageBytes());
+        data.put("message", "图片超过多模态读取上限（" + size + " > " + maxImageBytes()
+                + " 字节），未作为图片加载。请改用更小的截图范围（例如 browser screenshot --ref 只截目标元素），"
+                + "或让上游把图片缩小后再读。不要重复读取同一路径。");
+        return ToolResultPayload.softFailData(getName(), data);
     }
 
     private boolean isImage(Path filePath) {
