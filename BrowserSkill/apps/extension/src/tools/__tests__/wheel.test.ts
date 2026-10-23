@@ -426,9 +426,9 @@ describe("handleWheel", () => {
       const f = await fixture();
       if (early) f.abort.abort();
       else
-        f.tabsApi.query.mockImplementation(async () => {
+        f.tabsApi.get.mockImplementation(async (id: number) => {
           f.abort.abort();
-          return [{ id: 4, windowId: 100, active: true } as chrome.tabs.Tab];
+          return { id, windowId: 100, active: true } as chrome.tabs.Tab;
         });
       expect(await f.run()).toMatchObject({ code: "cancelled" });
       expect(f.calls).toEqual([]);

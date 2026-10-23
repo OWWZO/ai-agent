@@ -238,11 +238,15 @@ describe("download deadlines", () => {
   ])("releases the global gate after %s at %s without resuming late input", async (boundary, heldType) => {
     vi.useFakeTimers();
     const f = fixture();
+    // Each session owns a distinct Agent Window and home tab so the default
+    // target of the second session is not the first session's tab.
+    let nextWindowId = 100;
+    let nextHomeTabId = 7;
     const sessions = new SessionManager({
       agentWindow: {
-        create: async () => ({ windowId: 100, initialTabIds: [7] }),
+        create: async () => ({ windowId: nextWindowId++, initialTabIds: [] }),
         remove: async () => {},
-        ensureActiveTab: async () => 7,
+        ensureActiveTab: async () => nextHomeTabId++,
       },
     });
     const first = await sessions.start("first");
@@ -263,7 +267,13 @@ describe("download deadlines", () => {
       return {};
     }) as CdpRunner["send"];
     const tab = { id: 7, windowId: 100, active: true } as chrome.tabs.Tab;
-    const tabsApi = { get: async () => tab, query: async () => [tab] };
+    // Resolve the requested tab id; the second session's home tab lives in its
+    // own window so the default target is not the first session's page.
+    const tabsApi = {
+      get: async (tabId: number) =>
+        (tabId === 7 ? tab : { id: tabId, windowId: 101, active: true }) as chrome.tabs.Tab,
+      query: async () => [tab],
+    };
     const abort = new AbortController();
     let settled = false;
     const pending = handleDownload(

@@ -84,6 +84,7 @@ function fakeManager() {
             agentWindowId: AGENT_WINDOW_ID,
             refStore: { resolve: () => null, replace: () => {} },
             borrowedTabs: new Map(),
+            boundTabId: TAB_ID,
           }
         : null,
     findByWindowId: (windowId: number) =>
