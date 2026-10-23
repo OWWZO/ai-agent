@@ -14,7 +14,9 @@ import {
 import {
   buildNavigatorItems,
   resolveActiveItemIndex,
+  resolveActiveItemIndexFromVirtualRows,
   resolveBarVisualState,
+  type VirtualRowPosition,
 } from "@/lib/conversationNavigator";
 import { cn } from "@/lib/utils";
 
@@ -34,6 +36,15 @@ type ConversationTurnNavigatorProps = {
   minWidthPx?: number;
   /** 跳转前解锁吸底：`StickToBottom` 会把视口拉回底部（风险 R1）。 */
   onBeforeJump?: () => void;
+  /**
+   * 虚拟列表上报的行位置。
+   *
+   * 传了就按它算活跃项与跳转目标 —— 虚拟化后离屏轮次没有 DOM，
+   * 靠 `querySelectorAll` 量锚点会漏掉大部分轮次。不传则回退到 DOM 测量。
+   */
+  virtualRows?: readonly VirtualRowPosition[];
+  /** 请求跳到第 N 轮（虚拟化模式下由 ChatView 转给虚拟列表）。 */
+  onJumpToIndex?: (index: number) => void;
   className?: string;
 };
 
@@ -54,11 +65,16 @@ function collectAnchorOffsets(area: HTMLElement): number[] {
  * 移植自 ZCode `v4/ConversationTurnNavigator.tsx`，但把「虚拟列表 start/size」
  * 换成 DOM 测量——本项目消息是 `deferredChatList.map` 全量渲染，
  * 不需要引入 `@tanstack/react-virtual`（`plans/030` §3.2）。
+ *
+ * ⚠️ 该结论已作废：会话时间线现在走虚拟列表（离屏行没有 DOM），调用方必须传
+ * `virtualRows` + `onJumpToIndex`；只有拿不到虚拟位置时才回退到 DOM 测量。
  */
 const ConversationTurnNavigator: FC<ConversationTurnNavigatorProps> = ({
   chats,
   minWidthPx = DEFAULT_MIN_WIDTH_PX,
   onBeforeJump,
+  virtualRows,
+  onJumpToIndex,
   className,
 }) => {
   const containerRef = useRef<HTMLElement | null>(null);
@@ -90,34 +106,107 @@ const ConversationTurnNavigator: FC<ConversationTurnNavigatorProps> = ({
     return () => observer.disconnect();
   }, [minWidthPx]);
 
-  // 活跃项：DOM 测量 + 捕获子级滚动（scroll 不冒泡，必须 capture）
+  /**
+   * 活跃项。
+   *
+   * 虚拟化模式（`virtualRows` 有值）：离屏行没有 DOM，只能按「行的 start/size
+   * + 当前滚动偏移」算。DOM 测量模式：仍走锚点测量。
+   */
+  const virtualRowsRef = useRef(virtualRows);
+  virtualRowsRef.current = virtualRows;
+
   useEffect(() => {
     const area = containerRef.current?.parentElement;
     if (!area || items.length === 0) {
       return;
     }
-    const sync = () => {
+
+    const syncVirtual = () => {
+      const rows = virtualRowsRef.current;
+      // 滚动容器是 nav 父级（对话区）内的滚动 div，从这里取视口与偏移。
+      const scrollArea =
+        area.querySelector<HTMLElement>("[data-virtualized-turns]") ?? null;
+      const scroller = scrollArea?.parentElement?.parentElement ?? area;
+      const next = resolveActiveItemIndexFromVirtualRows(
+        rows ?? [],
+        scroller.scrollTop,
+        scroller.clientHeight,
+        // 流式最后一轮常驻在虚拟区之后，索引 = items.length - 1。
+        { liveTailIndex: items.length - 1 }
+      );
+      if (next !== undefined) {
+        setActiveIndex(next);
+      }
+    };
+
+    const syncDom = () => {
       const next = resolveActiveItemIndex(collectAnchorOffsets(area));
       if (next !== undefined) {
         setActiveIndex(next);
       }
     };
+
+    const sync = () => {
+      if (virtualRowsRef.current && virtualRowsRef.current.length > 0) {
+        syncVirtual();
+        return;
+      }
+      // 首帧虚拟位置还没上报时先用 DOM 测量，避免导航短暂失效。
+      syncDom();
+    };
+
+    /**
+     * 合批到每帧一次。
+     *
+     * `sync` 内部要读 `scrollTop` / `clientHeight` / `getBoundingClientRect`
+     * —— 这些都是**同步强制布局**。一个 scroll 事件序列在一帧里可能触发多次
+     * （平滑滚动、惯性滚动尤甚），逐个同步读会让每帧付出多次强制布局的代价。
+     *
+     * 这里只在事件里登记「需要同步」，真正的读取放到下一帧的 rAF 里做一次。
+     * 注意：仍然由 rAF 而非 `setTimeout` 驱动，所以读到的布局是最新的
+     * （rAF 在布局提交之后、绘制之前执行），不存在读到上一帧旧值的问题。
+     */
+    let pendingFrame: number | null = null;
+    const requestSync = () => {
+      if (pendingFrame !== null) {
+        return;
+      }
+      pendingFrame = requestAnimationFrame(() => {
+        pendingFrame = null;
+        sync();
+      });
+    };
+
     sync();
-    area.addEventListener("scroll", sync, {
+    // scroll 不冒泡到父级，必须 capture。
+    area.addEventListener("scroll", requestSync, {
       passive: true,
-      capture: true
+      capture: true,
     });
     const observer =
-      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(sync);
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(requestSync);
     observer?.observe(area);
     return () => {
-      area.removeEventListener("scroll", sync, { capture: true });
+      if (pendingFrame !== null) {
+        cancelAnimationFrame(pendingFrame);
+      }
+      area.removeEventListener("scroll", requestSync, { capture: true });
       observer?.disconnect();
     };
   }, [items.length]);
 
   const handleJump = useCallback(
     (index: number) => {
+      // 先解锁吸底，否则跳转后 StickToBottom 可能立刻把视口拉回底部。
+      onBeforeJump?.();
+      setActiveIndex(index);
+
+      // 虚拟化模式：目标轮次很可能没挂载，必须让虚拟列表滚动到那一行。
+      if (onJumpToIndex) {
+        onJumpToIndex(index);
+        return;
+      }
+
       const area = containerRef.current?.parentElement;
       const anchors = area?.querySelectorAll<HTMLElement>(
         "[data-user-message-anchor]"
@@ -126,8 +215,6 @@ const ConversationTurnNavigator: FC<ConversationTurnNavigatorProps> = ({
       if (!target) {
         return;
       }
-      // 先解锁吸底，否则跳转后 StickToBottom 可能立刻把视口拉回底部。
-      onBeforeJump?.();
       const reduceMotion =
         typeof window !== "undefined" &&
         window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -135,9 +222,8 @@ const ConversationTurnNavigator: FC<ConversationTurnNavigatorProps> = ({
         behavior: reduceMotion ? "auto" : "smooth",
         block: "start",
       });
-      setActiveIndex(index);
     },
-    [onBeforeJump]
+    [onBeforeJump, onJumpToIndex]
   );
 
   const focusIndex = interactionIndex ?? activeIndex;

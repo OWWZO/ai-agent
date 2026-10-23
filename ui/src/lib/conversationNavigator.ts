@@ -165,3 +165,56 @@ export function resolveActiveItemIndex(
   });
   return Number.isFinite(bestDistance) ? bestIndex : undefined;
 }
+
+export interface VirtualRowPosition {
+  index: number;
+  start: number;
+  size: number;
+}
+
+/**
+ * 虚拟化后的活跃项：不依赖 DOM。
+ *
+ * 虚拟列表只挂载视口附近的行，离屏轮次没有 DOM 可量 —— 所以改用
+ * 「行在滚动内容中的 start/size」+ 当前滚动偏移来算，逻辑对齐 ZCode
+ * `resolveConversationTurnNavigatorActiveUnitIndex`：挑出与视口重叠、
+ * 且起点离视口顶部最近的那一行。
+ *
+ * `liveTailIndex` 是常驻挂载的流式最后一轮（不参与虚拟化），它总在内容末尾。
+ */
+export function resolveActiveItemIndexFromVirtualRows(
+  rows: readonly VirtualRowPosition[],
+  scrollOffset: number,
+  viewportHeight: number,
+  options?: { liveTailIndex?: number }
+): number | undefined {
+  if (rows.length === 0) {
+    return options?.liveTailIndex;
+  }
+
+  const viewportStart = Math.max(0, scrollOffset);
+  const viewportEnd = viewportStart + Math.max(1, viewportHeight);
+
+  let activeIndex: number | undefined;
+  let activeDistance = Number.POSITIVE_INFINITY;
+
+  for (const row of rows) {
+    const rowStart = Math.max(0, row.start);
+    const rowEnd = rowStart + Math.max(1, row.size);
+    if (rowEnd < viewportStart || rowStart > viewportEnd) {
+      continue;
+    }
+    const distanceToViewportStart =
+      rowStart <= viewportStart ? 0 : rowStart - viewportStart;
+    if (distanceToViewportStart < activeDistance) {
+      activeIndex = row.index;
+      activeDistance = distanceToViewportStart;
+    }
+  }
+
+  // 视口完全落在 live tail 上（流式最后一轮比视口还高）时，活跃项就是它。
+  if (activeIndex === undefined && options?.liveTailIndex !== undefined) {
+    return options.liveTailIndex;
+  }
+  return activeIndex;
+}
