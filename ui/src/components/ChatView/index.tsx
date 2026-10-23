@@ -28,6 +28,7 @@ import {
 } from "@/components/Dialogue/tools/toolPreviewSource";
 import { MoonSpinner } from "@/components/ui/MoonSpinner";
 import SessionTaskComposerBar from "./SessionTaskComposerBar";
+import { VirtualizedTurnList, type VirtualTurnPosition } from "./VirtualizedTurnList";
 import SubAgentsPanel from "./SubAgentsPanel";
 import type { AgentsPanelVariant } from "./subAgentsModel";
 import { collectSubAgentRoster } from "@/utils/chat/subAgentRoster";
@@ -60,9 +61,10 @@ import { cn } from "@/lib/utils";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { confirm } from "@/components/ui/confirm-dialog";
 import {
-  IMMERSIVE_LEFT_WIDTH,
+  CHAT_PANEL_DEFAULT_SIZE,
   MAX_LEFT_WIDTH,
   MIN_LEFT_WIDTH,
+  panelPercent,
 } from "./useWorkspacePanels";
 import {
   Conversation,
@@ -95,7 +97,6 @@ import {
   resolveAutoFollowTabKind,
   shouldAutoFollowWorkspaceTask,
 } from "./workspaceTabSentinel";
-import GenUiActionBridge from "@/components/genui/GenUiActionBridge";
 import { identityKeys, readTaskIdentity } from "@/utils/chat/taskIdentity";
 import {
   collectChatFileTasks,
@@ -366,7 +367,6 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   const lastAutoOpenedDesktopControlRef = useRef("");
   const [composerDraft, setComposerDraft] = useState<string | null>(null);
   const {
-    leftPanelWidth,
     isLeftCollapsed,
     isRightCollapsed,
     isFocusMode,
@@ -1565,58 +1565,125 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     </div>
   );
 
+  /**
+   * `Dialogue` 的 memo 比较器是**逐 prop 引用比较**，任何内联箭头函数都会让它失效：
+   * 流式时 `ChatView` 每次渲染都重建这些回调，等于每来一个 token 就重渲染全部轮次。
+   * 所以回调必须在这里用 `useMemoizedFn` 固定引用，再传给 `Dialogue`。
+   */
+  const handleOpenToolDiffForChat = useMemoizedFn(
+    (task: CHAT.Task, chat: CHAT.ChatItem, fileIndex?: number) => {
+      openToolDiffPanel(task, chat, fileIndex);
+    }
+  );
+
+  /**
+   * 虚拟列表上报的行位置 + 命令式滚动句柄。
+   *
+   * 导航轨要按行位置算活跃项、跳到指定轮次，而离屏行没有 DOM，只能靠这两个桥接。
+   */
+  const [virtualTurnRows, setVirtualTurnRows] = useState<
+    readonly VirtualTurnPosition[]
+  >([]);
+  const virtualizerScrollRef = useRef<((index: number) => void) | null>(null);
+
+  const handleVirtualizerReady = useMemoizedFn(
+    (api: { scrollToIndex: (index: number) => void }) => {
+      virtualizerScrollRef.current = api.scrollToIndex;
+    }
+  );
+
+  const jumpToTurnIndex = useMemoizedFn((index: number) => {
+    virtualizerScrollRef.current?.(index);
+  });
+
+  type ChatTurn = (typeof chatTurns)[number];
+
+  /** 虚拟列表的行 key：turn 的 requestId 跨渲染稳定，可作测高缓存索引。 */
+  const getTurnKey = (turn: ChatTurn) => turn.key;
+
+  /**
+   * 单轮渲染。
+   *
+   * 必须保持引用稳定，且**不要在调用处内联新回调** —— `Dialogue` 的 memo 是逐
+   * prop 引用比较，任何内联箭头都会让它失效（流式时每个 token 重渲染全部轮次）。
+   */
+  const renderTurn = (turn: ChatTurn, lastRequestId: string | undefined) => (
+    <Dialogue
+      chat={turn.chat}
+      streamingThought={streamingThoughtMap[turn.chat.requestId]}
+      deepThink={conversation.deepThink}
+      sessionArtifactFiles={sessionArtifactFiles}
+      changeTask={changeTask}
+      changeFile={changeFile}
+      changePlan={changePlan}
+      onUndo={
+        !readOnly &&
+        !loading &&
+        turn.chat.requestId === lastRequestId
+          ? handleUndoLastTurn
+          : undefined
+      }
+      thinkingPanelOpen={thinkingDetail != null}
+      onOpenThinking={openThinkingPanel}
+      onSyncThinking={syncThinkingPanel}
+      onOpenToolDiff={handleOpenToolDiffForChat}
+      onOpenAgent={openAgentPanel}
+      onOpenWorkspaceFiles={onOpenTaskFiles}
+      onRequestReplay={onRequestRunReplay ? requestReplay : undefined}
+      replayLoading={turn.requestIds.some((id) => replayLoadingIds.has(id))}
+    />
+  );
+
   const renderChatDialogues = () => {
     const lastRequestId =
       deferredChatList[deferredChatList.length - 1]?.requestId;
+
+    const loadMoreSlot =
+      onLoadMoreHistory && conversation.historyHasMore ? (
+        <div className="flex justify-center py-2">
+          <button
+            type="button"
+            onClick={() => void onLoadMoreHistory()}
+            disabled={historyLoading}
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-ui-sm text-foreground-subtlest transition-colors hover:bg-hover hover:text-foreground disabled:cursor-wait disabled:opacity-60"
+            data-testid="load-more-history"
+          >
+            {historyLoading ? (
+              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <ChevronUp className="h-3.5 w-3.5" />
+            )}
+            <span>{historyLoading ? "加载中..." : "加载更早记录"}</span>
+          </button>
+        </div>
+      ) : null;
+
+    /**
+     * 流式中的最后一轮**不进虚拟列表**（对齐 ZCode `conversationTimelineLiveTail`）。
+     *
+     * 这一轮高度每帧都在涨，放进 virtualizer 会触发持续的 remeasure + 滚动位置
+     * 调整，是流式卡顿的主因。它常驻挂载在虚拟区之后即可。
+     */
+    const lastTurn = chatTurns[chatTurns.length - 1];
+    const liveTurn = streamLoading && lastTurn ? lastTurn : undefined;
+    const virtualTurns = liveTurn ? chatTurns.slice(0, -1) : chatTurns;
+
     return (
       <>
-        {onLoadMoreHistory && conversation.historyHasMore ? (
-          <div className="flex justify-center py-2">
-            <button
-              type="button"
-              onClick={() => void onLoadMoreHistory()}
-              disabled={historyLoading}
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-ui-sm text-foreground-subtlest transition-colors hover:bg-hover hover:text-foreground disabled:cursor-wait disabled:opacity-60"
-              data-testid="load-more-history"
-            >
-              {historyLoading ? (
-                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <ChevronUp className="h-3.5 w-3.5" />
-              )}
-              <span>{historyLoading ? "加载中..." : "加载更早记录"}</span>
-            </button>
-          </div>
-        ) : null}
-        {chatTurns.map(({ key, chat, requestIds }) => (
-          <Dialogue
-            key={key}
-            chat={chat}
-            streamingThought={streamingThoughtMap[chat.requestId]}
-            deepThink={conversation.deepThink}
-            sessionArtifactFiles={sessionArtifactFiles}
-            changeTask={changeTask}
-            changeFile={changeFile}
-            changePlan={changePlan}
-            onUndo={
-              !readOnly &&
-              !loading &&
-              chat.requestId === lastRequestId
-                ? handleUndoLastTurn
-                : undefined
-            }
-            thinkingPanelOpen={thinkingDetail != null}
-            onOpenThinking={openThinkingPanel}
-            onSyncThinking={syncThinkingPanel}
-            onOpenToolDiff={(task, chat, fileIndex) =>
-              openToolDiffPanel(task, chat, fileIndex)
-            }
-            onOpenAgent={openAgentPanel}
-            onOpenWorkspaceFiles={onOpenTaskFiles}
-            onRequestReplay={onRequestRunReplay ? requestReplay : undefined}
-            replayLoading={requestIds.some((id) => replayLoadingIds.has(id))}
-          />
-        ))}
+        <VirtualizedTurnList
+          items={virtualTurns}
+          sessionKey={conversation.id}
+          getItemKey={getTurnKey}
+          headerSlot={loadMoreSlot}
+          onVirtualItemsChange={setVirtualTurnRows}
+          onReady={handleVirtualizerReady}
+          renderItem={(turn) => renderTurn(turn, lastRequestId)}
+          liveTail={
+            liveTurn ? (
+              <div data-live-tail="true">{renderTurn(liveTurn, lastRequestId)}</div>
+            ) : null
+          }
+        />
         {streamLoading ? (
           <div
             className="mt-3 flex items-center gap-2 pl-1 text-[var(--color-text-muted)]"
@@ -1746,6 +1813,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
               <ConversationTurnNavigator
                 chats={turnChatList}
+                virtualRows={virtualTurnRows}
+                onJumpToIndex={jumpToTurnIndex}
                 onBeforeJump={() =>
                   conversationContextRef.current?.stopScroll()
                 }
@@ -1824,9 +1893,14 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             isLeftCollapsed && !isFocusMode && "w-14 min-w-14",
             (!isLeftCollapsed || isFocusMode) && "shrink-0"
           )}
-          minSize={isFocusMode ? 24 : MIN_LEFT_WIDTH}
-          maxSize={isFocusMode ? 28 : MAX_LEFT_WIDTH}
-          defaultSize={isFocusMode ? IMMERSIVE_LEFT_WIDTH : leftPanelWidth}
+          // ⚠️ 两个约束，缺一个都会把布局做坏：
+          // 1. 必须走 `panelPercent`：库把裸数字当像素（v4 起），而这里的常量全是
+          //    百分比语义。漏了 `%` 会把对话区压成 24~56px，工作区吃掉整屏。
+          // 2. `defaultSize` 必须用常量：绑定拖拽中的宽度 state 会让库把布局重置
+          //    回原值，分隔条拖不动。宽度回写统一走 `groupRef.setLayout()`。
+          minSize={panelPercent(isFocusMode ? 24 : MIN_LEFT_WIDTH)}
+          maxSize={panelPercent(isFocusMode ? 28 : MAX_LEFT_WIDTH)}
+          defaultSize={CHAT_PANEL_DEFAULT_SIZE}
         >
           {chatColumn}
         </Panel>
@@ -1989,18 +2063,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   const isDataConversation =
     conversation.productType === "dataAgent" && !conversation.deepThink;
 
-  const sendGenUiMessage = useMemoizedFn((message: string) => {
-    sendMessage({
-      message,
-      deepThink: conversation.deepThink,
-    });
-  });
-
   return (
     <div className="flex h-full w-full justify-center">
-      {!readOnly ? (
-        <GenUiActionBridge sendMessage={sendGenUiMessage} busy={sessionBusy} />
-      ) : null}
       {isDataConversation ? renderDataAgent() : renderMultAgent()}
     </div>
   );

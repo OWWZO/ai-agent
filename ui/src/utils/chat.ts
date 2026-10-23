@@ -50,7 +50,6 @@ import {
   resolveToolCallStreamKey,
   resolveToolCallTargetName,
 } from "./chat/toolCalls";
-import { ensureOriginalTree, mergeUiPatchIntoTasks } from "@/utils/chat/genuiState";
 import {
   AGENT_DISPATCH_TOOL_NAME,
   buildSubAgentAction,
@@ -1894,11 +1893,6 @@ function handleNonStreamingMessage(
     }
     return;
   }
-  // 冻结 GenUI 初始树，后续 patch 展示层可相对 originalTree 全量重放
-  if (nextTask.messageType === "ui_tree") {
-    ensureOriginalTree(nextTask as any);
-  }
-
   if (taskIndex !== -1) {
     const taskGroup = currentChat.multiAgent.tasks[taskIndex];
 
@@ -1921,16 +1915,6 @@ function handleNonStreamingMessage(
       }
     }
 
-    // GenUI patch: merge onto latest ui_tree (any task group; plan steps may differ).
-    // 始终保留 patch 事件进 multiAgent.tasks，findFeaturedGenUi 才能在最终回复区重放。
-    if (nextTask.messageType === "ui_patch") {
-      mergeUiPatchIntoTasks(
-        currentChat.multiAgent.tasks as any,
-        nextTask as any
-      );
-      taskGroup.push(nextTask);
-      return;
-    }
     const placeholderIndex = findToolCallPlaceholderForTask(taskGroup, nextTask);
     const toolCallId = resolveTaskToolCallId(nextTask);
 
@@ -2018,15 +2002,6 @@ function handleNonStreamingMessage(
     }
 
     taskGroup.push(nextTask);
-  } else if (nextTask.messageType === "ui_patch") {
-    const merged = mergeUiPatchIntoTasks(
-      currentChat.multiAgent.tasks as any,
-      nextTask as any
-    );
-    currentChat.multiAgent.tasks.push([nextTask]);
-    if (!merged) {
-      // no prior ui_tree — breadcrumb only
-    }
   } else {
     currentChat.multiAgent.tasks.push([
       nextTask,

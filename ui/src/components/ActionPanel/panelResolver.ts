@@ -27,7 +27,6 @@ export interface PanelResolverMessageTypes {
   isHtml?: boolean;
   searchList?: SearchListItem[];
   usePpt?: boolean;
-  useGenUi?: boolean;
 }
 
 type HtmlPanelView = {
@@ -197,7 +196,6 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
     useJSON,
     searchList,
     usePpt,
-    useGenUi,
   } = msgTypes || {};
 
   if (taskItem.messageType === "deep_search") {
@@ -248,11 +246,6 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
       type: "search",
       searchList: [],
     };
-  }
-
-  // GenUI 仅在对话主回复区展示，工作区不渲染
-  if (useGenUi || taskItem.messageType === "ui_tree") {
-    return { type: "empty" };
   }
 
   // PPTX 走内置渲染引擎在线预览；无可用文件时仍回落到下载引导。
