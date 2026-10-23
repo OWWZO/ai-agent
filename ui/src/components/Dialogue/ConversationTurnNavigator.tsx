@@ -119,9 +119,18 @@ const ConversationTurnNavigator: FC<ConversationTurnNavigatorProps> = ({
       const scrollArea =
         area.querySelector<HTMLElement>("[data-virtualized-turns]") ?? null;
       const scroller = scrollArea?.parentElement?.parentElement ?? area;
+      /**
+       * 虚拟行的 `start` 是相对**虚拟容器**的偏移，而虚拟容器排在 `headerSlot`
+       * （「加载更早记录」）之后。`scrollTop` 是内容坐标系，必须扣掉 header
+       * 高度才能和 `start` 比较，否则长会话里活跃刻度与跳转目标会整体偏一轮。
+       */
+      const headerSlot = scrollArea?.querySelector<HTMLElement>(
+        "[data-virtualized-header-slot]"
+      );
+      const headerHeight = headerSlot?.offsetHeight ?? 0;
       const next = resolveActiveItemIndexFromVirtualRows(
         rows ?? [],
-        scroller.scrollTop,
+        Math.max(0, scroller.scrollTop - headerHeight),
         scroller.clientHeight,
         // 流式最后一轮常驻在虚拟区之后，索引 = items.length - 1。
         { liveTailIndex: items.length - 1 }

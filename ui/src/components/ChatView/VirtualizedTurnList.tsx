@@ -127,12 +127,25 @@ export function VirtualizedTurnList<T>({
     heightCacheRef.current.clear();
   }, [sessionKey]);
 
+  /**
+   * 带会话前缀的稳定行 key。
+   *
+   * 前缀不是装饰：tanstack 内部的 `itemSizeCache` 以 `getItemKey` 的返回值为索引，
+   * 且没有公开的重置 API（只有内部 `itemSizeCacheVersion`）。行 key 由调用方提供，
+   * 缺 `requestId` 的轮次会退化成空串 —— 跨会话直接命中上一条会话的行高，
+   * 同会话内多行还会互相覆盖。加上 `sessionKey` 前缀后，跨会话天然不碰撞。
+   */
+  const getScopedItemKey = useCallback(
+    (item: T) => `${sessionKey}\u0000${getItemKey(item)}`,
+    [sessionKey, getItemKey]
+  );
+
   const getItemKeyStable = useCallback(
     (index: number) => {
       const item = itemsRef.current[index];
-      return item === undefined ? index : getItemKey(item);
+      return item === undefined ? index : getScopedItemKey(item);
     },
-    [getItemKey]
+    [getScopedItemKey]
   );
 
   // 测高缓存兜底：行卸载重挂时用上次真实测量代替固定估计。
@@ -140,11 +153,11 @@ export function VirtualizedTurnList<T>({
     (index: number) => {
       const item = itemsRef.current[index];
       return heightCacheRef.current.estimate(
-        item === undefined ? undefined : getItemKey(item),
+        item === undefined ? undefined : getScopedItemKey(item),
         DEFAULT_ROW_HEIGHT_ESTIMATE_PX
       );
     },
-    [getItemKey]
+    [getScopedItemKey]
   );
 
   // 动态测高：virtualizer 对窗口内元素挂 ResizeObserver，行变高即回调此处；
@@ -158,11 +171,11 @@ export function VirtualizedTurnList<T>({
           ? undefined
           : itemsRef.current[Number(indexAttr)];
       if (item !== undefined) {
-        heightCacheRef.current.set(getItemKey(item), height);
+        heightCacheRef.current.set(getScopedItemKey(item), height);
       }
       return height;
     },
-    [getItemKey]
+    [getScopedItemKey]
   );
 
   const virtualizer = useVirtualizer({

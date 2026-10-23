@@ -1130,8 +1130,7 @@ export function useConversationStream(
     let lastConversationFlushAt = 0;
     let lastTaskFlushAt = 0;
     /** 上次派生重建所依据的输入：用于跳过纯正文增量触发的空重建。 */
-    let lastDerivedMultiAgent: MESSAGE.MultiAgent | undefined;
-    let lastDerivedConclusion: CHAT.Task | undefined;
+    let lastDerivedFacts: string | undefined;
     const CONVERSATION_FLUSH_INTERVAL = 16;
     const TASK_FLUSH_INTERVAL = 96;
 
@@ -1141,23 +1140,22 @@ export function useConversationStream(
       }
       const now = performance.now();
       if (taskDataDirty) {
-        // 跳过无意义的重复重建：`handleTaskData` 只消费 `multiAgent` 与 `conclusion`，
-        // 纯正文增量（agent_stream）不改这两者 —— 此时重建会白跑一遍全量任务遍历。
-        // 正文本身走 conversation 通道更新，不依赖这里。
+        // 跳过无意义的重复重建：`handleTaskData` 只消费 `multiAgent` 与 `conclusion`。
         //
-        // ⚠️ 缓存的是**重建前的输入引用**：`handleTaskData` 会原地改写
-        // `currentChat.conclusion`，拿重建后的值做基准会在下一次比较时失真。
-        const multiAgent = currentChat.multiAgent;
-        const conclusion = currentChat.conclusion;
-        if (multiAgent === lastDerivedMultiAgent && conclusion === lastDerivedConclusion) {
+        // ⚠️ 判据**不能**用 `multiAgent` 的引用比较：`combineData` → `handleTaskMessage`
+        // 是 `tasks.push(...)` 原地改写，引用永远不变。用引用比对会把同一轮里第二个
+        // 及以后的工具卡全部跳过，时间线永久停在第 1 张卡（实测 facts 1→2 而 view 1→1）。
+        // `taskFactsSignature` 由 `combineData` 每次合并后按任务内容重算，
+        // 能反映原地修改；正文增量不改任务事实，签名不变即跳过。
+        const facts = currentChat.taskFactsSignature;
+        if (facts === lastDerivedFacts) {
           taskDataDirty = false;
         } else {
-          lastDerivedMultiAgent = multiAgent;
-          lastDerivedConclusion = conclusion;
+          lastDerivedFacts = facts;
           const derived = handleTaskData(
             currentChat,
             normalizedDeepThink,
-            multiAgent
+            currentChat.multiAgent
           );
           syncDerivedConversationSnapshot(derived.currentChat);
           taskDataDirty = false;
@@ -1454,12 +1452,22 @@ export function useConversationStream(
         return;
       }
       if (eventSeq > 0 && eventSeq > lastEventSeq) {
-        // 断档检测（对齐 ZCode：delta 只在序号连续时 apply，断档不猜）。
-        // 后端 eventSeq 是会话级 AtomicLong 严格自增，跳号就意味着中间帧丢了。
-        // 丢了帧的正文无法从后续增量里补齐，必须走一次账本重同步收口 ——
-        // 否则 UI 会永久停在一段截断的正文上，直到用户手动刷新。
-        // 只在「确实跳号 + 本 run 已收过帧」时触发一次，避免首帧误判。
-        if (lastEventSeq > 0 && eventSeq > lastEventSeq + 1) {
+        /**
+         * 断档检测（对齐 ZCode：delta 只在序号连续时 apply，断档不猜）。
+         * 丢了帧的正文无法从后续增量里补齐，必须走一次账本重同步收口 ——
+         * 否则 UI 会永久停在一段截断的正文上，直到用户手动刷新。
+         *
+         * ⚠️ 只看**本 run** 的帧。后端 `eventSeq` 是会话级严格自增，且对每一个
+         * 出帧都编号、只对 durable 帧回写水位 —— 同一会话的另一个 run、
+         * 以及被 SSE 队列丢掉的非 durable 帧，都会让序号跳号。那不是本 run
+         * 丢帧，据此触发重放会让用户看到「正在同步任务结果…」闪一下并中途重放。
+         * 首帧（`lastEventSeq === 0`）不判定：起始水位来自续接游标，天然可能跳跃。
+         */
+        if (
+          isTargetFrame &&
+          lastEventSeq > 0 &&
+          eventSeq > lastEventSeq + 1
+        ) {
           markStreamGap();
         }
         lastEventSeqRef.current.set(requestId, eventSeq);
