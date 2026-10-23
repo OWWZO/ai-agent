@@ -1,5 +1,5 @@
 This extension is derived from OpenCLI
 (https://github.com/jackwener/OpenCLI), Copyright 2025 jackwener.
 Licensed under the Apache License, Version 2.0.
-Transport was changed to connect Cute cloud WebSocket relay instead of
+Transport was changed to connect Cute's cloud WebSocket relay instead of
 ws://localhost:19825.
