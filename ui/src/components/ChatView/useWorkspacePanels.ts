@@ -15,6 +15,23 @@ export const IMMERSIVE_LEFT_WIDTH = 24;
 export const clampWorkspaceLeftWidth = (width: number) =>
   Math.max(MIN_LEFT_WIDTH, Math.min(MAX_LEFT_WIDTH, width));
 
+/**
+ * 把百分比常量转成 `Panel` 的尺寸 prop。
+ *
+ * `react-resizable-panels` 把裸数字解释为**像素**，只有字符串无单位或带 `%`
+ * 才是百分比；直接传 `24` 会把对话区压成 24px，工作区吃掉整屏。
+ */
+export const panelPercent = (percent: number) => `${percent}%`;
+
+/**
+ * `Panel` 的 `defaultSize` 必须是**常量**，不能绑定拖拽中变化的宽度 state。
+ *
+ * 库会把 `defaultSize` 的变化当成「重新初始化布局」：拖拽中宽度 state 一变，
+ * 新 defaultSize 立刻把布局重置回原值，于是分隔条只能挪动一两像素就被拽回 ——
+ * 表现为「线拖不动」。宽度回写一律走 `groupRef.setLayout()`。
+ */
+export const CHAT_PANEL_DEFAULT_SIZE = panelPercent(DEFAULT_LEFT_WIDTH);
+
 /** `Group` 的 layout：panel id → 百分比。 */
 type WorkspaceLayout = Record<string, number> | undefined;
 

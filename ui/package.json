@@ -39,6 +39,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@radix-ui/react-use-controllable-state": "^1.2.2",
+    "@tanstack/react-virtual": "^3.14.22",
     "ahooks": "^3.9.0",
     "ai": "^6.0.134",
     "axios": "^1.10.0",
