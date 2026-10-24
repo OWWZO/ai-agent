@@ -26,7 +26,7 @@ public class WorkspaceReadImageLimitTest {
 
     @Before
     public void setUp() throws Exception {
-        workspaceRoot = Files.createTempDirectory("reactor-ws-image-limit");
+        workspaceRoot = Files.createTempDirectory("cute-ws-image-limit");
         readTool = newReadTool(0L);
     }
 
