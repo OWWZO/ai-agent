@@ -65,6 +65,11 @@ autobots:
       allowed-origins:
         - http://localhost:3000
         - http://127.0.0.1:3000
+  agent:
+    # 子智能体独立会话流（BREAKING）。开启后子 Agent 事件写子会话自己的投影流，
+    # 父流只留 subagent_start / subagent_end；必须与前端 VITE_SUBAGENT_CHILD_SESSION=1 成对。
+    # 生产由 application-prod.yml 显式覆盖为 false。
+    subagent-isolated-session: true
   autoagent:
     # 单次 LLM 工具调用业务超时，单位秒；10 分钟响应建议至少配置为 1200
     llm-timeout-seconds: 1200
