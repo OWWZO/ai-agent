@@ -65,6 +65,17 @@ describe('classifyFailure', () => {
     expect(classifyFailure(new BskUsageError('--session is required')).class).toBe('retry_after_fix');
   });
 
+  it('uses the usage error message as the hint, not the fatal fallback', () => {
+    // 落盘失败这类 usage error 的消息里已经写了「改 --out 再重试」；
+    // 用通用 fatal hint 会告诉模型「重试没意义」，把它引向错误方向。
+    const info = classifyFailure(
+      new BskUsageError('screenshot captured (9 bytes) but could not be written to "x.png": EACCES; retry with a writable relative --out path'),
+    );
+    expect(info.class).toBe('retry_after_fix');
+    expect(info.hint).toContain('--out');
+    expect(info.hint).not.toBe('Retrying the same command is unlikely to help.');
+  });
+
   it('treats a non-bsk error as fatal', () => {
     expect(classifyFailure(new Error('boom')).class).toBe('fatal');
     expect(classifyFailure('boom').class).toBe('fatal');

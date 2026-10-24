@@ -524,6 +524,7 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
                 .toolProvider(invocation.getToolProvider())
                 .inputJson(invocation.getInputJson())
                 .llmObservation(invocation.getLlmObservation())
+                .toolResult(invocation.getToolResult())
                 .status(invocation.getStatus())
                 .errorMsg(invocation.getErrorMsg())
                 .durationMs(invocation.getDurationMs())

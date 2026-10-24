@@ -281,6 +281,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
                     .id(record.getToolInvocationId())
                     .status(record.getStatus())
                     .llmObservation(record.getLlmObservation())
+                    .toolResult(record.getToolResult())
                     .errorMsg(trimText(record.getErrorMsg(), 2000))
                     .finishedAt(record.getFinishedAt())
                     .build());

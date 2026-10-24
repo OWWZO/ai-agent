@@ -249,7 +249,6 @@ function isToolishTask(task: CHAT.Task): boolean {
     type === "ppt" ||
     type === "knowledge" ||
     type === "data_analysis" ||
-    type === "ui_tree" ||
     type === "session_tasks"
   ) {
     return true;

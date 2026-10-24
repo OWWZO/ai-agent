@@ -35,6 +35,18 @@ public class CodeModeProperties {
     /** 单次执行累计写回 workspace 的字节预算。 */
     private long maxTotalMemoryBytes = 134_217_728L;
 
+    /**
+     * 堆水位熔断阈值（占最大堆比例）。堆使用超过该比例时终止本次执行。
+     * 小于等于 0 表示关闭熔断。
+     */
+    private double maxHeapUsedRatio = 0.6D;
+
+    /** 堆水位采样间隔（毫秒）。 */
+    private long heapCheckIntervalMs = 100L;
+
+    /** 熔断后拒绝新执行的冷却时长（毫秒）。 */
+    private long heapTripCooldownMs = 30_000L;
+
     private Workspace workspace = new Workspace();
 
     @Data

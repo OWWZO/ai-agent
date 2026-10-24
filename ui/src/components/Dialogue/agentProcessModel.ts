@@ -267,8 +267,6 @@ export const STEP_KIND_AFTER_SUBAGENT: Record<string, ProcessStepKind> = {
   markdown: "artifact",
   ppt: "artifact",
   data_analysis: "artifact",
-  ui_tree: "artifact",
-  ui_patch: "artifact",
 };
 
 /**

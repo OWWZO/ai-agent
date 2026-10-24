@@ -271,9 +271,9 @@ describe("focus and blur cancellation", () => {
     it(`${action} stops if cancellation arrives while resolving the tab`, async () => {
       const h = await setup();
       const abort = new AbortController();
-      h.tabsApi.query.mockImplementation(async () => {
+      h.tabsApi.get.mockImplementation(async (id: number) => {
         abort.abort();
-        return [{ id: 4, windowId: 100, active: true } as chrome.tabs.Tab];
+        return { id, windowId: 100, active: true } as chrome.tabs.Tab;
       });
       expect(await h.run(action, abort.signal)).toMatchObject({ code: "cancelled" });
       expect(h.calls).toEqual([]);

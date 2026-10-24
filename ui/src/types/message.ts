@@ -219,10 +219,6 @@ declare global {
       code?: string;
       tip?: string;
       task?: string;
-      /** GenUI tree envelope from emit_ui_tree */
-      tree?: Record<string, unknown>
-      /** GenUI patches from emit_ui_patch */
-      patches?: Array<{ op?: string; path?: string; value?: unknown }>
       canvas_id?: string
       seq?: number
       status?: string

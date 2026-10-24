@@ -140,15 +140,19 @@ final class ToolLedgerRecorder {
         LocalDateTime finishedAt = timing == null || timing.getFinishedAt() == null
                 ? LocalDateTime.now()
                 : timing.getFinishedAt();
-        String observation = outcome == null ? null : StringUtils.defaultIfBlank(
-                outcome.getLedgerObservation(), outcome.getLlmObservation());
+        // 两列语义独立：llm_oberserve 存模型实际看到的文本（与 working_memory 一致），
+        // tool_result 存完整结果 JSON 供历史回放/前端使用。
+        String observation = outcome == null ? null : outcome.getLlmObservation();
+        // ACK / 结算的判定必须读 tool_result 的完整 JSON：llm_oberserve 是投影后的紧凑文本，
+        // 解析不出 run_in_background / task_id。这也是两列拆分后必须显式区分的地方。
+        String receiptJson = outcome == null ? null : outcome.getToolResult();
         // 后台 ACK 不是工具完成：子 Agent 还在后台跑。此时必须保持 status=RUNNING、
         // finished_at=null，否则 settle（persistLedgerSettlement）的终态更新会被
         // updateToolInvocationFinish 的守卫（status=0 AND finished_at IS NULL）挡掉，
         // 结算 observation 静默丢失，历史回放把陈旧 ACK 当"运行中"展示。
         boolean backgroundAck =
                 (AgentDispatchTool.NAME.equals(toolName) || TaskToolNames.SEND_MESSAGE.equals(toolName))
-                        && BackgroundSubAgentExecutor.isBackgroundAckObservation(observation);
+                        && BackgroundSubAgentExecutor.isBackgroundAckObservation(receiptJson);
         int ledgerStatus = backgroundAck
                 ? ExecutionLedgerConstants.STATUS_RUNNING
                 : ToolExecutionPipeline.ledgerStatus(outcome);
@@ -162,6 +166,7 @@ final class ToolLedgerRecorder {
                 .toolName(toolName)
                 .status(ledgerStatus)
                 .llmObservation(observation)
+                .toolResult(outcome == null ? null : outcome.getToolResult())
                 .structuredOutput(outcome == null ? null : outcome.getStructuredOutput())
                 .errorMsg(outcome == null ? null : outcome.getErrorMsg())
                 .finishedAt(ledgerFinishedAt)
@@ -173,7 +178,7 @@ final class ToolLedgerRecorder {
                     context,
                     command.getId(),
                     command.getFunction().getName(),
-                    outcome == null ? null : outcome.getLlmObservation());
+                    receiptJson);
         }
     }
 

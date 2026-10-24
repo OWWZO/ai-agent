@@ -10,6 +10,13 @@ declare global {
         forceStop: boolean;
         tip?: string;
         multiAgent: MESSAGE.MultiAgent;
+        /**
+         * `multiAgent.tasks` 的内容签名，由 `combineData` 每次合并后刷新。
+         *
+         * 任务事实是**原地**改写的（`tasks.push`），引用比对发现不了变化；
+         * 派生层（`handleTaskData`）靠这个签名判断是否需要重建 `tasks`。
+         */
+        taskFactsSignature?: string;
         agentType?: MESSAGE.ResultMap["agentType"];
         conclusion?: Task;
         responseType?: string;

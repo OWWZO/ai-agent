@@ -316,6 +316,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_invocation (
     tool_provider     VARCHAR(64)    NULL COMMENT '工具提供方 local / mcp',
     input_json        JSON           NOT NULL COMMENT '工具入参 JSON',
     llm_oberserve     MEDIUMTEXT     NULL COMMENT '回传给主智能体的最终 observation',
+    tool_result       MEDIUMTEXT     NULL COMMENT '工具完整结果 JSON（历史回放/前端用）；llm_oberserve 存模型实际看到的文本',
     status            TINYINT        NOT NULL DEFAULT 0 COMMENT '0=RUNNING,1=SUCCESS,2=FAILED,3=TIMEOUT',
     error_msg         TEXT           NULL COMMENT '错误信息',
     started_at        DATETIME(3)    NOT NULL COMMENT '开始时间',
@@ -549,48 +550,6 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_output_canvas_publish (
     KEY idx_run_created (run_id, created_at DESC),
     KEY idx_status_created (status, created_at DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='canvas_publish 输出表';
-
-CREATE TABLE IF NOT EXISTS ai_agent_tool_output_emit_ui_tree (
-    id                   BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    tool_invocation_id   BIGINT         NULL COMMENT '所属 tool invocation ID',
-    run_id               BIGINT         NULL COMMENT '所属 run ID',
-    request_id           VARCHAR(64)    NOT NULL COMMENT '请求ID',
-    session_id           VARCHAR(64)    NULL COMMENT '会话ID',
-    tool_call_id         VARCHAR(128)   NOT NULL COMMENT 'toolCallId',
-    status               TINYINT        NOT NULL COMMENT '终态状态',
-    error_msg            TEXT           NULL COMMENT '错误信息',
-    canvas_id            VARCHAR(128)   NULL COMMENT '画布ID',
-    salvaged             TINYINT        NULL COMMENT '是否截断恢复',
-    tree_json            MEDIUMTEXT     NULL COMMENT 'GenUI tree JSON',
-    created_at           DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    updated_at           DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_tool_invocation (tool_invocation_id),
-    UNIQUE KEY uk_request_tool_call (request_id, tool_call_id),
-    KEY idx_run_created (run_id, created_at DESC),
-    KEY idx_status_created (status, created_at DESC)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='emit_ui_tree 输出表';
-
-CREATE TABLE IF NOT EXISTS ai_agent_tool_output_emit_ui_patch (
-    id                   BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    tool_invocation_id   BIGINT         NULL COMMENT '所属 tool invocation ID',
-    run_id               BIGINT         NULL COMMENT '所属 run ID',
-    request_id           VARCHAR(64)    NOT NULL COMMENT '请求ID',
-    session_id           VARCHAR(64)    NULL COMMENT '会话ID',
-    tool_call_id         VARCHAR(128)   NOT NULL COMMENT 'toolCallId',
-    status               TINYINT        NOT NULL COMMENT '终态状态',
-    error_msg            TEXT           NULL COMMENT '错误信息',
-    canvas_id            VARCHAR(128)   NULL COMMENT '画布ID',
-    seq                  INT            NULL COMMENT '补丁序号',
-    patches_json         MEDIUMTEXT     NULL COMMENT 'JSON Patch 数组',
-    created_at           DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    updated_at           DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_tool_invocation (tool_invocation_id),
-    UNIQUE KEY uk_request_tool_call (request_id, tool_call_id),
-    KEY idx_run_created (run_id, created_at DESC),
-    KEY idx_status_created (status, created_at DESC)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='emit_ui_patch 输出表';
 
 CREATE TABLE IF NOT EXISTS ai_agent_artifact (
     id                 BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',

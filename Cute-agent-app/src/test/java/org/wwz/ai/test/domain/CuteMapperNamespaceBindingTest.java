@@ -37,6 +37,10 @@ public class CuteMapperNamespaceBindingTest {
         Assert.assertTrue(configuration.hasStatement("org.wwz.ai.infrastructure.dao.cute.IToolInvocationLedgerDao.queryByRunId"));
         Assert.assertTrue(configuration.hasStatement("org.wwz.ai.infrastructure.dao.cute.IArtifactLedgerDao.queryByRunId"));
         Assert.assertTrue(configuration.hasStatement("org.wwz.ai.infrastructure.dao.cute.IToolOutputImageGenerationDao.queryPageByRequestSource"));
+        // session_search 的 read / scroll 模式依赖这条语句；声明了但 XML 没实现时运行期才报
+        // "Invalid bound statement (not found)"，所以在这里锁住。
+        Assert.assertTrue(configuration.hasStatement(
+                "org.wwz.ai.infrastructure.dao.cute.IWorkingMemoryMessageDao.selectHistoryBySession"));
     }
 
     private DataSource testDataSource() {

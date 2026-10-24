@@ -10,6 +10,7 @@ import { useCodePreviewWrap } from "@/hooks/useCodePreviewWrap";
 import { cn } from "@/lib/utils";
 import type { BundledLanguage, ThemedToken } from "shiki";
 import { tokenizeCode, tokenStyle } from "@/lib/shikiTokens";
+import { shouldTokenizeCode } from "./codeHighlightPolicy";
 import { copyToClipboard } from "@/utils";
 
 type DiffRow = {
@@ -124,17 +125,27 @@ export const DiffCodeFence = memo(function DiffCodeFence({
 export const KimiCodeFence = memo(function KimiCodeFence({
   code,
   language,
+  streaming = false,
 }: {
   code: string;
   language: BundledLanguage | string;
+  /**
+   * 流式进行中：**跳过 shiki 高亮**，直接渲染纯文本。
+   *
+   * 对齐 ZCode（`message.tsx` 的 `enableSyntaxHighlighting={!renderStreaming}`）：
+   * 流式时 `code` 每帧都在变，tokenize 是异步的，会和消息流更新叠加 ——
+   * 既浪费 CPU（每个 token 重跑一遍 TextMate 语法），又容易在高频更新下产生抖动。
+   * 消息落定后 `streaming` 转 false，再一次性高亮。
+   */
+  streaming?: boolean;
 }) {
   const [lines, setLines] = useState<ThemedToken[][] | null>(null);
   const lang = (language || "text") as BundledLanguage;
 
   useEffect(() => {
     let alive = true;
-    // 源码若已是 Shiki HTML，说明上游串台；只当纯文本展示，绝不二次注入
-    if (/^\s*<pre\b[^>]*\bshiki\b/i.test(code)) {
+    // 流式期间不做高亮：等落定后 effect 会因 streaming 变化重新执行。
+    if (!shouldTokenizeCode(code, streaming)) {
       setLines(null);
       return () => {
         alive = false;
@@ -151,7 +162,7 @@ export const KimiCodeFence = memo(function KimiCodeFence({
     return () => {
       alive = false;
     };
-  }, [code, lang]);
+  }, [code, lang, streaming]);
 
   return (
     <FenceChrome lang={String(language || "text")} code={code}>

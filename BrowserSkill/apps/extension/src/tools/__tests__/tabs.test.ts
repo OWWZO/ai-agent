@@ -340,6 +340,22 @@ describe("handleTabClose", () => {
     expect(spies.remove).toHaveBeenCalledWith(5);
   });
 
+  it("unbinds the session when it closes its own current tab", async () => {
+    const sm = new SessionManager({ agentWindow: fakeAgentWindow([100]) });
+    const ctx = await sm.start("aa11");
+    ctx.boundTabId = 5;
+    const state: FakeTabState = {
+      tabs: new Map([[5, { id: 5, windowId: 100 } as chrome.tabs.Tab]]),
+      nextTabId: 50,
+      windowsClosed: new Set(),
+    };
+    const { api } = makeTabMutationApi(state);
+    const res = await handleTabClose(sm, { session_id: "aa11", tab_id: 5 }, { tabs: api });
+    if ("code" in res) throw new Error(`unexpected error: ${JSON.stringify(res)}`);
+    // Never retarget to whatever Chrome activates next.
+    expect(ctx.boundTabId).toBeNull();
+  });
+
   it("rejects closing a borrowed tab — caller must tab_return first", async () => {
     const sm = new SessionManager({ agentWindow: fakeAgentWindow([100]) });
     const ctx = await sm.start("aa11");
@@ -390,7 +406,7 @@ describe("handleTabClose", () => {
 describe("handleTabSelect", () => {
   it("activates a tab inside the Agent Window", async () => {
     const sm = new SessionManager({ agentWindow: fakeAgentWindow([100]) });
-    await sm.start("aa11");
+    const ctx = await sm.start("aa11");
     const state: FakeTabState = {
       tabs: new Map([[3, { id: 3, windowId: 100 } as chrome.tabs.Tab]]),
       nextTabId: 50,
@@ -401,6 +417,8 @@ describe("handleTabSelect", () => {
     if ("code" in res) throw new Error(`unexpected error: ${JSON.stringify(res)}`);
     expect(res).toEqual({ tab_id: 3, window_id: 100 });
     expect(spies.update).toHaveBeenCalledWith(3, { active: true });
+    // Selecting is the explicit way to move the session's current tab.
+    expect(ctx.boundTabId).toBe(3);
   });
 
   it("rejects activating a tab in a different session's Agent Window", async () => {
@@ -653,6 +671,26 @@ describe("handleTabBorrow", () => {
     });
     expect(spies.move).toHaveBeenCalledWith(7, { windowId: 100, index: -1 });
     expect(spies.update).toHaveBeenCalledWith(7, { active: true });
+    // A borrow also makes the borrowed page the session's current tab.
+    expect(ctx.boundTabId).toBe(7);
+  });
+
+  it("keeps the current tab unchanged when a borrow fails", async () => {
+    const sm = new SessionManager({ agentWindow: fakeAgentWindow([100]) });
+    const ctx = await sm.start("aa11");
+    const state: FakeTabState = {
+      tabs: new Map([[7, { id: 7, windowId: 200, index: 4 } as chrome.tabs.Tab]]),
+      nextTabId: 50,
+      windowsClosed: new Set(),
+    };
+    const { api } = makeTabMutationApi(state);
+    const res = await handleTabBorrow(
+      sm,
+      { session_id: "aa11", tab_id: 7 },
+      { tabs: api, approveBorrow: async () => false },
+    );
+    expect(res).toMatchObject({ code: "cancelled" });
+    expect(ctx.boundTabId).toBe(1);
   });
 
   it("refuses to borrow a tab already inside the Agent Window", async () => {
@@ -831,6 +869,7 @@ describe("handleTabReturn", () => {
     expect(hover).toMatchObject({ code });
     expect(cdp.isAttached(7)).toBe(true);
 
+    ctx.boundTabId = 7;
     const returned = await handleTabReturn(
       sm,
       { session_id: "aa11", tab_id: 7 },
@@ -843,6 +882,8 @@ describe("handleTabReturn", () => {
     );
     expect(returned).toMatchObject({ returned_to_window_id: 200 });
     expect(ctx.borrowedTabs.has(7)).toBe(false);
+    // Returning the borrowed page drops the session back to its own home tab.
+    expect(ctx.boundTabId).toBe(ctx.homeTabId);
     expect(cdp.isAttached(7)).toBe(false);
     expect(debuggerApi.detach).toHaveBeenCalledExactlyOnceWith({ tabId: 7 });
     cdp.dispose();

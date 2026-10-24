@@ -36,8 +36,6 @@ public final class PlanModeToolPolicy {
             "workspace_grep",
             "skill_view",
             "skills_search",
-            "get_genui_guide",
-            "list_ui_components",
             McpToolNames.TOOL_SEARCH,
             McpToolNames.TOOL_DESCRIBE,
             McpToolNames.TOOL_CALL
@@ -60,8 +58,6 @@ public final class PlanModeToolPolicy {
             "checklist_generate",
             "template_filler",
             "canvas_publish",
-            "emit_ui_tree",
-            "emit_ui_patch",
             "image_generation",
             "data_analysis",
             "multimodalagent_tool"

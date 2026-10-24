@@ -35,7 +35,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Agent 运行时上下文：请求身份、工具会话、记忆、账本与取消控制。
- * 字段仍扁平暴露（builder/getter 兼容）；逻辑分组见底部 view 方法。
+ * 字段按「构造时确定 → run 内演化」分七区顺序排列；分区只描述归属，不改变扁平访问方式。
  */
 @Data
 @Builder
@@ -44,7 +44,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @AllArgsConstructor
 public class AgentContext {
 
-    // ---- identity / request ----
+    // ---- 1. 请求身份（构造时确定，run 内不变）----
     /**
      * 请求唯一标识（全链路追踪ID）
      * 用途：
@@ -84,6 +84,7 @@ public class AgentContext {
      */
     String task;
 
+    // ---- 2. 本轮模型与能力开关（构造时确定）----
     /**
      * 本轮模型引用（modelId 或上游 modelName）；空则 AgentBootstrap 从 MySQL 选择默认模型。
      */
@@ -94,6 +95,11 @@ public class AgentContext {
 
     /** 思考档位 low|medium|high */
     String thinkingEffort;
+
+    /**
+     * 智能体类型标识（AgentType 数值：PLAN_SOLVE / REACT 等）
+     */
+    Integer agentType;
 
     /**
      * 本会话禁用的 skill 名（差集）；空=全开。
@@ -107,7 +113,13 @@ public class AgentContext {
     @Builder.Default
     java.util.Set<String> disabledMcpIds = java.util.Set.of();
 
-    // ---- I/O & tools ----
+    /**
+     * 非空时：tools[] 仍可上报全量 schema（prompt cache），但 execute 仅允许白名单内工具。
+     * LTM review/flush fork 「schema 全量 + runtime whitelist」。
+     */
+    java.util.Set<String> toolDispatchWhitelist;
+
+    // ---- 3. 输出、运行时依赖与工具（构造时注入，run 内演化）----
     /**
      * 输出器（结果推送工具）
      * 用途：
@@ -152,6 +164,19 @@ public class AgentContext {
     }
 
     /**
+     * 会话工作区根目录（cwd 模式，供 workspace_* 工具使用）。
+     */
+    String workspaceRoot;
+
+    /**
+     * 当前 Agent 的 workspace_read 状态（path + range + mtime）。
+     */
+    @Builder.Default
+    @ToString.Exclude
+    @JSONField(serialize = false)
+    Map<String, WorkspaceFileReadState> workspaceReadStateByPath = new ConcurrentHashMap<>();
+
+    /**
      * Cute 运行时依赖包。
      * 所有 Agent / Tool / LLM 必须通过这里读取运行时协作者，禁止自行回 Spring 容器查找。
      */
@@ -159,6 +184,7 @@ public class AgentContext {
     @JSONField(serialize = false)
     CuteRuntimeDependencies runtimeDependencies;
 
+    // ---- 4. 提示词与文件上下文（构造时确定）----
     /**
      * 日期时间信息（格式化字符串）
      * 用途：
@@ -178,35 +204,11 @@ public class AgentContext {
     List<File> productFiles;
 
     /**
-     * 会话工作区根目录（cwd 模式，供 workspace_* 工具使用）。
-     */
-    String workspaceRoot;
-
-    /**
-     * 当前 Agent 的 workspace_read 状态（path + range + mtime）。
-     */
-    @Builder.Default
-    @ToString.Exclude
-    @JSONField(serialize = false)
-    Map<String, WorkspaceFileReadState> workspaceReadStateByPath = new ConcurrentHashMap<>();
-
-    /**
-     * 是否流式响应
+     * 基础提示词模板（核心指令模板）
      * 用途：
-     * 1. 响应模式控制：true=流式输出（逐字返回结果，提升用户体验），false=一次性返回结果；
-     * 2. LLM调用适配：控制LLM的调用模式（流式/非流式）；
-     * 核心场景：聊天类Agent优先设为true，批量任务类Agent设为false
+     * 模板复用：作为智能体的核心指令模板，可替换占位符生成最终的系统提示词；
      */
-    Boolean isStream;
-
-    /**
-     * 流式消息类型
-     * 用途：
-     * 1. 前端适配：标识流式返回的消息分类，前端可按类型展示不同样式（如plan_thought=思考过程、task=任务步骤）；
-     * 2. 消息过滤：按类型筛选/处理不同的流式消息；
-     * 枚举值示例："plan_thought"、"task"、"plan"、"result"
-     */
-    String streamMessageType;
+    String basePrompt;
 
     /**
      * SOP提示词（标准作业流程提示词）
@@ -218,14 +220,15 @@ public class AgentContext {
     String sopPrompt;
 
     /**
-     * 基础提示词模板（核心指令模板）
+     * 提示词模板类型
      * 用途：
-     * 模板复用：作为智能体的核心指令模板，可替换占位符生成最终的系统提示词；
+     * 1. 模板加载：根据类型加载不同场景的提示词模板（如default=通用模板、ecommerce=电商模板）；
+     * 2. 场景适配：不同模板类型对应不同的提示词占位符、输出格式；
+     * 枚举值示例："default"、"ecommerce"、"customer_service"、"market_analysis"
      */
-    String basePrompt;
+    String templateType;
 
-
-    // ---- memory ----
+    // ---- 5. 跨轮记忆（run 前 hydrate）----
     /**
      * 跨轮工作记忆消息链（ledger hydrate 结果），run 前 preload 进 Memory。
      */
@@ -255,18 +258,12 @@ public class AgentContext {
     Boolean ltmSideEffectsDisabled = Boolean.FALSE;
 
     /**
-     * 非空时：tools[] 仍可上报全量 schema（prompt cache），但 execute 仅允许白名单内工具。
-     * LTM review/flush fork 「schema 全量 + runtime whitelist」。
+     * working_memory 投影作用域：main 或 sub:{agentId}。
      */
-    java.util.Set<String> toolDispatchWhitelist;
+    @Builder.Default
+    String memoryScope = WorkingMemoryScopes.MAIN;
 
-    /**
-     * 智能体类型标识（AgentType 数值：PLAN_SOLVE / REACT 等）
-     */
-    Integer agentType;
-
-
-    // ---- artifacts / ledger ----
+    // ---- 6. 工具产物、执行账本与子 Agent 嵌套（run 内演化）----
     /**
      * 当前请求运行期的工具产物登记簿。
      * 这是工具文件来源的唯一事实来源。
@@ -284,27 +281,6 @@ public class AgentContext {
     @ToString.Exclude
     @JSONField(serialize = false)
     ThreadLocal<ToolArtifactSource> currentToolArtifactSourceHolder = new ThreadLocal<>();
-
-    /**
-     * 子 Agent 嵌套展示元数据：父 Agent 工具的 toolCallId。
-     * 仅 SubAgentContextFactory 写入；账本登记与 SSE 共用。
-     */
-    String parentToolUseId;
-
-    /** 子 Agent 运行时 id（展示/账本） */
-    String subAgentId;
-
-    /** 子 Agent 类型 */
-    String subAgentType;
-
-    /** 子 Agent 任务短描述 */
-    String subAgentDescription;
-
-    /**
-     * 子 Agent 对应的真实子会话 ID（{@code sub_{agentId}}）。
-     * 仅 SubAgentContextFactory 写入；用于把子帧路由到独立子会话流（Phase 3）。
-     */
-    String subAgentChildSessionId;
 
     /**
      * 当前请求的执行账本写入器。
@@ -332,8 +308,46 @@ public class AgentContext {
     @JSONField(serialize = false)
     ContextTokenTracker contextTokenTracker = new ContextTokenTracker();
 
+    /**
+     * 子 Agent 嵌套展示元数据：父 Agent 工具的 toolCallId。
+     * 仅 SubAgentContextFactory 写入；账本登记与 SSE 共用。
+     */
+    String parentToolUseId;
 
-    // ---- run control ----
+    /** 子 Agent 运行时 id（展示/账本） */
+    String subAgentId;
+
+    /** 子 Agent 类型 */
+    String subAgentType;
+
+    /** 子 Agent 任务短描述 */
+    String subAgentDescription;
+
+    /**
+     * 子 Agent 对应的真实子会话 ID（{@code sub_{agentId}}）。
+     * 仅 SubAgentContextFactory 写入；用于把子帧路由到独立子会话流（Phase 3）。
+     */
+    String subAgentChildSessionId;
+
+    // ---- 7. 运行控制（控制面，run 内演化）----
+    /**
+     * 是否流式响应
+     * 用途：
+     * 1. 响应模式控制：true=流式输出（逐字返回结果，提升用户体验），false=一次性返回结果；
+     * 2. LLM调用适配：控制LLM的调用模式（流式/非流式）；
+     * 核心场景：聊天类Agent优先设为true，批量任务类Agent设为false
+     */
+    Boolean isStream;
+
+    /**
+     * 流式消息类型
+     * 用途：
+     * 1. 前端适配：标识流式返回的消息分类，前端可按类型展示不同样式（如plan_thought=思考过程、task=任务步骤）；
+     * 2. 消息过滤：按类型筛选/处理不同的流式消息；
+     * 枚举值示例："plan_thought"、"task"、"plan"、"result"
+     */
+    String streamMessageType;
+
     /**
      * 会话 Todo 任务列表（TaskCreate/TaskGet）。
      * 主/子 Agent 共享同一引用；懒创建。
@@ -382,21 +396,6 @@ public class AgentContext {
     @JSONField(serialize = false)
     @Builder.Default
     ConcurrentLinkedQueue<PendingInjectMessage> pendingInjects = new ConcurrentLinkedQueue<>();
-
-    /**
-     * working_memory 投影作用域：main 或 sub:{agentId}。
-     */
-    @Builder.Default
-    String memoryScope = WorkingMemoryScopes.MAIN;
-
-    /**
-     * 提示词模板类型
-     * 用途：
-     * 1. 模板加载：根据类型加载不同场景的提示词模板（如default=通用模板、ecommerce=电商模板）；
-     * 2. 场景适配：不同模板类型对应不同的提示词占位符、输出格式；
-     * 枚举值示例："default"、"ecommerce"、"customer_service"、"market_analysis"
-     */
-    String templateType;
 
     /**
      * 获取或创建会话 Todo 列表（listId 优先 sessionId）。
@@ -698,54 +697,6 @@ public class AgentContext {
 
     private List<File> copyFiles(List<File> sourceFiles) {
         return sourceFiles == null ? new ArrayList<>() : new ArrayList<>(sourceFiles);
-    }
-
-
-    // ---- logical views (API-compatible field layout unchanged) ----
-
-    public record RequestIdentity(String requestId, String sessionId, String query, String task) {
-    }
-
-    public record MemorySession(
-            List<Message> workingMemoryMessages,
-            LtmOwner ltmOwner,
-            String ltmMemoryContext,
-            Boolean skipMemory,
-            Boolean ltmSideEffectsDisabled
-    ) {
-    }
-
-    public record ToolSession(
-            ToolCollection toolCollection,
-            ToolArtifactRegistry toolArtifactRegistry,
-            String workspaceRoot
-    ) {
-    }
-
-    public record RunControl(
-            Boolean isStream,
-            String streamMessageType,
-            RunCancellation runCancellation,
-            PlanModeState planModeState,
-            Integer agentType
-    ) {
-    }
-
-    public RequestIdentity requestIdentity() {
-        return new RequestIdentity(requestId, sessionId, query, task);
-    }
-
-    public MemorySession memorySession() {
-        return new MemorySession(
-                workingMemoryMessages, ltmOwner, ltmMemoryContext, skipMemory, ltmSideEffectsDisabled);
-    }
-
-    public ToolSession toolSession() {
-        return new ToolSession(toolCollection, toolArtifactRegistry, workspaceRoot);
-    }
-
-    public RunControl runControl() {
-        return new RunControl(isStream, streamMessageType, runCancellation, planModeState, agentType);
     }
 
     @Override

@@ -237,6 +237,20 @@
         LIMIT #{limit}
     </select>
 
+    <!-- session_search read 模式的全量历史。角色过滤与压缩摘要剔除由
+         WorkingMemorySessionSearchService.applyViewFilter 在 Java 侧完成，
+         这里只负责取该会话未删除的 main 作用域消息，按 turn 顺序排好。 -->
+    <select id="selectHistoryBySession" resultMap="WorkingMemorySearchMessageMap">
+        SELECT <include refid="searchColumns"/>
+        FROM ai_agent_working_memory_message m
+        INNER JOIN ai_agent_working_memory_turn t ON m.turn_id = t.id
+        WHERE m.session_id = #{sessionId}
+          AND m.memory_scope = 'main'
+          AND m.deleted = 0
+          AND t.deleted = 0
+        ORDER BY t.turn_seq ASC, m.seq_no ASC, m.id ASC
+    </select>
+
     <select id="selectRecentSessions" resultType="map">
         SELECT session_id AS sessionId,
                user_id AS userId,

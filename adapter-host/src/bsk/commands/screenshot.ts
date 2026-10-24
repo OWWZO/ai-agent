@@ -2,6 +2,10 @@
  * `bsk screenshot` (+ full-page capture/read/release).
  * Mirrors `crates/bsk-cli/src/cli/screenshot.rs`, minus filesystem writes —
  * the library returns bytes and the CLI wrapper owns paths.
+ *
+ * <p>这里同样不写盘：{@link screenshot} / {@link screenshotFullPage} 返回原始结果，
+ * 写文件与路径推导由 CLI 包装层（{@code src/bsk-cli.ts}）负责，与 Rust 版的
+ * {@code --out} 分工一致。</p>
  */
 
 import { METHODS } from '../methods.js';
@@ -31,6 +35,8 @@ export async function screenshot(client: BskCaller, args: ScreenshotArgs): Promi
     session_id: args.sessionId,
     ...(args.tabId === undefined ? {} : { tab_id: args.tabId }),
     ...(args.ref === undefined ? {} : { ref: args.ref }),
+    ...(args.width === undefined ? {} : { width: args.width }),
+    ...(args.height === undefined ? {} : { height: args.height }),
   };
   return client.call<ScreenshotResult>(METHODS.toolScreenshot, params, {
     timeoutMs: TOOL_TIMEOUT_MS,

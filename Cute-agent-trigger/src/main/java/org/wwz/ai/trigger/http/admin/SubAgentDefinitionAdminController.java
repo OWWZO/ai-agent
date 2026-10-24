@@ -116,12 +116,8 @@ public class SubAgentDefinitionAdminController {
                 "data_transform",
                 "data_validate",
                 "sql_query",
-                // canvas / genui
-                "canvas_publish",
-                "get_genui_guide",
-                "list_ui_components",
-                "emit_ui_tree",
-                "emit_ui_patch"
+                // canvas
+                "canvas_publish"
         ));
     }
 

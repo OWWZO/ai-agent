@@ -165,6 +165,25 @@ flowchart LR
 - Operation audit, when enabled, is stored on the daemon host, including the
   server in remote mode. See [operation audit](operation-audit.md).
 
+### Target tab and frame scope
+
+- Every tool names a tab explicitly with `tab_id`, or omits it and acts on the
+  session's **current tab**. That binding is set by `tab select` (and by
+  `tab borrow`); `tab create` does not move it. Chrome's active tab is never
+  consulted, so a user switching tabs inside the Agent Window cannot retarget
+  the agent. Closing the current tab leaves the session unbound, and the next
+  default-target command reports `not_found` instead of guessing another tab.
+- `evaluate --frame-id <id>` evaluates inside one frame reported by `frames`.
+  The sandbox stays tab-scoped: the frame must belong to the resolved tab, and an
+  out-of-process frame is reached through its own CDP session. A frame that is no
+  longer in the graph is an error, never a silent fallback to the main frame.
+- `screenshot --width/--height` captures at a CSS-pixel viewport size. It pins
+  `Emulation.setDeviceMetricsOverride` for one capture and then restores whatever
+  profile `tool.emulate` had live (or clears it), so a sized screenshot never
+  disturbs the tab's persistent emulation state. A size cannot be combined with
+  `--ref`, and requires CDP because `captureVisibleTab` can only photograph the
+  real window.
+
 ### File-transfer boundary
 
 Upload and download are supported only for local connections. Remote sessions

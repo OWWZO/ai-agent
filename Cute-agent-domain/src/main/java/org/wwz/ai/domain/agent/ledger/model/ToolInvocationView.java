@@ -54,6 +54,9 @@ public class ToolInvocationView {
 
     private String llmObservation;
 
+    /** 工具完整结果 JSON（历史回放用；历史行为 null，读取侧回落到 llmObservation） */
+    private String toolResult;
+
     /**
      * rich tool 强类型输出。
      */

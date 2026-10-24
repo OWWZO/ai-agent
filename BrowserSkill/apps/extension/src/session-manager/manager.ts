@@ -16,6 +16,15 @@ export interface SessionContext {
   agentCreatedTabs: Set<number>;
   /** Observed same-window popups: controllable, but preserved by session stop. */
   observedTabs?: Set<number>;
+  /**
+   * The session's current tab. Commands without `tab_id` operate on it, and
+   * only `tab_select` / `tab_borrow` move it (ported from OpenCLI's
+   * `TargetLease.preferredTabId`). Chrome's active tab never changes it, so a
+   * user switching tabs in the Agent Window cannot retarget the agent.
+   */
+  boundTabId: number | null;
+  /** Home tab created by `session.start`; `tab_return` falls back to it. */
+  homeTabId: number | null;
   createdAtMs: number;
 }
 
@@ -160,6 +169,10 @@ export class SessionManager {
       ctx.agentCreatedTabs.delete(tabId);
       ctx.observedTabs?.delete(tabId);
       if (!isWindowClosing) ctx.borrowedTabs.delete(tabId);
+      // A closed binding is never silently replaced by another tab: the next
+      // default-target command reports `not_found` so the agent re-selects.
+      if (ctx.boundTabId === tabId) ctx.boundTabId = null;
+      if (ctx.homeTabId === tabId) ctx.homeTabId = null;
     }
   }
 
@@ -253,19 +266,25 @@ export class SessionManager {
 
     let windowId: number | null = null;
     const agentCreatedTabs = new Set<number>();
+    // Bind the session to its home tab up front: without an explicit
+    // `tab_select`, every command must have a stable target even before the
+    // agent names one.
+    let homeTabId: number | null = null;
     try {
       const { signal: _signal, ...createOptions } = opts;
       const created = await this.agentWindow.create(AGENT_WINDOW_HOME, createOptions);
       windowId = created.windowId;
       for (const tabId of created.initialTabIds) agentCreatedTabs.add(tabId);
       throwIfSessionStartAborted(opts.signal);
-      const homeTabId = await this.agentWindow.ensureActiveTab(
+      const home = await this.agentWindow.ensureActiveTab(
         windowId,
         AGENT_WINDOW_HOME,
         agentCreatedTabs,
       );
-      agentCreatedTabs.add(homeTabId);
+      agentCreatedTabs.add(home);
       throwIfSessionStartAborted(opts.signal);
+      // Test doubles may return a non-tab id; never bind to it.
+      homeTabId = Number.isSafeInteger(home) && home > 0 ? home : null;
 
       const ctx: SessionContext = {
         ...(this.remote() ? { remote: true } : {}),
@@ -277,6 +296,8 @@ export class SessionManager {
         // Later tabs remain free until `tab_create` or `tab_borrow` identifies
         // them by their concrete Chrome tab id.
         agentCreatedTabs,
+        boundTabId: homeTabId,
+        homeTabId,
         createdAtMs: this.now(),
       };
       this.sessions.set(sessionId, ctx);
@@ -296,6 +317,8 @@ export class SessionManager {
             refStore: new RefStore(),
             borrowedTabs: new Map(),
             agentCreatedTabs,
+            boundTabId: homeTabId,
+            homeTabId,
             createdAtMs: this.now(),
           };
           this.sessions.set(sessionId, pending);

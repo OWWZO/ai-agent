@@ -135,7 +135,6 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
       isHtml = isHTML(toolResultText);
     }
     const useHtml = messageType === 'html' || (!!primaryFile && isHtmlFile);
-    const useGenUi = messageType === 'ui_tree';
     const usePpt = messageType === 'ppt' || (!!primaryFile && isPptFileLike(primaryFile));
     // 只要主文件是图片就走图片预览（图表/工具产物常见为 tool_result + .png）。
     // 注意 SVG 不算位图：它要「图形 / 源码」双模式，走 useSvg。
@@ -160,7 +159,6 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
       useBrowser: messageType === 'browser' || messageType === 'browser_viewport',
       useCode,
       useHtml,
-      useGenUi,
       useImage,
       useSvg,
       useMedia,

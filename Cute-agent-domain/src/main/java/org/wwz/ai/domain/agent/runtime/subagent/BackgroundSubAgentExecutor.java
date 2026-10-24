@@ -274,6 +274,7 @@ public final class BackgroundSubAgentExecutor {
                 .toolName(toolName)
                 .status(ledgerStatus)
                 .llmObservation(ToolObservationSerializer.serializeSuccess(data))
+                .toolResult(ToolObservationSerializer.serializeSuccess(data))
                 .errorMsg(task.getErrorMsg())
                 .finishedAt(resolveFinishedAt(task))
                 .build());

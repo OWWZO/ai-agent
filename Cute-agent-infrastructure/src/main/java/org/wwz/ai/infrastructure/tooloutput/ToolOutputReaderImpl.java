@@ -17,8 +17,6 @@ import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchDoc;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchQueryResult;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchStage;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchToolOutput;
-import org.wwz.ai.domain.agent.ledger.model.tooloutput.GenUiPatchToolOutput;
-import org.wwz.ai.domain.agent.ledger.model.tooloutput.GenUiTreeToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ImageGenerationToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.MultimodalAgentToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRef;
@@ -31,8 +29,6 @@ import org.wwz.ai.infrastructure.dao.cute.IToolOutputCanvasPublishDao;
 import org.wwz.ai.infrastructure.dao.cute.IToolOutputCodeInterpreterDao;
 import org.wwz.ai.infrastructure.dao.cute.IToolOutputDataAnalysisDao;
 import org.wwz.ai.infrastructure.dao.cute.IToolOutputDeepSearchDao;
-import org.wwz.ai.infrastructure.dao.cute.IToolOutputEmitUiPatchDao;
-import org.wwz.ai.infrastructure.dao.cute.IToolOutputEmitUiTreeDao;
 import org.wwz.ai.infrastructure.dao.cute.IToolOutputImageGenerationDao;
 import org.wwz.ai.infrastructure.dao.cute.IToolOutputMultimodalAgentDao;
 
@@ -69,8 +65,6 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
     private final IToolOutputMultimodalAgentDao multimodalAgentDao;
     private final IToolOutputImageGenerationDao imageGenerationDao;
     private final IToolOutputCanvasPublishDao canvasPublishDao;
-    private final IToolOutputEmitUiTreeDao emitUiTreeDao;
-    private final IToolOutputEmitUiPatchDao emitUiPatchDao;
     private final IArtifactLedgerDao artifactLedgerDao;
 
     @Override
@@ -87,8 +81,6 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
             case ToolOutputNames.MULTIMODAL_AGENT -> Optional.ofNullable(toMultimodalOutput(multimodalAgentDao.queryByToolInvocationId(toolInvocationId)));
             case ToolOutputNames.IMAGE_GENERATION -> Optional.ofNullable(toImageGenerationOutput(imageGenerationDao.queryByToolInvocationId(toolInvocationId)));
             case ToolOutputNames.CANVAS_PUBLISH -> Optional.ofNullable(toCanvasPublishOutput(canvasPublishDao.queryByToolInvocationId(toolInvocationId)));
-            case ToolOutputNames.EMIT_UI_TREE -> Optional.ofNullable(toEmitUiTreeOutput(emitUiTreeDao.queryByToolInvocationId(toolInvocationId)));
-            case ToolOutputNames.EMIT_UI_PATCH -> Optional.ofNullable(toEmitUiPatchOutput(emitUiPatchDao.queryByToolInvocationId(toolInvocationId)));
             default -> Optional.empty();
         };
     }
@@ -165,8 +157,6 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
         addIfPresent(matches, ToolOutputNames.MULTIMODAL_AGENT, multimodalAgentDao.queryByRequestToolCall(requestId, toolCallId));
         addIfPresent(matches, ToolOutputNames.IMAGE_GENERATION, imageGenerationDao.queryByRequestToolCall(requestId, toolCallId));
         addIfPresent(matches, ToolOutputNames.CANVAS_PUBLISH, canvasPublishDao.queryByRequestToolCall(requestId, toolCallId));
-        addIfPresent(matches, ToolOutputNames.EMIT_UI_TREE, emitUiTreeDao.queryByRequestToolCall(requestId, toolCallId));
-        addIfPresent(matches, ToolOutputNames.EMIT_UI_PATCH, emitUiPatchDao.queryByRequestToolCall(requestId, toolCallId));
         if (matches.size() > 1) {
             log.warn("tool output direct lookup conflict, requestId={}, toolCallId={}, matchedTools={}",
                     requestId, toolCallId, matches.stream().map(ToolOutputView::getToolName).toList());
@@ -184,8 +174,6 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
             case ToolOutputNames.MULTIMODAL_AGENT -> toMultimodalOutput(row);
             case ToolOutputNames.IMAGE_GENERATION -> toImageGenerationOutput(row);
             case ToolOutputNames.CANVAS_PUBLISH -> toCanvasPublishOutput(row);
-            case ToolOutputNames.EMIT_UI_TREE -> toEmitUiTreeOutput(row);
-            case ToolOutputNames.EMIT_UI_PATCH -> toEmitUiPatchOutput(row);
             default -> null;
         };
         ToolOutputView view = toView(toolName, row, output);
@@ -202,8 +190,6 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
             case ToolOutputNames.MULTIMODAL_AGENT -> multimodalAgentDao.queryByToolInvocationIds(invocationIds);
             case ToolOutputNames.IMAGE_GENERATION -> imageGenerationDao.queryByToolInvocationIds(invocationIds);
             case ToolOutputNames.CANVAS_PUBLISH -> canvasPublishDao.queryByToolInvocationIds(invocationIds);
-            case ToolOutputNames.EMIT_UI_TREE -> emitUiTreeDao.queryByToolInvocationIds(invocationIds);
-            case ToolOutputNames.EMIT_UI_PATCH -> emitUiPatchDao.queryByToolInvocationIds(invocationIds);
             default -> List.of();
         };
     }
@@ -218,8 +204,6 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
             case ToolOutputNames.MULTIMODAL_AGENT -> toMultimodalOutput(row, artifactsByInvocationId);
             case ToolOutputNames.IMAGE_GENERATION -> toImageGenerationOutput(row, artifactsByInvocationId);
             case ToolOutputNames.CANVAS_PUBLISH -> toCanvasPublishOutput(row, artifactsByInvocationId);
-            case ToolOutputNames.EMIT_UI_TREE -> toEmitUiTreeOutput(row);
-            case ToolOutputNames.EMIT_UI_PATCH -> toEmitUiPatchOutput(row);
             default -> null;
         };
     }
@@ -305,30 +289,6 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
                 .openInPanel(booleanValue(row, "open_in_panel", "openInPanel"))
                 .salvaged(booleanValue(row, "salvaged"))
                 .fileRefs(resolveFileRefs(row, artifactsByInvocationId))
-                .build();
-    }
-
-    private ToolStructuredOutput toEmitUiTreeOutput(Map<String, Object> row) {
-        if (row == null) {
-            return null;
-        }
-        Map<String, Object> tree = readJsonMap(stringValue(row, "tree_json", "treeJson"));
-        return GenUiTreeToolOutput.builder()
-                .tree(tree)
-                .canvasId(stringValue(row, "canvas_id", "canvasId"))
-                .salvaged(booleanValue(row, "salvaged"))
-                .build();
-    }
-
-    private ToolStructuredOutput toEmitUiPatchOutput(Map<String, Object> row) {
-        if (row == null) {
-            return null;
-        }
-        List<Map<String, Object>> patches = readJsonListOfMap(stringValue(row, "patches_json", "patchesJson"));
-        return GenUiPatchToolOutput.builder()
-                .patches(patches)
-                .canvasId(stringValue(row, "canvas_id", "canvasId"))
-                .seq(integerValue(row, "seq"))
                 .build();
     }
 

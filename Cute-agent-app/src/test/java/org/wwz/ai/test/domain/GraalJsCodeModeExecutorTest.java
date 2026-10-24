@@ -9,6 +9,7 @@ import org.wwz.ai.domain.agent.runtime.tool.codemode.CodeModeRequest;
 import org.wwz.ai.domain.agent.runtime.tool.codemode.CodeModeResult;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspacePathGuard;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
+import org.wwz.ai.infrastructure.codemode.CodeModeHeapGuard;
 import org.wwz.ai.infrastructure.codemode.GraalJsCodeModeExecutor;
 import org.wwz.ai.types.agent.config.CodeModeProperties;
 
@@ -34,6 +35,7 @@ public class GraalJsCodeModeExecutorTest {
 
     @Before
     public void setUp() throws IOException {
+        CodeModeHeapGuard.shared().reset();
         workspace = Files.createTempDirectory("codemode-exec-");
         agentContext = AgentContext.builder()
                 .requestId("req-exec")
@@ -379,6 +381,50 @@ public class GraalJsCodeModeExecutorTest {
         Assert.assertTrue(String.valueOf(result.getErrorMessage()), result.isSuccess());
         Assert.assertEquals(2, result.getLogs().size());
         Assert.assertTrue(result.getLogs().get(0).contains("step-1"));
+    }
+
+    @Test
+    public void tripsOnHeapWatermarkAndRejectsFollowUpExecutions() {
+        CodeModeProperties properties = new CodeModeProperties();
+        // 阈值压到接近 0，任何分配都会触发熔断；冷却期拉长到测试时长之外
+        properties.setMaxHeapUsedRatio(0.01D);
+        properties.setHeapCheckIntervalMs(10L);
+        properties.setHeapTripCooldownMs(60_000L);
+        properties.setMaxTimeoutMs(20_000L);
+        GraalJsCodeModeExecutor guarded = executor(properties);
+
+        CodeModeResult tripped = guarded.execute(CodeModeRequest.builder()
+                .source("async function main(){ const x = []; for (let i = 0; i < 5e6; i++) x.push(i); return x.length; }")
+                .timeoutMs(15_000L)
+                .build(), agentContext);
+        assertFailure(tripped, "CODE_MODE_MEMORY_LIMIT");
+
+        CodeModeResult rejected = guarded.execute(CodeModeRequest.builder()
+                .source("async function main(){ return 1; }")
+                .timeoutMs(5_000L)
+                .build(), agentContext);
+        assertFailure(rejected, "CODE_MODE_MEMORY_LIMIT");
+        Assert.assertTrue(String.valueOf(rejected.getErrorMessage()),
+                rejected.getErrorMessage().contains("冷却"));
+    }
+
+    @Test
+    public void reportsHeapExhaustionAsMemoryLimit() {
+        CodeModeProperties properties = new CodeModeProperties();
+        // 关闭水位熔断，让脚本直接把堆打穿，验证 OOM 也被归类为内存上限
+        properties.setMaxHeapUsedRatio(0D);
+        properties.setMaxTimeoutMs(120_000L);
+        GraalJsCodeModeExecutor unguarded = executor(properties);
+
+        // 按当前最大堆动态估算需要分配的量，避免测试 JVM 堆大时打不穿
+        long heapMb = Runtime.getRuntime().maxMemory() / (1024 * 1024);
+        long outer = Math.max(600L, heapMb * 2);
+        CodeModeResult result = unguarded.execute(CodeModeRequest.builder()
+                .source("async function main(){ const x = []; for (let i = 0; i < " + outer
+                        + "; i++) x.push(new Array(1e6).fill(i)); return x.length; }")
+                .timeoutMs(90_000L)
+                .build(), agentContext);
+        assertFailure(result, "CODE_MODE_MEMORY_LIMIT");
     }
 
     private void writeRaw(String relative, String content) {

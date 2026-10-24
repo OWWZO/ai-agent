@@ -38,7 +38,13 @@ export function ZoomableImage({
       >
         {/* 宽度由外层 button 的 style 决定（Retina 素材要按物理像素折算），
             这里只兜底不溢出 —— 写 `w-full` 会把 style.width 盖掉。 */}
-        <img src={src} alt={alt} className="block h-auto max-w-full" />
+        <img
+          src={src}
+          alt={alt}
+          loading="lazy"
+          decoding="async"
+          className="block h-auto max-w-full"
+        />
         {maskText ? (
           <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 text-sm text-white opacity-0 transition-opacity group-hover:opacity-100">
             {maskText}

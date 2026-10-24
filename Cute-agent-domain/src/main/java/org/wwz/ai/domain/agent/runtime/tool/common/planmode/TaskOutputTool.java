@@ -123,7 +123,6 @@ public class TaskOutputTool implements BaseTool {
             }
             if (StringUtils.isNotBlank(task.getOutput())) {
                 fields.put("output", task.getOutput());
-                fields.put("result", task.getOutput());
             }
             if (StringUtils.isNotBlank(task.getErrorMsg())) {
                 fields.put("error", task.getErrorMsg());

@@ -1,4 +1,4 @@
-import { FC, useState, useCallback, useMemo, memo, useEffect, useRef, useSyncExternalStore } from "react";
+import { FC, useState, useCallback, useMemo, memo, useEffect, useRef } from "react";
 import AttachmentList from "@/components/AttachmentList";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { OpenUiMarkdown } from "@/components/openui/OpenUiMarkdown";
@@ -10,17 +10,7 @@ import {
 import { PlanSection } from "./PlanSection";
 import { AgentStepTimeline } from "./AgentStepTimeline";
 import { MessageToolbar } from "./MessageToolbar";
-import GenUiInline from "@/components/genui/GenUiInline";
-import { findFeaturedGenUi } from "@/utils/chat/genuiState";
 import { buildConversationTaskData } from "@/utils/chat";
-import { applyUiPatches } from "@/components/genui/applyUiPatch";
-import {
-  genUiLocalScopeKey,
-  getGenUiLocalSnapshot,
-  getLocalUiPatches,
-  getLocalUiVersion,
-  subscribeGenUiLocalTree,
-} from "@/components/genui/genUiLocalTreeStore";
 import {
   Collapsible,
   CollapsibleContent,
@@ -156,36 +146,6 @@ const DialogueComponent: FC<Props> = (props) => {
       ? `${planVersionIndex + 1}/${plannerRounds.length}`
       : undefined;
   const planIsHistoricalSnapshot = planVersionIndex < latestRoundIndex;
-  // multiAgent.tasks 原地 push/merge 时数组引用不变；必须以 chat 快照为依赖，
-  // 每次 Dialogue 因 chat 引用更新而渲染时重算 featured（含 emit_ui_patch 重放）。
-  const localGenUiTick = useSyncExternalStore(
-    subscribeGenUiLocalTree,
-    getGenUiLocalSnapshot,
-    getGenUiLocalSnapshot
-  );
-  const localScopeKey = genUiLocalScopeKey(chat.sessionId, chat.requestId);
-  const localVersion = getLocalUiVersion(localScopeKey);
-
-  const featuredGenUi = useMemo(() => {
-    const base = findFeaturedGenUi(chat.tasks, chat.multiAgent?.tasks);
-    if (!base) return null;
-    const localPatches = getLocalUiPatches(localScopeKey);
-    if (!localPatches.length) {
-      return {
-        ...base,
-        revision: `${base.revision}|loc0`,
-      };
-    }
-    const tree = applyUiPatches(base.tree, localPatches);
-    return {
-      ...base,
-      tree,
-      patchCount: base.patchCount + localPatches.length,
-      revision: `${base.revision}|loc${localVersion}:${localPatches.length}`,
-    };
-    // chat：流式 flush 会换新 chat 对象；localGenUiTick：客户端 patch_ui
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat, localGenUiTick, localScopeKey, localVersion]);
   const showStandaloneResponse =
     isReactType && !!chat.response && !chat.conclusion;
   const showProcessTimeline =
@@ -366,21 +326,6 @@ const DialogueComponent: FC<Props> = (props) => {
             </div>
           </CollapsibleContent>
         </Collapsible>
-      ) : null}
-
-      {/* GenUI：面向用户的可视化最终产物（过程之后、结论附近） */}
-      {featuredGenUi ? (
-        <div className="timeline-segment-enter mt-4 w-full max-w-[min(1080px,100%)]">
-          <GenUiInline
-            key={`genui-${chat.requestId}-${featuredGenUi.revision}`}
-            tree={featuredGenUi.tree}
-            patchCount={featuredGenUi.patchCount}
-            sessionId={chat.sessionId}
-            requestId={chat.requestId}
-            messageId={chat.requestId}
-            className="w-full max-w-none"
-          />
-        </div>
       ) : null}
 
       {/* 结论：过程之后的人话结果 */}

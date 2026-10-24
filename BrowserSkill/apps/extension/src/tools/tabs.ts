@@ -600,6 +600,10 @@ export async function handleTabClose(
     // tab that's already gone (design §3.1).
     ctx.agentCreatedTabs.delete(params.tab_id);
     ctx.observedTabs?.delete(params.tab_id);
+    // Closing the current tab leaves the session unbound rather than
+    // retargeting to whatever Chrome activates next.
+    if (ctx.boundTabId === params.tab_id) ctx.boundTabId = null;
+    if (ctx.homeTabId === params.tab_id) ctx.homeTabId = null;
   } catch (err) {
     return {
       code: "protocol_error",
@@ -648,6 +652,8 @@ export async function handleTabSelect(
   // windowId stable across `update({active:true})`; reuse what
   // authoriseAgentTab already loaded so we don't issue a second `get`.
   const windowId = typeof tabOrErr.windowId === "number" ? tabOrErr.windowId : ctx.agentWindowId;
+  // `tab_select` is the explicit way to move the session's current tab.
+  ctx.boundTabId = params.tab_id;
   return { tab_id: params.tab_id, window_id: windowId };
 }
 
@@ -984,6 +990,9 @@ export async function handleTabBorrow(
         message: describeError(error),
       };
     }
+    // Borrowing also makes the borrowed page the session's current tab, so the
+    // default-target contract above survives the user switching tabs.
+    ctx.boundTabId = params.tab_id;
     return {
       tab_id: params.tab_id,
       original_window_id: coreResult.originalWindowId,
@@ -1293,6 +1302,9 @@ export async function handleTabReturn(
   });
   if (isRpcError(outcome)) return outcome;
   ctx.borrowedTabs.delete(params.tab_id);
+  // The borrowed page is gone from this session's scope; fall back to the
+  // session's own home tab instead of following Chrome's active tab.
+  if (ctx.boundTabId === params.tab_id) ctx.boundTabId = ctx.homeTabId;
   const result: TabReturnResult = {
     tab_id: outcome.tabId,
     returned_to_window_id: outcome.toWindowId,

@@ -68,6 +68,7 @@ import {
   type ToolEffect,
 } from "./shared";
 import { lookupRefTarget, resolveSnapshotRef } from "./snapshot-ref";
+import { validateCaptureSize, withTemporaryViewport } from "./sized-capture";
 import { captureControlledViewport } from "./viewport-screenshot";
 import { type CapturedNode, type CapturedSurfaceProbe, probeHoverSurfaces } from "./vom/capture";
 import { captureObservationFacts, semanticCapture } from "./vom/capture-coordinator";
@@ -292,6 +293,16 @@ export async function handleScreenshot(
     deps.cdp ? attachDialogs(deps.cdp, target.tabId, dialogCursor, result) : result;
 
   const ref = typeof params.ref === "string" && params.ref.length > 0 ? params.ref : null;
+  const size = validateCaptureSize(params.width, params.height);
+  if (typeof size === "object" && size !== null && "code" in size) return size;
+  // A requested size is a CDP viewport override; `captureVisibleTab` can only
+  // photograph the real window, so a sized capture always takes the CDP path.
+  if (size && !deps.cdp) {
+    return { code: "cdp_failed", message: "screenshot width/height requires CDP" };
+  }
+  if (size && ref) {
+    return { code: "invalid_params", message: "width/height cannot be combined with ref" };
+  }
   if (ref) {
     if (!deps.cdp) {
       return { code: "cdp_failed", message: "screenshot ref capture requires CDP" };
@@ -370,28 +381,35 @@ export async function handleScreenshot(
       );
     }
     cdp.trackSessionTab?.(ctx.sessionId, target.tabId);
-    const captured = await captureControlledViewport(
+    const captured = await withTemporaryViewport(
       cdp,
+      ctx,
       target.tabId,
-      async () => {
-        if (manager.get(ctx.sessionId) !== ctx || !isAgentControlledTab(ctx, target.tabId))
-          return false;
-        const tab = await deps.tabsApi.get(target.tabId);
-        return (
-          manager.get(ctx.sessionId) === ctx &&
-          isAgentControlledTab(ctx, target.tabId) &&
-          tab.id === target.tabId &&
-          tab.windowId === ctx.agentWindowId
-        );
-      },
-      signal,
-      deps.sendToTab,
+      size,
+      () =>
+        captureControlledViewport(
+          cdp,
+          target.tabId,
+          async () => {
+            if (manager.get(ctx.sessionId) !== ctx || !isAgentControlledTab(ctx, target.tabId))
+              return false;
+            const tab = await deps.tabsApi.get(target.tabId);
+            return (
+              manager.get(ctx.sessionId) === ctx &&
+              isAgentControlledTab(ctx, target.tabId) &&
+              tab.id === target.tabId &&
+              tab.windowId === ctx.agentWindowId
+            );
+          },
+          signal,
+          deps.sendToTab,
+        ),
     );
     if (isRpcError(captured)) return captured;
     return withShotDialogs({ ...captured, format: "png", tab_id: target.tabId });
   }
 
-  if (!target.active) {
+  if (!target.active && !size) {
     return rpcError(
       "invalid_params",
       "tab_not_active",
@@ -399,10 +417,12 @@ export async function handleScreenshot(
     );
   }
 
-  const captured = await withExtensionOverlayHidden(
-    target.tabId,
-    () => captureFullTabPng(deps, ctx, target, signal),
-    deps.sendToTab,
+  const captured = await withTemporaryViewport(deps.cdp!, ctx, target.tabId, size, () =>
+    withExtensionOverlayHidden(
+      target.tabId,
+      () => captureFullTabPng(deps, ctx, target, signal),
+      deps.sendToTab,
+    ),
   );
   if (isRpcError(captured)) return captured;
   if (signal?.aborted) return cancelled("screenshot");

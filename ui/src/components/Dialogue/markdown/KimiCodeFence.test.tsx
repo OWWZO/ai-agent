@@ -8,6 +8,7 @@ import {
   parseDiffLines,
   unwrapShikiPre,
 } from "./KimiCodeFence";
+import { shouldTokenizeCode } from "./codeHighlightPolicy";
 
 describe("parseDiffLines", () => {
   it("classifies add/del/hunk/ctx", () => {
@@ -61,5 +62,21 @@ describe("markdown fence structure", () => {
     expect(html).toContain("python");
     expect(html.indexOf("<pre")).toBe(html.lastIndexOf("<pre"));
     expect(html).not.toContain('class="shiki');
+  });
+});
+
+describe("shouldTokenizeCode", () => {
+  // 回归：流式期间必须跳过 shiki。`code` 每帧都在变，tokenize 是异步的，
+  // 会和消息流更新叠加 —— ZCode 明确在流式时关掉高亮。
+  it("skips tokenizing while streaming", () => {
+    expect(shouldTokenizeCode("const a = 1;", true)).toBe(false);
+  });
+
+  it("tokenizes once the message settles", () => {
+    expect(shouldTokenizeCode("const a = 1;", false)).toBe(true);
+  });
+
+  it("never tokenizes upstream shiki HTML", () => {
+    expect(shouldTokenizeCode('<pre class="shiki">x</pre>', false)).toBe(false);
   });
 });

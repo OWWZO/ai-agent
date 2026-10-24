@@ -46,13 +46,21 @@ public class BrowserTool implements BaseTool {
     private static final String BSK_ARGS_DESCRIPTION =
             "bsk CLI 的参数数组（不要加 bsk 前缀）。可用命令：navigate <url>、navigate-back、navigate-forward、reload、"
             + "click [target]、hover [target]、focus [target]、blur [target]、fill [target] --value <text>、press <key>、"
-            + "select [target]、scroll-to [target]、observe、snapshot、get-html、evaluate <expression>、screenshot、"
+            + "select [target]、scroll-to [target]、observe、snapshot、get-html、frames、evaluate <expression>、screenshot、"
             + "wait-for-navigation、wait-ms <duration>、tab list|create|close|select、session start|list|stop。"
             + "target 用 observe/snapshot 输出的元素引用（如 @e3），也可以用 --selector <css> 定位。"
             + "每一条浏览器命令都必须带 --session <名字>：这个名字就是你要操作的那个浏览器上下文的身份，"
             + "同一批操作要始终传同一个名字，@eN 引用才连得上。名字由你自己取，建议用有意义的词"
             + "（如 --session xiaohongshu）；名字不存在时会自动创建一个新会话，不用先调 session start。"
             + "用不同的名字就能开多个互不干扰的会话；用之前的名字就能切回那个会话继续操作。"
+            + "每个会话有一个\"当前标签\"：tab select <id> 会把它固定到该标签，之后不带 --tab-id 的命令都作用于它，"
+            + "用户自己切换标签不会改变这个目标；tab create 只新建标签、不改变当前标签，要操作新标签请再 tab select <id> 或带 --tab-id。"
+            + "当前标签被关掉后，不带 --tab-id 的命令会报错并提示重新选择，不会自行改到别的标签。"
+            + "要操作 iframe 里的内容：先用 frames 列出帧并记下 frame_id，再给命令加 --frame-id <id>（evaluate 支持）。"
+            + "要按指定尺寸截图（例如移动端宽度）：screenshot --width <像素> --height <像素>，两者必须一起给；"
+            + "这只影响这一次截图，不会改变页面原本的显示状态。"
+            + "screenshot 会把 PNG 写进工作区并返回相对路径（默认 screenshot-<时间戳>.png，可用 --out 指定），"
+            + "截图本身不会直接作为图片回给你；需要看图时用 workspace_read 读那个路径。"
             + "任务完成后不要关闭会话或浏览器窗口：保留窗口，用户才能回看这次操作打开了哪些页面。"
             + "只有用户明确要求关闭浏览器时，才调用 session stop。"
             + "只使用上面这些命令，不要使用列表之外的命令。";
@@ -131,7 +139,6 @@ public class BrowserTool implements BaseTool {
                     .toolResult(JSON.toJSONString(redacted))
                     .llmObservation(JSON.toJSONString(fields))
                     .llmData(fields)
-                    .ledgerObservation(JSON.toJSONString(redacted))
                     .failed(Boolean.FALSE)
                     .build();
         }

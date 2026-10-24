@@ -59,8 +59,9 @@ public class ToolObservationSerializerTest {
 
     @Test
     public void truncateAppendsNotice() {
-        String body = "a".repeat(200);
-        int cap = 120;
+        String body = "a".repeat(400);
+        // cap 必须大于提示长度，否则走的是「直接截到 cap」分支（见 truncateForLlm）。
+        int cap = ToolObservationSerializer.TRUNCATION_NOTICE.length() + 120;
         String truncated = ToolObservationSerializer.truncateForLlm(body, cap);
         Assert.assertTrue(truncated.endsWith(ToolObservationSerializer.TRUNCATION_NOTICE));
         Assert.assertEquals(cap, truncated.length());

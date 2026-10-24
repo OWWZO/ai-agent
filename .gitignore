@@ -110,3 +110,7 @@ Thumbs.db
 /.ruff_cache/
 /.workbuddy-ai/
 /plans/
+
+# 本地运行产物与分析图表，不纳入版本控制
+/.dogfood/
+/cute-tool/nl2sql-dataflow.*

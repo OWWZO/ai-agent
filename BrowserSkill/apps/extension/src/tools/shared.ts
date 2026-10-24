@@ -250,20 +250,42 @@ async function resolveVisibleTargetTab(
       pendingUrl: tab.pendingUrl,
     };
   }
-  const tabs = await api.query({ active: true, windowId: ctx.agentWindowId });
-  const first = tabs.find((t) => typeof t.id === "number");
-  if (!first || typeof first.id !== "number") {
-    return {
-      code: "not_found",
-      message: `no active tab in Agent Window ${ctx.agentWindowId}`,
-    };
+  // Default target is the session's bound tab, never Chrome's active tab: a
+  // user switching tabs in the Agent Window must not retarget the agent
+  // (ported from OpenCLI's `TargetLease.preferredTabId`).
+  if (ctx.boundTabId === null) return unboundTargetError(ctx);
+  let bound: chrome.tabs.Tab | undefined;
+  try {
+    bound = await api.get(ctx.boundTabId);
+  } catch {
+    bound = undefined;
+  }
+  if (!bound || typeof bound.id !== "number" || typeof bound.windowId !== "number") {
+    // The binding outlived its tab (closed outside the onRemoved path).
+    ctx.boundTabId = null;
+    return unboundTargetError(ctx);
+  }
+  const owner = manager.findByWindowId(bound.windowId);
+  if (owner && owner.sessionId !== ctx.sessionId) {
+    ctx.boundTabId = null;
+    return unboundTargetError(ctx);
   }
   return {
-    tabId: first.id,
-    windowId: ctx.agentWindowId,
-    active: first.active === true,
-    url: first.url,
-    pendingUrl: first.pendingUrl,
+    tabId: bound.id,
+    windowId: bound.windowId,
+    active: bound.active === true,
+    url: bound.url,
+    pendingUrl: bound.pendingUrl,
+  };
+}
+
+/** No bound tab means the agent has to name one; never guess another tab. */
+function unboundTargetError(ctx: SessionContext): RpcError {
+  return {
+    code: "not_found",
+    message:
+      `session ${ctx.sessionId} has no current tab; `
+      + "call tab_select or tab_create, or pass tab_id",
   };
 }
 
@@ -339,8 +361,8 @@ function resolvedTargetFromChromeTab(
 /**
  * Resolve a target for page CDP reads. Explicit tab_ids stay exact and are
  * rejected when browser security blocks the URL. For default targeting, skip a
- * restricted Agent Window active tab if another CDP-accessible tab exists in
- * the same Agent Window.
+ * restricted bound tab only for another tab this session already controls —
+ * never for a tab the user opened, which would reintroduce target drift.
  */
 export async function resolveCdpAccessibleTargetTab(
   manager: SessionManager,
@@ -358,7 +380,7 @@ export async function resolveCdpAccessibleTargetTab(
 
   const tabs = await api.query({ windowId: ctx.agentWindowId });
   for (const tab of tabs) {
-    if (ctx.remote && (tab.id === undefined || !isAgentControlledTab(ctx, tab.id))) continue;
+    if (tab.id === undefined || !isAgentControlledTab(ctx, tab.id)) continue;
     const candidate = resolvedTargetFromChromeTab(tab, ctx.agentWindowId);
     if (!candidate) continue;
     if (!enforceCdpAccessibleTarget(candidate, toolName)) return candidate;

@@ -1,5 +1,8 @@
 /** Tests for the standalone `bsk` Commander adapter. */
 
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -719,5 +722,167 @@ describe('bsk failure rendering', () => {
     expect(String(parsed.error.hint)).toMatch(/Inspect the page state/);
     // The human-readable three-line form must not leak into JSON mode.
     expect(capture.errorText()).not.toContain('Error:');
+  });
+});
+
+describe('bsk screenshot file output', () => {
+  const PNG_BYTES = Buffer.from('fake-png-bytes');
+
+  it('writes the viewport capture to --out and reports it as a relative artifact', async () => {
+    const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'bsk-shot-'));
+    const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(dir);
+    const client = new FakeClient();
+    const capture = makeCapture();
+    const program = buildBskCli({
+      client,
+      stdout: capture.out,
+      stderr: capture.err,
+      commandLayer: {
+        screenshot: async () => ({
+          image_base64: PNG_BYTES.toString('base64'),
+          width: 10,
+          height: 20,
+          format: 'png',
+          tab_id: 7,
+        }),
+      },
+    });
+
+    try {
+      await parse(program, ['--json', '--session', 's1', 'screenshot', '--out', 'shots/a.png']);
+
+      expect(await fs.promises.readFile(path.join(dir, 'shots/a.png'))).toEqual(PNG_BYTES);
+      const parsed = JSON.parse(capture.text()) as Record<string, unknown>;
+      // 协议层只认相对路径：绝对路径会被 CliArtifactCandidateParser 直接丢弃。
+      expect(parsed.path).toBe('shots/a.png');
+      expect(parsed.byte_size).toBe(PNG_BYTES.length);
+      expect(parsed.artifacts).toEqual([
+        { relativePath: 'shots/a.png', size: PNG_BYTES.length, mime: 'image/png' },
+      ]);
+    } finally {
+      cwdSpy.mockRestore();
+      await fs.promises.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('defaults to a cwd-relative file when --out is omitted', async () => {
+    const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'bsk-shot-'));
+    const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(dir);
+    const client = new FakeClient();
+    const capture = makeCapture();
+    const program = buildBskCli({
+      client,
+      stdout: capture.out,
+      stderr: capture.err,
+      commandLayer: {
+        screenshot: async () => ({
+          image_base64: PNG_BYTES.toString('base64'),
+          width: 1,
+          height: 1,
+          format: 'png',
+          tab_id: 1,
+        }),
+      },
+    });
+
+    try {
+      await parse(program, ['--json', '--session', 's1', 'screenshot']);
+
+      const parsed = JSON.parse(capture.text()) as Record<string, unknown>;
+      // 时间戳 + 序号：序号保证同毫秒的连续截图不互相覆盖。
+      expect(parsed.path).toMatch(/^screenshot-\d+-\d+\.png$/);
+      expect(parsed.byte_size).toBe(PNG_BYTES.length);
+      expect(await fs.promises.readFile(path.join(dir, String(parsed.path)))).toEqual(PNG_BYTES);
+    } finally {
+      cwdSpy.mockRestore();
+      await fs.promises.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('stitches a full-page capture into one file and releases the capture', async () => {
+    const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'bsk-shot-'));
+    const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(dir);
+    const client = new FakeClient();
+    const capture = makeCapture();
+    const half = PNG_BYTES.subarray(0, 4);
+    const rest = PNG_BYTES.subarray(4);
+    const readCalls: number[] = [];
+    const program = buildBskCli({
+      client,
+      stdout: capture.out,
+      stderr: capture.err,
+      commandLayer: {
+        screenshotFullPage: async () => ({
+          capture_id: 'cap-1',
+          width: 10,
+          height: 20,
+          format: 'png',
+          tab_id: 7,
+          byte_size: PNG_BYTES.length,
+        }),
+        screenshotRead: async (_client, args) => {
+          readCalls.push(args.offset);
+          const first = args.offset === 0;
+          return {
+            data_base64: (first ? half : rest).toString('base64'),
+            next_offset: first ? half.length : PNG_BYTES.length,
+            eof: !first,
+          };
+        },
+        screenshotRelease: async () => ({ released: true }),
+      },
+    });
+
+    try {
+      await parse(program, ['--json', '--session', 's1', 'screenshot', '--full-page', '--out', 'full.png']);
+
+      expect(await fs.promises.readFile(path.join(dir, 'full.png'))).toEqual(PNG_BYTES);
+      expect(readCalls).toEqual([0, half.length]);
+      expect(JSON.parse(capture.text())).toMatchObject({
+        path: 'full.png',
+        byte_size: PNG_BYTES.length,
+        artifacts: [{ relativePath: 'full.png', size: PNG_BYTES.length, mime: 'image/png' }],
+      });
+    } finally {
+      cwdSpy.mockRestore();
+      await fs.promises.rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('bsk screenshot write failures', () => {
+  const PNG_BYTES = Buffer.from('fake-png-bytes');
+
+  it('reports an unwritable --out as a fixable usage error, not a capture failure', async () => {
+    const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'bsk-shot-fail-'));
+    const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(dir);
+    const capture = makeCapture();
+    // 把一个普通文件当目录用，mkdir 才会真的失败（空目录下 recursive mkdir 会成功）。
+    await fs.promises.writeFile(path.join(dir, 'screenshot.png'), 'not-a-dir');
+    // 必须走 runBskCli：buildBskCli + parse 只解析，不渲染失败。
+    await runBskCli(
+      ['node', 'bsk', '--json', '--session', 's1', 'screenshot', '--out', 'screenshot.png/shot.png'],
+      {
+        client: new FakeClient(),
+        stdout: capture.out,
+        stderr: capture.err,
+        commandLayer: {
+          screenshot: async () => ({
+            image_base64: PNG_BYTES.toString('base64'),
+            width: 1, height: 1, format: 'png', tab_id: 1,
+          }),
+        },
+      },
+    );
+
+    const text = capture.errorText();
+    expect(text).toContain('could not be written to');
+    expect(text).toContain('--out');
+    // 模型必须能看出「图截到了，只是没写下去」，而不是笼统的截图失败。
+    expect(text).toContain(`captured (${PNG_BYTES.length} bytes)`);
+    // Hint 行必须指向可执行的下一步，而不是「重试没意义」。
+    expect(JSON.parse(text).error).toMatchObject({ retry: 'retry_after_fix' });
+    cwdSpy.mockRestore();
+    await fs.promises.rm(dir, { recursive: true, force: true });
   });
 });

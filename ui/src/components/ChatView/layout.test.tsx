@@ -130,6 +130,10 @@ vi.mock("./useConversationStream", () => ({
 vi.mock("./useWorkspacePanels", () => ({
   MIN_LEFT_WIDTH: 24,
   MAX_LEFT_WIDTH: 56,
+  // 库把裸数字当像素，尺寸 prop 必须是百分比字符串；这里照搬真实实现。
+  panelPercent: (percent: number) => `${percent}%`,
+  // defaultSize 必须是常量：绑定拖拽中的宽度会让布局被重置、分隔条拖不动。
+  CHAT_PANEL_DEFAULT_SIZE: "50%",
   useWorkspacePanels: () => ({
     leftPanelWidth: 50,
     isLeftCollapsed: false,
@@ -478,6 +482,11 @@ describe("ChatView layout", () => {
     expect(html).toContain("在工作区查看");
     expect(html).toContain("我已完成");
     expect(html).toContain(`src="${desktopUrl}"`);
+
+    // 回归：Panel 的尺寸 prop 必须是百分比字符串。库里裸数字 = 像素，
+    // 曾经传 24/56 导致对话区被压成 56px、工作区吃掉整屏。
+    expect(html).toContain("flex-basis:50%");
+    expect(html).not.toMatch(/flex-basis:\d+px/);
   });
 
   it("read-only chat view hides the input while keeping the transcript shell", () => {

@@ -6,7 +6,9 @@ import {
   buildNavigatorItems,
   buildPreviewText,
   resolveActiveItemIndex,
+  resolveActiveItemIndexFromVirtualRows,
   resolveBarVisualState,
+  type VirtualRowPosition,
 } from "./conversationNavigator";
 
 function createChat(overrides: Partial<CHAT.ChatItem> = {}): CHAT.ChatItem {
@@ -136,5 +138,57 @@ describe("resolveActiveItemIndex", () => {
 
   it("忽略非有限值", () => {
     expect(resolveActiveItemIndex([Number.NaN, 50])).toBe(1);
+  });
+});
+
+describe("resolveActiveItemIndexFromVirtualRows", () => {
+  // 虚拟化后离屏轮次没有 DOM，导航轨必须能只凭行位置 + 滚动偏移定位。
+  const rows: VirtualRowPosition[] = [
+    {
+      index: 0,
+      start: 0,
+      size: 100,
+    },
+    {
+      index: 1,
+      start: 100,
+      size: 200,
+    },
+    {
+      index: 2,
+      start: 300,
+      size: 400,
+    },
+  ];
+
+  it("挑与视口重叠且起点离视口顶部最近的行", () => {
+    // 视口 0-500：三行都重叠，起点 0 最近 → 第 0 行。
+    expect(resolveActiveItemIndexFromVirtualRows(rows, 0, 500)).toBe(0);
+    // 视口 150-650：第 0 行（0-100）已滚出，第 1 行起点 100 < 150 → 距离 0。
+    expect(resolveActiveItemIndexFromVirtualRows(rows, 150, 500)).toBe(1);
+    // 视口 350-850：只剩第 2 行（300-700）重叠。
+    expect(resolveActiveItemIndexFromVirtualRows(rows, 350, 500)).toBe(2);
+  });
+
+  it("行起点在视口之后时按距离取最近", () => {
+    expect(resolveActiveItemIndexFromVirtualRows(rows, 250, 500)).toBe(1);
+  });
+
+  it("无重叠行时回退到 live tail 索引", () => {
+    expect(
+      resolveActiveItemIndexFromVirtualRows(rows, 5000, 500, { liveTailIndex: 3 })
+    ).toBe(3);
+  });
+
+  it("空行列表直接返回 live tail 索引", () => {
+    expect(
+      resolveActiveItemIndexFromVirtualRows([], 0, 500, { liveTailIndex: 5 })
+    ).toBe(5);
+    expect(resolveActiveItemIndexFromVirtualRows([], 0, 500)).toBeUndefined();
+  });
+
+  it("视口高度退化时不崩：仍取与起点重叠的第一行", () => {
+    // scrollTop=100 时行 0(0-100) 与行 1(100-300) 都贴着起点，距离为 0，取在前的行 0。
+    expect(resolveActiveItemIndexFromVirtualRows(rows, 100, 0)).toBe(0);
   });
 });

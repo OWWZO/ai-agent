@@ -16,6 +16,7 @@ import {
   handlePlanThoughtMessage,
 } from "./chat/planner";
 import {
+  buildTaskFactsSignature,
   clonePlanForRender,
   cloneTaskSnapshot,
   processTaskForRender,
@@ -50,7 +51,6 @@ import {
   resolveToolCallStreamKey,
   resolveToolCallTargetName,
 } from "./chat/toolCalls";
-import { ensureOriginalTree, mergeUiPatchIntoTasks } from "@/utils/chat/genuiState";
 import {
   AGENT_DISPATCH_TOOL_NAME,
   buildSubAgentAction,
@@ -106,6 +106,10 @@ export const combineData = (
     default:
       break;
   }
+  // 任务事实可能被**原地**改写（`tasks.push` / 卡片字段赋值），引用不变。
+  // 在这里打一次内容签名，供派生层判断「是否需要重建 chat.tasks」——
+  // 调用方只需比较签名字符串，不必自己深挖 multiAgent 结构。
+  currentChat.taskFactsSignature = buildTaskFactsSignature(currentChat.multiAgent);
   return currentChat;
 };
 
@@ -356,10 +360,6 @@ function handleTaskMessageByType(
     case "data_analysis":
     case "code":
       handleContentMessage(eventData, currentChat, taskIndex, toolIndex);
-      break;
-    case "ui_tree":
-    case "ui_patch":
-      handleNonStreamingMessage(eventData, currentChat, taskIndex);
       break;
     case "deep_search":
       handleDeepSearchMessage(eventData, currentChat, taskIndex);
@@ -1894,11 +1894,6 @@ function handleNonStreamingMessage(
     }
     return;
   }
-  // 冻结 GenUI 初始树，后续 patch 展示层可相对 originalTree 全量重放
-  if (nextTask.messageType === "ui_tree") {
-    ensureOriginalTree(nextTask as any);
-  }
-
   if (taskIndex !== -1) {
     const taskGroup = currentChat.multiAgent.tasks[taskIndex];
 
@@ -1921,16 +1916,6 @@ function handleNonStreamingMessage(
       }
     }
 
-    // GenUI patch: merge onto latest ui_tree (any task group; plan steps may differ).
-    // 始终保留 patch 事件进 multiAgent.tasks，findFeaturedGenUi 才能在最终回复区重放。
-    if (nextTask.messageType === "ui_patch") {
-      mergeUiPatchIntoTasks(
-        currentChat.multiAgent.tasks as any,
-        nextTask as any
-      );
-      taskGroup.push(nextTask);
-      return;
-    }
     const placeholderIndex = findToolCallPlaceholderForTask(taskGroup, nextTask);
     const toolCallId = resolveTaskToolCallId(nextTask);
 
@@ -2018,15 +2003,6 @@ function handleNonStreamingMessage(
     }
 
     taskGroup.push(nextTask);
-  } else if (nextTask.messageType === "ui_patch") {
-    const merged = mergeUiPatchIntoTasks(
-      currentChat.multiAgent.tasks as any,
-      nextTask as any
-    );
-    currentChat.multiAgent.tasks.push([nextTask]);
-    if (!merged) {
-      // no prior ui_tree — breadcrumb only
-    }
   } else {
     currentChat.multiAgent.tasks.push([
       nextTask,
@@ -2170,8 +2146,6 @@ const TIMELINE_MESSAGE_TYPES = new Set([
   "markdown",
   "ppt",
   "data_analysis",
-  "ui_tree",
-  "ui_patch",
 ]);
 
 /**
@@ -2423,16 +2397,6 @@ const STATIC_TASK_ACTIONS: Record<string, Readonly<TaskAction>> = {
     action: "正在生成web页面",
     tool: "编辑器",
     name: ""
-  },
-  ui_tree: {
-    action: "正在生成界面组件",
-    tool: "GenUI",
-    name: "画布"
-  },
-  ui_patch: {
-    action: "正在更新界面组件",
-    tool: "GenUI",
-    name: "补丁"
   },
   plan_thought: {
     action: "正在思考下一步计划",

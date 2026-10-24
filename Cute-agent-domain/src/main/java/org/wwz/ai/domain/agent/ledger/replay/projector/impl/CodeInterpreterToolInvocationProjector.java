@@ -33,7 +33,8 @@ public class CodeInterpreterToolInvocationProjector extends AbstractToolInvocati
                 : null;
         String codeOutput = output == null ? "" : StringUtils.defaultString(output.getCodeOutput());
         if (StringUtils.isBlank(codeOutput) && invocation != null) {
-            codeOutput = StringUtils.defaultString(invocation.getLlmObservation());
+            codeOutput = StringUtils.defaultString(
+                    StringUtils.defaultIfBlank(invocation.getToolResult(), invocation.getLlmObservation()));
         }
 
         Map<String, Object> resultMap = new LinkedHashMap<>();

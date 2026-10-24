@@ -1,4 +1,5 @@
 import ReactJsonPretty from "react-json-pretty";
+import { memo } from "react";
 import { cn } from "@/lib/utils";
 
 export type ToolJsonValue = Record<string, unknown> | unknown[];
@@ -42,10 +43,18 @@ export function parseToolJson(value: unknown): ToolJsonValue | undefined {
   return parseJsonValue(value);
 }
 
+/**
+ * JSON 展示块。
+ *
+ * `memo` 是这里的关键：`ReactJsonPretty` 每次渲染都要把整个对象
+ * `JSON.stringify` 一遍再逐 token 上色（实测 2000 条约 15ms）。调用方
+ * （`ToolOutputBlock`）用内容哈希缓存解析结果，拿到的是**同一个对象引用**，
+ * 只有配上 `memo` 才能真正跳过重渲染 —— 两者缺一不可。
+ */
 export const ToolJsonBlock: CuteType.FC<{
   data: ToolJsonValue;
   className?: string;
-}> = ({ data, className }) => (
+}> = memo(({ data, className }) => (
   <div className={cn("kimi-tool-json", className)} data-testid="tool-json-block">
     <ReactJsonPretty
       data={data as object}
@@ -54,6 +63,6 @@ export const ToolJsonBlock: CuteType.FC<{
       themeClassName="__tool-inline-json__"
     />
   </div>
-);
+));
 
 ToolJsonBlock.displayName = "ToolJsonBlock";

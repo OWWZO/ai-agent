@@ -58,8 +58,13 @@ public class BackgroundAgentLedgerStatusTest {
         ToolInvocationFinishRecord record = captureSingleFinish();
         Assert.assertEquals(Integer.valueOf(ExecutionLedgerConstants.STATUS_RUNNING), record.getStatus());
         Assert.assertNull("后台 ACK 不得写 finished_at，否则 settle 过不了 mapper 守卫", record.getFinishedAt());
-        Assert.assertTrue(record.getLlmObservation().contains("\"run_in_background\":true"));
-        Assert.assertTrue(record.getLlmObservation().contains("\"status\":\"running\""));
+        // ACK 判定读 tool_result 的完整 JSON；llm_oberserve 是投影后的紧凑文本，解析不出这些键。
+        Assert.assertTrue(record.getToolResult().contains("\"run_in_background\":true"));
+        Assert.assertTrue(record.getToolResult().contains("\"status\":\"running\""));
+        // 模型看到的是紧凑文本：状态与 agentId 仍可见，但不含 JSON 信封。
+        Assert.assertTrue(record.getLlmObservation().contains("status: running"));
+        Assert.assertTrue(record.getLlmObservation().contains("agentId: agent-x"));
+        Assert.assertFalse(record.getLlmObservation().contains("\"run_in_background\""));
     }
 
     @Test

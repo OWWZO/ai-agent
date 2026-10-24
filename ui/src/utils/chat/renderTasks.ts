@@ -80,6 +80,44 @@ export function clonePlanForRender(plan?: MESSAGE.Plan) {
   };
 }
 
+/**
+ * 任务事实的轻量版本签名：结构 + 每张卡的完成度。
+ *
+ * 用途是给「要不要重建 chat.tasks」提供一个**能反映原地修改**的判据。
+ * `combineData` 是 `multiAgent.tasks.push(...)` 原地改写，引用永远不变，
+ * 拿引用比对会把同一轮里第二个及以后的工具卡全部跳过。
+ *
+ * 只取分组数、每组卡片数、以及每张卡的 `messageType` / `isFinal` /
+ * `resultMap.status` / 入参与出参的长度 —— 这几项覆盖了「卡片新增」与
+ * 「同一张卡内容推进」两类变化，又不至于每帧对全文做哈希。
+ */
+export function buildTaskFactsSignature(
+  multiAgent?: MESSAGE.MultiAgent
+): string {
+  const groups = multiAgent?.tasks;
+  if (!groups?.length) {
+    return "";
+  }
+  const parts: string[] = [];
+  for (const group of groups) {
+    const cards: string[] = [];
+    for (const task of group || []) {
+      const resultMap = (task?.resultMap || {}) as Record<string, unknown>;
+      cards.push(
+        [
+          task?.messageType || "",
+          task?.isFinal ? 1 : 0,
+          String(resultMap.status || ""),
+          String(resultMap.result || "").length,
+          JSON.stringify(resultMap.args ?? "").length,
+        ].join(":")
+      );
+    }
+    parts.push(cards.join(","));
+  }
+  return parts.join("|");
+}
+
 export function cloneTaskSnapshot(task: MESSAGE.Task): MESSAGE.Task {
   return {
     ...task,
@@ -94,32 +132,6 @@ export function cloneTaskSnapshot(task: MESSAGE.Task): MESSAGE.Task {
       }
       : task.toolResult,
   };
-}
-
-function getGenUiRenderSignature(resultMap?: MESSAGE.ResultMap): string {
-  if (!resultMap) {
-    return "";
-  }
-  const nested =
-    (resultMap as { resultMap?: MESSAGE.ResultMap }).resultMap &&
-    typeof (resultMap as { resultMap?: MESSAGE.ResultMap }).resultMap === "object"
-      ? ((resultMap as { resultMap?: MESSAGE.ResultMap }).resultMap as MESSAGE.ResultMap)
-      : resultMap;
-  const nestedAny = nested as {
-    tree?: unknown;
-    patchCount?: number;
-    lastPatchedAt?: string;
-    appliedPatches?: unknown[];
-  };
-  const applied = Array.isArray(nestedAny.appliedPatches)
-    ? nestedAny.appliedPatches.length
-    : 0;
-  return [
-    nestedAny.tree ? "1" : "0",
-    nestedAny.patchCount ?? 0,
-    nestedAny.lastPatchedAt || "",
-    applied,
-  ].join(",");
 }
 
 function getChaptersSignature(resultMap?: MESSAGE.ResultMap): string {
@@ -252,8 +264,6 @@ export function getTaskRenderSignature(
     docsSignature,
     getChaptersSignature(resultMap as MESSAGE.ResultMap),
     Array.isArray(plan?.stepStatus) ? plan.stepStatus.join(",") : "",
-    // emit_ui_patch mutates ui_tree in place; include GenUI markers so render cache invalidates.
-    getGenUiRenderSignature(resultMap as MESSAGE.ResultMap),
   ].join("|");
 }
 

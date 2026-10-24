@@ -58,10 +58,6 @@ import org.wwz.ai.domain.agent.runtime.tool.common.docread.PdfStructureTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.docread.TextProcessorTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.docread.WordReaderTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.CanvasPublishTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.canvas.EmitUiPatchTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.canvas.EmitUiTreeTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.canvas.GetGenuiGuideTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.canvas.ListUiComponentsTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.MemoryTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.SessionSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.cli.HostCliTool;
@@ -274,24 +270,7 @@ public class AgentToolCollectionFactory {
                 CanvasPublishTool canvasPublishTool = new CanvasPublishTool();
                 addTool(toolCollection, canvasPublishTool, agentContext, CanvasPublishTool::setAgentContext);
             }
-            // 旧 genui 树默认不装配（autobots.autoagent.genui.enabled=false）：
-            // 界面通道已由 openui 承担，两套 DSL 同时在场会让模型在 emit_ui_tree 和 openui-lang 之间摇摆。
-            // 工具代码保留，置 true 可回滚。
-            if (cuteConfig.isGenuiEnabled()
-                    && matchesAny(agentToolList, "canvas", "genui")) {
-                GetGenuiGuideTool getGenuiGuideTool = new GetGenuiGuideTool();
-                addTool(toolCollection, getGenuiGuideTool, agentContext, GetGenuiGuideTool::setAgentContext);
-
-                ListUiComponentsTool listUiComponentsTool = new ListUiComponentsTool();
-                addTool(toolCollection, listUiComponentsTool, agentContext, ListUiComponentsTool::setAgentContext);
-
-                EmitUiTreeTool emitUiTreeTool = new EmitUiTreeTool();
-                addTool(toolCollection, emitUiTreeTool, agentContext, EmitUiTreeTool::setAgentContext);
-
-                EmitUiPatchTool emitUiPatchTool = new EmitUiPatchTool();
-                addTool(toolCollection, emitUiPatchTool, agentContext, EmitUiPatchTool::setAgentContext);
-            }
-            // openui-lang 扩展组件目录（与上面的 genui canvas 链路相互独立）。
+            // openui-lang 扩展组件目录：界面通道唯一入口（旧 genui 树已整体下线）。
             if (matchesAny(agentToolList, "openui", OpenUiToolNames.GET_UI_COMPONENTS)) {
                 GetUiComponentsTool getUiComponentsTool = new GetUiComponentsTool();
                 addTool(toolCollection, getUiComponentsTool, agentContext, GetUiComponentsTool::setAgentContext);

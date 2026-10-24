@@ -348,6 +348,13 @@ export interface ScreenshotParams {
   tab_id?: number;
   /** `@eN` ref from the last `tool.snapshot`. */
   ref?: string;
+  /**
+   * Capture the viewport at this CSS-pixel size instead of the tab's current
+   * one. Both are required together; the tab's own device profile is restored
+   * afterwards, so this never disturbs `tool.emulate`.
+   */
+  width?: number;
+  height?: number;
 }
 
 export interface ScreenshotResult {
@@ -734,6 +741,12 @@ export interface EvaluateParams {
   session_id: string;
   expression: string;
   tab_id?: number;
+  /**
+   * Frame to evaluate in, from `tool.frames`. Omitted means the main frame.
+   * Cross-origin frames carry their own CDP session id, so the sandbox is
+   * still the whole tab: the frame must belong to the resolved tab.
+   */
+  frame_id?: string;
   await_promise?: boolean;
   return_by_value?: boolean;
   timeout_ms?: number;
@@ -748,6 +761,8 @@ export interface EvaluateError {
 export interface EvaluateResult {
   ok: boolean;
   tab_id: number;
+  /** Echoed when the caller asked for a specific frame. */
+  frame_id?: string;
   value?: unknown;
   error?: EvaluateError;
   dialogs?: JavaScriptDialogInfo[];

@@ -98,6 +98,23 @@ export function resetEmulateStatesForTests(): void {
 }
 
 /**
+ * The device profile `tool.emulate` last applied to `tabId`, or `null` when
+ * none is live. Callers that need a temporary override (a sized screenshot)
+ * use this to restore the previous profile instead of clearing it.
+ */
+export function liveEmulationOverrides(
+  ctx: SessionContext,
+  tabId: number,
+  cdp: { getAttachmentId?(tabId: number): string | undefined },
+): EmulateOverrides | null {
+  const stored = sessionEmulationStates.get(ctx)?.get(tabId);
+  if (!stored) return null;
+  const current =
+    stored.cdp === cdp && stored.attachmentId === cdp.getAttachmentId?.(tabId);
+  return current ? stored.overrides : null;
+}
+
+/**
  * Merge one validated request onto the tab's stored state: fields
  * present in `overrides` overwrite the stored value, absent fields keep
  * it. Returns a fresh object; `stored` is not mutated.

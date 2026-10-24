@@ -33,7 +33,8 @@ public class MultiModalToolInvocationProjector extends AbstractToolInvocationPro
                 : null;
         String markdown = output == null ? "" : StringUtils.defaultString(output.getMarkdownContent());
         if (StringUtils.isBlank(markdown) && invocation != null) {
-            markdown = StringUtils.defaultString(invocation.getLlmObservation());
+            markdown = StringUtils.defaultString(
+                    StringUtils.defaultIfBlank(invocation.getToolResult(), invocation.getLlmObservation()));
         }
 
         Map<String, Object> resultMap = new LinkedHashMap<>();

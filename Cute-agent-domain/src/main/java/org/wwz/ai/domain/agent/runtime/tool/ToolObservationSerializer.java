@@ -21,9 +21,10 @@ public final class ToolObservationSerializer {
     /** LLM 工具字符串长度上限。 */
     public static final int DEFAULT_LLM_TOOL_STRING_CAP = 96_000;
 
-    /** 截断提示。 */
+    /** 截断提示：必须给出可执行的续读方式，否则模型只能盲目重试。 */
     public static final String TRUNCATION_NOTICE =
-            "\n...[output truncated for context cap; narrow the query or use a smaller path]...";
+            "\n...[output truncated at the context cap. Narrow the query, or read the file in smaller "
+                    + "windows with workspace_read(start_line, line_count)]...";
 
     private ToolObservationSerializer() {
     }

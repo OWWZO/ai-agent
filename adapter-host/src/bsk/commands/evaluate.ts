@@ -19,6 +19,7 @@ export async function evaluate(client: BskCaller, args: EvaluateArgs): Promise<E
     session_id: args.sessionId,
     expression: args.expression,
     ...(args.tabId === undefined ? {} : { tab_id: args.tabId }),
+    ...(args.frameId === undefined ? {} : { frame_id: args.frameId }),
     await_promise: args.awaitPromise ?? true,
     return_by_value: args.returnByValue ?? true,
     timeout_ms: timeoutMs,

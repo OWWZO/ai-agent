@@ -14,7 +14,6 @@ public class ToolExecutionOutcome {
     private boolean success;
     private String toolResult;
     private String llmObservation;
-    private String ledgerObservation;
     private ToolStructuredOutput structuredOutput;
     private String errorMsg;
     private String base64Image;
