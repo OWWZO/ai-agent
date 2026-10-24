@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { copyText, downloadFile } from "@/utils";
 import { toast } from "sonner";
 import React, { memo, useMemo, useState } from "react";
@@ -25,6 +26,7 @@ import {
   FileCode,
   FileIcon,
   Presentation,
+  Search,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -66,6 +68,58 @@ const getFileIcon = (type: string) => {
   }
 };
 
+// --- 文件搜索与类型筛选 ---
+type FileTypeFilter = "all" | "document" | "spreadsheet" | "presentation" | "code" | "image" | "other";
+
+const FILE_TYPE_FILTERS: Array<{ key: FileTypeFilter; label: string }> = [
+  {
+    key: "all",
+    label: "全部",
+  },
+  {
+    key: "document",
+    label: "文档",
+  },
+  {
+    key: "spreadsheet",
+    label: "表格",
+  },
+  {
+    key: "presentation",
+    label: "演示",
+  },
+  {
+    key: "code",
+    label: "代码",
+  },
+  {
+    key: "image",
+    label: "图片",
+  },
+  {
+    key: "other",
+    label: "其他",
+  },
+];
+
+const FILE_TYPE_GROUPS: Record<string, string[]> = {
+  document: ["doc", "docx", "pdf", "md", "markdown", "txt"],
+  spreadsheet: ["csv", "xlsx", "xls"],
+  presentation: ["ppt", "pptx", "pps", "ppsx"],
+  code: ["html", "htm", "code", "js", "jsx", "ts", "tsx", "py", "java", "css", "scss", "less", "json", "xml", "yml", "yaml", "sh", "bash", "sql", "go", "rs", "c", "cpp", "h", "hpp", "log"],
+  image: ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"],
+};
+
+const getFileTypeGroup = (type?: string): FileTypeFilter => {
+  const ext = (type || "").toLowerCase();
+  for (const [group, exts] of Object.entries(FILE_TYPE_GROUPS)) {
+    if (exts.includes(ext)) {
+      return group as FileTypeFilter;
+    }
+  }
+  return "other";
+};
+
 const FileList: React.FC<{
   taskList?: PanelItemType[];
   activeFile?: CHAT.TFile;
@@ -84,6 +138,8 @@ const FileList: React.FC<{
   } = props;
 
   const [activeItem, setActiveItem] = useState<string | undefined>();
+  const [searchText, setSearchText] = useState("");
+  const [typeFilter, setTypeFilter] = useState<FileTypeFilter>("all");
   const [copying, { setFalse: stopCopying, setTrue: startCopying }] = useBoolean(false);
 
   const clearActive = useMemoizedFn(() => {
@@ -101,6 +157,22 @@ const FileList: React.FC<{
       map,
     };
   }, [taskList]);
+
+  const visibleFiles = useMemo(() => {
+    const keyword = searchText.trim().toLowerCase();
+    return fileList.filter((file) => {
+      const ext = file.type || file.name?.split(".").pop() || "";
+      if (typeFilter !== "all" && getFileTypeGroup(ext) !== typeFilter) {
+        return false;
+      }
+      if (!keyword) {
+        return true;
+      }
+      const name = (file.name || "").toLowerCase();
+      const relativePath = (file.relativePath || "").toLowerCase();
+      return name.includes(keyword) || relativePath.includes(keyword);
+    });
+  }, [fileList, searchText, typeFilter]);
 
   const fileItem = activeFile || (activeItem ? fileMap[activeItem] : undefined);
   const missing = !!fileItem && "missing" in fileItem && Boolean(fileItem.missing);
@@ -144,13 +216,57 @@ const FileList: React.FC<{
       );
     }
 
+    const hasActiveFilters = searchText.trim().length > 0 || typeFilter !== "all";
+
     return (
-      <div className="h-full overflow-auto p-2">
-        <WorkspaceFileTree
-          nodes={buildWorkspaceTree(fileList)}
-          selectedFileKey={activeItem}
-          onSelectFile={(file) => setActiveItem(workspaceFileKey(file))}
-        />
+      <div className="flex h-full flex-col">
+        <div className="flex flex-col gap-2 px-2 pt-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-foreground-subtlest" />
+            <input
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
+              placeholder="搜索文件名或路径"
+              className="h-8 w-full rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] pl-8 pr-2.5 text-[13px] text-[var(--chat-text)] outline-none transition-colors placeholder:text-[var(--chat-text-muted)] focus:border-[var(--chat-border-strong)]"
+            />
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {FILE_TYPE_FILTERS.map((filter) => {
+              const active = filter.key === typeFilter;
+              return (
+                <button
+                  key={filter.key}
+                  type="button"
+                  aria-pressed={active}
+                  className={cn(
+                    "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                    active
+                      ? "border-[var(--chat-tab-active-border)] bg-[var(--chat-tab-active-bg)] text-[var(--chat-text)]"
+                      : "border-[var(--chat-border)] bg-[var(--chat-surface)] text-[var(--chat-text-soft)] hover:border-[var(--chat-border-strong)] hover:text-[var(--chat-text)]"
+                  )}
+                  onClick={() => setTypeFilter(filter.key)}
+                >
+                  {filter.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto p-2">
+          {visibleFiles.length ? (
+            <WorkspaceFileTree
+              nodes={buildWorkspaceTree(visibleFiles)}
+              selectedFileKey={activeItem}
+              onSelectFile={(file) => setActiveItem(workspaceFileKey(file))}
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center px-2">
+              <p className="text-center text-xs text-foreground-subtle">
+                {hasActiveFilters ? "没有匹配的文件" : "暂无文件"}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
