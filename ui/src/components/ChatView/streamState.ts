@@ -841,6 +841,25 @@ export function planSessionObservation(input: {
 }
 
 /**
+ * follow 流收口时是否应停掉前台 loading。
+ *
+ * 收口路径在 await 之前就已经 unbind，此时 `activeRequestId` 为空是正常终态，
+ * 不能据此跳过停转圈，否则 UI 会永久停在「正在推进任务…」。
+ * 真正要排除的只有两种状态：用户已切走会话，或同会话已有更新的 run 接管。
+ */
+export function shouldStopForegroundLoading(input: {
+  foregroundConversationId: string;
+  conversationId: string;
+  activeRequestId: string | null;
+  requestId: string;
+}): boolean {
+  if (input.foregroundConversationId !== input.conversationId) {
+    return false;
+  }
+  return input.activeRequestId === null || input.activeRequestId === input.requestId;
+}
+
+/**
  * 把指定 HITL 卡片在本地标成终态，让 UI 立刻退出等待态。
  *
  * 后端确认由 resume / 后续帧负责，这里只做即时反馈。三个 mark 函数

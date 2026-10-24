@@ -21,6 +21,7 @@ import {
   isWorkspaceRenderableTask,
   resolveWorkspaceCaption,
   shouldRefreshWorkspaceTask,
+  shouldStopForegroundLoading,
   WAITING_USER_HELP_HINT,
 } from "./streamState";
 
@@ -466,6 +467,41 @@ describe("streamState presence & attention", () => {
 
     expect(presence.phase).toBe("idle");
     expect(presence.hint).toBe("");
+  });
+});
+
+describe("shouldStopForegroundLoading", () => {
+  const base = {
+    foregroundConversationId: "conv-1",
+    conversationId: "conv-1",
+    activeRequestId: null as string | null,
+    requestId: "req-1",
+  };
+
+  it("收口前已 unbind（ref 为空）仍必须停转圈", () => {
+    // 旧实现用 isActiveStream() 判断，此时恒为 false，loading 会永久停在 true。
+    expect(shouldStopForegroundLoading(base)).toBe(true);
+  });
+
+  it("本 run 仍是活动流时停转圈", () => {
+    expect(
+      shouldStopForegroundLoading({ ...base, activeRequestId: "req-1" })
+    ).toBe(true);
+  });
+
+  it("同会话已有更新的 run 接管时不得停它的转圈", () => {
+    expect(
+      shouldStopForegroundLoading({ ...base, activeRequestId: "req-2" })
+    ).toBe(false);
+  });
+
+  it("用户已切走会话时不得动前台 loading", () => {
+    expect(
+      shouldStopForegroundLoading({
+        ...base,
+        foregroundConversationId: "conv-2",
+      })
+    ).toBe(false);
   });
 });
 

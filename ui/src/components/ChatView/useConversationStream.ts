@@ -73,6 +73,7 @@ import {
   resolveRunPresence,
   resolveWorkspaceCaption,
   shouldRefreshWorkspaceTask,
+  shouldStopForegroundLoading,
   WAITING_USER_HELP_HINT,
 } from "./streamState";
 
@@ -1245,11 +1246,18 @@ export function useConversationStream(
                 : "FAILED"),
         },
       };
-      // 收口必须无条件停掉转圈：`activeRequestIdRef` 可能在进入本函数前已被
-      // `unbindLiveStream` 或重连调度清空，此时 `streamStillActive` 为 false，
-      // 但 `loading` 这个 React state 仍是 true。若跟着条件跳过，`resolveRunPresence`
-      // 会一直判成 working，UI 永久停在「正在推进任务…」+ 停止按钮（实测断线后不复原）。
-      setLoading(false);
+      // 收口必须停掉转圈，但不能误停别的会话或更新 run 的 loading：
+      // 调用方在 await 之前已 unbind，ref 为空是正常终态（判定见 shouldStopForegroundLoading）。
+      if (
+        shouldStopForegroundLoading({
+          foregroundConversationId: conversationRef.current.id,
+          conversationId,
+          activeRequestId: activeRequestIdRef.current,
+          requestId,
+        })
+      ) {
+        setLoading(false);
+      }
       syncRunningConversation();
     };
 
