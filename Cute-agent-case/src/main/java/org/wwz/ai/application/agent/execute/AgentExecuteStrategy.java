@@ -26,7 +26,7 @@ import java.util.function.Supplier;
 /**
  * 应用层执行策略：ReAct 与 PlanSolve 共用同一套 run 生命周期。
  * <p>
- * 两条链路只在三处不同：执行树工厂、ledger 入口标识、失败错误码。原先由两个
+ * 两条链路只在两处不同：执行树工厂、失败错误码。原先由两个
  * 逐字重复的策略类分别持有，改为按 {@code agentType} 在运行时选树，生命周期
  * （记忆 hydrate → 注册活动 run → 执行 → 双终态收口）只写一遍。
  * <p>
@@ -37,11 +37,10 @@ import java.util.function.Supplier;
 @Service("agentExecuteStrategy")
 public class AgentExecuteStrategy implements IExecuteStrategy {
 
-    /** 一条链路的可变量：选哪棵树、写哪个入口标识、失败时用哪个错误码。 */
+    /** 一条链路的可变量：选哪棵树、失败时用哪个错误码。 */
     private record Link(DefaultReactAgentExecuteStrategyFactory reactFactory,
                         DefaultPlanSolveAgentExecuteStrategyFactory planSolveFactory,
                         String linkName,
-                        String entryAgent,
                         String failureCode) {
     }
 
@@ -101,12 +100,10 @@ public class AgentExecuteStrategy implements IExecuteStrategy {
         if (request.getAgentType() != null
                 && AgentType.PLAN_SOLVE.getValue().equals(request.getAgentType())) {
             return new Link(null, defaultPlanSolveAgentExecuteStrategyFactory,
-                    "PlanSolve", ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE,
-                    "PLAN_SOLVE_EXECUTE_ERROR");
+                    "PlanSolve", "PLAN_SOLVE_EXECUTE_ERROR");
         }
         return new Link(defaultReactAgentExecuteStrategyFactory, null,
-                "React", ExecutionLedgerConstants.ENTRY_AGENT_REACT,
-                "REACT_EXECUTE_ERROR");
+                "React", "REACT_EXECUTE_ERROR");
     }
 
     /**
