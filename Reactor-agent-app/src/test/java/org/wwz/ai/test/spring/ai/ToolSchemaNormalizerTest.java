@@ -13,8 +13,6 @@ import org.wwz.ai.domain.agent.runtime.tool.mcp.model.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceGrepTool;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.CodeExecutionTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.canvas.GetGenuiGuideTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.canvas.ListUiComponentsTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.dataprep.DataAggregateTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.dataprep.DataCleanTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.dataprep.DataMergeTool;
@@ -143,8 +141,6 @@ public class ToolSchemaNormalizerTest {
                 new DocumentGenerateTool(),
                 new DocumentTemplateTool(),
                 new ExcelGeneratorTool(),
-                new GetGenuiGuideTool(),
-                new ListUiComponentsTool(),
                 new PdfReaderTool(),
                 new SlidesGenerateTool(),
                 new SqlQueryTool(),

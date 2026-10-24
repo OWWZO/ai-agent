@@ -60,6 +60,7 @@ public class GraalJsCodeModeExecutor implements CodeModeExecutorPort {
     private final CodeModeProperties properties;
     private final WorkspaceService workspaceService;
     private final ScheduledExecutorService watchdog;
+    private final CodeModeHeapGuard heapGuard = CodeModeHeapGuard.shared();
 
     public GraalJsCodeModeExecutor(CodeModeProperties properties, WorkspaceService workspaceService) {
         this.properties = properties == null ? new CodeModeProperties() : properties;
@@ -86,6 +87,12 @@ public class GraalJsCodeModeExecutor implements CodeModeExecutorPort {
         if (agentContext.isRunCancelled()) {
             return failure(CodeModeErrorCode.CODE_MODE_CANCELLED, "用户已停止本轮对话", budget, null);
         }
+        long cooldownMs = this.properties.getHeapTripCooldownMs();
+        if (heapGuard.coolingDown(cooldownMs)) {
+            return failure(CodeModeErrorCode.CODE_MODE_MEMORY_LIMIT,
+                    "上一次执行触发堆内存熔断，冷却中，剩余 "
+                            + heapGuard.remainingCooldownMs(cooldownMs) + "ms", budget, null);
+        }
 
         CodeModeRequestValidator.Validation validation = CodeModeRequestValidator.validateSourceTarget(
                 request.source(),
@@ -110,6 +117,7 @@ public class GraalJsCodeModeExecutor implements CodeModeExecutorPort {
         CodeModeJsBindings bindings = null;
         ScheduledFuture<?> timeout = null;
         Runnable unregisterAbort = null;
+        CodeModeHeapGuard.Handle heapWatch = null;
         try {
             context = GraalJsContextFactory.newContext();
             bindings = CodeModeJsBindings.bind(
@@ -126,11 +134,16 @@ public class GraalJsCodeModeExecutor implements CodeModeExecutorPort {
             timeout = watchdog.schedule(() -> closeQuietly(runningContext, true),
                     budget.remainingMs(), TimeUnit.MILLISECONDS);
             unregisterAbort = agentContext.registerRunAbort(() -> closeQuietly(runningContext, true));
+            heapWatch = heapGuard.watch(context, this.properties);
 
             context.eval("js", String.format(WRAPPER, source));
             return resolve(bindings, budget, sourceHash);
         } catch (PolyglotException e) {
             if (e.isCancelled()) {
+                if (heapWatch != null && heapWatch.tripped()) {
+                    return failure(CodeModeErrorCode.CODE_MODE_MEMORY_LIMIT,
+                            "堆内存使用超过阈值，已终止本次执行", budget, sourceHash);
+                }
                 return agentContext.isRunCancelled()
                         ? failure(CodeModeErrorCode.CODE_MODE_CANCELLED, "用户已停止本轮对话", budget, sourceHash)
                         : failure(CodeModeErrorCode.CODE_MODE_TIMEOUT,
@@ -139,6 +152,11 @@ public class GraalJsCodeModeExecutor implements CodeModeExecutorPort {
             if (e.isSyntaxError()) {
                 return failure(CodeModeErrorCode.CODE_MODE_INVALID_SOURCE,
                         "JavaScript 语法错误：" + e.getMessage(), budget, sourceHash);
+            }
+            // 采样窗口内的一次性大分配会先于熔断打穿堆，统一按内存上限归类
+            if (isOutOfMemory(e)) {
+                return failure(CodeModeErrorCode.CODE_MODE_MEMORY_LIMIT,
+                        "堆内存耗尽，已终止本次执行", budget, sourceHash);
             }
             return failure(bindings == null || bindings.errorCode() == null
                             ? CodeModeErrorCode.CODE_MODE_RUNTIME_ERROR
@@ -150,6 +168,9 @@ public class GraalJsCodeModeExecutor implements CodeModeExecutorPort {
             return failure(CodeModeErrorCode.CODE_MODE_RUNTIME_ERROR,
                     "Code Mode 执行失败：" + e.getMessage(), budget, sourceHash);
         } finally {
+            if (heapWatch != null) {
+                heapWatch.close();
+            }
             if (timeout != null) {
                 timeout.cancel(false);
             }
@@ -296,6 +317,12 @@ public class GraalJsCodeModeExecutor implements CodeModeExecutorPort {
         } catch (RuntimeException ignore) {
             // 关闭失败也要保证外层清理继续
         }
+    }
+
+    /** 堆耗尽会以 guest exception 形式冒泡，消息固定为 {@code Java heap space}。 */
+    private static boolean isOutOfMemory(PolyglotException e) {
+        String message = e.getMessage();
+        return message != null && message.contains("Java heap space");
     }
 
     private static String sha256Hex(byte[] bytes) {
