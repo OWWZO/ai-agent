@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { Menu } from "lucide-react";
 import ChatView from "@/components/ChatView";
@@ -77,6 +77,10 @@ import {
 } from "./sessionBootstrap";
 import { useRecentSessions } from "./useRecentSessions";
 import { loadCachedSessionFiles } from "./sessionWorkspaceFiles";
+import {
+  readViewFromSearch,
+  type SidebarView,
+} from "./sidebarViews";
 import WelcomeView from "./WelcomeView";
 import ConversationSidebar from "./ConversationSidebar";
 import type { PanelItemType } from "@/components/ActionPanel";
@@ -95,17 +99,6 @@ import {
 } from "./featuredConversationAdminModel";
 
 type HomeProps = Record<string, never>;
-
-type SidebarView =
-  | "chat"
-  | "mrag"
-  | "image-generation"
-  | "sop"
-  | "sub-agents"
-  | "models"
-  | "capabilities"
-  | "tools"
-  | "featured";
 
 type InitialState = {
   productType: string;
@@ -223,7 +216,15 @@ const Home: CuteType.FC<HomeProps> = memo(() => {
   >([]);
   const localRecentConversationsRef = useRef<CHAT.ConversationHistory[]>([]);
   const localRecentSummaryRef = useRef<Map<string, string>>(new Map());
-  const [activeView, setActiveView] = useState<SidebarView>("chat");
+  // 视图以 URL 为唯一数据源：刷新、前进/后退、直接访问 `?view=` 都能落到同一处。
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeView = readViewFromSearch(searchParams);
+  const setActiveView = useCallback(
+    (view: SidebarView) => {
+      setSearchParams(view === "chat" ? {} : { view }, { replace: true });
+    },
+    [setSearchParams]
+  );
   const [sidebarPanel, setSidebarPanel] = useState<"sessions" | "task-files">(
     "sessions"
   );
@@ -617,7 +618,7 @@ const Home: CuteType.FC<HomeProps> = memo(() => {
       upsertLocalRecentSession(nextConversation);
       resetInput();
     },
-    [product.type, resetInput, upsertLocalRecentSession]
+    [product.type, resetInput, setActiveView, upsertLocalRecentSession]
   );
 
   const updateCurrentConversationMeta = useCallback(
@@ -690,7 +691,7 @@ const Home: CuteType.FC<HomeProps> = memo(() => {
           }
         });
     },
-    [loadRunReplay, loadSessionWorkspaceFiles, reportRunningReplayError, resetInput]
+    [loadRunReplay, loadSessionWorkspaceFiles, reportRunningReplayError, resetInput, setActiveView]
   );
 
   const requestRunReplay = useCallback(
@@ -1070,7 +1071,7 @@ const Home: CuteType.FC<HomeProps> = memo(() => {
       closeMobileSidebar();
       setActiveView(view);
     },
-    [auth.status, closeMobileSidebar, navigate]
+    [auth.status, closeMobileSidebar, navigate, setActiveView]
   );
 
   const handleLogout = useCallback(async () => {
@@ -1088,7 +1089,7 @@ const Home: CuteType.FC<HomeProps> = memo(() => {
     setActiveView("chat");
     setWorkspaceImmersive(false);
     setSidebarPanel("task-files");
-  }, [ensureCurrentSessionWorkspaceFiles]);
+  }, [ensureCurrentSessionWorkspaceFiles, setActiveView]);
 
   const handleSidebarCloseTaskFiles = useCallback(() => {
     setSidebarPanel("sessions");

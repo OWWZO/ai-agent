@@ -20,12 +20,6 @@ const FeaturedConversations = React.lazy(
 const FeaturedConversationDetail = React.lazy(
   () => import('@/pages/FeaturedConversationDetail')
 );
-const WorkspaceMRag = React.lazy(() => import('@/pages/WorkspaceMRag'));
-const WorkspaceImageGeneration = React.lazy(() => import('@/pages/WorkspaceImageGeneration'));
-const WorkspaceSop = React.lazy(() => import('@/pages/WorkspaceSop'));
-const SubAgentAdmin = React.lazy(() => import('@/pages/SubAgentAdmin'));
-const ModelAdmin = React.lazy(() => import('@/pages/ModelAdmin'));
-const CapabilityLibrary = React.lazy(() => import('@/pages/CapabilityLibrary'));
 const NotFound = React.lazy(() => import('@/components/NotFound'));
 const AuthPage = React.lazy(() => import('@/pages/Auth'));
 const OpenUiDemo = React.lazy(() => import('@/pages/OpenUiDemo'));
@@ -93,57 +87,35 @@ const router = createBrowserRouter([
               </Suspense>
             ),
           },
+          // 工作台只有一套导航：Home 页内切换。旧地址保留为入口，
+          // 统一落到 `/?view=<key>`，避免同一批页面存在两套路由模型。
           {
             path: ROUTES.WORKSPACE,
             element: <Navigate to={ROUTES.WORKSPACE_MRAG} replace />,
           },
           {
             path: ROUTES.WORKSPACE_MRAG,
-            element: (
-              <Suspense fallback={<Loading loading={true} className="h-full" />}>
-                <WorkspaceMRag />
-              </Suspense>
-            ),
+            element: <Navigate to={`${ROUTES.HOME}?view=mrag`} replace />,
           },
           {
             path: ROUTES.WORKSPACE_IMAGE_GENERATION,
-            element: (
-              <Suspense fallback={<Loading loading={true} className="h-full" />}>
-                <WorkspaceImageGeneration />
-              </Suspense>
-            ),
+            element: <Navigate to={`${ROUTES.HOME}?view=image-generation`} replace />,
           },
           {
             path: ROUTES.WORKSPACE_SOP,
-            element: (
-              <Suspense fallback={<Loading loading={true} className="h-full" />}>
-                <WorkspaceSop />
-              </Suspense>
-            ),
+            element: <Navigate to={`${ROUTES.HOME}?view=sop`} replace />,
           },
           {
             path: ROUTES.WORKSPACE_SUB_AGENTS,
-            element: (
-              <Suspense fallback={<Loading loading={true} className="h-full" />}>
-                <SubAgentAdmin />
-              </Suspense>
-            ),
+            element: <Navigate to={`${ROUTES.HOME}?view=sub-agents`} replace />,
           },
           {
             path: ROUTES.WORKSPACE_MODELS,
-            element: (
-              <Suspense fallback={<Loading loading={true} className="h-full" />}>
-                <ModelAdmin />
-              </Suspense>
-            ),
+            element: <Navigate to={`${ROUTES.HOME}?view=models`} replace />,
           },
           {
             path: ROUTES.WORKSPACE_CAPABILITIES,
-            element: (
-              <Suspense fallback={<Loading loading={true} className="h-full" />}>
-                <CapabilityLibrary />
-              </Suspense>
-            ),
+            element: <Navigate to={`${ROUTES.HOME}?view=capabilities`} replace />,
           },
         ],
       },

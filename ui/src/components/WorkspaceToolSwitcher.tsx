@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Blocks, Bot, Cpu, DatabaseZap, WandSparkles } from "lucide-react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { ROUTES } from "@/router/routes";
 
@@ -18,44 +18,42 @@ const workspaceToolItems: WorkspaceToolItem[] = [
     label: "MRAG 文件工作台",
     description: "知识库、文件与检索调试",
     icon: DatabaseZap,
-    to: ROUTES.WORKSPACE_MRAG,
+    to: `${ROUTES.HOME}?view=mrag`,
   },
   {
     key: "image-generation",
     label: "绘图智能体",
     description: "图片生成与 Base64 解析",
     icon: WandSparkles,
-    to: ROUTES.WORKSPACE_IMAGE_GENERATION,
+    to: `${ROUTES.HOME}?view=image-generation`,
   },
   {
     key: "sub-agents",
     label: "子 Agent 装配",
     description: "自定义 prompt 与工具调度",
     icon: Bot,
-    to: ROUTES.WORKSPACE_SUB_AGENTS,
+    to: `${ROUTES.HOME}?view=sub-agents`,
   },
   {
     key: "models",
     label: "模型接入",
     description: "API Key / 模型热配置",
     icon: Cpu,
-    to: ROUTES.WORKSPACE_MODELS,
+    to: `${ROUTES.HOME}?view=models`,
   },
   {
     key: "capabilities",
     label: "能力库",
     description: "技能 zip / MCP 连接器",
     icon: Blocks,
-    to: ROUTES.WORKSPACE_CAPABILITIES,
+    to: `${ROUTES.HOME}?view=capabilities`,
   },
 ];
 
-function isActiveWorkspaceTool(pathname: string, target: string): boolean {
-  return pathname === target || pathname.startsWith(`${target}/`);
-}
-
 const WorkspaceToolSwitcher: CuteType.FC = ({ className }) => {
-  const location = useLocation();
+  // 工作台模块现在都落在主页 `?view=` 上，激活态只能看 query，不能再比 pathname。
+  const [searchParams] = useSearchParams();
+  const activeView = searchParams.get("view") ?? "chat";
 
   return (
     <div
@@ -67,14 +65,12 @@ const WorkspaceToolSwitcher: CuteType.FC = ({ className }) => {
       aria-label="工作台模块"
     >
       {workspaceToolItems.map((item) => {
-        const active = isActiveWorkspaceTool(location.pathname, item.to);
+        const active = activeView === item.key;
 
         return (
           <Link
             key={item.key}
             to={item.to}
-            target="_blank"
-            rel="noreferrer"
             aria-current={active ? "page" : undefined}
             className={cn(
               "group inline-flex min-h-[30px] shrink-0 items-center gap-1.5 rounded-md border border-transparent px-2.5 text-[13px] font-medium transition-[background-color,border-color,color] duration-[160ms] ease-[var(--ease-out)]",

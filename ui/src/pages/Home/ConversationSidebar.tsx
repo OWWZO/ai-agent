@@ -27,17 +27,7 @@ import TaskFileSidebar, { type WorkspaceFileItem } from "@/components/ActionView
 
 import ConversationSessionActionMenu from "./ConversationSessionActionMenu";
 import { canFeatureConversationSession } from "./featuredConversationAdminModel";
-
-type SidebarView =
-  | "chat"
-  | "mrag"
-  | "image-generation"
-  | "sop"
-  | "sub-agents"
-  | "models"
-  | "capabilities"
-  | "tools"
-  | "featured";
+import type { SidebarView } from "./sidebarViews";
 
 type NavItem = {
   key: SidebarView;
