@@ -1212,14 +1212,24 @@ export function useConversationStream(
       });
     };
 
+    /**
+     * 收口当前 follow 流。
+     *
+     * <p>本函数是 follow 流结束的唯一出口，因此必须自己保证终态落库：
+     * `applyFollowIdleReplay` 会先把「正在同步任务结果…」写进 `pendingConversation`，
+     * 失败路径若不清掉它，下一次 rAF flush 会把这份陈旧快照覆盖回来，把已经收口
+     * 的 run 重新钉回 RUNNING + loading（实测断线后 UI 永久停在「正在推进任务…」）。
+     * 清 pending 之后再提交，保证最终落库的一定是本函数的终态。</p>
+     */
     const markFollowEnded = (nextStatus?: string) => {
-      const streamStillActive = isActiveStream();
       clearFollowReconnectTimer(requestId);
       followReconnectAttemptsRef.current.delete(requestId);
       followReconnectContextsRef.current.delete(requestId);
       followReconnectSettleRef.current.delete(requestId);
       clearActiveRun(requestId);
       unbindLiveStream(conversationId, abortController);
+      // 丢弃重同步过程留下的中间态，避免它在后续 flush 中覆盖下面的终态。
+      pendingConversation = null;
       currentChat = {
         ...currentChat,
         loading: false,
@@ -1235,9 +1245,11 @@ export function useConversationStream(
                 : "FAILED"),
         },
       };
-      if (streamStillActive) {
-        setLoading(false);
-      }
+      // 收口必须无条件停掉转圈：`activeRequestIdRef` 可能在进入本函数前已被
+      // `unbindLiveStream` 或重连调度清空，此时 `streamStillActive` 为 false，
+      // 但 `loading` 这个 React state 仍是 true。若跟着条件跳过，`resolveRunPresence`
+      // 会一直判成 working，UI 永久停在「正在推进任务…」+ 停止按钮（实测断线后不复原）。
+      setLoading(false);
       syncRunningConversation();
     };
 

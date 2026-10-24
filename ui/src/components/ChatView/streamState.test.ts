@@ -444,6 +444,29 @@ describe("streamState presence & attention", () => {
 
     expect(presence.phase).toBe("queued");
   });
+
+  /**
+   * 断线收口回归：follow 流结束时 `markFollowEnded` 必须无条件 `setLoading(false)`。
+   *
+   * 曾经的实现只在 `isActiveStream()` 为真时停转圈，而收口前 `activeRequestIdRef`
+   * 已被 `unbindLiveStream` 清空，该条件恒为 false。结果 chat 已按账本收口成
+   * SUCCESS/STOPPED，`loading` 却一直是 true，界面永久停在「正在推进任务…」+ 停止按钮，
+   * 只有手动切换会话才恢复（实测后端重启后 5 分钟不复原）。
+   */
+  it("收口后 loading=false 时即使 chat 仍是 RUNNING 也必须回到 idle", () => {
+    const presence = resolveRunPresence({
+      loading: false,
+      chat: {
+        loading: false,
+        tip: "",
+        multiAgent: { tasks: [] },
+        metrics: { status: "RUNNING" },
+      } as unknown as CHAT.ChatItem,
+    });
+
+    expect(presence.phase).toBe("idle");
+    expect(presence.hint).toBe("");
+  });
 });
 
 describe("HITL yield parking", () => {
