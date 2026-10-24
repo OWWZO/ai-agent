@@ -5,14 +5,13 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.wwz.ai.application.agent.execute.AgentExecuteStrategy;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
-import org.wwz.ai.application.agent.execute.planexecute.PlanSolveAgentExecuteStrategy;
+import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.service.execute.planexecute.step.factory.DefaultPlanSolveAgentExecuteStrategyFactory;
-import org.wwz.ai.application.agent.execute.react.ReactAgentExecuteStrategy;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
 import org.wwz.ai.infrastructure.reactor.service.impl.SessionContextMemoryServiceImpl;
 
@@ -47,10 +46,7 @@ public class SessionContextMemoryIntegrationTest {
         DefaultReactAgentExecuteStrategyFactory factory = Mockito.mock(DefaultReactAgentExecuteStrategyFactory.class);
         Mockito.when(factory.armoryStrategyHandler()).thenReturn(handler);
 
-        ReactAgentExecuteStrategy strategy = new ReactAgentExecuteStrategy();
-        ReflectionTestUtils.setField(strategy, "defaultReactAgentExecuteStrategyFactory", factory);
-        ReflectionTestUtils.setField(strategy, "activeAgentRunRegistry", new ActiveAgentRunRegistry());
-        ReflectionTestUtils.setField(strategy, "sessionContextMemoryService", memoryService);
+        AgentExecuteStrategy strategy = newStrategy(factory, null, memoryService);
 
         AgentExecutionCommand request = AgentExecutionCommand.builder()
                 .requestId("req-react-current-001")
@@ -88,15 +84,13 @@ public class SessionContextMemoryIntegrationTest {
         DefaultPlanSolveAgentExecuteStrategyFactory factory = Mockito.mock(DefaultPlanSolveAgentExecuteStrategyFactory.class);
         Mockito.when(factory.armoryStrategyHandler()).thenReturn(handler);
 
-        PlanSolveAgentExecuteStrategy strategy = new PlanSolveAgentExecuteStrategy();
-        ReflectionTestUtils.setField(strategy, "defaultPlanSolveAgentExecuteStrategyFactory", factory);
-        ReflectionTestUtils.setField(strategy, "activeAgentRunRegistry", new ActiveAgentRunRegistry());
-        ReflectionTestUtils.setField(strategy, "sessionContextMemoryService", memoryService);
+        AgentExecuteStrategy strategy = newStrategy(null, factory, memoryService);
 
         AgentExecutionCommand request = AgentExecutionCommand.builder()
                 .requestId("req-plan-current-001")
                 .sessionId("session-plan-history-001")
                 .query("当前 plan 请求")
+                .agentType(AgentType.PLAN_SOLVE.getValue())
                 .build();
         AgentSessionStream stream = Mockito.mock(AgentSessionStream.class);
         strategy.execute(request, stream);
@@ -122,10 +116,8 @@ public class SessionContextMemoryIntegrationTest {
         DefaultReactAgentExecuteStrategyFactory factory = Mockito.mock(DefaultReactAgentExecuteStrategyFactory.class);
         Mockito.when(factory.armoryStrategyHandler()).thenReturn(handler);
 
-        ReactAgentExecuteStrategy strategy = new ReactAgentExecuteStrategy();
-        ReflectionTestUtils.setField(strategy, "defaultReactAgentExecuteStrategyFactory", factory);
-        ReflectionTestUtils.setField(strategy, "activeAgentRunRegistry", new ActiveAgentRunRegistry());
-        ReflectionTestUtils.setField(strategy, "sessionContextMemoryService", Mockito.mock(org.wwz.ai.domain.agent.memory.SessionContextMemoryService.class));
+        AgentExecuteStrategy strategy = newStrategy(factory, null,
+                Mockito.mock(org.wwz.ai.domain.agent.memory.SessionContextMemoryService.class));
 
         AgentExecutionCommand request = AgentExecutionCommand.builder()
                 .requestId("req-react-current-002")
@@ -135,6 +127,21 @@ public class SessionContextMemoryIntegrationTest {
                 .build();
 
         strategy.execute(request, Mockito.mock(AgentSessionStream.class));
+    }
+
+    /**
+     * 构造被测策略并注入字段。
+     * React 链路不设 agentType 时由策略回退到 ReAct，因此 reactFactory 必须非空才能命中。
+     */
+    private AgentExecuteStrategy newStrategy(DefaultReactAgentExecuteStrategyFactory reactFactory,
+                                             DefaultPlanSolveAgentExecuteStrategyFactory planSolveFactory,
+                                             org.wwz.ai.domain.agent.memory.SessionContextMemoryService memoryService) {
+        AgentExecuteStrategy strategy = new AgentExecuteStrategy();
+        ReflectionTestUtils.setField(strategy, "defaultReactAgentExecuteStrategyFactory", reactFactory);
+        ReflectionTestUtils.setField(strategy, "defaultPlanSolveAgentExecuteStrategyFactory", planSolveFactory);
+        ReflectionTestUtils.setField(strategy, "activeAgentRunRegistry", new ActiveAgentRunRegistry());
+        ReflectionTestUtils.setField(strategy, "sessionContextMemoryService", memoryService);
+        return strategy;
     }
 
     /**

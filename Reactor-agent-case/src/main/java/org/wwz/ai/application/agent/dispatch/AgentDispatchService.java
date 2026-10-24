@@ -6,7 +6,6 @@ import org.wwz.ai.application.agent.execute.IExecuteStrategy;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
 import org.wwz.ai.application.agent.stream.AgentStreamFrameMapper;
 import org.wwz.ai.domain.agent.runtime.stream.AgentStreamResult;
-import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.enums.ResponseTypeEnum;
 import org.wwz.ai.domain.agent.runtime.command.AgentExecutionCommand;
 import org.wwz.ai.types.agent.exception.AgentConcurrentRunException;
@@ -24,6 +23,9 @@ import java.util.Map;
 @Service
 public class AgentDispatchService implements IAgentDispatchService {
 
+    /** 唯一的应用层执行策略 bean；链路差异由策略内部按 agentType 选择。 */
+    private static final String STRATEGY_BEAN = "agentExecuteStrategy";
+
     @Resource
     private Map<String, IExecuteStrategy> executeStrategyMap;
 
@@ -32,25 +34,11 @@ public class AgentDispatchService implements IAgentDispatchService {
 
     @Override
     public void dispatch(AgentExecutionCommand request, AgentSessionStream stream) throws Exception {
-        String strategy = null;
-
-        // agentType 只负责选择应用策略，具体执行和输出协议分别交给 strategy 与 stream，避免调度器承载业务逻辑。
-        if (request.getAgentType() != null) {
-            if (AgentType.PLAN_SOLVE.getValue().equals(request.getAgentType())) {
-                strategy = "planSolveAgentExecuteStrategy";
-            } else if (AgentType.REACT.getValue().equals(request.getAgentType())) {
-                strategy = "reactAgentExecuteStrategy";
-            }
-        }
-
-        if (strategy == null || strategy.isEmpty()) {
-            // 未识别类型统一使用 ReAct，系统只保留 ReAct 与 PlanSolve 两种执行模式。
-            strategy = "reactAgentExecuteStrategy";
-        }
-
-        IExecuteStrategy executeStrategy = executeStrategyMap.get(strategy);
+        // 执行策略只有一个实现：链路差异由 AgentExecuteStrategy 按 agentType 自行选择。
+        // 这里保留 Map 注入是为了让 dispatch 不感知具体实现类，新增策略只需注册 bean。
+        IExecuteStrategy executeStrategy = executeStrategyMap.get(STRATEGY_BEAN);
         if (executeStrategy == null) {
-            throw new BizException("不存在的执行策略类型 strategy:" + strategy);
+            throw new BizException("不存在的执行策略类型 strategy:" + STRATEGY_BEAN);
         }
 
         try {
