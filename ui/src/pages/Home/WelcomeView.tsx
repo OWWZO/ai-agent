@@ -217,7 +217,7 @@ export default function WelcomeView(props: {
                     className={cn(
                       "shrink-0 rounded-full border px-4 py-2 text-[13px] font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chat-accent)]/25",
                       active
-                        ? "border-[oklch(0.83_0.03_90)] bg-[oklch(0.94_0.03_90)] text-[var(--chat-text)]"
+                        ? "border-[var(--chat-tab-active-border)] bg-[var(--chat-tab-active-bg)] text-[var(--chat-text)]"
                         : "border-[var(--chat-border)] bg-[var(--chat-surface)] text-[var(--chat-text-soft)] hover:border-[var(--chat-border-strong)] hover:text-[var(--chat-text)]"
                     )}
                     onClick={() => setSelectedCategory(category)}
